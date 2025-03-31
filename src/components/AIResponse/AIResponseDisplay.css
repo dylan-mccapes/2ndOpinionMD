@@ -1,0 +1,92 @@
+.ai-response-container {
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.diagnoses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.diagnosis-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.diagnosis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background-color: var(--color-bg-light);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.diagnosis-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--color-text-primary);
+}
+
+.confidence-badge {
+  padding: 4px 8px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+}
+
+.diagnosis-details {
+  padding: 16px;
+}
+
+.detail-section {
+  margin-bottom: 16px;
+}
+
+.detail-section h4 {
+  font-size: 16px;
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+}
+
+.detail-section ul {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.detail-section li {
+  margin-bottom: 4px;
+}
+
+.red-flags li {
+  color: var(--color-error);
+}
+
+.lab-suggestions li {
+  color: var(--color-primary);
+}
+
+.disclaimer {
+  background-color: var(--color-bg);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 24px;
+  border-left: 4px solid var(--color-warning);
+}
+
+.disclaimer h3 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.disclaimer p {
+  margin-bottom: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
