@@ -7,9 +7,14 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^13.5.0",
+    "jspdf": "^3.0.1",
+    "prop-types": "^15.8.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-hook-form": "^7.55.0",
+    "react-router-dom": "^7.4.1",
     "react-scripts": "5.0.1",
+    "react-select": "^5.10.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

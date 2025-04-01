@@ -1,4 +1,5 @@
 import React from 'react';
+import './ReportOverview.css';
 
 const ReportOverview = ({ report }) => {
   return (
