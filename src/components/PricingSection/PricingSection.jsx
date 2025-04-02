@@ -5,7 +5,7 @@ const PricingSection = () => {
   const pricingPlans = [
     {
       name: 'Basic',
-      price: '$29',
+      price: 'Free Beta-Testing (give us feedback!)',
       description: 'One-time report for individuals seeking initial insights',
       features: [
         'Symptom analysis',
@@ -19,8 +19,8 @@ const PricingSection = () => {
     },
     {
       name: 'Premium',
-      price: '$49',
-      description: 'Comprehensive analysis with detailed recommendations',
+      price: '$49.99',
+      description: '_coming soon_ Comprehensive analysis with detailed recommendations',
       features: [
         'All Basic features',
         'Top 5 potential conditions',

@@ -13,6 +13,7 @@ import AIResponseDisplay from './components/AIResponse/AIResponseDisplay';
 
 import HeroSection from './components/HeroSection/HeroSection';
 import PricingSection from './components/PricingSection/PricingSection';
+import DoctorEndorsement from './components/DoctorEndorsement/DoctorEndorsement';
 
 function App() {
   const sampleReport = {
@@ -67,6 +68,7 @@ function App() {
               <main className="App-main">
                 {HeroSection && <HeroSection />}
                 <TestimonialCarousel />
+                <DoctorEndorsement />
                 <ReportOverview report={sampleReport} />
                 {PricingSection && <PricingSection />}
                 <FAQAccordion />
