@@ -1,0 +1,315 @@
+{
+  "caseStudies": [
+    {
+      "caseId": "AIDx-0002",
+      "primaryCondition": "Rheumatoid Arthritis",
+      "diagnosticZone": 3,
+      "staxScore": 3,
+      "flareType": "Pathologic",
+      "symptomTimeline": [
+        "Intermittent aching pain and stiffness in small hand joints, worse in the morning",
+        "Persistent symmetric joint swelling and warmth in wrists and fingers, with prolonged morning stiffness",
+        "Increasing fatigue and difficulty with daily tasks due to joint pain",
+        "Spread of arthritis to larger joints (knees, ankles) over time",
+        "Joint deformities begin to appear in fingers after years of uncontrolled inflammation"
+      ],
+      "misdiagnosedAs": [
+        "Osteoarthritis",
+        "Fibromyalgia",
+        "Lupus"
+      ],
+      "eventualDiagnosisTime": 0.7,
+      "ethosTerrainTags": [
+        "smoking",
+        "periodontal bacteria",
+        "chronic stress"
+      ],
+      "suppressors": [
+        "Methotrexate (DMARD) to reduce autoimmune joint damage",
+        "Biologic TNF-inhibitor therapy for refractory joint inflammation",
+        "NSAIDs and low-dose corticosteroids for symptom relief during flares",
+        "Regular exercise and physical therapy to maintain joint function",
+        "Smoking cessation and anti-inflammatory diet to support remission"
+      ],
+      "annotatedCaseSummary": "A 45-year-old woman developed intermittent hand pain and prolonged morning stiffness that were initially attributed to age-related osteoarthritis. Over months, her joint swelling became persistent and symmetric, involving both wrists and multiple finger joints. Fatigue set in as mundane tasks like opening jars grew difficult. She was misdiagnosed with fibromyalgia and treated only symptomatically for about 8 months. When she failed to improve and started showing joint erosions on X-ray, serologic testing revealed rheumatoid arthritis. By the time of diagnosis, erosive changes had begun in her finger joints. With appropriate treatment (methotrexate and a TNF blocker), her pain and inflammation came under control. In retrospect, an earlier evaluation by rheumatology could have prevented months of unchecked disease activity and joint damage.",
+      "sourceType": "Composite Case",
+      "citations": [
+        "PMID: 36874695, Factors Leading to Diagnostic and Therapeutic Delay of Rheumatoid Arthritis and Their Impact on Disease Outcome, 2023",
+        "PMID: 29056771, Diagnostic delays in rheumatic diseases with associated arthritis, 2017"
+      ],
+      "legalCategory": "mandatory_citation"
+    }
+  ],
+  "autoimmuneTags": [
+    {
+      "tagName": "#AutoimmuneDx_MyastheniaGravis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoimmune antibodies target acetylcholine receptors at the neuromuscular junction, causing fluctuating muscle weakness and fatigue.",
+      "followOnConditions": "Thymoma, respiratory failure during myasthenic crisis, other autoimmune conditions",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Recurring muscle fatigue and weakness symbolize struggles with personal boundaries and stamina; the body's difficulty in maintaining normal strength may metaphorically mirror a need for support and grounding. Episodes often flare under stress, reflecting psychological burden or vulnerability that manifests physically."
+    },
+    {
+      "tagName": "#AutoimmuneDx_GuillainBarreSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "An acute immune response (often post-infection) attacks peripheral nerves' myelin sheath, causing rapid onset paralysis and sensory changes.",
+      "followOnConditions": "Chronic neuropathy, respiratory compromise, autonomic dysfunction",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Sudden loss of mobility and sensation echoes a fear of losing control or being overwhelmed; the rapid progression may symbolize a sudden upheaval in the individual's life or unexpected betrayal by one's own body. Recovery often requires patience and trust, reflecting the need to rebuild strength gradually and regain autonomy."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PrimaryBiliaryCholangitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic immune-mediated destruction of intrahepatic bile ducts leads to impaired bile flow and liver inflammation.",
+      "followOnConditions": "Fatigue, osteoporosis, liver cirrhosis, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Blocked bile ducts metaphorically reflect difficulty in processing emotions or digesting life experiences; the stagnation of bile can signify unresolved anger or trauma. Persistent fatigue may indicate a deep internal exhaustion, calling attention to an overburdened emotional state needing gentle release and care."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PemphigusVulgaris",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies against epidermal cadherins disrupt cell adhesion, causing widespread blistering of skin and mucous membranes.",
+      "followOnConditions": "Secondary infections, malnutrition, pain, fluid imbalance",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Loss of skin integrity symbolizes vulnerability and a perceived breach of personal boundaries; the painful blisters may represent suppressed emotions rising to the surface. The body's inability to keep layers intact could mirror a psychological feeling of fragmentation or lack of protection."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneHepatitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "T-cell mediated inflammation of the liver causes progressive hepatocellular damage and impaired detoxification.",
+      "followOnConditions": "Cirrhosis, liver failure, other autoimmune diseases",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Inflammation of the liver reflects difficulty clearing toxins (emotional or physical) and may symbolize holding onto inner bitterness. Struggles with purification and regeneration are highlighted, urging the person to address sources of resentment or stress that hinder natural cleansing processes."
+    },
+    {
+      "tagName": "#AutoimmuneDx_ImmuneThrombocytopenia",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoantibodies and immune cells destroy platelets in the spleen, leading to low platelet counts and bleeding tendencies.",
+      "followOnConditions": "Bruising, anemia, splenomegaly, other autoimmune disorders",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Easy bruising and bleeding may symbolize feeling emotionally wounded or unprotected; fragile platelets reflect vulnerability. The tendency to bleed under minor stress can mirror a low threshold for emotional pain, suggesting the need for gentleness and protective boundaries."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AddisonDisease",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Immune destruction of the adrenal cortex leads to cortisol and aldosterone deficiency, causing metabolic imbalance.",
+      "followOnConditions": "Adrenal crisis, severe fatigue, other endocrine autoimmune diseases",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Chronic exhaustion and low blood pressure reflect a loss of inner fire or will; adrenal failure suggests feeling unable to respond to stress. The persistent fatigue may symbolize a belief that one cannot rise to challenges, and a call to restore self-worth and resilience."
+    },
+    {
+      "tagName": "#AutoimmuneDx_SjogrensSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune attack on exocrine glands (salivary and lacrimal) leads to chronic dryness and inflammation.",
+      "followOnConditions": "Dental decay, corneal damage, fatigue, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Constant dryness of eyes and mouth symbolizes emotional dehydration or a sense of inner emptiness; lack of lubrication can represent difficulty expressing love or compassion. The body's inability to produce moisture may reflect feelings of isolation or being emotionally parched."
+    },
+    {
+      "tagName": "#AutoimmuneDx_Dermatomyositis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Immune-mediated inflammation of skin and muscle causes rash, weakness, and sometimes calcifications.",
+      "followOnConditions": "Interstitial lung disease, cancer, calcinosis, secondary infections",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Muscle weakness and rash symbolize carrying burdens on the surface and in the core; the skin rash may indicate emotional embarrassment or exposure. The difficulty in movement and strength could metaphorically point to feeling weighed down by unresolved issues or chronic stress."
+    },
+    {
+      "tagName": "#AutoimmuneDx_GoodpasturesSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies against basement membranes in lungs and kidneys cause pulmonary hemorrhage and renal failure.",
+      "followOnConditions": "Kidney failure, pulmonary hemorrhage, anemia",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Simultaneous lung and kidney damage suggests a deep conflict in letting go (lung, breath) and retaining or releasing emotional fluid (kidney). The rapid decline in vital organs can symbolize feeling under assault from within, perhaps reflecting betrayal or drastic loss of support."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PerniciousAnemia",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune destruction of gastric parietal cells leads to intrinsic factor deficiency and impaired vitamin B12 absorption.",
+      "followOnConditions": "B12 deficiency anemia, neuropathy, cognitive changes, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Inability to absorb nourishment symbolizes feeling spiritually or emotionally starved; B12 deficiency can cause numbness, which mirrors emotional numbness. This condition can highlight a need for external support and 'infusion' of care and nourishment in life."
+    },
+    {
+      "tagName": "#AutoimmuneDx_Scleroderma",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Widespread immune activation leads to collagen overproduction and fibrosis of skin and internal organs.",
+      "followOnConditions": "Pulmonary hypertension, renal crisis, gastroesophageal reflux",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Skin tightening and organ fibrosis symbolize rigidity and difficulty in adapting to change; an internalization of fear or trauma. The loss of flexibility in body tissues reflects a psychological resistance to evolving, suggesting a deep-seated need to release pent-up emotions and soften one's approach to life."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneEncephalitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoimmune attack on brain receptors or cells causes inflammation, psychiatric symptoms, seizures, and altered consciousness.",
+      "followOnConditions": "Cognitive impairment, seizures, psychosis, mood disorders",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Disruption in brain function represents a deep-seated inner conflict or loss of identity; chaotic neurological symptoms mirror turmoil in one's mind or subconscious. The condition can symbolize suppressed trauma surfacing, calling for integration of thoughts and emotions to restore mental harmony."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PsoriaticArthritis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune inflammation affects skin (psoriasis plaques) and joints, causing scaling lesions and arthritis.",
+      "followOnConditions": "Joint deformity, metabolic syndrome, uveitis",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Psoriatic plaques and joint pain symbolize frustration erupting on the surface (skin) and deep in the core (joints); an external manifestation of inner stress. The co-occurrence of pain and visible rash may reflect a feeling of inner turmoil seeking expression."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AntiphospholipidSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies cause hypercoagulability, leading to recurrent blood clots and pregnancy loss.",
+      "followOnConditions": "Blood clots, strokes, pregnancy loss, preeclampsia",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Clot formation and repeated miscarriages can symbolize blocked life paths and deep fears about creating or sustaining life. This syndrome may reflect an internal resistance to moving forward or an unconscious undermining of one's own success; it highlights the importance of self-trust and resolving internal conflicts around self-worth."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_ChronicFatigueSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Complex immune dysregulation and chronic inflammation (often post-viral) lead to profound fatigue unrelieved by rest.",
+      "followOnConditions": "Fibromyalgia, depression, cognitive impairment",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Debilitating exhaustion symbolizes burnout and a soul pushed beyond limits; it may indicate the body and mind telling you to slow down. Underlying stress or unprocessed grief might be manifesting as extreme fatigue, urging one to reclaim balance and self-care."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Fibromyalgia",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Central sensitization and possible immune activation cause widespread musculoskeletal pain and fatigue.",
+      "followOnConditions": "Sleep disturbances, IBS, headaches",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Chronic widespread pain may symbolize holding emotional pain in one's body; stress or trauma could manifest physically when unresolved. The pervasive ache suggests an inner cry for understanding and self-compassion, calling attention to the mind-body link and need for emotional release."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MastCellActivationSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Abnormal mast cell activation causes excessive release of histamine and other mediators, leading to allergic and inflammatory symptoms.",
+      "followOnConditions": "Anaphylaxis, migraines, allergies, IBS",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Heightened allergic sensitivity may symbolize hyper-vigilance or feeling overly reactive to minor triggers. The body's exaggerated response to its environment can reflect underlying anxiety or a protective stance that has become maladaptive, indicating a need to temper reactivity and find safety."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_IrritableBowelSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Visceral hypersensitivity and low-grade inflammation lead to abdominal pain, bloating, and altered bowel habits.",
+      "followOnConditions": "Anxiety, fibromyalgia, urinary symptoms",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Gut pain and irregularity often reflect emotional stress or anxiety; the gut is sometimes called a second brain, so IBS may symbolize holding stress in the belly. This condition suggests a need to acknowledge fears and anxieties that haven't been verbalized, and to cultivate emotional 'gut health'."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_PolycysticOvarySyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Hormonal imbalance and insulin resistance lead to ovarian cysts, irregular periods, and metabolic issues.",
+      "followOnConditions": "Infertility, metabolic syndrome, diabetes, endometrial cancer",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Hormonal chaos and fertility challenges may symbolize unbalanced cycles in life and difficulty with self-image or femininity. The persistent struggle with weight and self-regulation could reflect a deeper struggle to find harmony and acceptance within oneself."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Endometriosis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Endometrial tissue implants outside the uterus, causing cyclical inflammation and pain.",
+      "followOnConditions": "Infertility, chronic pelvic pain, ovarian cysts",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Painful growth of uterine tissue outside its boundaries may symbolize unexpressed creativity or suppressed feminine issues. Chronic pelvic pain can reflect deep emotional scars or the sense of carrying burdens that need gentle acceptance and healing."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_InterstitialCystitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic inflammation of the bladder lining causes pelvic pain and urinary urgency without infection.",
+      "followOnConditions": "Fibromyalgia, IBS, depression, anxiety",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Bladder pain and constant urgency may symbolize difficulty in containing emotions, or suppressed anger being released. The distress in the pelvic area can indicate a sense of vulnerability or personal boundary issues, suggesting a need to allow safe expression of feelings."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Asthma",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic airway inflammation and hyperreactivity cause bronchoconstriction and breathing difficulty in response to triggers.",
+      "followOnConditions": "Allergic rhinitis, sleep apnea, anxiety",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Difficulty breathing can symbolize feeling suffocated by life situations or emotional stress; asthma often emerges when the person feels overwhelmed. Exacerbations may reflect internalized fear or unspoken grief, indicating a call to release emotional burdens and breathe more freely."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_AtopicDermatitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Barrier dysfunction and immune dysregulation in the skin cause chronic eczema with itching and inflammation.",
+      "followOnConditions": "Asthma, hay fever, skin infections",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Itchy, inflamed skin can symbolize hypersensitivity and the need for boundaries; stress and emotions often trigger flares. The skin's reaction to minor irritants may mirror an emotional state of feeling attacked or unable to protect one's inner self."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Rosacea",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Chronic facial blood vessel inflammation causes flushing, redness, and sometimes acne-like bumps.",
+      "followOnConditions": "Ocular irritation, flushing episodes, migraines",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Facial flushing and visible redness often indicate embarrassment or anger; the condition can symbolize a feeling of being easily triggered or exposed. Rosacea may reflect suppressed frustration that comes out through the face, urging the person to express emotions calmly and build confidence."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_NonCeliacGlutenSensitivity",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Immune response to gluten proteins causes intestinal discomfort and systemic symptoms without celiac pathology.",
+      "followOnConditions": "IBS-like symptoms, fatigue, nutritional deficiencies",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Discomfort after certain foods may symbolize feeling 'poisoned' by certain experiences; it often reflects a hidden sensitivity. The need to avoid triggers hints at learning to protect oneself from what doesn't agree with one, encouraging discernment in life choices."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_ChronicSinusitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Long-term inflammation of the sinuses causes congestion, pain, and pressure due to immune overreaction or infection.",
+      "followOnConditions": "Asthma, nasal polyps, fatigue",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Constant nasal congestion can symbolize feeling emotionally 'blocked' or unable to breathe freely in life. The pressure and pain suggest suppressed feelings building up, indicating a need to release held emotions and communicate more openly."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_LichenPlanus",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Immune-mediated skin and mucosal inflammation causes itchy purple papules or lacy lesions, often linked to chronic liver issues.",
+      "followOnConditions": "Hepatitis C, dyslipidemia, oral cancers",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Itchy lesions on the skin or mouth may symbolize unresolved inner conflict; the purplish discoloration can reflect suppressed emotions that surface. The condition encourages looking at what's being \"scratched\" beneath the surface, perhaps suggesting the need to address hidden grievances."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MeniereDisease",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Abnormal fluid balance in the inner ear (possible autoimmune component) causes vertigo, tinnitus, and hearing loss.",
+      "followOnConditions": "Hearing loss, migraines, anxiety",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Vertigo and ear pressure symbolize feeling off-balance in life; waves of dizziness may reflect emotional upheavals. Tinnitus can represent an inner 'noise' of unresolved issues; the condition calls for finding equilibrium and calm amid internal storms."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_LongCOVID",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Persistent immune activation and inflammation following acute COVID-19 infection result in multi-system fatigue, brain fog, and organ dysfunction.",
+      "followOnConditions": "Chronic fatigue, cognitive impairment, cardiovascular complications, mental health issues",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Lingering post-viral symptoms may symbolize the aftermath of trauma or a crisis that hasn't been fully processed. The body and mind's struggle to return to normal suggests a need to rebuild strength slowly, integrate the experience, and cultivate resilience and self-compassion."
+    }
+  ]
+}
