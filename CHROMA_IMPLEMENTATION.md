@@ -56,13 +56,56 @@ server/
 
 ### 1. Install Dependencies
 
+#### macOS Dependencies
+
+Before running the setup script, ensure you have the following dependencies installed on your Mac:
+
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python 3.8+ (required for ChromaDB)
+brew install python@3.10
+
+# Install additional system dependencies
+brew install cmake
+brew install sqlite
+brew install openssl
+
+# Ensure Python 3.10 is in your PATH
+echo 'export PATH="/usr/local/opt/python@3.10/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Verify Python installation
+python3 --version
+pip3 --version
+```
+
+#### Setup Script
+
 ```bash
 # Navigate to the server directory
 cd server
 
-# Run the setup script
+# Run the setup script (use python3 explicitly on Mac)
 chmod +x setup.sh
 ./setup.sh
+```
+
+If you encounter issues with the setup script on Mac, you can run these commands manually:
+
+```bash
+# Create a Python virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+source venv/bin/activate
+
+# Install required dependencies
+pip install -r requirements.txt
+
+# Create Chroma database directory
+mkdir -p chroma_db
 ```
 
 This will:
