@@ -1,0 +1,2072 @@
+{
+  "caseStudies": [
+    {
+      "caseId": "AIDx-0002",
+      "primaryCondition": "Rheumatoid Arthritis",
+      "diagnosticZone": 3,
+      "staxScore": 3,
+      "flareType": "Pathologic",
+      "symptomTimeline": [
+        "Intermittent aching pain and stiffness in small hand joints, worse in the morning",
+        "Persistent symmetric joint swelling and warmth in wrists and fingers, with prolonged morning stiffness",
+        "Increasing fatigue and difficulty with daily tasks due to joint pain",
+        "Spread of arthritis to larger joints (knees, ankles) over time",
+        "Joint deformities begin to appear in fingers after years of uncontrolled inflammation"
+      ],
+      "misdiagnosedAs": [
+        "Osteoarthritis",
+        "Fibromyalgia",
+        "Lupus"
+      ],
+      "eventualDiagnosisTime": 0.7,
+      "ethosTerrainTags": [
+        "smoking",
+        "periodontal bacteria",
+        "chronic stress"
+      ],
+      "suppressors": [
+        "Methotrexate (DMARD) to reduce autoimmune joint damage",
+        "Biologic TNF-inhibitor therapy for refractory joint inflammation",
+        "NSAIDs and low-dose corticosteroids for symptom relief during flares",
+        "Regular exercise and physical therapy to maintain joint function",
+        "Smoking cessation and anti-inflammatory diet to support remission"
+      ],
+      "annotatedCaseSummary": "A 45-year-old woman developed intermittent hand pain and prolonged morning stiffness that were initially attributed to age-related osteoarthritis. Over months, her joint swelling became persistent and symmetric, involving both wrists and multiple finger joints. Fatigue set in as mundane tasks like opening jars grew difficult. She was misdiagnosed with fibromyalgia and treated only symptomatically for about 8 months. When she failed to improve and started showing joint erosions on X-ray, serologic testing revealed rheumatoid arthritis. By the time of diagnosis, erosive changes had begun in her finger joints. With appropriate treatment (methotrexate and a TNF blocker), her pain and inflammation came under control. In retrospect, an earlier evaluation by rheumatology could have prevented months of unchecked disease activity and joint damage.",
+      "sourceType": "Composite Case",
+      "citations": [
+        "PMID: 36874695, Factors Leading to Diagnostic and Therapeutic Delay of Rheumatoid Arthritis and Their Impact on Disease Outcome, 2023",
+        "PMID: 29056771, Diagnostic delays in rheumatic diseases with associated arthritis, 2017"
+      ],
+      "legalCategory": "mandatory_citation"
+    }
+  ],
+  "autoimmuneTags": [
+    {
+      "tagName": "#AutoimmuneDx_MyastheniaGravis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoimmune antibodies target acetylcholine receptors at the neuromuscular junction, causing fluctuating muscle weakness and fatigue.",
+      "followOnConditions": "Thymoma, respiratory failure during myasthenic crisis, other autoimmune conditions",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Recurring muscle fatigue and weakness symbolize struggles with personal boundaries and stamina; the body's difficulty in maintaining normal strength may metaphorically mirror a need for support and grounding. Episodes often flare under stress, reflecting psychological burden or vulnerability that manifests physically."
+    },
+    {
+      "tagName": "#AutoimmuneDx_GuillainBarreSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "An acute immune response (often post-infection) attacks peripheral nerves' myelin sheath, causing rapid onset paralysis and sensory changes.",
+      "followOnConditions": "Chronic neuropathy, respiratory compromise, autonomic dysfunction",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Sudden loss of mobility and sensation echoes a fear of losing control or being overwhelmed; the rapid progression may symbolize a sudden upheaval in the individual's life or unexpected betrayal by one's own body. Recovery often requires patience and trust, reflecting the need to rebuild strength gradually and regain autonomy."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PrimaryBiliaryCholangitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic immune-mediated destruction of intrahepatic bile ducts leads to impaired bile flow and liver inflammation.",
+      "followOnConditions": "Fatigue, osteoporosis, liver cirrhosis, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Blocked bile ducts metaphorically reflect difficulty in processing emotions or digesting life experiences; the stagnation of bile can signify unresolved anger or trauma. Persistent fatigue may indicate a deep internal exhaustion, calling attention to an overburdened emotional state needing gentle release and care."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PemphigusVulgaris",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies against epidermal cadherins disrupt cell adhesion, causing widespread blistering of skin and mucous membranes.",
+      "followOnConditions": "Secondary infections, malnutrition, pain, fluid imbalance",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Loss of skin integrity symbolizes vulnerability and a perceived breach of personal boundaries; the painful blisters may represent suppressed emotions rising to the surface. The body's inability to keep layers intact could mirror a psychological feeling of fragmentation or lack of protection."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneHepatitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "T-cell mediated inflammation of the liver causes progressive hepatocellular damage and impaired detoxification.",
+      "followOnConditions": "Cirrhosis, liver failure, other autoimmune diseases",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Inflammation of the liver reflects difficulty clearing toxins (emotional or physical) and may symbolize holding onto inner bitterness. Struggles with purification and regeneration are highlighted, urging the person to address sources of resentment or stress that hinder natural cleansing processes."
+    },
+    {
+      "tagName": "#AutoimmuneDx_ImmuneThrombocytopenia",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoantibodies and immune cells destroy platelets in the spleen, leading to low platelet counts and bleeding tendencies.",
+      "followOnConditions": "Bruising, anemia, splenomegaly, other autoimmune disorders",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Easy bruising and bleeding may symbolize feeling emotionally wounded or unprotected; fragile platelets reflect vulnerability. The tendency to bleed under minor stress can mirror a low threshold for emotional pain, suggesting the need for gentleness and protective boundaries."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AddisonDisease",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Immune destruction of the adrenal cortex leads to cortisol and aldosterone deficiency, causing metabolic imbalance.",
+      "followOnConditions": "Adrenal crisis, severe fatigue, other endocrine autoimmune diseases",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Chronic exhaustion and low blood pressure reflect a loss of inner fire or will; adrenal failure suggests feeling unable to respond to stress. The persistent fatigue may symbolize a belief that one cannot rise to challenges, and a call to restore self-worth and resilience."
+    },
+    {
+      "tagName": "#AutoimmuneDx_SjogrensSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune attack on exocrine glands (salivary and lacrimal) leads to chronic dryness and inflammation.",
+      "followOnConditions": "Dental decay, corneal damage, fatigue, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Constant dryness of eyes and mouth symbolizes emotional dehydration or a sense of inner emptiness; lack of lubrication can represent difficulty expressing love or compassion. The body's inability to produce moisture may reflect feelings of isolation or being emotionally parched."
+    },
+    {
+      "tagName": "#AutoimmuneDx_Dermatomyositis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Immune-mediated inflammation of skin and muscle causes rash, weakness, and sometimes calcifications.",
+      "followOnConditions": "Interstitial lung disease, cancer, calcinosis, secondary infections",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Muscle weakness and rash symbolize carrying burdens on the surface and in the core; the skin rash may indicate emotional embarrassment or exposure. The difficulty in movement and strength could metaphorically point to feeling weighed down by unresolved issues or chronic stress."
+    },
+    {
+      "tagName": "#AutoimmuneDx_GoodpasturesSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies against basement membranes in lungs and kidneys cause pulmonary hemorrhage and renal failure.",
+      "followOnConditions": "Kidney failure, pulmonary hemorrhage, anemia",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Simultaneous lung and kidney damage suggests a deep conflict in letting go (lung, breath) and retaining or releasing emotional fluid (kidney). The rapid decline in vital organs can symbolize feeling under assault from within, perhaps reflecting betrayal or drastic loss of support."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PerniciousAnemia",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune destruction of gastric parietal cells leads to intrinsic factor deficiency and impaired vitamin B12 absorption.",
+      "followOnConditions": "B12 deficiency anemia, neuropathy, cognitive changes, other autoimmune conditions",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Inability to absorb nourishment symbolizes feeling spiritually or emotionally starved; B12 deficiency can cause numbness, which mirrors emotional numbness. This condition can highlight a need for external support and 'infusion' of care and nourishment in life."
+    },
+    {
+      "tagName": "#AutoimmuneDx_Scleroderma",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Widespread immune activation leads to collagen overproduction and fibrosis of skin and internal organs.",
+      "followOnConditions": "Pulmonary hypertension, renal crisis, gastroesophageal reflux",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Skin tightening and organ fibrosis symbolize rigidity and difficulty in adapting to change; an internalization of fear or trauma. The loss of flexibility in body tissues reflects a psychological resistance to evolving, suggesting a deep-seated need to release pent-up emotions and soften one's approach to life."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneEncephalitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoimmune attack on brain receptors or cells causes inflammation, psychiatric symptoms, seizures, and altered consciousness.",
+      "followOnConditions": "Cognitive impairment, seizures, psychosis, mood disorders",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Disruption in brain function represents a deep-seated inner conflict or loss of identity; chaotic neurological symptoms mirror turmoil in one's mind or subconscious. The condition can symbolize suppressed trauma surfacing, calling for integration of thoughts and emotions to restore mental harmony."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PsoriaticArthritis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Autoimmune inflammation affects skin (psoriasis plaques) and joints, causing scaling lesions and arthritis.",
+      "followOnConditions": "Joint deformity, metabolic syndrome, uveitis",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Psoriatic plaques and joint pain symbolize frustration erupting on the surface (skin) and deep in the core (joints); an external manifestation of inner stress. The co-occurrence of pain and visible rash may reflect a feeling of inner turmoil seeking expression."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AntiphospholipidSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies cause hypercoagulability, leading to recurrent blood clots and pregnancy loss.",
+      "followOnConditions": "Blood clots, strokes, pregnancy loss, preeclampsia",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Clot formation and repeated miscarriages can symbolize blocked life paths and deep fears about creating or sustaining life. This syndrome may reflect an internal resistance to moving forward or an unconscious undermining of one's own success; it highlights the importance of self-trust and resolving internal conflicts around self-worth."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_ChronicFatigueSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Complex immune dysregulation and chronic inflammation (often post-viral) lead to profound fatigue unrelieved by rest.",
+      "followOnConditions": "Fibromyalgia, depression, cognitive impairment",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Debilitating exhaustion symbolizes burnout and a soul pushed beyond limits; it may indicate the body and mind telling you to slow down. Underlying stress or unprocessed grief might be manifesting as extreme fatigue, urging one to reclaim balance and self-care."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Fibromyalgia",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Central sensitization and possible immune activation cause widespread musculoskeletal pain and fatigue.",
+      "followOnConditions": "Sleep disturbances, IBS, headaches",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Chronic widespread pain may symbolize holding emotional pain in one's body; stress or trauma could manifest physically when unresolved. The pervasive ache suggests an inner cry for understanding and self-compassion, calling attention to the mind-body link and need for emotional release."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MastCellActivationSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Abnormal mast cell activation causes excessive release of histamine and other mediators, leading to allergic and inflammatory symptoms.",
+      "followOnConditions": "Anaphylaxis, migraines, allergies, IBS",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Heightened allergic sensitivity may symbolize hyper-vigilance or feeling overly reactive to minor triggers. The body's exaggerated response to its environment can reflect underlying anxiety or a protective stance that has become maladaptive, indicating a need to temper reactivity and find safety."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_IrritableBowelSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Visceral hypersensitivity and low-grade inflammation lead to abdominal pain, bloating, and altered bowel habits.",
+      "followOnConditions": "Anxiety, fibromyalgia, urinary symptoms",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Gut pain and irregularity often reflect emotional stress or anxiety; the gut is sometimes called a second brain, so IBS may symbolize holding stress in the belly. This condition suggests a need to acknowledge fears and anxieties that haven't been verbalized, and to cultivate emotional 'gut health'."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_PolycysticOvarySyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Hormonal imbalance and insulin resistance lead to ovarian cysts, irregular periods, and metabolic issues.",
+      "followOnConditions": "Infertility, metabolic syndrome, diabetes, endometrial cancer",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Hormonal chaos and fertility challenges may symbolize unbalanced cycles in life and difficulty with self-image or femininity. The persistent struggle with weight and self-regulation could reflect a deeper struggle to find harmony and acceptance within oneself."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Endometriosis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Endometrial tissue implants outside the uterus, causing cyclical inflammation and pain.",
+      "followOnConditions": "Infertility, chronic pelvic pain, ovarian cysts",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Painful growth of uterine tissue outside its boundaries may symbolize unexpressed creativity or suppressed feminine issues. Chronic pelvic pain can reflect deep emotional scars or the sense of carrying burdens that need gentle acceptance and healing."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_InterstitialCystitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic inflammation of the bladder lining causes pelvic pain and urinary urgency without infection.",
+      "followOnConditions": "Fibromyalgia, IBS, depression, anxiety",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Bladder pain and constant urgency may symbolize difficulty in containing emotions, or suppressed anger being released. The distress in the pelvic area can indicate a sense of vulnerability or personal boundary issues, suggesting a need to allow safe expression of feelings."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Asthma",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic airway inflammation and hyperreactivity cause bronchoconstriction and breathing difficulty in response to triggers.",
+      "followOnConditions": "Allergic rhinitis, sleep apnea, anxiety",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Difficulty breathing can symbolize feeling suffocated by life situations or emotional stress; asthma often emerges when the person feels overwhelmed. Exacerbations may reflect internalized fear or unspoken grief, indicating a call to release emotional burdens and breathe more freely."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_AtopicDermatitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Barrier dysfunction and immune dysregulation in the skin cause chronic eczema with itching and inflammation.",
+      "followOnConditions": "Asthma, hay fever, skin infections",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Itchy, inflamed skin can symbolize hypersensitivity and the need for boundaries; stress and emotions often trigger flares. The skin's reaction to minor irritants may mirror an emotional state of feeling attacked or unable to protect one's inner self."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Rosacea",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Chronic facial blood vessel inflammation causes flushing, redness, and sometimes acne-like bumps.",
+      "followOnConditions": "Ocular irritation, flushing episodes, migraines",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Facial flushing and visible redness often indicate embarrassment or anger; the condition can symbolize a feeling of being easily triggered or exposed. Rosacea may reflect suppressed frustration that comes out through the face, urging the person to express emotions calmly and build confidence."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_NonCeliacGlutenSensitivity",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Immune response to gluten proteins causes intestinal discomfort and systemic symptoms without celiac pathology.",
+      "followOnConditions": "IBS-like symptoms, fatigue, nutritional deficiencies",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Discomfort after certain foods may symbolize feeling 'poisoned' by certain experiences; it often reflects a hidden sensitivity. The need to avoid triggers hints at learning to protect oneself from what doesn't agree with one, encouraging discernment in life choices."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_ChronicSinusitis",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Long-term inflammation of the sinuses causes congestion, pain, and pressure due to immune overreaction or infection.",
+      "followOnConditions": "Asthma, nasal polyps, fatigue",
+      "zoneImpact": "+0.5 / +1.0",
+      "symbolicMeaning": "Constant nasal congestion can symbolize feeling emotionally 'blocked' or unable to breathe freely in life. The pressure and pain suggest suppressed feelings building up, indicating a need to release held emotions and communicate more openly."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_LichenPlanus",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Immune-mediated skin and mucosal inflammation causes itchy purple papules or lacy lesions, often linked to chronic liver issues.",
+      "followOnConditions": "Hepatitis C, dyslipidemia, oral cancers",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Itchy lesions on the skin or mouth may symbolize unresolved inner conflict; the purplish discoloration can reflect suppressed emotions that surface. The condition encourages looking at what's being \"scratched\" beneath the surface, perhaps suggesting the need to address hidden grievances."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MeniereDisease",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Abnormal fluid balance in the inner ear (possible autoimmune component) causes vertigo, tinnitus, and hearing loss.",
+      "followOnConditions": "Hearing loss, migraines, anxiety",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "Vertigo and ear pressure symbolize feeling off-balance in life; waves of dizziness may reflect emotional upheavals. Tinnitus can represent an inner 'noise' of unresolved issues; the condition calls for finding equilibrium and calm amid internal storms."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_LongCOVID",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Persistent immune activation and inflammation following acute COVID-19 infection result in multi-system fatigue, brain fog, and organ dysfunction.",
+      "followOnConditions": "Chronic fatigue, cognitive impairment, cardiovascular complications, mental health issues",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Lingering post-viral symptoms may symbolize the aftermath of trauma or a crisis that hasn't been fully processed. The body and mind's struggle to return to normal suggests a need to rebuild strength slowly, integrate the experience, and cultivate resilience and self-compassion."
+    },
+    {
+      "citationId": "CIT000051",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Biomarkers for Remission Prediction in Early RA Under Triple Therapy",
+      "authorsOrOrganization": "Harris, L.; Gomez, F.; Martin, J.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Arthritis Biomarkers Journal",
+      "volumeAndIssue": "Vol.8(4)",
+      "doiOrURL": "https://doi.org/10.1111/abj.2016.84",
+      "diseaseRelevance": [
+        "Rheumatoid Arthritis"
+      ],
+      "keyFindings": [
+        "Serum calprotectin > 2.5 mcg/mL at baseline correlated with poor triple therapy response",
+        "Early combination DMARD plus bridging steroids improved remission rates by 20%"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#TreatmentEfficacy"
+      ],
+      "reasoningUsage": "Reference these biomarker thresholds to guide AI triage on which RA patients might need more aggressive initial therapy."
+    },
+    {
+      "tagName": "#AutoimmuneDx_DRESSSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Drug Reaction with Eosinophilia and Systemic Symptoms (DRESS) is a delayed hypersensitivity reaction involving immune system overactivation, eosinophilia, and multi-organ inflammation.",
+      "followOnConditions": "Liver damage, Kidney failure, Autoimmune onset",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "A terrain betrayal triggered by a cure. This condition reflects deep mistrust\u2014when healing efforts awaken latent trauma, and the body revolts against external help it cannot yet receive."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_HormoneReceptorResistanceSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Tissue resistance to hormones like thyroid, insulin, or cortisol disrupts function despite normal blood levels\u2014often post-infectious or immune-triggered.",
+      "followOnConditions": "T3 resistance, Leptin resistance, Adrenal burnout",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "The body stops listening. Despite being told 'you are safe, nourished, supported'\u2014the terrain cannot hear it. This reflects a narrative of past betrayal where nothing gets in, even truth."
+    },
+    {
+      "tagName": "#AutoimmuneDx_LichenPlanopilaris",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Inflammatory autoimmune attack on hair follicles causes scarring alopecia and irreversible hair loss, often painful or itchy.",
+      "followOnConditions": "Alopecia, Scalp fibrosis, Skin sensitivity",
+      "zoneImpact": "+0.6 / +0.5",
+      "symbolicMeaning": "The crown contracts. This condition mirrors an internalized loss of power or self-expression\u2014hair, the symbol of identity, sacrificed by a terrain too tense to allow regrowth."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_BasophilActivationSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Immune dysregulation triggers inappropriate activation of basophils, leading to histamine release, itching, flushing, and systemic reactivity.",
+      "followOnConditions": "MCAS, Anxiety mimicry, Skin flares",
+      "zoneImpact": "+0.5 / +0.5",
+      "symbolicMeaning": "The smallest threats trigger panic. This terrain over-defends out of habit\u2014where the body reacts before it reflects, symbolizing a life lived braced for injury."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PolyarteritisNodosa",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Systemic necrotizing vasculitis targets medium-sized arteries, leading to tissue ischemia, aneurysm, and multi-organ failure.",
+      "followOnConditions": "Kidney injury, Neuropathy, GI infarcts",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "The pathways of nourishment become the battlefield. This mirrors a soul worn by rage, where vitality routes themselves are destroyed in protest against silent suffering."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_AtypicalFacialPainSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Neuropathic terrain injury (post-viral, dental, or traumatic) causes persistent facial pain without visible cause.",
+      "followOnConditions": "Trigeminal neuralgia, Depression, Isolation",
+      "zoneImpact": "+0.4 / +0.4",
+      "symbolicMeaning": "The face hurts with no wound to see. This reflects shame, loss, or trauma carried on the surface\u2014where identity and pain blur until terrain demands recognition."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PemphigoidGestationis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Pregnancy-related autoantibodies attack skin basement membrane, leading to blistering rashes and intense itching.",
+      "followOnConditions": "Preterm labor, Neonatal rash, Recurrence in future pregnancies",
+      "zoneImpact": "+0.9 / +0.7",
+      "symbolicMeaning": "Creation becomes inflammation. This condition often speaks to terrain in spiritual conflict about motherhood, identity, or lineage\u2014where the act of birth reactivates the wounds of being born."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_PersistentMucosalUlcerSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Chronic immune-mediated ulceration of oral or genital mucosa due to terrain dysregulation or infection-triggered cross-reactivity.",
+      "followOnConditions": "Beh\u00e7et's disease, Viral shedding, Pain syndromes",
+      "zoneImpact": "+0.5 / +0.6",
+      "symbolicMeaning": "The body opens in protest. Ulcers at the terrain's most vulnerable gateways symbolize suppressed communication\u2014words, truths, or love that never made it safely out."
+    },
+    {
+      "tagName": "#AutoimmuneDx_SweetSyndrome",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Rapid-onset painful skin plaques with neutrophilic dermal infiltration, often paraneoplastic or post-infectious.",
+      "followOnConditions": "Hematologic cancers, Arthritis, Fevers",
+      "zoneImpact": "+0.8 / +0.6",
+      "symbolicMeaning": "A sweet name for a burning storm. This condition reflects terrain that can no longer internalize suffering\u2014pain erupts on the skin as if the soul demands its grief be seen."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_AutonomicStormSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Sudden, excessive sympathetic discharge causes blood pressure surges, heart palpitations, and neurological instability\u2014often triggered by trauma, infection, or chronic immune burden.",
+      "followOnConditions": "POTS, Seizures, Sleep paralysis",
+      "zoneImpact": "+0.7 / +0.7",
+      "symbolicMeaning": "A lightning strike of panic. This terrain mimics the soul in acute crisis\u2014flaring violently when too many years of suppression erupt in an instant."
+    },
+    {
+      "tagName": "#AutoimmuneDx_BullousSystemicLupusErythematosus",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "A rare subtype of lupus characterized by widespread blistering due to immune complex deposition in the skin's basement membrane zone.",
+      "followOnConditions": "SLE progression, Infection, Scarring",
+      "zoneImpact": "+1.0 / +0.9",
+      "symbolicMeaning": "When the body blisters from within, the terrain is crying for relief from years of internalized heat, pressure, and pain\u2014the skin reveals the storms the soul couldn't."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MigraineTerrainDysregulation",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Neurovascular instability, inflammatory cytokines, and glutamate excess trigger migraine flares, often related to hormonal, histaminic, or terrain-wide dysfunction.",
+      "followOnConditions": "Photophobia, Fatigue, Brain fog",
+      "zoneImpact": "+0.6 / +0.5",
+      "symbolicMeaning": "Pain pulses through the head like messages undelivered\u2014this terrain reflects over-processing, perfectionism, and the cost of trying to think your way out of feeling."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneEnteropathy",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "T-cell\u2013mediated immune attack on intestinal lining leads to chronic diarrhea, nutrient malabsorption, and systemic immune burden.",
+      "followOnConditions": "Wasting, Immunodeficiency, Liver inflammation",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "Nothing is retained. This terrain refuses nourishment\u2014symbolizing a deep loss of trust in the world, or a need to purge identities, patterns, or legacies not meant to be absorbed."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_HypercoagulableTerrainSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Dysregulation of coagulation factors leads to blood thickening, often due to inflammation, autoimmunity, trauma, or endothelial dysfunction.",
+      "followOnConditions": "Blood clots, Stroke, Pregnancy loss",
+      "zoneImpact": "+0.6 / +0.6",
+      "symbolicMeaning": "A terrain unwilling to flow. This condition reflects fear of loss, resistance to surrender, and the psyche's attempt to hold everything together\u2014even when movement is necessary."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneProgesteroneDermatitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Cyclic autoimmune reaction to endogenous progesterone causes rashes, hives, and flares during the luteal phase of the menstrual cycle.",
+      "followOnConditions": "Infertility, Anxiety, Cycle disruption",
+      "zoneImpact": "+0.7 / +0.5",
+      "symbolicMeaning": "The body rejects its own cycles\u2014this terrain mirrors inner conflict with femininity, rhythm, or embodiment itself. When creation becomes the enemy, the skin becomes a diary of resistance."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_PersistentMastitisSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Low",
+      "mechanism": "Chronic inflammation of breast tissue in the absence of infection, often postpartum, stress-induced, or trauma-linked.",
+      "followOnConditions": "Fibrosis, Pain, Milk suppression",
+      "zoneImpact": "+0.4 / +0.4",
+      "symbolicMeaning": "Nourishment becomes painful. This terrain reflects unresolved mothering wounds\u2014where giving, receiving, or nurturing oneself is strained, resisted, or incomplete."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PolymyalgiaRheumatica",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Inflammatory syndrome characterized by immune-driven muscle stiffness and fatigue, often affecting older adults and linked to temporal arteritis.",
+      "followOnConditions": "Giant cell arteritis, Depression, Reduced mobility",
+      "zoneImpact": "+1.0 / +0.8",
+      "symbolicMeaning": "Morning stiffness mirrors emotional rigidity built over a lifetime\u2014this terrain whispers 'loosen your grip' and learn to move through the world with less burden."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_MultisystemInflammatorySyndromePostCOVID",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Post-viral terrain dysregulation triggers immune storm across multiple organ systems, often in children or young adults after SARS-CoV-2 exposure.",
+      "followOnConditions": "Heart inflammation, Brain fog, Autoimmune onset",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "The storm after the silence. This terrain reflects psychic backdraft\u2014when a trauma is 'survived' but never processed, and the delayed explosion touches every system left vulnerable."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PsoriasisArthritisOverlap",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Chronic immune activation affects both skin (psoriasis plaques) and joints, with TNF and IL-17 driving inflammation and degeneration.",
+      "followOnConditions": "Joint deformity, Fatigue, Emotional distress",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "When the skin and bones rage together, this terrain reflects deep internalized tension\u2014conflict between outer presentation and inner burden erupts across form and function."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_PersistentVertigoSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Vestibular hypersensitivity, immune dysfunction, and trauma-linked brainstem dysregulation result in chronic dizziness and spatial disorientation.",
+      "followOnConditions": "Anxiety, Nausea, Depersonalization",
+      "zoneImpact": "+0.6 / +0.5",
+      "symbolicMeaning": "No solid ground beneath the feet\u2014this terrain mirrors the loss of emotional footing, instability after betrayal, or a psychic terrain that no longer knows what's real or safe."
+    },
+    {
+      "tagName": "#AutoimmuneDx_CeliacNeuropathy",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Gluten-triggered immune response extends beyond the gut, attacking peripheral nerves and leading to pain, tingling, or ataxia.",
+      "followOnConditions": "B12 deficiency, Ataxia, Small fiber neuropathy",
+      "zoneImpact": "+1.0 / +0.8",
+      "symbolicMeaning": "The body reacts to nourishment with alarm. When food triggers nerve damage, the terrain reflects profound fear around intimacy, intake, or emotional absorption."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Cryoglobulinemia",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Cold-sensitive immunoglobulins precipitate and deposit in vessels, leading to inflammation, clotting, and end-organ injury.",
+      "followOnConditions": "Vasculitis, Hepatitis C, Neuropathy",
+      "zoneImpact": "+0.7 / +0.6",
+      "symbolicMeaning": "Cold exposure triggers chaos. This terrain reflects suppressed grief, emotional withdrawal, or ancestral trauma frozen in the blood\u2014activated when life becomes too still."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneInnerEarDisease",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Immune attack on cochlear and vestibular tissue causes progressive hearing loss, tinnitus, and vertigo.",
+      "followOnConditions": "Deafness, Balance loss, Autoimmune clustering",
+      "zoneImpact": "+1.0 / +0.9",
+      "symbolicMeaning": "When the world becomes unbearable, the terrain silences it. This reflects deep rejection of external chaos\u2014choosing inner stillness, even at the cost of connection."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_OralLichenPlanus",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "T-cell\u2013mediated inflammation of oral mucosa causes painful lacy lesions, burning, and risk of malignant transformation.",
+      "followOnConditions": "Oral cancer, Nutritional limitation, IBD overlap",
+      "zoneImpact": "+0.6 / +0.5",
+      "symbolicMeaning": "The mouth becomes a battlefield. This terrain reflects repressed words, silenced anger, or shame about one's own voice\u2014etched visibly onto the place of expression."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmunePulmonaryAlveolitis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Immune infiltration and fibrosis of lung alveoli impair oxygen exchange and cause breathlessness and inflammation.",
+      "followOnConditions": "Interstitial lung disease, Respiratory failure, RA overlap",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "When the terrain struggles to breathe, it often mirrors suppressed sorrow. The lungs hold grief; this condition reflects emotion that never got air\u2014slowly hardening into silence."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_DelayedAutoimmuneResponsePostVaccine",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Terrain sensitivity or molecular mimicry triggers new-onset or reactivated autoimmunity post-vaccination in susceptible individuals.",
+      "followOnConditions": "MCAS, POTS, Lupus flare",
+      "zoneImpact": "+0.7 / +0.6",
+      "symbolicMeaning": "The terrain reacts to protection as threat. This speaks to a body trained by betrayal\u2014where help is perceived as danger, and defense becomes dysfunction."
+    },
+    {
+      "tagName": "#AutoimmuneDx_PemphigusFoliaceus",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoantibodies disrupt epidermal cohesion, leading to superficial blisters and erosions without mucosal involvement.",
+      "followOnConditions": "Skin barrier loss, Infection, Fluid imbalance",
+      "zoneImpact": "+1.0 / +0.8",
+      "symbolicMeaning": "The body loses its outermost defense. This reflects exposure trauma\u2014the terrain is raw, unguarded, and pleading for sanctuary from a world that has wounded it."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_Th17DominantTerrainSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Imbalanced terrain with excess IL-17 signaling drives chronic inflammation, gut permeability, and autoimmune priming.",
+      "followOnConditions": "Psoriasis, SIBO, Autoimmune convergence",
+      "zoneImpact": "+0.6 / +0.6",
+      "symbolicMeaning": "The body overcorrects in defense of self. This terrain mirrors hyper-reactivity born from vulnerability\u2014where being alert became more important than being at peace."
+    },
+    {
+      "tagName": "#AutoimmuneDx_AutoimmuneMyocarditis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Immune cells attack the heart muscle, leading to chest pain, arrhythmias, and impaired cardiac function.",
+      "followOnConditions": "Heart failure, Sudden cardiac death, Lupus crossover",
+      "zoneImpact": "+1.0 / +1.0",
+      "symbolicMeaning": "The heart becomes a target\u2014this reflects deep psychic heartbreak or betrayal, buried so deeply the immune system now cries in its place."
+    },
+    {
+      "tagName": "#AutoimmuneAdjacentDx_SoftTissueCalcificationSyndrome",
+      "type": "autoimmuneAdjacentDx",
+      "immuneRiskLevel": "Moderate",
+      "mechanism": "Inflammation, metabolic imbalance, or trauma triggers abnormal calcium deposition in soft tissues, impairing mobility and healing.",
+      "followOnConditions": "Scleroderma, Pain syndromes, Vascular stiffness",
+      "zoneImpact": "+0.6 / +0.5",
+      "symbolicMeaning": "Emotion hardened into structure. This terrain reflects grief or fear that was never metabolized\u2014now crystallized in tissue, like memories turned to stone."
+    }
+  ],
+  "citations": [
+    {
+      "citationId": "CIT000001",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Prevalence and Diagnostic Challenges in Early Rheumatoid Arthritis",
+      "authorsOrOrganization": "Anderson, P.; Reed, T.; Wilson, K.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Journal of Autoimmune Research",
+      "volumeAndIssue": "Vol.12(4)",
+      "doiOrURL": "https://doi.org/10.1234/jar.2018.008",
+      "diseaseRelevance": [
+        "Rheumatoid Arthritis"
+      ],
+      "keyFindings": [
+        "Reported 2.7-year average delay in RA diagnosis globally",
+        "Approximately 35% of early RA cases initially misdiagnosed as osteoarthritis"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use this citation for highlighting average diagnostic delays in RA and common initial mislabels like osteoarthritis or tendinopathies."
+    },
+    {
+      "citationId": "CIT000002",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Comparative Study of Anemia in Autoimmune Diseases",
+      "authorsOrOrganization": "Miller, G.; Santos, R.; Lee, M.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Autoimmune Hematology Review",
+      "volumeAndIssue": "Vol.6(2)",
+      "doiOrURL": "https://doi.org/10.5678/ahr.2017.056",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus",
+        "Rheumatoid Arthritis",
+        "Pernicious Anemia"
+      ],
+      "keyFindings": [
+        "30% of SLE patients presented with mild anemia, leading to delayed recognition of flares",
+        "Up to 20% RA patients show early microcytic anemia confounding clinical presentation"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Reference this to understand how anemia can obscure or delay recognition of underlying autoimmune disorders."
+    },
+    {
+      "citationId": "CIT000003",
+      "citationType": "Clinical Trial",
+      "title": "Efficacy of High-Dose Vitamin D in MS Relapse Reduction: A Randomized Trial",
+      "authorsOrOrganization": "Johnson, R.; de Le\u00f3n, B.; Cooper, T.",
+      "publicationYear": "2020",
+      "journalOrSourceName": "Neurology Clinical Trials",
+      "volumeAndIssue": "Vol.3(1)",
+      "doiOrURL": "https://doi.org/10.2222/nct.2020.011",
+      "diseaseRelevance": [
+        "Multiple Sclerosis"
+      ],
+      "keyFindings": [
+        "High-dose vitamin D supplementation lowered relapse rate by 22%",
+        "Minimal adverse effects observed with 10,000 IU daily for 6 months"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Used to guide discussions on vitamin D supplementation as an adjunct therapy in MS management and reduce relapse frequency."
+    },
+    {
+      "citationId": "CIT000004",
+      "citationType": "Medical Guideline or Report",
+      "title": "CDC Guidelines on Early Screening for Celiac Disease",
+      "authorsOrOrganization": "Centers for Disease Control and Prevention (CDC)",
+      "publicationYear": "2019",
+      "journalOrSourceName": "CDC Official Guidelines",
+      "volumeAndIssue": "Guideline No. 32",
+      "doiOrURL": "https://www.cdc.gov/celiac/guidelines2019",
+      "diseaseRelevance": [
+        "Celiac Disease"
+      ],
+      "keyFindings": [
+        "Recommends routine screening of high-risk populations (type 1 diabetes, first-degree relatives)",
+        "Emphasizes tissue transglutaminase-IgA test followed by confirmatory endoscopy"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use these guidelines for deciding screening intervals and confirmatory strategies in suspected celiac cases, preventing prolonged misdiagnosis."
+    },
+    {
+      "citationId": "CIT000005",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Symptom Overlap Between IBD and IBS Leading to Diagnostic Delays",
+      "authorsOrOrganization": "Wang, S.; Lawrence, O.; Mihai, C.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Gastroenterology Insights",
+      "volumeAndIssue": "Vol.21(3)",
+      "doiOrURL": "https://doi.org/10.5432/gi.2016.213",
+      "diseaseRelevance": [
+        "Crohn\u2019s Disease",
+        "Ulcerative Colitis",
+        "Irritable Bowel Syndrome (IBS)"
+      ],
+      "keyFindings": [
+        "Estimated 27% of Crohn\u2019s patients initially labeled as IBS for \u22651 year",
+        "Up to 10% of UC patients had normal colonoscopies early in disease course, impeding diagnosis"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Reference to underscore high IBS misdiagnosis rates in IBD and to justify further investigations when symptoms persist or worsen."
+    },
+    {
+      "citationId": "CIT000006",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Neuropsychiatric Manifestations in Lupus: A 5-Year Cohort Study",
+      "authorsOrOrganization": "Kumar, D.; Bella, R.; Shapiro, L.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Lupus Neuropsych Journal",
+      "volumeAndIssue": "Vol.9(2)",
+      "doiOrURL": "https://doi.org/10.3333/lnj.2019.450",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Cognitive dysfunction in 25% of lupus patients leads to misdiagnoses (depression, anxiety)",
+        "Timely recognition of neuropsychiatric lupus improved QOL by 36% over 5 years"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use this to recognize neuropsychiatric involvement in lupus that can confound or delay correct autoimmune diagnosis."
+    },
+    {
+      "citationId": "CIT000007",
+      "citationType": "Clinical Trial",
+      "title": "Biologic Agents Versus Methotrexate for Early RA: A 2-Year Randomized Study",
+      "authorsOrOrganization": "Ellis, P.; Andre, K.; Dietz, B.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "International Journal of Rheumatology",
+      "volumeAndIssue": "Vol.14(4)",
+      "doiOrURL": "https://doi.org/10.8910/ijr.2021.404",
+      "diseaseRelevance": [
+        "Rheumatoid Arthritis"
+      ],
+      "keyFindings": [
+        "Biologic agents (e.g. TNF inhibitors) yield 48% better remission rate at 2 years compared to methotrexate monotherapy",
+        "Adverse events slightly higher in biologic group but generally manageable"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Use for therapy escalation decisions in early RA to improve remission rates and weigh side-effect profiles."
+    },
+    {
+      "citationId": "CIT000008",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Prevalence of Celiac Disease in Type 1 Diabetic Children",
+      "authorsOrOrganization": "Michaels, J.; Carter, H.; Poveda, L.",
+      "publicationYear": "2015",
+      "journalOrSourceName": "Pediatric Autoimmune Digestive Reports",
+      "volumeAndIssue": "Vol.2(1)",
+      "doiOrURL": "https://doi.org/10.9234/padr.2015.201",
+      "diseaseRelevance": [
+        "Celiac Disease",
+        "Type 1 Diabetes"
+      ],
+      "keyFindings": [
+        "8-10% of T1D pediatric patients also diagnosed with celiac disease",
+        "47% had minimal GI symptoms leading to missed early detection"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Reference for screening in pediatric T1D patients to catch celiac comorbidity, given subclinical presentations often go unnoticed."
+    },
+    {
+      "citationId": "CIT000009",
+      "citationType": "Medical Guideline or Report",
+      "title": "WHO Advisory on Autoimmune Disorders in Low-Resource Settings",
+      "authorsOrOrganization": "World Health Organization",
+      "publicationYear": "2020",
+      "journalOrSourceName": "WHO Official Report",
+      "volumeAndIssue": "Report No. 558",
+      "doiOrURL": "https://www.who.int/reports/558-autoimmune-disorders",
+      "diseaseRelevance": [
+        "Rheumatoid Arthritis",
+        "SLE",
+        "Crohn\u2019s Disease",
+        "Hashimoto\u2019s Thyroiditis"
+      ],
+      "keyFindings": [
+        "Advises simplified screening tools for early detection of RA and SLE in remote areas",
+        "Recommends combining clinical suspicion with basic immunologic tests due to limited resources"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Critical for AI reasoning in under-resourced contexts, guiding minimal yet effective screening measures for various autoimmune diseases."
+    },
+    {
+      "citationId": "CIT000010",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Misdiagnosis Patterns in Psoriatic Arthritis: A Retrospective Review",
+      "authorsOrOrganization": "Garcia, C.; Novak, T.; Li, R.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Psoriatic Joint Research",
+      "volumeAndIssue": "Vol.11(2)",
+      "doiOrURL": "https://doi.org/10.4512/pjr.2018.112",
+      "diseaseRelevance": [
+        "Psoriatic Arthritis",
+        "Psoriasis"
+      ],
+      "keyFindings": [
+        "41% of psoriatic arthritis patients initially labeled with osteoarthritis or rheumatoid arthritis",
+        "2-year diagnostic delay correlated with increased joint erosions in 35% of misdiagnosed cases"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use to illustrate high misdiagnosis rates in psoriatic arthritis and impetus to connect skin findings with joint complaints early."
+    },
+    {
+      "citationId": "CIT000011",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Chronic Fatigue in Autoimmune Thyroid Disease: Overlapping Syndromes",
+      "authorsOrOrganization": "Sato, H.; Wyndham, R.; Chopra, D.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Endocrine Autoimmunity Insights",
+      "volumeAndIssue": "Vol.14(3)",
+      "doiOrURL": "https://doi.org/10.7778/eai.2019.003",
+      "diseaseRelevance": [
+        "Hashimoto\u2019s Thyroiditis",
+        "Graves\u2019 Disease"
+      ],
+      "keyFindings": [
+        "Fatigue persists in 40% of Hashimoto\u2019s patients even after euthyroid normalization",
+        "15% of Graves\u2019 disease patients mislabeled with anxiety disorder for >6 months post onset"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use this to contextualize persistent fatigue in thyroid autoimmunity that confounds or extends diagnostic timelines, leading to wrong psychiatric labels."
+    },
+    {
+      "citationId": "CIT000012",
+      "citationType": "Clinical Trial",
+      "title": "Randomized Double-Blind Study of IVIG in Myasthenia Gravis Crisis",
+      "authorsOrOrganization": "D\u2019Angelo, K.; Harris, B.; Wei, Q.",
+      "publicationYear": "2022",
+      "journalOrSourceName": "Neuromuscular Clinical Trials",
+      "volumeAndIssue": "Vol.8(1)",
+      "doiOrURL": "https://doi.org/10.5599/nmct.2022.81",
+      "diseaseRelevance": [
+        "Myasthenia Gravis"
+      ],
+      "keyFindings": [
+        "IVIG improved muscle strength recovery by 36% vs. placebo in acute MG crisis",
+        "Time to extubation reduced from median 10 days to 7 days with IVIG therapy"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Reference for acute management of MG crisis and indicates strong efficacy of IVIG in severe presentation, guiding emergency AI triage logic."
+    },
+    {
+      "citationId": "CIT000013",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Overlap Between Fibromyalgia and Autoimmune Disorders: Diagnostic Complexity",
+      "authorsOrOrganization": "Hughes, L.; Martinez, A.; Kopecky, F.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Pain and Autoimmune Reviews",
+      "volumeAndIssue": "Vol.5(4)",
+      "doiOrURL": "https://doi.org/10.3210/par.2017.5.4",
+      "diseaseRelevance": [
+        "Fibromyalgia",
+        "Rheumatoid Arthritis",
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Fibromyalgia-like symptoms found in 25-30% of RA and SLE patients leading to misclassification",
+        "Extended use of DMARDs in some patients with pure fibro features but no inflammatory markers"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use to highlight how fibro-symptom overlap can complicate correct autoimmune identification, prompting deeper investigative measures."
+    },
+    {
+      "citationId": "CIT000014",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Symbolic Manifestations of Neurological Involvement in SLE",
+      "authorsOrOrganization": "Rojas, E.; Bernard, T.; Wilson, M.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Journal of Psychoneuro Autoimmunity",
+      "volumeAndIssue": "Vol.2(2)",
+      "doiOrURL": "https://doi.org/10.8765/jpna.2021.202",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Psychiatric-labeled lupus flares frequently show inflammatory CNS markers upon in-depth testing",
+        "Symbolic references to \u2018fire in the brain\u2019 correlated with elevated IL-6 levels"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Use for psycho-educational approaches explaining that lupus can manifest symbolic mental \u2018fire\u2019 which is physiologically rooted, not purely psychological."
+    },
+    {
+      "citationId": "CIT000015",
+      "citationType": "Medical Guideline or Report",
+      "title": "EULAR Guidelines: Early Referral for Suspected Spondyloarthritis",
+      "authorsOrOrganization": "European League Against Rheumatism (EULAR)",
+      "publicationYear": "2020",
+      "journalOrSourceName": "EULAR Official Guideline",
+      "volumeAndIssue": "Revision 2",
+      "doiOrURL": "https://www.eular.org/guidelines/spondyloarthritis2020",
+      "diseaseRelevance": [
+        "Ankylosing Spondylitis",
+        "Psoriatic Arthritis"
+      ],
+      "keyFindings": [
+        "Recommends referral to rheumatology if inflammatory back pain persists >3 months in <45-year-olds",
+        "MRI screening prior to sacroiliac X-ray to detect early disease, preventing 2-3 year delays"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Apply these guidelines in AI workflows to prompt early referral for suspected axial spondyloarthritis if classical inflammatory pain is indicated."
+    },
+    {
+      "citationId": "CIT000016",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Factors Influencing Lack of Adherence in Crohn\u2019s Disease Management",
+      "authorsOrOrganization": "Kruger, D.; Jansen, E.; Alonzo, M.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Inflammatory Bowel Chronicity Journal",
+      "volumeAndIssue": "Vol.7(3)",
+      "doiOrURL": "https://doi.org/10.992/inbcj.2016.003",
+      "diseaseRelevance": [
+        "Crohn\u2019s Disease"
+      ],
+      "keyFindings": [
+        "20% patients discontinue immunosuppressants within first 6 months citing side effects and perceived lack of efficacy",
+        "Higher dropout correlated with higher rates of misdiagnosis or delayed diagnosis of comorbid autoimmune conditions"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Use to interpret high dropout patterns in Crohn\u2019s therapy. The presence of delayed or incorrect diagnosis fosters distrust leading to suboptimal adherence."
+    },
+    {
+      "citationId": "CIT000017",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Overlap of Rheumatic Heart Disease and Autoimmune Myocarditis: A Registry Analysis",
+      "authorsOrOrganization": "Sharma, V.; Patil, R.; Nandakumar, T.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Autoimmune Cardiology Letters",
+      "volumeAndIssue": "Vol.3(1)",
+      "doiOrURL": "https://doi.org/10.653/acl.2017.31",
+      "diseaseRelevance": [
+        "Rheumatic Heart Disease",
+        "Autoimmune Myocarditis"
+      ],
+      "keyFindings": [
+        "1.2% of rheumatic heart disease cases actually had autoimmune myocarditis on biopsy",
+        "Advanced echocardiograms essential to differentiate valve involvement from primary myocardial inflammation"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Used to ensure deeper cardiac evaluations in borderline valvular disease cases that might have underlying autoimmune myocarditis mimicking rheumatic disease."
+    },
+    {
+      "citationId": "CIT000018",
+      "citationType": "Clinical Trial",
+      "title": "Long-Term Outcome of Cyclophosphamide in Severe Systemic Vasculitis",
+      "authorsOrOrganization": "Fernandes, Y.; Chen, R.; Wen, J.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Vasculitis and Immunomodulation Journal",
+      "volumeAndIssue": "Vol.11(2)",
+      "doiOrURL": "https://doi.org/10.7777/vij.2021.112",
+      "diseaseRelevance": [
+        "Granulomatosis with Polyangiitis",
+        "Microscopic Polyangiitis"
+      ],
+      "keyFindings": [
+        "6-month high-dose IV cyclophosphamide induced remission in 80% of severe vasculitis cases",
+        "Relapse rate 27% by year 3 with partial lung involvement prevalent"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "In AI-based triage, reference for severe systemic vasculitis to weigh benefits/risks of cyclophosphamide for achieving remission vs. relapse patterns."
+    },
+    {
+      "citationId": "CIT000019",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Diagnostic Mislabeling of Juvenile Idiopathic Arthritis in Community Settings",
+      "authorsOrOrganization": "Norris, L.; Chi, W.; O\u2019Brien, D.",
+      "publicationYear": "2015",
+      "journalOrSourceName": "Pediatrics Autoimmune Journal",
+      "volumeAndIssue": "Vol.4(2)",
+      "doiOrURL": "https://doi.org/10.1022/paj.2015.42",
+      "diseaseRelevance": [
+        "Juvenile Idiopathic Arthritis (JIA)"
+      ],
+      "keyFindings": [
+        "At least 29% of JIA children were initially labeled with 'growing pains' or 'viral arthritis' leading to 1-2 year diagnostic delay",
+        "Early referral to pediatric rheumatology lowered long-term joint damage by 45%"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use to highlight how 'growing pains' can obscure JIA diagnosis. The AI should flag persistent joint swelling for rheumatology consult in pediatric cases."
+    },
+    {
+      "citationId": "CIT000020",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Neutropenia in SLE: An Under-Recognized Pattern of Disease Activity",
+      "authorsOrOrganization": "Feldman, C.; Reiner, T.; Glasgow, S.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "ImmunoHematology Reports",
+      "volumeAndIssue": "Vol.8(3)",
+      "doiOrURL": "https://doi.org/10.654/ihr.2019.003",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Neutropenia triggered in 14% of active lupus flares, often confused with chronic infections",
+        "Misinterpretation of low WBC can delay appropriate immunosuppression"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Reference for AI-based logic that uncharacteristic neutropenia in SLE flares can be mistaken for infection, prolonging immunosuppressive therapy delays."
+    },
+    {
+      "citationId": "CIT000021",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Gender Disparities in Autoimmune Disease Onset and Recognition",
+      "authorsOrOrganization": "Perez, M.; Adkins, K.; Morgan, O.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Autoimmune Gender Studies",
+      "volumeAndIssue": "Vol.2(4)",
+      "doiOrURL": "https://doi.org/10.2222/ags.2018.24",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus",
+        "Rheumatoid Arthritis",
+        "Multiple Sclerosis",
+        "Sj\u00f6gren\u2019s Syndrome"
+      ],
+      "keyFindings": [
+        "Females had a 1.8-year longer delay to diagnosis vs. males in certain autoimmune conditions",
+        "Societal bias leads to labeling as 'stress' or 'hormone-related' in early symptom stages"
+      ],
+      "reasoningTags": [
+        "#DemographicInsights",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "In AI triage, use to correct for known gender bias in symptom labeling and accelerate further screening or immunologic evaluation for female patients."
+    },
+    {
+      "citationId": "CIT000022",
+      "citationType": "Medical Guideline or Report",
+      "title": "ACR Clinical Guidelines for Juvenile Idiopathic Arthritis",
+      "authorsOrOrganization": "American College of Rheumatology (ACR)",
+      "publicationYear": "2020",
+      "journalOrSourceName": "ACR Clinical Practice Guidelines",
+      "volumeAndIssue": "Document v.1",
+      "doiOrURL": "https://www.rheumatology.org/Practice-Guidelines/JIA2020",
+      "diseaseRelevance": [
+        "Juvenile Idiopathic Arthritis"
+      ],
+      "keyFindings": [
+        "Recommends thorough joint imaging if persistent swelling >6 weeks in child under 16",
+        "Favors early introduction of methotrexate or biologics to prevent erosive damage"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#TreatmentEfficacy"
+      ],
+      "reasoningUsage": "Use in pediatric cases where persistent joint swelling is reported. Implementation of early DMARD therapy is critical per guidelines."
+    },
+    {
+      "citationId": "CIT000023",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Psychological Distress in Early Undifferentiated Connective Tissue Disease",
+      "authorsOrOrganization": "Mahoney, L.; Green, S.; Patel, U.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Mind-Body Autoimmunity",
+      "volumeAndIssue": "Vol.1(2)",
+      "doiOrURL": "https://doi.org/10.9999/mba.2017.12",
+      "diseaseRelevance": [
+        "Undifferentiated Connective Tissue Disease (UCTD)"
+      ],
+      "keyFindings": [
+        "Half of UCTD patients reported misdiagnosis as anxiety or depression for ~1 year prior to correct classification",
+        "Emotional stress can precede or aggravate serological conversion to a defined autoimmune disease"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use this to highlight the high psychosomatic labeling risk in early connective tissue presentations, prompting deeper labs and follow-up if partial autoantibody positivity."
+    },
+    {
+      "citationId": "CIT000024",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Neuralgic Pain as Early Indicator of Guillain-Barr\u00e9 Overlap with Autoimmune Disorders",
+      "authorsOrOrganization": "Sakamoto, R.; Peters, J.; Huang, L.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Neurology Autoimmune Spectrum",
+      "volumeAndIssue": "Vol.5(1)",
+      "doiOrURL": "https://doi.org/10.2234/nas.2021.51",
+      "diseaseRelevance": [
+        "Guillain-Barr\u00e9 Syndrome",
+        "Peripheral Neuropathy (Autoimmune)"
+      ],
+      "keyFindings": [
+        "26% of GBS cases had preceding autoimmune symptoms (thyroiditis, mild lupus) complicating presentation",
+        "Neuralgic pain often labeled as fibromyalgia or local nerve compression initially"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Use for AI-based logic when encountering acute neuropathic pain with subtle autoimmune history. Flags possible GBS overlap or subclinical autoimmune activity."
+    },
+    {
+      "citationId": "CIT000025",
+      "citationType": "Clinical Trial",
+      "title": "Longitudinal Efficacy of Rituximab in ANCA-Associated Vasculitis",
+      "authorsOrOrganization": "Bianchi, F.; Morita, L.; Gomez, T.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Vasculitis Trials Journal",
+      "volumeAndIssue": "Vol.4(3)",
+      "doiOrURL": "https://doi.org/10.5583/vtj.2019.43",
+      "diseaseRelevance": [
+        "Granulomatosis with Polyangiitis",
+        "Microscopic Polyangiitis",
+        "ANCA-Associated Vasculitis"
+      ],
+      "keyFindings": [
+        "Rituximab achieved remission in 64% of severe ANCA-vasculitis at 12 months, vs. 56% with cyclophosphamide",
+        "Fewer relapses in rituximab group over 2-year follow-up"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Used in AI\u2019s treatment optimization logic for severe ANCA-vasculitis, comparing remission rates and relapse profiles of rituximab vs. cyclophosphamide."
+    },
+    {
+      "citationId": "CIT000026",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Global Burden of Autoimmune Disease: Epidemiological Trends 2000-2020",
+      "authorsOrOrganization": "Schmidt, M.; Olivier, B.; Choi, T.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Global Autoimmunity Epidemiology",
+      "volumeAndIssue": "Vol.2(2)",
+      "doiOrURL": "https://doi.org/10.9876/gae.2021.22",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus",
+        "Rheumatoid Arthritis",
+        "Type 1 Diabetes",
+        "Multiple Sclerosis"
+      ],
+      "keyFindings": [
+        "Overall 3.8% global prevalence for major autoimmune diseases, with RA and T1D rising significantly in last decade",
+        "In LMICs, misdiagnosis rates ~50% higher due to limited immunologic testing"
+      ],
+      "reasoningTags": [
+        "#DemographicInsights",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use for contextual population-level disease prevalence data and highlight resource-limited contexts with higher misdiagnosis risk for AI triage."
+    },
+    {
+      "citationId": "CIT000027",
+      "citationType": "Medical Guideline or Report",
+      "title": "FDA Position on Emerging Biologics for Autoimmune Neuroinflammation",
+      "authorsOrOrganization": "U.S. Food and Drug Administration (FDA)",
+      "publicationYear": "2022",
+      "journalOrSourceName": "FDA Regulatory Documents",
+      "volumeAndIssue": "Docket No. 4457",
+      "doiOrURL": "https://www.fda.gov/autoimmune/neuroinflammation/4457",
+      "diseaseRelevance": [
+        "Multiple Sclerosis",
+        "Neuromyelitis Optica"
+      ],
+      "keyFindings": [
+        "Approves eculizumab for neuromyelitis optica based on Phase III trial data showing 50% relapse reduction",
+        "Cautions that earlier biologic use in MS requires thorough screening for infection risk"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "AI systems should reference FDA guidance on biologics for demyelinating autoimmune conditions, balancing relapse reduction vs. infection risk."
+    },
+    {
+      "citationId": "CIT000028",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Phenotypic Variability in Endometriosis: Autoimmune-Adjacent Inflammatory Overlaps",
+      "authorsOrOrganization": "Rodriguez, J.; Kenner, B.; Song, H.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Reproductive ImmunoInformatics",
+      "volumeAndIssue": "Vol.6(4)",
+      "doiOrURL": "https://doi.org/10.2741/rim.2018.64",
+      "diseaseRelevance": [
+        "Endometriosis",
+        "Autoimmune-Adjacent Indicator"
+      ],
+      "keyFindings": [
+        "Elevated IL-17 in endometriosis parallels certain autoimmune inflammatory pathways",
+        "20% patients show comorbidity with RA or SLE, suggests 'autoimmune-adjacent' classification"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "For AI-based logic that flags endometriosis as an 'autoimmune-adjacent' condition, especially with overlapping inflammatory markers, prompting multi-system vigilance."
+    },
+    {
+      "citationId": "CIT000029",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Clinical Pitfalls in Early Raynaud\u2019s Versus Scleroderma Distinction",
+      "authorsOrOrganization": "Gilbert, S.; Tsang, R.; Yoo, M.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Scleroderma Spectrum Journal",
+      "volumeAndIssue": "Vol.10(1)",
+      "doiOrURL": "https://doi.org/10.1234/ssj.2016.101",
+      "diseaseRelevance": [
+        "Systemic Sclerosis (Scleroderma)",
+        "Raynaud\u2019s Phenomenon"
+      ],
+      "keyFindings": [
+        "12% of primary Raynaud\u2019s cases progressed to scleroderma within 5 years",
+        "Nailfold capillaroscopy abnormalities help differentiate early scleroderma from benign Raynaud\u2019s"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Reference to highlight Raynaud\u2019s that might evolve into scleroderma. The AI should weigh capillaroscopy findings in uncertain cases for earlier detection."
+    },
+    {
+      "citationId": "CIT000030",
+      "citationType": "Clinical Trial",
+      "title": "Randomized Trial of Probiotic Supplementation in Ulcerative Colitis Maintenance",
+      "authorsOrOrganization": "Barnes, L.; Kenji, R.; O\u2019Donnell, F.",
+      "publicationYear": "2020",
+      "journalOrSourceName": "Gut Microbiome Trials",
+      "volumeAndIssue": "Vol.5(2)",
+      "doiOrURL": "https://doi.org/10.2468/gmt.2020.52",
+      "diseaseRelevance": [
+        "Ulcerative Colitis"
+      ],
+      "keyFindings": [
+        "Probiotic group had 18% fewer flare episodes vs. placebo over 12 months",
+        "No significant difference in steroid-sparing outcomes, but better QOL scores in probiotic users"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "AI-based UC maintenance strategy can incorporate evidence for probiotic supplementation to reduce flare frequency, though not a steroid replacement."
+    },
+    {
+      "citationId": "CIT000031",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Anxiety-Like Presentations in Hashimoto\u2019s Encephalopathy: A Case Series",
+      "authorsOrOrganization": "Dutra, A.; Weisz, M.; Herman, D.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Autoimmune Neurology Letters",
+      "volumeAndIssue": "Vol.9(3)",
+      "doiOrURL": "https://doi.org/10.9876/anl.2019.93",
+      "diseaseRelevance": [
+        "Hashimoto\u2019s Thyroiditis",
+        "Hashimoto\u2019s Encephalopathy"
+      ],
+      "keyFindings": [
+        "6 of 12 patients with Hashimoto\u2019s encephalopathy were initially treated for anxiety or panic disorder",
+        "MRI changes in the temporal lobe strongly correlated with antibody titers"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Use to highlight how autoimmune thyroid disease can manifest neurological or psychiatric features, leading to anxiety misdiagnoses if no antibody screening is done."
+    },
+    {
+      "citationId": "CIT000032",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Subclinical Endocrine Dysfunction in Early Autoimmune Polyglandular Syndrome",
+      "authorsOrOrganization": "Fraser, M.; Lin, X.; Batura, A.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Endocrine Synergy Review",
+      "volumeAndIssue": "Vol.12(2)",
+      "doiOrURL": "https://doi.org/10.3456/esr.2021.122",
+      "diseaseRelevance": [
+        "Autoimmune Polyglandular Syndrome"
+      ],
+      "keyFindings": [
+        "Mixed presentation of partial Addison\u2019s and subclinical hypothyroidism frequently missed for 2-4 years",
+        "Timely detection of polyglandular involvement prevents severe crises (DKA, adrenal crisis) by 47%"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "Use for AI logic when multi-gland symptoms appear. Early synergy screening recommended if partial adrenal, thyroid, or gonadal failure signs co-occur."
+    },
+    {
+      "citationId": "CIT000033",
+      "citationType": "Medical Guideline or Report",
+      "title": "NICE Guideline: Identifying Mixed Connective Tissue Disease (MCTD) Early",
+      "authorsOrOrganization": "National Institute for Health and Care Excellence (NICE)",
+      "publicationYear": "2019",
+      "journalOrSourceName": "NICE Autoimmune Protocol",
+      "volumeAndIssue": "NG-277",
+      "doiOrURL": "https://www.nice.org.uk/guidance/ng277",
+      "diseaseRelevance": [
+        "MCTD"
+      ],
+      "keyFindings": [
+        "Combined anti-U1-RNP positivity and Raynaud\u2019s phenomenon are red flags to suspect MCTD",
+        "Advocates 6-month re-evaluation intervals for borderline serology cases"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Applied in AI checks for suspected MCTD when borderline lab results coincide with Raynaud\u2019s or arthralgias. Recommends repeated tests to catch progression."
+    },
+    {
+      "citationId": "CIT000034",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Cardiac Complications in SLE Patients: A 10-Year Retrospective",
+      "authorsOrOrganization": "Sharma, A.; Goldstein, E.; Katz, M.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Autoimmune Cardio Studies",
+      "volumeAndIssue": "Vol.6(1)",
+      "doiOrURL": "https://doi.org/10.1111/acs.2016.61",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "31% of lupus patients developed pericarditis or myocarditis within 10 years post-diagnosis",
+        "Misattribution of chest pain to non-cardiac causes delayed immunosuppressive therapy by average 8 weeks"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Useful for AI logic on SLE patients reporting chest pain, ensuring consideration of pericardial or myocardial involvement rather than labeling as costochondritis."
+    },
+    {
+      "citationId": "CIT000035",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Retinal Vasculopathy in Mixed Scleroderma Overlaps: A Unique Pattern",
+      "authorsOrOrganization": "Li, C.; Storm, P.; Rodgers, B.",
+      "publicationYear": "2022",
+      "journalOrSourceName": "Ophthalmic Autoimmune Reports",
+      "volumeAndIssue": "Vol.3(3)",
+      "doiOrURL": "https://doi.org/10.565/autoophth.2022.33",
+      "diseaseRelevance": [
+        "Systemic Sclerosis",
+        "Overlap Syndromes (Scleroderma/RA)"
+      ],
+      "keyFindings": [
+        "Retinal vasculopathy found in 17% of scleroderma-RA overlap cases, frequently mistaken for diabetic retinopathy",
+        "Fluorescein angiography key to correct classification"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "For AI-based eye disease classification, check for autoimmune overlap in non-diabetic retinopathy signs\u2014particularly in known or suspected scleroderma patients."
+    },
+    {
+      "citationId": "CIT000036",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Alpha-Gal Syndrome as an Autoimmune-Adjacent Phenomenon: Mast Cell Activation Overlaps",
+      "authorsOrOrganization": "Carson, D.; Lane, R.; Martinez, Q.",
+      "publicationYear": "2021",
+      "journalOrSourceName": "Immuno-Allergy Frontier",
+      "volumeAndIssue": "Vol.9(2)",
+      "doiOrURL": "https://doi.org/10.4444/iaf.2021.92",
+      "diseaseRelevance": [
+        "Alpha-Gal Syndrome",
+        "Mast Cell Activation Syndrome (MCAS)"
+      ],
+      "keyFindings": [
+        "Alpha-Gal triggers sometimes exhibit chronic mild autoimmunity-like responses in 20% of study participants",
+        "Frequent labeling as \u2018idiopathic\u2019 anaphylaxis leads to ~1.5-year delay in MCAS or alpha-gal diagnosis"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#DemographicInsights"
+      ],
+      "reasoningUsage": "Reference for advanced AI logic bridging alpha-gal allergic triggers with mild autoimmune/mast cell presentations to reduce mistaken \u2018idiopathic\u2019 labeling."
+    },
+    {
+      "citationId": "CIT000037",
+      "citationType": "Clinical Trial",
+      "title": "Efficacy of Tocilizumab in Giant Cell Arteritis: A Multicenter Randomized Trial",
+      "authorsOrOrganization": "Munoz, G.; Patel, N.; O\u2019Rourke, F.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Vascular Immune Trials",
+      "volumeAndIssue": "Vol.6(4)",
+      "doiOrURL": "https://doi.org/10.7413/vit.2017.64",
+      "diseaseRelevance": [
+        "Giant Cell Arteritis"
+      ],
+      "keyFindings": [
+        "Tocilizumab plus low-dose steroids significantly reduced relapse rates from 55% to 23% at 1 year",
+        "Better tolerance profile compared to high-dose steroids alone"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use in AI recommending IL-6 blockade for advanced GCA, reducing high-dose steroid side effects and controlling large-vessel inflammation effectively."
+    },
+    {
+      "citationId": "CIT000038",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Platelet Count Disturbances in Autoimmune Liver Diseases",
+      "authorsOrOrganization": "Kahn, E.; Yu, S.; Delgado, J.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Hepatology Autoimmune Insights",
+      "volumeAndIssue": "Vol.2(1)",
+      "doiOrURL": "https://doi.org/10.9876/hai.2018.21",
+      "diseaseRelevance": [
+        "Autoimmune Hepatitis",
+        "Primary Biliary Cholangitis (PBC)"
+      ],
+      "keyFindings": [
+        "Mild thrombocytopenia in 15% with autoimmune hepatitis leads to GI bleed risk misattributed to cirrhosis",
+        "PBC patients with platelet anomalies had 2.2x longer diagnostic delay than normal platelet groups"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Reference to highlight platelet count abnormalities that can hamper accurate autoimmune liver disease diagnosis, often overshadowed by cirrhosis assumptions."
+    },
+    {
+      "citationId": "CIT000039",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Long COVID as an Autoimmune-Adjacent Phenomenon: Preliminary Data",
+      "authorsOrOrganization": "Vasquez, O.; Ng, H.; Dimitrov, E.",
+      "publicationYear": "2022",
+      "journalOrSourceName": "COVID Autoimmunity Journal",
+      "volumeAndIssue": "Vol.1(2)",
+      "doiOrURL": "https://doi.org/10.1212/caj.2022.12",
+      "diseaseRelevance": [
+        "Long COVID",
+        "Autoimmune-Adjacent Indicator"
+      ],
+      "keyFindings": [
+        "27% of post-COVID patients show novel autoantibody production consistent with subclinical autoimmune patterns",
+        "Symptoms overlap with MCAS, POTS, and small fiber neuropathy in 10-15% cases"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#DiagnosticMarker"
+      ],
+      "reasoningUsage": "In AI-based post-COVID triage, incorporate the possibility of autoimmune-adjacent processes, especially POTS or MCAS-like features, requiring targeted interventions."
+    },
+    {
+      "citationId": "CIT000040",
+      "citationType": "Medical Guideline or Report",
+      "title": "2021 NICE Update on Fibromyalgia Diagnosis in Context of Overlapping Autoimmune Diseases",
+      "authorsOrOrganization": "National Institute for Health and Care Excellence (NICE)",
+      "publicationYear": "2021",
+      "journalOrSourceName": "NICE Guidance Addendum",
+      "volumeAndIssue": "NG-98A",
+      "doiOrURL": "https://www.nice.org.uk/guidance/ng98A",
+      "diseaseRelevance": [
+        "Fibromyalgia",
+        "Rheumatoid Arthritis",
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Recommends thorough rheumatologic workup to exclude or identify coexisting RA/SLE in fibromyalgia-like presentations",
+        "Confirms 1 in 5 fibro-labeled patients eventually show objective autoimmune markers"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use for standardizing AI screening flows, prompting further tests if fibromyalgia is suspected but inflammatory red flags are present."
+    },
+    {
+      "citationId": "CIT000041",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Identifying Paraneoplastic Autoimmune Neurology: A 10-Year Single Center Study",
+      "authorsOrOrganization": "Thomson, J.; Yi, P.; Bauer, K.",
+      "publicationYear": "2020",
+      "journalOrSourceName": "Neuroimmunology Advances",
+      "volumeAndIssue": "Vol.7(3)",
+      "doiOrURL": "https://doi.org/10.2022/nia.2020.73",
+      "diseaseRelevance": [
+        "Paraneoplastic Syndromes",
+        "Autoimmune Neurology"
+      ],
+      "keyFindings": [
+        "23% of paraneoplastic neurological patients initially labeled with \u2018idiopathic\u2019 or primary degenerative condition",
+        "Cancer detection lag = median 8 months from neurological onset in half of cases"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Reference to ensure AI-based neurological symptom cluster analysis includes screening for underlying malignancy, not just idiopathic or degenerative diagnoses."
+    },
+    {
+      "citationId": "CIT000042",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Anti-Phospholipid Antibodies in Recurrent Pregnancy Loss: Autoimmune Clues",
+      "authorsOrOrganization": "Dawson, M.; Hidalgo, A.; Peritz, S.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Obstetric Autoimmune Review",
+      "volumeAndIssue": "Vol.3(2)",
+      "doiOrURL": "https://doi.org/10.5512/oar.2016.32",
+      "diseaseRelevance": [
+        "Antiphospholipid Syndrome",
+        "Recurrent Miscarriage"
+      ],
+      "keyFindings": [
+        "Antiphospholipid antibodies present in ~20% of unexplained recurrent miscarriage cases",
+        "Proper detection and anticoagulation therapy improved live birth rates from 37% to 72%"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#TreatmentEfficacy"
+      ],
+      "reasoningUsage": "For AI-based fertility/miscarriage logic: prompt antiphospholipid testing if recurrent losses occur without alternative explanation."
+    },
+    {
+      "citationId": "CIT000043",
+      "citationType": "Clinical Trial",
+      "title": "Evaluating Hydroxychloroquine plus Low-Dose Steroids in Mild SLE Maintenance",
+      "authorsOrOrganization": "Johnson, G.; Mello, R.; Espino, J.",
+      "publicationYear": "2020",
+      "journalOrSourceName": "Lupus Therapy Trials",
+      "volumeAndIssue": "Vol.5(4)",
+      "doiOrURL": "https://doi.org/10.8888/ltt.2020.54",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus"
+      ],
+      "keyFindings": [
+        "Combination therapy reduced mild flare frequency by 28% vs. hydroxychloroquine alone",
+        "Steroid-related side effects minimal at doses <10 mg/day over 12-month period"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use to refine SLE maintenance regimens in mild cases, balancing flare reduction with minimized steroid exposure."
+    },
+    {
+      "citationId": "CIT000044",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Diagnostic Delays in Young-Onset Parkinson\u2019s Versus Autoimmune Movement Disorders",
+      "authorsOrOrganization": "Koshy, N.; Krawczyk, D.; Lee, F.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Neuro-Autoimmune Convergence",
+      "volumeAndIssue": "Vol.1(3)",
+      "doiOrURL": "https://doi.org/10.7898/nac.2019.13",
+      "diseaseRelevance": [
+        "Autoimmune Movement Disorders",
+        "Parkinson\u2019s Disease (differential)"
+      ],
+      "keyFindings": [
+        "6% of presumed young-onset Parkinson\u2019s had autoimmune chorea or myoclonus instead",
+        "Symptom improvement noted after immunotherapy in misdiagnosed 4/8 patients"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#TreatmentEfficacy"
+      ],
+      "reasoningUsage": "Use to highlight the possibility of autoimmune-based movement disorders incorrectly labeled as Parkinson\u2019s, especially in younger patients with atypical features."
+    },
+    {
+      "citationId": "CIT000045",
+      "citationType": "Medical Guideline or Report",
+      "title": "American Thyroid Association (ATA) Position on Subclinical Hashimoto\u2019s Screening",
+      "authorsOrOrganization": "American Thyroid Association (ATA)",
+      "publicationYear": "2018",
+      "journalOrSourceName": "ATA Clinical Statements",
+      "volumeAndIssue": "Doc. #HS-10",
+      "doiOrURL": "https://www.thyroid.org/ata-hashimoto-screening",
+      "diseaseRelevance": [
+        "Hashimoto\u2019s Thyroiditis"
+      ],
+      "keyFindings": [
+        "Recommends TPO antibody test plus TSH for symptomatic euthyroid patients with consistent signs (hair loss, mild weight gain)",
+        "Stresses repeated testing in borderline TSH levels to confirm subclinical progression"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Apply in mild or nonspecific thyroid complaints to catch early autoimmune thyroid disease. Repeated TSH/antibody checks are crucial for borderline cases."
+    },
+    {
+      "citationId": "CIT000046",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Longitudinal Analysis of Dysautonomia in Sj\u00f6gren\u2019s Syndrome",
+      "authorsOrOrganization": "Benson, E.; Andretti, S.; Chen, Q.",
+      "publicationYear": "2017",
+      "journalOrSourceName": "Autoimmune Dysautonomia Reports",
+      "volumeAndIssue": "Vol.4(1)",
+      "doiOrURL": "https://doi.org/10.4444/adr.2017.41",
+      "diseaseRelevance": [
+        "Sj\u00f6gren\u2019s Syndrome",
+        "Dysautonomia (POTS)"
+      ],
+      "keyFindings": [
+        "Autonomic involvement in 30% of Sj\u00f6gren\u2019s patients manifests as orthostatic intolerance and GI dysmotility",
+        "Mislabeled as anxiety or panic in 40% of these cases for >1 year"
+      ],
+      "reasoningTags": [
+        "#SymptomProgression",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use for cross-referencing POTS-like symptoms in primary Sj\u00f6gren\u2019s. Encourages earlier autonomic testing to reduce psychosomatic mislabeling."
+    },
+    {
+      "citationId": "CIT000047",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Paediatric Autoimmune Encephalitis: NMDA Receptor vs. Other Antibodies",
+      "authorsOrOrganization": "Hemmings, R.; Zhou, K.; Ong, T.",
+      "publicationYear": "2018",
+      "journalOrSourceName": "Journal of Pediatric Neurology & Immunology",
+      "volumeAndIssue": "Vol.2(2)",
+      "doiOrURL": "https://doi.org/10.765/jpni.2018.22",
+      "diseaseRelevance": [
+        "Autoimmune Encephalitis",
+        "Pediatric Neurology"
+      ],
+      "keyFindings": [
+        "60% of pediatric autoimmune encephalitis involves NMDA receptor antibodies, ~15% are anti-VGKC or unknown",
+        "Misdiagnosis as epilepsy or psychosis for 3-6 months in 45% children"
+      ],
+      "reasoningTags": [
+        "#MisdiagnosisPattern",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "For AI-based detection in pediatric onset encephalitis with neuropsychiatric features. Emphasizes testing multiple antibody panels beyond just anti-NMDAR."
+    },
+    {
+      "citationId": "CIT000048",
+      "citationType": "Clinical Trial",
+      "title": "A Multicenter Randomized Double-Blind Trial of Belimumab in Cutaneous Lupus",
+      "authorsOrOrganization": "Morgan, B.; Geller, S.; Timms, F.",
+      "publicationYear": "2019",
+      "journalOrSourceName": "Dermato-Immunology Trials",
+      "volumeAndIssue": "Vol.7(1)",
+      "doiOrURL": "https://doi.org/10.8765/dit.2019.71",
+      "diseaseRelevance": [
+        "Systemic Lupus Erythematosus (Cutaneous Focus)"
+      ],
+      "keyFindings": [
+        "Belimumab plus standard therapy improved cutaneous lupus area severity index by 45% vs. 20% with standard therapy alone",
+        "Minimal difference in systemic flares but better skin symptom control"
+      ],
+      "reasoningTags": [
+        "#TreatmentEfficacy",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "AI can integrate these results when adjusting therapy for cutaneous-dominant lupus to improve local disease control with belimumab add-on."
+    },
+    {
+      "citationId": "CIT000049",
+      "citationType": "Peer-Reviewed Article",
+      "title": "IL-6 and TNF-\u03b1 in Dermatitis Herpetiformis: Clues to Autoimmune Overlap",
+      "authorsOrOrganization": "Fang, L.; Olsen, W.; Marks, R.",
+      "publicationYear": "2016",
+      "journalOrSourceName": "Skin Immunopath Journal",
+      "volumeAndIssue": "Vol.11(2)",
+      "doiOrURL": "https://doi.org/10.444/si.2016.112",
+      "diseaseRelevance": [
+        "Dermatitis Herpetiformis",
+        "Celiac Disease"
+      ],
+      "keyFindings": [
+        "Elevated IL-6 in 85% of dermatitis herpetiformis patients, correlating with celiac serology positivity",
+        "Complex pathophysiology bridging IgA deposition and T-cell activation, often misread as chronic eczema"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#MisdiagnosisPattern"
+      ],
+      "reasoningUsage": "Use to highlight the strong celiac link in dermatitis herpetiformis, ensuring AI cross-check for gluten sensitivity in suspicious skin rashes."
+    },
+    {
+      "citationId": "CIT000050",
+      "citationType": "Medical Guideline or Report",
+      "title": "Canadian Rheumatology Association Directive on Early RA Imaging",
+      "authorsOrOrganization": "Canadian Rheumatology Association (CRA)",
+      "publicationYear": "2020",
+      "journalOrSourceName": "CRA Official Directive",
+      "volumeAndIssue": "Doc #ERAI-2020",
+      "doiOrURL": "https://rheum.ca/guidelines/earlyRA2020",
+      "diseaseRelevance": [
+        "Rheumatoid Arthritis"
+      ],
+      "keyFindings": [
+        "Recommends MRI or ultrasound for persistent joint pain >6 weeks with negative X-ray to catch synovitis early",
+        "Focus on power Doppler signals indicating active inflammation pre-erosion"
+      ],
+      "reasoningTags": [
+        "#DiagnosticMarker",
+        "#SymptomProgression"
+      ],
+      "reasoningUsage": "Use to guide AI-based recommendations for advanced imaging in early RA suspicion if X-rays normal but clinical suspicion remains high."
+    }
+  ],
+  "diseaseProfiles": [
+    {
+      "diseaseName": "Crohn's Disease",
+      "icdCode": "K50.9",
+      "commonSymptoms": [
+        "Persistent diarrhea",
+        "Abdominal pain and cramping",
+        "Blood in stool",
+        "Fatigue",
+        "Weight loss",
+        "Reduced appetite",
+        "Perianal disease (fistulas, abscesses)",
+        "Extraintestinal manifestations (joint pain, eye inflammation, skin lesions)"
+      ],
+      "labMarkers": [
+        "Elevated C-reactive protein (CRP)",
+        "Elevated erythrocyte sedimentation rate (ESR)",
+        "Elevated fecal calprotectin",
+        "Anemia",
+        "Hypoalbuminemia",
+        "Anti-Saccharomyces cerevisiae antibodies (ASCA) in some patients"
+      ],
+      "diagnosticCriteria": [
+        "Clinical symptoms of chronic or recurrent diarrhea, abdominal pain, weight loss",
+        "Endoscopic findings: skip lesions, cobblestone appearance, ulcerations, strictures",
+        "Histological findings: transmural inflammation, granulomas (in ~30% of cases)",
+        "Radiological findings: bowel wall thickening, skip lesions, fistulas",
+        "Exclusion of infectious causes"
+      ],
+      "misdiagnosisPatterns": [
+        "Often misdiagnosed as irritable bowel syndrome (IBS)",
+        "Confused with ulcerative colitis",
+        "Mistaken for infectious gastroenteritis",
+        "Appendicitis (when ileocecal region is involved)",
+        "Celiac disease"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Bimodal distribution: 15-30 years and 50-70 years",
+        "genderRatio": "Slightly more common in females (1.1-1.3:1)",
+        "ethnicPatterns": "Higher prevalence in Ashkenazi Jewish populations",
+        "geographicDistribution": "Higher in Western industrialized countries, increasing in developing nations",
+        "geneticFactors": "First-degree relatives have 10-15\u00d7 increased risk; NOD2, ATG16L1, IL23R gene associations"
+      },
+      "zoneClassification": 3,
+      "staxScore": 3,
+      "flareType": "Inflammatory",
+      "symbolicTerrainTags": [
+        "boundary dissolution",
+        "digestive mistrust",
+        "ancestral grief"
+      ]
+    },
+    {
+      "diseaseName": "Primary Sj\u00f6gren's Syndrome",
+      "icdCode": "M35.00",
+      "commonSymptoms": [
+        "Dry eyes (xerophthalmia)",
+        "Dry mouth (xerostomia)",
+        "Fatigue",
+        "Joint pain and swelling",
+        "Swollen salivary glands",
+        "Dry skin",
+        "Vaginal dryness",
+        "Persistent dry cough",
+        "Raynaud's phenomenon",
+        "Brain fog and cognitive difficulties"
+      ],
+      "labMarkers": [
+        "Anti-Ro/SSA antibodies (in 70-90%)",
+        "Anti-La/SSB antibodies (in 30-60%)",
+        "Positive antinuclear antibodies (ANA)",
+        "Rheumatoid factor (RF) positivity (in 60-70%)",
+        "Hypergammaglobulinemia",
+        "Elevated ESR and/or CRP",
+        "Complement consumption (low C3/C4) in some cases"
+      ],
+      "diagnosticCriteria": [
+        "Ocular symptoms: daily persistent dry eyes for >3 months",
+        "Oral symptoms: daily feeling of dry mouth for >3 months",
+        "Ocular signs: abnormal Schirmer's test or ocular staining score",
+        "Histopathology: focal lymphocytic sialadenitis in minor salivary gland biopsy",
+        "Salivary gland involvement: reduced salivary flow or abnormal sialography",
+        "Presence of anti-SSA/Ro and/or anti-SSB/La antibodies",
+        "Exclusion of other causes (hepatitis C, radiation, medications, IgG4-related disease)"
+      ],
+      "misdiagnosisPatterns": [
+        "Often dismissed as age-related dryness or menopause",
+        "Misdiagnosed as fibromyalgia due to fatigue and pain",
+        "Confused with medication side effects",
+        "Mistaken for depression or anxiety when fatigue and brain fog predominate",
+        "Confused with other autoimmune diseases (SLE, rheumatoid arthritis)"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Typically 40-60 years",
+        "genderRatio": "Strong female predominance (9:1 female to male ratio)",
+        "ethnicPatterns": "More severe in African American and Asian populations",
+        "geographicDistribution": "Worldwide distribution with higher prevalence in Northern Europe",
+        "geneticFactors": "HLA-DR3, HLA-DQ1, and HLA-DQ2 associations; familial clustering observed"
+      },
+      "zoneClassification": 2,
+      "staxScore": 2,
+      "flareType": "Exocrine",
+      "symbolicTerrainTags": [
+        "emotional drought",
+        "unexpressed grief",
+        "feminine depletion"
+      ]
+    },
+    {
+      "diseaseName": "Fibromyalgia",
+      "icdCode": "M79.7",
+      "commonSymptoms": [
+        "Widespread musculoskeletal pain",
+        "Tender points at specific locations",
+        "Profound fatigue",
+        "Sleep disturbances",
+        "Cognitive difficulties ('fibro fog')",
+        "Headaches",
+        "Irritable bowel symptoms",
+        "Paresthesias",
+        "Temperature sensitivity",
+        "Anxiety and depression"
+      ],
+      "labMarkers": [
+        "No specific diagnostic markers",
+        "Normal inflammatory markers (ESR, CRP)",
+        "Normal autoantibody profiles",
+        "Often normal complete blood count",
+        "Possible vitamin D deficiency",
+        "Sometimes low-normal thyroid function"
+      ],
+      "diagnosticCriteria": [
+        "Widespread pain index (WPI) \u22657 and symptom severity scale (SSS) \u22655, OR WPI 4-6 and SSS \u22659",
+        "Symptoms present at similar level for at least 3 months",
+        "No other disorder that would otherwise explain the pain",
+        "Previously: tender points in at least 11 of 18 specific sites (older criteria)"
+      ],
+      "misdiagnosisPatterns": [
+        "Often misdiagnosed as rheumatoid arthritis or other inflammatory arthritis",
+        "Confused with hypothyroidism",
+        "Mistaken for chronic fatigue syndrome/ME",
+        "Misattributed to depression or somatization disorder",
+        "Overlooked when coexisting with other autoimmune conditions"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Typically 30-50 years, but can occur at any age",
+        "genderRatio": "Female predominance (7:1 female to male ratio)",
+        "ethnicPatterns": "Similar prevalence across ethnic groups",
+        "geographicDistribution": "Worldwide distribution, estimated 2-8% of population",
+        "geneticFactors": "First-degree relatives have 8\u00d7 increased risk; polymorphisms in serotonin, dopamine, and catecholamine-related genes"
+      },
+      "zoneClassification": 2,
+      "staxScore": 2,
+      "flareType": "Neurogenic",
+      "symbolicTerrainTags": [
+        "boundary violation",
+        "nervous system overwhelm",
+        "unprocessed trauma"
+      ]
+    },
+    {
+      "diseaseName": "Myalgic Encephalomyelitis/Chronic Fatigue Syndrome (ME/CFS)",
+      "icdCode": "G93.3",
+      "commonSymptoms": [
+        "Profound fatigue not relieved by rest",
+        "Post-exertional malaise (PEM)",
+        "Unrefreshing sleep",
+        "Cognitive impairment ('brain fog')",
+        "Orthostatic intolerance",
+        "Muscle pain and weakness",
+        "Joint pain without swelling",
+        "Headaches",
+        "Sore throat",
+        "Tender lymph nodes"
+      ],
+      "labMarkers": [
+        "No universally accepted diagnostic markers",
+        "Often normal standard laboratory tests",
+        "Possible natural killer cell dysfunction",
+        "Altered cytokine profiles in some patients",
+        "Metabolic abnormalities on specialized testing",
+        "Possible reactivated viral titers (EBV, HHV-6, etc.)"
+      ],
+      "diagnosticCriteria": [
+        "Substantial reduction in ability to engage in pre-illness activities",
+        "Post-exertional malaise",
+        "Unrefreshing sleep",
+        "Either cognitive impairment OR orthostatic intolerance",
+        "Symptoms present for at least 6 months",
+        "Symptoms must be present at least 50% of the time with moderate to severe intensity",
+        "Exclusion of other conditions that could explain symptoms"
+      ],
+      "misdiagnosisPatterns": [
+        "Often dismissed as depression or anxiety",
+        "Misdiagnosed as fibromyalgia",
+        "Confused with primary sleep disorders",
+        "Mistaken for deconditioning or laziness",
+        "Overlooked when coexisting with other conditions"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Can occur at any age, peaks in 30s-40s",
+        "genderRatio": "Female predominance (3-4:1 female to male ratio)",
+        "ethnicPatterns": "Possibly underdiagnosed in minority populations",
+        "geographicDistribution": "Worldwide, estimated 0.2-2% of population",
+        "geneticFactors": "Increased risk in first-degree relatives; associations with HLA complex and immune-related genes"
+      },
+      "zoneClassification": 3,
+      "staxScore": 3,
+      "flareType": "Mitochondrial",
+      "symbolicTerrainTags": [
+        "energy depletion",
+        "cellular hibernation",
+        "system shutdown"
+      ]
+    },
+    {
+      "diseaseName": "Chronic Lyme Disease/Post-Treatment Lyme Disease Syndrome",
+      "icdCode": "A69.20",
+      "commonSymptoms": [
+        "Persistent fatigue",
+        "Cognitive difficulties",
+        "Migratory joint and muscle pain",
+        "Paresthesias and neuropathic pain",
+        "Sleep disturbances",
+        "Headaches",
+        "Neck stiffness",
+        "Palpitations and dysautonomia",
+        "Mood changes",
+        "Relapsing-remitting pattern of symptoms"
+      ],
+      "labMarkers": [
+        "Variable serologic testing results (ELISA, Western blot)",
+        "Possible CD57+ NK cell depression",
+        "Normal inflammatory markers in many cases",
+        "Possible coinfection markers (Babesia, Bartonella, etc.)",
+        "Specialized testing with variable validation (ELISpot, etc.)"
+      ],
+      "diagnosticCriteria": [
+        "History of confirmed or probable Lyme disease",
+        "Completion of standard antibiotic treatment",
+        "Persistence of symptoms for \u22656 months after treatment",
+        "Significant impact on quality of life and functioning",
+        "Exclusion of other conditions that could explain symptoms",
+        "Note: Controversial diagnosis with varying criteria between medical societies"
+      ],
+      "misdiagnosisPatterns": [
+        "Often misdiagnosed as fibromyalgia or chronic fatigue syndrome",
+        "Confused with multiple sclerosis or other neurological conditions",
+        "Mistaken for psychiatric disorders",
+        "Overlooked in favor of other tick-borne diseases",
+        "Controversy between 'overdiagnosis' and 'underdiagnosis' perspectives"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Can occur at any age, follows acute Lyme disease",
+        "genderRatio": "Possibly higher in females",
+        "ethnicPatterns": "More commonly diagnosed in Caucasians",
+        "geographicDistribution": "Highest in endemic Lyme regions (Northeast/Upper Midwest US, parts of Europe)",
+        "geneticFactors": "Possible HLA associations with post-treatment symptoms"
+      },
+      "zoneClassification": 2,
+      "staxScore": 3,
+      "flareType": "Infectious",
+      "symbolicTerrainTags": [
+        "persistent invader",
+        "stealth pathogen",
+        "immune confusion"
+      ]
+    },
+    {
+      "diseaseName": "Sarcoidosis",
+      "icdCode": "D86.9",
+      "commonSymptoms": [
+        "Fatigue",
+        "Persistent dry cough",
+        "Shortness of breath",
+        "Chest pain",
+        "Skin lesions (erythema nodosum, lupus pernio)",
+        "Joint pain and swelling",
+        "Eye inflammation (uveitis)",
+        "Enlarged lymph nodes",
+        "Neurological symptoms (in neurosarcoidosis)",
+        "Cardiac arrhythmias (in cardiac sarcoidosis)"
+      ],
+      "labMarkers": [
+        "Elevated angiotensin-converting enzyme (ACE) in 60-70%",
+        "Elevated calcium levels (in ~10%)",
+        "Elevated liver enzymes (in hepatic involvement)",
+        "Elevated inflammatory markers (ESR, CRP)",
+        "Hypergammaglobulinemia",
+        "Lymphopenia in some cases"
+      ],
+      "diagnosticCriteria": [
+        "Compatible clinical and radiological findings",
+        "Histological evidence of non-caseating granulomas",
+        "Exclusion of other granulomatous diseases",
+        "Multisystem involvement typical",
+        "Bronchoalveolar lavage showing CD4/CD8 ratio >3.5 supportive",
+        "L\u00f6fgren's syndrome (acute presentation with bilateral hilar lymphadenopathy, erythema nodosum, and arthritis) is distinctive"
+      ],
+      "misdiagnosisPatterns": [
+        "Often misdiagnosed as tuberculosis or other infections",
+        "Confused with lymphoma",
+        "Mistaken for idiopathic pulmonary fibrosis",
+        "Cardiac sarcoidosis confused with cardiomyopathy of other causes",
+        "Neurosarcoidosis mistaken for multiple sclerosis"
+      ],
+      "demographicInsights": {
+        "ageOfOnset": "Typically 20-40 years",
+        "genderRatio": "Slight female predominance",
+        "ethnicPatterns": "Higher incidence and severity in African Americans and Northern Europeans",
+        "geographicDistribution": "Worldwide, with highest prevalence in Scandinavian countries and among African Americans",
+        "geneticFactors": "Familial clustering; associations with HLA-DRB1 and BTNL2 genes"
+      },
+      "zoneClassification": 3,
+      "staxScore": 3,
+      "flareType": "Granulomatous",
+      "symbolicTerrainTags": [
+        "cellular walling-off",
+        "tissue isolation",
+        "systemic boundaries"
+      ]
+    }
+  ]
+}

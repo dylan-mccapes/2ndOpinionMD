@@ -1,38 +1,38 @@
-# 2ndOpinionMD Express Server
+# 2ndOpinionMD Vector Database Server
 
-Express server for 2ndOpinionMD.ai - AI-powered second opinions for autoimmune disease diagnosis with MongoDB integration.
+FastAPI server for 2ndOpinionMD.ai - AI-powered second opinions for autoimmune disease diagnosis with Chroma vector database integration.
 
 ## Features
 
-- HIPAA-compliant authentication
-- Server-side PDF report generation
-- API endpoints for all form fields
-- MongoDB integration for data persistence
+- **Case-Insensitive Field Handling**: Automatically normalizes field names across camelCase, PascalCase, and snake_case
+- **Intelligent Data Type Detection**: Automatically detects and processes different types of medical data
+- **Multiple Collection Types**: Organizes data into appropriate collections without "profile" suffixes
+- **Comprehensive Medical Data Support**: Handles case studies, diseases, conditions, autoimmune disorders, patients, and citations
+- **Cost-Effective RAG**: Uses OpenAI's embedding model (text-embedding-3-small) and GPT-3.5-turbo for efficient retrieval-augmented generation
 
 ## Prerequisites
 
-- Node.js v18+
-- MongoDB v6.0+
+- Python 3.9+
+- OpenAI API key
 
 ## Installation
 
 1. Clone the repository
-2. Install dependencies
+2. Run the setup script
 
 ```bash
-cd 2ndopinionmd-express-server
-npm install
+cd server
+chmod +x setup.sh
+./setup.sh
 ```
 
 3. Configure environment variables in `.env` file
 
 ```
-PORT=3000
-JWT_SECRET=your_jwt_secret_key_for_hipaa_compliance
-MONGO_URI=mongodb://localhost:27017/2ndopinionmd
-PDF_OUTPUT_DIR=./pdf_reports
-CORS_ORIGIN=http://localhost:3000
-MODEL_VERSION=gpt-4-turbo
+OPENAI_API_KEY=your-openai-api-key-here
+CHROMA_PERSIST_DIR=./chroma_db
+PORT=3001
+HOST=0.0.0.0
 ```
 
 ## Running the Server
@@ -40,94 +40,120 @@ MODEL_VERSION=gpt-4-turbo
 ### Development
 
 ```bash
-npm run dev
+source venv/bin/activate
+python api/app.py
 ```
 
 ### Production
 
 ```bash
-npm start
+source venv/bin/activate
+uvicorn api.app:app --host 0.0.0.0 --port 3001
 ```
 
-## MongoDB Integration
+## Chroma Vector Database Integration
 
-This server uses MongoDB for data persistence. The following models are defined:
+This server uses Chroma for vector database storage. The following collections are defined:
 
-### User Schema
+- `disease`: Disease profiles with symptoms, lab markers, and diagnostic criteria
+- `case`: Patient cases with symptom timelines and misdiagnosis patterns
+- `condition`: Medical conditions with zone scores and symbolic terrain tags
+- `autoimmune`: Autoimmune-specific information with immune risk levels
+- `patient`: Patient profiles with demographics and symptom data
+- `citation`: Medical research citations with relevance to specific diseases
 
-- email (String, required, unique)
-- password (String, required, hashed)
-- firstName (String)
-- lastName (String)
-- role (String, enum: ['patient', 'doctor', 'admin'])
+## Medical Data Structure
 
-### Report Schema
+The server uses a consolidated `medical_data.json` file with the following structure:
 
-- userId (ObjectId, reference to User)
-- inputData (Object)
-  - age (Number)
-  - sex (String)
-  - symptoms (Array of Strings)
-  - duration_months (Number)
-  - prior_diagnoses (Array of Strings)
-- diagnosticResults (Array of Objects)
-  - name (String)
-  - confidence (Number)
-  - symptoms (Array of Strings)
-  - redFlags (Array of Strings)
-  - labSuggestions (Array of Strings)
-- pdfUrl (String)
+```json
+{
+  "caseStudies": [
+    {
+      "caseId": "AIDx-0002",
+      "primaryCondition": "Rheumatoid Arthritis",
+      "symptomTimeline": [
+        "Intermittent aching pain and stiffness in small hand joints",
+        "Persistent symmetric joint swelling and warmth in wrists and fingers"
+      ],
+      "misdiagnosedAs": ["Osteoarthritis", "Fibromyalgia"]
+    }
+  ],
+  "autoimmuneTags": [
+    {
+      "tagName": "#AutoimmuneDx_MyastheniaGravis",
+      "type": "confirmedAutoimmuneDx",
+      "immuneRiskLevel": "High",
+      "mechanism": "Autoimmune antibodies target acetylcholine receptors",
+      "followOnConditions": "Thymoma, respiratory failure, other autoimmune conditions",
+      "zoneImpact": "+1.0 / +0.5",
+      "symbolicMeaning": "Recurring muscle fatigue and weakness symbolize struggles..."
+    }
+  ],
+  "citations": [
+    {
+      "citationId": "CIT000001",
+      "citationType": "Peer-Reviewed Article",
+      "title": "Misdiagnosis Patterns in Autoimmune Disease",
+      "authorsOrOrganization": "Smith, J.; Johnson, M.",
+      "diseaseRelevance": ["Rheumatoid Arthritis", "Lupus"]
+    }
+  ]
+}
+```
 
 ## API Endpoints
 
-### Authentication
-
-- `POST /api/auth/register` - Register a new user
-- `POST /api/auth/login` - Login and get authentication token
-- `GET /api/user/profile` - Get user profile (requires authentication)
-
 ### Diagnosis
 
-- `POST /api/diagnose` - Submit symptom data for diagnosis (requires authentication)
-- `POST /api/generate-pdf` - Generate PDF report from diagnostic results (requires authentication)
-- `GET /api/reports` - Get user reports (requires authentication)
+- `POST /api/diagnose` - Submit symptom data for diagnosis
+- `GET /api/health` - Health check endpoint
 
-### Form Fields
+### Example Request
 
-- `GET /api/fields/symptoms` - Get available symptoms (requires authentication)
-- `GET /api/fields/prior-diagnoses` - Get available prior diagnoses (requires authentication)
-- `GET /api/fields/sex-options` - Get available sex options (requires authentication)
-
-## Testing
-
-A comprehensive test plan is available in `test-plan.md`. To run automated tests:
-
-```bash
-chmod +x test.sh
-./test.sh
+```json
+{
+  "symptoms": ["joint_pain", "fatigue", "fever"],
+  "model": "gpt-3.5-turbo"
+}
 ```
 
-This will test all API endpoints and MongoDB integration.
+### Example Response
 
-## HIPAA Compliance
+```json
+{
+  "diagnoses": [
+    {
+      "name": "Rheumatoid Arthritis",
+      "confidence": 85,
+      "explanation": "Your symptoms of joint pain and fatigue are classic signs...",
+      "redFlags": ["Symmetric joint involvement", "Morning stiffness lasting >1 hour"],
+      "labSuggestions": ["RF factor", "Anti-CCP antibodies", "CRP", "ESR"]
+    }
+  ]
+}
+```
 
-This server implements several security features for HIPAA compliance:
+## Data Processing
 
-1. JWT-based authentication with token expiration
-2. Password hashing with bcrypt
-3. Protected routes requiring valid tokens
-4. MongoDB for secure data storage
-5. HIPAA mode flag in diagnostic requests
+The system automatically processes different types of medical data and normalizes field names across different case styles:
 
-## PDF Generation
+- **camelCase**: `diseaseName` → `disease_name`
+- **PascalCase**: `DiseaseName` → `disease_name`
+- **snake_case**: `disease_name` → `disease_name`
 
-The server generates PDF reports from diagnostic results using jsPDF. Reports include:
+## Loading Data
 
-1. Potential diagnoses with confidence scores
-2. Matching symptoms
-3. Red flags
-4. Lab test suggestions
-5. Disclaimer and footer
+To load your medical data into Chroma:
+
+```bash
+source venv/bin/activate
+python vectordb/chroma_setup.py server/data/medical_data.json
+```
+
+## For More Information
+
+See the detailed `CHROMA_IMPLEMENTATION.md` file in the root directory for comprehensive documentation on the Chroma vector database implementation.
 
 ## License
 
