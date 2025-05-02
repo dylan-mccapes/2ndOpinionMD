@@ -1,6 +1,7 @@
 import os
 import sys
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Union
 import chromadb
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
@@ -18,6 +19,28 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     api_key=openai_api_key,
     model_name="text-embedding-3-small"
 )
+
+def sanitize_metadata_for_chroma(metadata: Dict[str, Any]) -> Dict[str, Union[str, int, float, bool]]:
+    """
+    Recursively convert complex types in metadata to strings for ChromaDB compatibility
+    
+    Args:
+        metadata: Dictionary containing metadata with potentially complex types
+        
+    Returns:
+        Dictionary with all values converted to simple types (str, int, float, bool)
+    """
+    sanitized = {}
+    for key, value in metadata.items():
+        if isinstance(value, (str, int, float, bool)):
+            sanitized[key] = value
+        elif isinstance(value, list):
+            sanitized[key] = json.dumps(value)
+        elif isinstance(value, dict):
+            sanitized[key] = json.dumps(sanitize_metadata_for_chroma(value))
+        else:
+            sanitized[key] = str(value)
+    return sanitized
 
 def setup_chroma_client(persist_directory: str = "./chroma_db"):
     """
@@ -82,7 +105,7 @@ def add_data_to_collections(collections, processed_data):
             collections[data_type].add(
                 ids=[item["id"] for item in items],
                 documents=[item["text"] for item in items],
-                metadatas=[item["metadata"] for item in items]
+                metadatas=[sanitize_metadata_for_chroma(item["metadata"]) for item in items]
             )
             print(f"Added {len(items)} {data_type} entries to ChromaDB")
 
