@@ -204,7 +204,18 @@ class MedicalQueryEngine:
         )
         
         try:
-            analysis = json.loads(response.choices[0].message['content'])
+            content = response.choices[0].message['content']
+            
+            if content.startswith("```json") or content.startswith("```"):
+                start_idx = content.find("\n") + 1
+                end_idx = content.rfind("```")
+                
+                if end_idx > start_idx:
+                    content = content[start_idx:end_idx].strip()
+                else:
+                    content = content[start_idx:].strip()
+            
+            analysis = json.loads(content)
             return analysis
         except Exception as e:
             print(f"Error parsing response: {e}")
