@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import chromadb
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
-from openai import OpenAI
+import openai
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -15,7 +15,7 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OPENAI_API_KEY environment variable not set")
 
-openai_client = OpenAI(api_key=openai_api_key)
+openai.api_key = openai_api_key
 
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     api_key=openai_api_key,
@@ -194,18 +194,17 @@ class MedicalQueryEngine:
         }}
         """
         
-        response = openai_client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
-            response_format={"type": "json_object"}
+            temperature=0.3
         )
         
         try:
-            analysis = json.loads(response.choices[0].message.content)
+            analysis = json.loads(response.choices[0].text)
             return analysis
         except:
             return {
