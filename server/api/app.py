@@ -19,6 +19,7 @@ query_engine = MedicalQueryEngine(persist_directory)
 
 class SymptomRequest(BaseModel):
     symptoms: List[str]
+    demographics: Dict[str, Any] = None
     model: str = "gpt-3.5-turbo"
 
 class DiagnosisResponse(BaseModel):
@@ -27,10 +28,14 @@ class DiagnosisResponse(BaseModel):
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(request: SymptomRequest = Body(...)):
     """
-    Generate a diagnosis based on symptoms
+    Generate a diagnosis based on symptoms and optional demographics
     """
     try:
-        response = query_engine.generate_rag_response(request.symptoms, request.model)
+        response = query_engine.generate_rag_response(
+            symptoms=request.symptoms, 
+            model=request.model,
+            demographics=request.demographics
+        )
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating diagnosis: {str(e)}")

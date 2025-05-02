@@ -111,18 +111,23 @@ class MedicalQueryEngine:
         
         return results
     
-    def generate_rag_response(self, symptoms: List[str], model: str = "gpt-3.5-turbo"):
+    def generate_rag_response(self, symptoms: List[str], model: str = "gpt-3.5-turbo", demographics: Dict[str, Any] = None):
         """
         Generate a RAG response using all available collections
         
         Args:
             symptoms: List of symptom strings
             model: LLM model to use
+            demographics: Optional dictionary containing patient demographics
             
         Returns:
             Dictionary containing the RAG response
         """
         query_text = f"Patient symptoms: {', '.join(symptoms)}"
+        
+        if demographics:
+            demo_text = ", ".join([f"{k}: {v}" for k, v in demographics.items()])
+            query_text += f"\nPatient demographics: {demo_text}"
         
         # Query all collections
         all_results = self.query_all_collections(query_text)
@@ -168,16 +173,22 @@ class MedicalQueryEngine:
         if not context:
             return {"diagnoses": []}
         
+        demographics_str = ""
+        if demographics:
+            demographics_str = "Patient demographics:\n"
+            for key, value in demographics.items():
+                demographics_str += f"- {key}: {value}\n"
+        
         prompt = f"""
         You are a medical AI assistant helping analyze potential autoimmune diagnoses.
         
         Patient symptoms: {', '.join(symptoms)}
-        
+        {demographics_str}
         Based on vector similarity search, these conditions and research might be relevant:
         
         {context}
         
-        Please analyze these potential diagnoses in relation to the patient's symptoms.
+        Please analyze these potential diagnoses in relation to the patient's symptoms and demographics.
         For each condition, explain why it might be relevant and provide a confidence score.
         Include important red flags to watch for and suggested lab tests.
         Format your response as JSON with the following structure:
