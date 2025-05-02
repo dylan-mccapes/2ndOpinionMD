@@ -29,12 +29,12 @@ The platform now includes user authentication and a journaling feature to track 
 We recommend using [NVM](https://github.com/nvm-sh/nvm) to manage your Node versions.
 
 To set the correct version:
-```bash
+```zsh
 nvm use 18
 ```
 
 You can also create a .nvmrc file in the root with:
-```bash
+```zsh
 echo "18" > .nvmrc
 ```
 
@@ -42,12 +42,12 @@ echo "18" > .nvmrc
 After cloning this repo, install dependencies:
 
 **Frontend:**
-```bash
+```zsh
 yarn install
 ```
 
 **Backend:**
-```bash
+```zsh
 cd server
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -58,12 +58,12 @@ pip install -r requirements.txt
 To start the development server:
 
 **Frontend:**
-```bash
+```zsh
 yarn dev
 ```
 
 **Backend:**
-```bash
+```zsh
 cd server
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 uvicorn api.app:app --reload --port 3001
@@ -105,7 +105,7 @@ CHROMA_PERSIST_DIR=./chroma_db
 
 ### 🧹 Formatting & Linting
 To auto-format the codebase:
-```bash
+```zsh
 yarn format
 ```
 This ensures consistent code style for all components and pages.

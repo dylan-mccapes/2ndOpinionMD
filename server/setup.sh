@@ -1,5 +1,19 @@
 
-python -m venv venv
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [ -f "/opt/homebrew/bin/python3.10" ]; then
+        PYTHON_CMD="/opt/homebrew/bin/python3.10"
+    elif [ -f "/usr/local/bin/python3.10" ]; then
+        PYTHON_CMD="/usr/local/bin/python3.10"
+    else
+        PYTHON_CMD="python3"
+    fi
+else
+    PYTHON_CMD="python"
+fi
+
+echo "Using Python command: $PYTHON_CMD"
+
+$PYTHON_CMD -m venv venv
 
 source venv/bin/activate
 
