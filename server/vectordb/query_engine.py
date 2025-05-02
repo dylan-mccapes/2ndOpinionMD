@@ -204,9 +204,11 @@ class MedicalQueryEngine:
         )
         
         try:
-            analysis = json.loads(response.choices[0].text)
+            analysis = json.loads(response.choices[0].message['content'])
             return analysis
-        except:
+        except Exception as e:
+            print(f"Error parsing response: {e}")
+            print(f"Response content: {response.choices[0].message['content']}")
             return {
                 "diagnoses": [
                     {
