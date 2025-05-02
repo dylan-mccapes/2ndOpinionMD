@@ -1,0 +1,449 @@
+/* Journal Styles */
+.journal-form-container,
+.journal-list-container,
+.journal-detail-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Journal Form */
+.form-description {
+  color: #666;
+  margin-bottom: 2rem;
+}
+
+.form-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.form-section h3 {
+  margin-bottom: 1rem;
+  color: #2c3e50;
+}
+
+.symptom-row,
+.factor-row,
+.metric-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.symptom-input,
+.factor-type,
+.factor-description {
+  flex: 1;
+}
+
+.symptom-input input,
+.factor-description input,
+.metric-row input[type="text"],
+.metric-row textarea {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.factor-type select {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.severity-slider {
+  flex: 1;
+}
+
+.severity-slider label,
+.metric-row label {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.severity-slider input[type="range"],
+.metric-row input[type="range"] {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.add-button,
+.remove-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.add-button {
+  background-color: #3498db;
+  color: white;
+  margin-top: 0.5rem;
+}
+
+.add-button:hover {
+  background-color: #2980b9;
+}
+
+.remove-button {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.remove-button:hover {
+  background-color: #c0392b;
+}
+
+.remove-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+textarea {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.submit-button {
+  display: block;
+  width: 100%;
+  padding: 1rem;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.submit-button:hover {
+  background-color: #2980b9;
+}
+
+.submit-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Journal List */
+.journal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.new-entry-button {
+  display: inline-block;
+  padding: 0.8rem 1.5rem;
+  background-color: #3498db;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: background-color 0.3s;
+}
+
+.new-entry-button:hover {
+  background-color: #2980b9;
+}
+
+.no-entries {
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.start-button {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.8rem 1.5rem;
+  background-color: #3498db;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: background-color 0.3s;
+}
+
+.start-button:hover {
+  background-color: #2980b9;
+}
+
+.entries-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.journal-entry-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.journal-entry-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.entry-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #2c3e50;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.view-button,
+.delete-button {
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.view-button {
+  background-color: #3498db;
+  color: white;
+  text-decoration: none;
+}
+
+.view-button:hover {
+  background-color: #2980b9;
+}
+
+.delete-button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+}
+
+.delete-button:hover {
+  background-color: #c0392b;
+}
+
+.entry-symptoms h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #7f8c8d;
+}
+
+.symptom-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.symptom-tag {
+  padding: 0.3rem 0.8rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.low-severity {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.medium-severity {
+  background-color: #fff8e1;
+  color: #ff8f00;
+}
+
+.high-severity {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.more-symptoms {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+}
+
+.entry-analysis-preview {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #7f8c8d;
+  line-height: 1.5;
+}
+
+/* Journal Detail */
+.journal-detail-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2rem;
+}
+
+.back-button {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #3498db;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.journal-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.detail-section {
+  padding: 1.5rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.detail-section h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #2c3e50;
+}
+
+.symptom-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.factors-list {
+  padding-left: 1.5rem;
+  margin: 0;
+}
+
+.factors-list li {
+  margin-bottom: 0.5rem;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #7f8c8d;
+}
+
+.metric-value {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.diet-notes h4,
+.ai-analysis h4 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #2c3e50;
+}
+
+.ai-analysis {
+  background-color: #e8f4fd;
+}
+
+.analysis-content,
+.pattern-observations,
+.follow-up-questions,
+.tracking-suggestions {
+  margin-bottom: 1.5rem;
+}
+
+.follow-up-questions ul,
+.tracking-suggestions ul {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0 0 0;
+}
+
+.follow-up-questions li,
+.tracking-suggestions li {
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .journal-form-container,
+  .journal-list-container,
+  .journal-detail-container {
+    padding: 1.5rem;
+  }
+  
+  .symptom-row,
+  .factor-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .severity-slider {
+    margin-top: 0.5rem;
+  }
+  
+  .remove-button {
+    margin-top: 0.5rem;
+  }
+  
+  .entries-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Messages */
+.error-message {
+  padding: 1rem;
+  background-color: #ffebee;
+  color: #c62828;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.success-message {
+  padding: 1rem;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem 0;
+  color: #7f8c8d;
+}
