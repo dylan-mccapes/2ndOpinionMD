@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
-import logo from '../../logo.svg';
 
 const LoginForm = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -65,7 +64,7 @@ const LoginForm = ({ onLoginSuccess }) => {
   return (
     <div className="auth-container">
       <div className="auth-logo-container">
-        <img src={logo} alt="2ndOpinionMD Logo" className="auth-logo" />
+        <img src="/images/2ndOpinionMD-logo.jpg" alt="2ndOpinionMD Logo" className="auth-logo" />
         <h3 className="auth-logo-text">2ndOpinionMD</h3>
       </div>
       
