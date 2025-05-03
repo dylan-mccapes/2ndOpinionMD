@@ -8,11 +8,15 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
     return null;
   }
 
+  const diagnoses = Array.isArray(diagnosticResults) 
+    ? diagnosticResults 
+    : (diagnosticResults.diagnoses || []);
+
   return (
     <div className="ai-response-container">
       <h2>Potential Diagnoses</h2>
       <div className="diagnoses-list">
-        {diagnosticResults.map((diagnosis, index) => (
+        {diagnoses.map((diagnosis, index) => (
           <div key={index} className="diagnosis-card">
             <div className="diagnosis-header">
               <h3>{diagnosis.name}</h3>
@@ -24,14 +28,23 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
             </div>
             
             <div className="diagnosis-details">
-              <div className="detail-section">
-                <h4>Common Symptoms</h4>
-                <ul>
-                  {diagnosis.symptoms.map((symptom, idx) => (
-                    <li key={idx}>{formatSymptomName(symptom)}</li>
-                  ))}
-                </ul>
-              </div>
+              {diagnosis.explanation && (
+                <div className="detail-section">
+                  <h4>Explanation</h4>
+                  <p>{diagnosis.explanation}</p>
+                </div>
+              )}
+              
+              {diagnosis.symptoms && diagnosis.symptoms.length > 0 && (
+                <div className="detail-section">
+                  <h4>Common Symptoms</h4>
+                  <ul>
+                    {diagnosis.symptoms.map((symptom, idx) => (
+                      <li key={idx}>{formatSymptomName(symptom)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               
               {diagnosis.redFlags && diagnosis.redFlags.length > 0 && (
                 <div className="detail-section">
@@ -64,7 +77,7 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
         <p>This report is for informational purposes only and is not a medical diagnosis. 
            Please consult with a healthcare professional for proper evaluation and diagnosis. 
            The confidence percentages are based on symptom matching and are not clinical assessments.</p>
-        <button onClick={() => downloadPdfReport(diagnosticResults)} className="btn btn-primary download-btn">
+        <button onClick={() => downloadPdfReport(diagnoses)} className="btn btn-primary download-btn">
           Download PDF Report
         </button>
       </div>
