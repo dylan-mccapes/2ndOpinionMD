@@ -20,7 +20,7 @@ FastAPI server for 2ndOpinionMD.ai - AI-powered second opinions for autoimmune d
 1. Clone the repository
 2. Run the setup script
 
-```bash
+```zsh
 cd server
 chmod +x setup.sh
 ./setup.sh
@@ -39,14 +39,14 @@ HOST=0.0.0.0
 
 ### Development
 
-```bash
+```zsh
 source venv/bin/activate
 python api/app.py
 ```
 
 ### Production
 
-```bash
+```zsh
 source venv/bin/activate
 uvicorn api.app:app --host 0.0.0.0 --port 3001
 ```
@@ -146,7 +146,7 @@ The system automatically processes different types of medical data and normalize
 
 To load your medical data into Chroma:
 
-```bash
+```zsh
 source venv/bin/activate
 python vectordb/chroma_setup.py server/data/medical_data.json
 ```

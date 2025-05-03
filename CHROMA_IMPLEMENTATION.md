@@ -60,9 +60,9 @@ server/
 
 Before running the setup script, ensure you have the following dependencies installed on your Mac:
 
-```bash
+```zsh
 # Install Homebrew if not already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # Install Python 3.8+ (required for ChromaDB)
 brew install python@3.10
@@ -83,7 +83,7 @@ pip3 --version
 
 #### Setup Script
 
-```bash
+```zsh
 # Navigate to the server directory
 cd server
 
@@ -94,7 +94,7 @@ chmod +x setup.sh
 
 If you encounter issues with the setup script on Mac, you can run these commands manually:
 
-```bash
+```zsh
 # Create a Python virtual environment
 python3 -m venv venv
 
@@ -172,7 +172,7 @@ Save this file as `medical_data.json` in your project directory.
 
 ### 4. Load Your Data into Chroma
 
-```bash
+```zsh
 # Activate the virtual environment
 source venv/bin/activate
 
@@ -182,7 +182,7 @@ python vectordb/chroma_setup.py path/to/your/medical_data.json
 
 ### 5. Start the Server
 
-```bash
+```zsh
 # Activate the virtual environment
 source venv/bin/activate
 
@@ -243,7 +243,7 @@ The system creates appropriate collection names without "profile" suffixes:
 
 **cURL Example**:
 
-```bash
+```zsh
 curl -X POST http://localhost:3001/api/diagnose \
   -H "Content-Type: application/json" \
   -d '{"symptoms": ["joint_pain", "fatigue", "fever"], "model": "gpt-3.5-turbo"}'
@@ -271,7 +271,7 @@ curl -X POST http://localhost:3001/api/diagnose \
 
 **cURL Example**:
 
-```bash
+```zsh
 curl http://localhost:3001/api/health
 ```
 
