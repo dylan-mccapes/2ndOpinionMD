@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-ro
 import './App.css';
 import './styles/GlobalStyles.css';
 import './styles/Journal.css';
+import { processJournalEntry } from './utils/openaiService';
 
 import Layout from './components/layout/Layout';
 
@@ -22,8 +23,8 @@ import RegisterForm from './components/auth/RegisterForm';
 import JournalForm from './components/journal/JournalForm';
 import JournalList from './components/journal/JournalList';
 import JournalDetail from './components/journal/JournalDetail';
-import JournalEntryForm from './components/Journal/JournalEntryForm';
-import JournalResponse from './components/Journal/JournalResponse';
+import JournalEntryForm from './components/Journal/JournalEntryForm.jsx';
+import JournalResponse from './components/Journal/JournalResponse.jsx';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
