@@ -2,24 +2,67 @@ import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import Select from 'react-select';
 import PropTypes from 'prop-types';
+import axios from 'axios';
 import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS } from '../../utils/constants';
 import { formatSymptomData } from '../../utils/formatData';
 import './SymptomIntakeForm.css';
 
 const SymptomIntakeForm = ({ onSubmit }) => {
-  const [jsonOutput, setJsonOutput] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const { control, handleSubmit, formState: { errors } } = useForm();
 
-  const processForm = (data) => {
-    const formattedData = formatSymptomData(data);
-    setJsonOutput(formattedData);
-    onSubmit(data); // Pass the original form data for AI response simulation
+  const processForm = async (data) => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const formattedData = formatSymptomData(data);
+      
+      const apiData = {
+        symptoms: data.symptoms.map(s => s.label),
+        demographics: {
+          age: parseInt(data.age),
+          sex: data.sex.value,
+          duration_months: parseInt(data.durationMonths),
+          prior_diagnoses: data.priorDiagnoses ? data.priorDiagnoses.map(d => d.label) : []
+        },
+        model: "gpt-4-turbo" // Use the best available model
+      };
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required. Please log in.');
+      }
+      
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`,
+        apiData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      onSubmit(response.data.diagnoses || response.data);
+    } catch (err) {
+      console.error('Error processing symptoms:', err);
+      setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
+      
+      onSubmit(data);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="symptom-intake-container">
       <h2>Symptom Intake Form</h2>
       <p>Please provide your information to receive a second opinion analysis</p>
+      
+      {error && <div className="error-message">{error}</div>}
       
       <form onSubmit={handleSubmit(processForm)} className="symptom-form">
         <div className="form-row">
@@ -123,15 +166,14 @@ const SymptomIntakeForm = ({ onSubmit }) => {
           />
         </div>
         
-        <button type="submit" className="btn btn-primary submit-btn">Generate Report</button>
+        <button 
+          type="submit" 
+          className="btn btn-primary submit-btn"
+          disabled={isLoading}
+        >
+          {isLoading ? 'Analyzing Symptoms...' : 'Generate Report'}
+        </button>
       </form>
-      
-      {jsonOutput && (
-        <div className="json-output">
-          <h3>JSON Output</h3>
-          <pre>{JSON.stringify(jsonOutput, null, 2)}</pre>
-        </div>
-      )}
     </div>
   );
 };
