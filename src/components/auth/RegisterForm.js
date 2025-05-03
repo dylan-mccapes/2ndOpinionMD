@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import './Auth.css';
 
 const RegisterForm = () => {
   const [formData, setFormData] = useState({
@@ -61,11 +62,11 @@ const RegisterForm = () => {
   };
 
   return (
-    <div className="register-form-container">
+    <div className="auth-container">
       <h2>Create an Account</h2>
       {error && <div className="error-message">{error}</div>}
       
-      <form onSubmit={handleSubmit} className="register-form">
+      <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
           <label htmlFor="full_name">Full Name</label>
           <input
@@ -75,7 +76,8 @@ const RegisterForm = () => {
             value={formData.full_name}
             onChange={handleChange}
             required
-            className="form-control"
+            className={error && error.includes('name') ? "form-control input-error" : "form-control"}
+            placeholder="Enter your full name"
           />
         </div>
         
@@ -88,7 +90,8 @@ const RegisterForm = () => {
             value={formData.email}
             onChange={handleChange}
             required
-            className="form-control"
+            className={error && error.includes('email') ? "form-control input-error" : "form-control"}
+            placeholder="Enter your email address"
           />
         </div>
         
@@ -102,7 +105,8 @@ const RegisterForm = () => {
             onChange={handleChange}
             required
             minLength="8"
-            className="form-control"
+            className={error && error.includes('password') ? "form-control input-error" : "form-control"}
+            placeholder="Create a password (min 8 characters)"
           />
         </div>
         
@@ -116,23 +120,22 @@ const RegisterForm = () => {
             onChange={handleChange}
             required
             minLength="8"
-            className="form-control"
+            className={error && error.includes('match') ? "form-control input-error" : "form-control"}
+            placeholder="Confirm your password"
           />
         </div>
         
         <button 
           type="submit" 
-          className="submit-button"
+          className="submit-btn"
           disabled={isLoading}
         >
           {isLoading ? 'Creating Account...' : 'Sign Up'}
         </button>
       </form>
       
-      <div className="form-footer">
-        <p>
-          Already have an account? <Link to="/login">Log in</Link>
-        </p>
+      <div className="auth-links">
+        Already have an account? <Link to="/login">Log in</Link>
       </div>
     </div>
   );
