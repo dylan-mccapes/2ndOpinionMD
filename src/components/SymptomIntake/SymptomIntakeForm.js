@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import Select from 'react-select';
 import PropTypes from 'prop-types';
-import axios from 'axios';
 import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS } from '../../utils/constants';
 import { formatSymptomData } from '../../utils/formatData';
+import { processSymptomInput } from '../../utils/openaiService';
 import './SymptomIntakeForm.css';
 
 const SymptomIntakeForm = ({ onSubmit }) => {
@@ -19,34 +19,9 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     try {
       const formattedData = formatSymptomData(data);
       
-      const apiData = {
-        symptoms: data.symptoms.map(s => s.label),
-        demographics: {
-          age: parseInt(data.age),
-          sex: data.sex.value,
-          duration_months: parseInt(data.durationMonths),
-          prior_diagnoses: data.priorDiagnoses ? data.priorDiagnoses.map(d => d.label) : []
-        },
-        model: "gpt-4-turbo" // Use the best available model
-      };
+      const response = await processSymptomInput(data);
       
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Authentication required. Please log in.');
-      }
-      
-      const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`,
-        apiData,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      onSubmit(response.data.diagnoses || response.data);
+      onSubmit(response.diagnoses || response);
     } catch (err) {
       console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');

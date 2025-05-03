@@ -7,7 +7,7 @@ export const processSymptomInput = async (formData) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    const symptoms = formData.symptoms.map(s => s.label);
+    const symptoms = formData.symptoms ? formData.symptoms.map(s => s.label) : [];
     
     const demographics = {
       age: parseInt(formData.age) || 30,
@@ -17,12 +17,14 @@ export const processSymptomInput = async (formData) => {
     
     if (formData.priorDiagnoses && formData.priorDiagnoses.length > 0) {
       demographics.prior_diagnoses = formData.priorDiagnoses.map(d => d.label);
+    } else {
+      demographics.prior_diagnoses = []; // Ensure it's always an array
     }
     
     const apiData = {
       symptoms: symptoms,
       demographics: demographics,
-      model: process.env.REACT_APP_MODEL_VERSION || "gpt-3.5-turbo" // Match default in backend
+      model: "gpt-3.5-turbo" // Match default in backend
     };
     
     console.log('Sending diagnose request:', JSON.stringify(apiData, null, 2));
