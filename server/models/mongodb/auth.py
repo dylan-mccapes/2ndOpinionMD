@@ -7,8 +7,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 
-from .models import UserInDB, TokenData
-from .database import users_collection
+from models.mongodb.models import UserInDB, TokenData
+from models.mongodb.database import users_collection
 
 load_dotenv()
 

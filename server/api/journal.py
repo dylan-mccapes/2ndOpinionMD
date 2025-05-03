@@ -2,9 +2,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 
-from ..models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB
-from ..models.mongodb.auth import get_current_user
-from ..models.mongodb.database import journal_entries_collection
+from models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB
+from models.mongodb.auth import get_current_user
+from models.mongodb.database import journal_entries_collection
 import openai
 import os
 from dotenv import load_dotenv

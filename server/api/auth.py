@@ -4,15 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr
 
-from ..models.mongodb.models import UserCreate, User, Token, UserInDB
-from ..models.mongodb.auth import (
+from models.mongodb.models import UserCreate, User, Token, UserInDB
+from models.mongodb.auth import (
     authenticate_user, 
     create_access_token, 
     get_current_user,
     get_password_hash,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from ..models.mongodb.database import users_collection
+from models.mongodb.database import users_collection
 
 router = APIRouter()
 
