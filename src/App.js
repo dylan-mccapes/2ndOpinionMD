@@ -23,8 +23,8 @@ import RegisterForm from './components/auth/RegisterForm';
 import JournalForm from './components/journal/JournalForm';
 import JournalList from './components/journal/JournalList';
 import JournalDetail from './components/journal/JournalDetail';
-import JournalEntryForm from './components/Journal/JournalEntryForm.jsx';
-import JournalResponse from './components/Journal/JournalResponse.jsx';
+import JournalEntryForm from './components/journal/JournalEntryForm.jsx';
+import JournalResponse from './components/journal/JournalResponse.jsx';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
