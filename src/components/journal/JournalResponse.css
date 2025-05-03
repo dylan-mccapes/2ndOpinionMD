@@ -1,0 +1,58 @@
+.journal-response-container {
+  max-width: 800px;
+  margin: var(--spacing-xl) auto;
+  padding: var(--spacing-lg);
+  background-color: var(--color-bg-light);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.journal-response-container h2 {
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-md);
+}
+
+.journal-response-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.response-text {
+  background-color: rgba(59, 130, 246, 0.05);
+  border-left: 4px solid var(--color-primary);
+  padding: var(--spacing-md);
+  border-radius: 0 8px 8px 0;
+}
+
+.response-text p {
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.disclaimer {
+  background-color: rgba(229, 231, 235, 0.5);
+  padding: var(--spacing-md);
+  border-radius: 8px;
+  margin-top: var(--spacing-md);
+}
+
+.disclaimer h3 {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.disclaimer p {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .journal-response-container {
+    margin: var(--spacing-md);
+    padding: var(--spacing-md);
+  }
+}
