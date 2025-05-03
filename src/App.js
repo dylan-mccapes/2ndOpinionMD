@@ -22,11 +22,14 @@ import RegisterForm from './components/auth/RegisterForm';
 import JournalForm from './components/journal/JournalForm';
 import JournalList from './components/journal/JournalList';
 import JournalDetail from './components/journal/JournalDetail';
+import JournalEntryForm from './components/Journal/JournalEntryForm';
+import JournalResponse from './components/Journal/JournalResponse';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [diagnosticResults, setDiagnosticResults] = useState(null);
+  const [journalResponse, setJournalResponse] = useState(null);
   
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -100,6 +103,18 @@ function App() {
   const handleSymptomFormSubmit = (data) => {
     setDiagnosticResults(data);
     window.location.href = '/report';
+  };
+  
+  const handleJournalSubmit = async (entry) => {
+    try {
+      const response = await processJournalEntry(entry);
+      setJournalResponse(response);
+    } catch (error) {
+      console.error('Error processing journal entry:', error);
+      setJournalResponse({ 
+        text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later." 
+      });
+    }
   };
 
   return (
@@ -275,7 +290,8 @@ function App() {
             <ProtectedRoute>
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
-                  <JournalForm />
+                  <JournalEntryForm onSubmit={handleJournalSubmit} />
+                  {journalResponse && <JournalResponse response={journalResponse} />}
                   <div className="home-button-container">
                     <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
                   </div>
