@@ -102,8 +102,12 @@ function App() {
   ];
   
   const handleSymptomFormSubmit = (data) => {
+    console.log('Received diagnostic results:', data);
     setDiagnosticResults(data);
-    window.location.href = '/report';
+    
+    if (window.location.pathname !== '/report') {
+      window.location.href = '/report';
+    }
   };
   
   const handleJournalSubmit = async (entry) => {

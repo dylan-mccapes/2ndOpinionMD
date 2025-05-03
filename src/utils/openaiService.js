@@ -211,41 +211,17 @@ export const processSymptomInput = async (formData) => {
     }
     
     const apiData = {
-      symptoms: [
-        "Really painful periods lasting about 7 days",
-        "Painful some times tingling in the extremities.",
-        "Lots of bloating after means",
-        "Brain fog some days.",
-        "Some days better than others",
-        "Sleep can be interrupted due to discomfort.",
-        "Migraines occasionally.",
-        "I pride myself on being strong so I push through the pain most days",
-        "Tylenol to help",
-        "Naproxen during my painful periods.",
-        "Been to the doctors when I've had consistent headaches for pain/tingling",
-        "MRI haven't shown much.",
-        "MD mentioned I may be pre-diabetic on my last visit.",
-        "All other labs mostly normal.",
-        "I feel certain days, I just power through with caffeine.",
-        "When I get sick I feel really weak. Like my limbs are super tired. But that's normal right?"
-      ],
+      symptoms: formData.symptoms.map(s => s.label),
       demographics: {
-        age: 27,
-        gender: "Female",
-        race: "Black",
-        height: "5 feet 6 inches",
-        weight: 168,
-        occupation: "Retail manager"
+        age: parseInt(formData.age),
+        gender: formData.sex.value,
+        race: formData.race || "Not specified",
+        height: formData.height || "Not specified",
+        weight: parseInt(formData.weight) || 0,
+        occupation: formData.occupation || "Not specified"
       },
       model: "gpt-3.5-turbo"
     };
-    
-    console.log('===== EXACT REQUEST STRUCTURE =====');
-    console.log(JSON.stringify({
-      symptoms: apiData.symptoms,
-      demographics: apiData.demographics,
-      model: apiData.model
-    }, null, 2));
     
     console.log('===== DIAGNOSE REQUEST PAYLOAD =====');
     console.log(JSON.stringify(apiData, null, 2));
@@ -278,13 +254,26 @@ export const processSymptomInput = async (formData) => {
     console.log('===== DIAGNOSE RESPONSE =====');
     console.log(JSON.stringify(response.data, null, 2));
     
-    debugger; // This will pause execution when DevTools is open
-    
     saveDebugInfo('diagnose_response', response.data);
     
     clearDebugInfo('diagnose_error');
     
     updateDebugPanel();
+    
+    if (response.data && response.data.diagnoses) {
+      const transformedData = response.data.diagnoses.map(diagnosis => ({
+        name: diagnosis.name,
+        confidence: diagnosis.confidence,
+        symptoms: diagnosis.explanation ? [diagnosis.explanation] : [],
+        redFlags: diagnosis.redFlags || [],
+        labSuggestions: diagnosis.labSuggestions || []
+      }));
+      
+      console.log('===== TRANSFORMED RESPONSE =====');
+      console.log(JSON.stringify(transformedData, null, 2));
+      
+      return transformedData;
+    }
     
     return response.data;
   } catch (error) {
