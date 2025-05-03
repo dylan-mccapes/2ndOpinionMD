@@ -7,19 +7,18 @@ export const processSymptomInput = async (formData) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    const symptoms = formData.symptoms ? formData.symptoms.map(s => s.label) : [];
+    const symptoms = formData.symptoms && formData.symptoms.length > 0 
+      ? formData.symptoms.map(s => s.label) 
+      : ["General discomfort"];
     
     const demographics = {
       age: parseInt(formData.age) || 30,
-      sex: formData.sex?.value || "unknown",
-      duration_months: parseInt(formData.durationMonths) || 1
+      gender: formData.sex?.value || "Female", // Use Female as default
+      race: formData.race || "Not specified",
+      height: formData.height || "5 feet 8 inches",
+      weight: parseInt(formData.weight) || 150,
+      occupation: formData.occupation || "Not specified"
     };
-    
-    if (formData.priorDiagnoses && formData.priorDiagnoses.length > 0) {
-      demographics.prior_diagnoses = formData.priorDiagnoses.map(d => d.label);
-    } else {
-      demographics.prior_diagnoses = []; // Ensure it's always an array
-    }
     
     const apiData = {
       symptoms: symptoms,

@@ -63,6 +63,11 @@ const LoginForm = ({ onLoginSuccess }) => {
 
   return (
     <div className="auth-container">
+      <div className="auth-logo-container">
+        <img src="/images/2ndOpinionMD-logo.jpg" alt="2ndOpinionMD Logo" className="auth-logo" />
+        <h3 className="auth-logo-text">2ndOpinionMD</h3>
+      </div>
+      
       <h2>Log In</h2>
       {error && <div className="error-message">{error}</div>}
       
