@@ -11,7 +11,7 @@ import sys
 import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.query_engine_improved import MedicalQueryEngine
+from vectordb.query_engine import MedicalQueryEngine
 from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
