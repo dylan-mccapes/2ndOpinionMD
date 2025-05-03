@@ -1,9 +1,209 @@
 import axios from 'axios';
 
+const saveDebugInfo = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error('Error saving debug info to localStorage:', e);
+  }
+};
+
+const getDebugInfo = (key) => {
+  try {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    console.error('Error retrieving debug info from localStorage:', e);
+    return null;
+  }
+};
+
+const clearDebugInfo = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.error('Error clearing debug info from localStorage:', e);
+  }
+};
+
+const createPersistentDebugPanel = () => {
+  if (document.getElementById('persistent-debug-panel')) {
+    return;
+  }
+  
+  const panel = document.createElement('div');
+  panel.id = 'persistent-debug-panel';
+  panel.style.position = 'fixed';
+  panel.style.bottom = '10px';
+  panel.style.right = '10px';
+  panel.style.zIndex = '9999';
+  panel.style.backgroundColor = '#f8f9fa';
+  panel.style.border = '1px solid #dee2e6';
+  panel.style.borderRadius = '4px';
+  panel.style.padding = '10px';
+  panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
+  panel.style.maxWidth = '400px';
+  panel.style.maxHeight = '80vh';
+  panel.style.overflow = 'auto';
+  panel.style.display = 'none';
+  
+  const toggleButton = document.createElement('button');
+  toggleButton.textContent = 'Debug Panel';
+  toggleButton.style.position = 'fixed';
+  toggleButton.style.bottom = '10px';
+  toggleButton.style.right = '10px';
+  toggleButton.style.zIndex = '10000';
+  toggleButton.style.padding = '5px 10px';
+  toggleButton.style.backgroundColor = '#007bff';
+  toggleButton.style.color = 'white';
+  toggleButton.style.border = 'none';
+  toggleButton.style.borderRadius = '4px';
+  toggleButton.style.cursor = 'pointer';
+  
+  toggleButton.onclick = () => {
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+      updateDebugPanel();
+    } else {
+      panel.style.display = 'none';
+    }
+  };
+  
+  document.body.appendChild(toggleButton);
+  document.body.appendChild(panel);
+  
+  updateDebugPanel();
+};
+
+const updateDebugPanel = () => {
+  const panel = document.getElementById('persistent-debug-panel');
+  if (!panel) return;
+  
+  panel.innerHTML = '';
+  
+  const title = document.createElement('h3');
+  title.textContent = 'Debug Information';
+  title.style.marginTop = '0';
+  panel.appendChild(title);
+  
+  const clearButton = document.createElement('button');
+  clearButton.textContent = 'Clear All Debug Info';
+  clearButton.style.marginBottom = '10px';
+  clearButton.style.padding = '5px 10px';
+  clearButton.style.backgroundColor = '#dc3545';
+  clearButton.style.color = 'white';
+  clearButton.style.border = 'none';
+  clearButton.style.borderRadius = '4px';
+  clearButton.style.cursor = 'pointer';
+  clearButton.onclick = () => {
+    clearDebugInfo('diagnose_request');
+    clearDebugInfo('diagnose_response');
+    clearDebugInfo('diagnose_error');
+    clearDebugInfo('journal_request');
+    clearDebugInfo('journal_response');
+    clearDebugInfo('journal_error');
+    updateDebugPanel();
+  };
+  panel.appendChild(clearButton);
+  
+  const breakpointToggle = document.createElement('div');
+  breakpointToggle.style.marginBottom = '10px';
+  
+  const breakpointCheckbox = document.createElement('input');
+  breakpointCheckbox.type = 'checkbox';
+  breakpointCheckbox.id = 'debug-breakpoint-toggle';
+  breakpointCheckbox.checked = localStorage.getItem('debug_breakpoints_enabled') === 'true';
+  breakpointCheckbox.onchange = () => {
+    localStorage.setItem('debug_breakpoints_enabled', breakpointCheckbox.checked);
+  };
+  
+  const breakpointLabel = document.createElement('label');
+  breakpointLabel.htmlFor = 'debug-breakpoint-toggle';
+  breakpointLabel.textContent = 'Enable Breakpoints on Errors';
+  breakpointLabel.style.marginLeft = '5px';
+  
+  breakpointToggle.appendChild(breakpointCheckbox);
+  breakpointToggle.appendChild(breakpointLabel);
+  panel.appendChild(breakpointToggle);
+  
+  const sections = [
+    { key: 'diagnose_request', title: 'Diagnose Request' },
+    { key: 'diagnose_response', title: 'Diagnose Response' },
+    { key: 'diagnose_error', title: 'Diagnose Error' },
+    { key: 'journal_request', title: 'Journal Request' },
+    { key: 'journal_response', title: 'Journal Response' },
+    { key: 'journal_error', title: 'Journal Error' }
+  ];
+  
+  sections.forEach(section => {
+    const data = getDebugInfo(section.key);
+    if (data) {
+      const sectionDiv = document.createElement('div');
+      sectionDiv.style.marginBottom = '15px';
+      
+      const sectionTitle = document.createElement('h4');
+      sectionTitle.textContent = section.title;
+      sectionTitle.style.marginBottom = '5px';
+      sectionDiv.appendChild(sectionTitle);
+      
+      const sectionContent = document.createElement('pre');
+      sectionContent.style.whiteSpace = 'pre-wrap';
+      sectionContent.style.backgroundColor = '#f5f5f5';
+      sectionContent.style.padding = '10px';
+      sectionContent.style.borderRadius = '4px';
+      sectionContent.style.fontSize = '12px';
+      sectionContent.style.maxHeight = '200px';
+      sectionContent.style.overflow = 'auto';
+      sectionContent.textContent = JSON.stringify(data, null, 2);
+      sectionDiv.appendChild(sectionContent);
+      
+      panel.appendChild(sectionDiv);
+    }
+  });
+  
+  if (panel.childElementCount <= 3) { // title, clear button, and breakpoint toggle
+    const noData = document.createElement('p');
+    noData.textContent = 'No debug information available.';
+    noData.style.fontStyle = 'italic';
+    panel.appendChild(noData);
+  }
+};
+
+const axiosInstance = axios.create();
+
+axiosInstance.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      console.error('Authentication error, but preventing redirect');
+      saveDebugInfo('auth_error', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        message: error.message
+      });
+      
+      return Promise.reject({
+        ...error,
+        preventRedirect: true
+      });
+    }
+    return Promise.reject(error);
+  }
+);
+
+const setBreakpointIfEnabled = () => {
+  if (localStorage.getItem('debug_breakpoints_enabled') === 'true') {
+    debugger;
+  }
+};
+
 export const processSymptomInput = async (formData) => {
   try {
     console.log('===== DIAGNOSE REQUEST DEBUG INFO =====');
     console.log('Original form data:', formData);
+    
+    createPersistentDebugPanel();
     
     const token = localStorage.getItem('token');
     if (!token) {
@@ -64,34 +264,14 @@ export const processSymptomInput = async (formData) => {
     console.log('age type:', typeof apiData.demographics.age);
     console.log('weight type:', typeof apiData.demographics.weight);
     
-    const requestDebugDiv = document.createElement('div');
-    requestDebugDiv.id = 'request-debug-info';
-    requestDebugDiv.style.display = 'none';
-    requestDebugDiv.style.whiteSpace = 'pre-wrap';
-    requestDebugDiv.style.fontFamily = 'monospace';
-    requestDebugDiv.style.padding = '10px';
-    requestDebugDiv.style.border = '1px solid #ccc';
-    requestDebugDiv.style.backgroundColor = '#f5f5f5';
-    requestDebugDiv.textContent = JSON.stringify(apiData, null, 2);
+    saveDebugInfo('diagnose_request', apiData);
     
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Toggle Request Debug Info';
-    toggleButton.onclick = () => {
-      const debugDiv = document.getElementById('request-debug-info');
-      if (debugDiv) {
-        debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
-      }
-    };
-    
-    if (!document.getElementById('request-debug-info')) {
-      document.body.appendChild(toggleButton);
-      document.body.appendChild(requestDebugDiv);
-    }
+    updateDebugPanel();
     
     console.log('===== SENDING REQUEST TO API =====');
     console.log(`Endpoint: ${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`);
     
-    const response = await axios.post(
+    const response = await axiosInstance.post(
       `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`,
       apiData,
       {
@@ -105,29 +285,13 @@ export const processSymptomInput = async (formData) => {
     console.log('===== DIAGNOSE RESPONSE =====');
     console.log(JSON.stringify(response.data, null, 2));
     
-    const responseDebugDiv = document.createElement('div');
-    responseDebugDiv.id = 'response-debug-info';
-    responseDebugDiv.style.display = 'none';
-    responseDebugDiv.style.whiteSpace = 'pre-wrap';
-    responseDebugDiv.style.fontFamily = 'monospace';
-    responseDebugDiv.style.padding = '10px';
-    responseDebugDiv.style.border = '1px solid #ccc';
-    responseDebugDiv.style.backgroundColor = '#f5f5f5';
-    responseDebugDiv.textContent = JSON.stringify(response.data, null, 2);
+    debugger; // This will pause execution when DevTools is open
     
-    const toggleResponseButton = document.createElement('button');
-    toggleResponseButton.textContent = 'Toggle Response Debug Info';
-    toggleResponseButton.onclick = () => {
-      const debugDiv = document.getElementById('response-debug-info');
-      if (debugDiv) {
-        debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
-      }
-    };
+    saveDebugInfo('diagnose_response', response.data);
     
-    if (!document.getElementById('response-debug-info')) {
-      document.body.appendChild(toggleResponseButton);
-      document.body.appendChild(responseDebugDiv);
-    }
+    clearDebugInfo('diagnose_error');
+    
+    updateDebugPanel();
     
     return response.data;
   } catch (error) {
@@ -135,86 +299,65 @@ export const processSymptomInput = async (formData) => {
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     
+    setBreakpointIfEnabled();
+    
+    let errorData = {
+      type: 'unknown',
+      name: error.name,
+      message: error.message
+    };
+    
     if (error.response) {
       console.error('Status:', error.response.status);
       console.error('Status Text:', error.response.statusText);
       console.error('Response Headers:', error.response.headers);
       console.error('Response Data:', error.response.data);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>API Error (${error.response.status})</h3>
-        <p><strong>Status:</strong> ${error.response.status} ${error.response.statusText}</p>
-        <p><strong>Error Message:</strong> ${error.message}</p>
-        <p><strong>Response Data:</strong></p>
-        <pre>${JSON.stringify(error.response.data, null, 2)}</pre>
-      `;
+      errorData = {
+        type: 'api',
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        message: error.message
+      };
       
-      if (!document.getElementById('error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('error-debug-info').innerHTML = errorDebugDiv.innerHTML;
+      saveDebugInfo('diagnose_error', errorData);
+      
+      updateDebugPanel();
+      
+      if (error.response.status === 401 && error.preventRedirect) {
+        console.warn('Authentication error occurred but redirect prevented');
+        return { error: 'Authentication error', details: errorData };
       }
       
-      throw new Error(`API Error (${error.response.status}): ${JSON.stringify(error.response.data)}`);
+      return { error: `API Error (${error.response.status})`, details: errorData };
     } else if (error.request) {
       console.error('Request:', error.request);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>Network Error</h3>
-        <p><strong>Error Message:</strong> No response received from server. The server might be down or unreachable.</p>
-        <p><strong>Request Details:</strong></p>
-        <pre>${JSON.stringify(error.request, null, 2)}</pre>
-      `;
+      errorData = {
+        type: 'network',
+        request: error.request,
+        message: error.message
+      };
       
-      if (!document.getElementById('error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('error-debug-info').innerHTML = errorDebugDiv.innerHTML;
-      }
+      saveDebugInfo('diagnose_error', errorData);
       
-      throw new Error('Network Error: No response received from server');
+      updateDebugPanel();
+      
+      return { error: 'Network Error', details: errorData };
     } else {
       console.error('Error Config:', error.config);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>Request Setup Error</h3>
-        <p><strong>Error Message:</strong> ${error.message}</p>
-      `;
+      errorData = {
+        type: 'setup',
+        message: error.message
+      };
       
-      if (!document.getElementById('error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('error-debug-info').innerHTML = errorDebugDiv.innerHTML;
-      }
+      saveDebugInfo('diagnose_error', errorData);
       
-      throw new Error(`Request Setup Error: ${error.message}`);
+      updateDebugPanel();
+      
+      return { error: 'Request Setup Error', details: errorData };
     }
   }
 };
@@ -223,6 +366,8 @@ export const processJournalEntry = async (journalText) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     console.log('Journal text:', journalText);
+    
+    createPersistentDebugPanel();
     
     const token = localStorage.getItem('token');
     if (!token) {
@@ -234,34 +379,14 @@ export const processJournalEntry = async (journalText) => {
     console.log('===== JOURNAL REQUEST PAYLOAD =====');
     console.log(JSON.stringify(requestData, null, 2));
     
-    const requestDebugDiv = document.createElement('div');
-    requestDebugDiv.id = 'journal-request-debug-info';
-    requestDebugDiv.style.display = 'none';
-    requestDebugDiv.style.whiteSpace = 'pre-wrap';
-    requestDebugDiv.style.fontFamily = 'monospace';
-    requestDebugDiv.style.padding = '10px';
-    requestDebugDiv.style.border = '1px solid #ccc';
-    requestDebugDiv.style.backgroundColor = '#f5f5f5';
-    requestDebugDiv.textContent = JSON.stringify(requestData, null, 2);
+    saveDebugInfo('journal_request', requestData);
     
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Toggle Journal Request Debug Info';
-    toggleButton.onclick = () => {
-      const debugDiv = document.getElementById('journal-request-debug-info');
-      if (debugDiv) {
-        debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
-      }
-    };
-    
-    if (!document.getElementById('journal-request-debug-info')) {
-      document.body.appendChild(toggleButton);
-      document.body.appendChild(requestDebugDiv);
-    }
+    updateDebugPanel();
     
     console.log('===== SENDING REQUEST TO API =====');
     console.log(`Endpoint: ${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`);
     
-    const response = await axios.post(
+    const response = await axiosInstance.post(
       `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`,
       requestData,
       {
@@ -275,29 +400,11 @@ export const processJournalEntry = async (journalText) => {
     console.log('===== JOURNAL RESPONSE =====');
     console.log(JSON.stringify(response.data, null, 2));
     
-    const responseDebugDiv = document.createElement('div');
-    responseDebugDiv.id = 'journal-response-debug-info';
-    responseDebugDiv.style.display = 'none';
-    responseDebugDiv.style.whiteSpace = 'pre-wrap';
-    responseDebugDiv.style.fontFamily = 'monospace';
-    responseDebugDiv.style.padding = '10px';
-    responseDebugDiv.style.border = '1px solid #ccc';
-    responseDebugDiv.style.backgroundColor = '#f5f5f5';
-    responseDebugDiv.textContent = JSON.stringify(response.data, null, 2);
+    saveDebugInfo('journal_response', response.data);
     
-    const toggleResponseButton = document.createElement('button');
-    toggleResponseButton.textContent = 'Toggle Journal Response Debug Info';
-    toggleResponseButton.onclick = () => {
-      const debugDiv = document.getElementById('journal-response-debug-info');
-      if (debugDiv) {
-        debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
-      }
-    };
+    clearDebugInfo('journal_error');
     
-    if (!document.getElementById('journal-response-debug-info')) {
-      document.body.appendChild(toggleResponseButton);
-      document.body.appendChild(responseDebugDiv);
-    }
+    updateDebugPanel();
     
     return response.data;
   } catch (error) {
@@ -305,86 +412,65 @@ export const processJournalEntry = async (journalText) => {
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     
+    setBreakpointIfEnabled();
+    
+    let errorData = {
+      type: 'unknown',
+      name: error.name,
+      message: error.message
+    };
+    
     if (error.response) {
       console.error('Status:', error.response.status);
       console.error('Status Text:', error.response.statusText);
       console.error('Response Headers:', error.response.headers);
       console.error('Response Data:', error.response.data);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'journal-error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>Journal API Error (${error.response.status})</h3>
-        <p><strong>Status:</strong> ${error.response.status} ${error.response.statusText}</p>
-        <p><strong>Error Message:</strong> ${error.message}</p>
-        <p><strong>Response Data:</strong></p>
-        <pre>${JSON.stringify(error.response.data, null, 2)}</pre>
-      `;
+      errorData = {
+        type: 'api',
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        message: error.message
+      };
       
-      if (!document.getElementById('journal-error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('journal-error-debug-info').innerHTML = errorDebugDiv.innerHTML;
+      saveDebugInfo('journal_error', errorData);
+      
+      updateDebugPanel();
+      
+      if (error.response.status === 401 && error.preventRedirect) {
+        console.warn('Authentication error occurred but redirect prevented');
+        return { error: 'Authentication error', details: errorData };
       }
       
-      throw new Error(`Journal API Error (${error.response.status}): ${JSON.stringify(error.response.data)}`);
+      return { error: `API Error (${error.response.status})`, details: errorData };
     } else if (error.request) {
       console.error('Request:', error.request);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'journal-error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>Journal Network Error</h3>
-        <p><strong>Error Message:</strong> No response received from server. The server might be down or unreachable.</p>
-        <p><strong>Request Details:</strong></p>
-        <pre>${JSON.stringify(error.request, null, 2)}</pre>
-      `;
+      errorData = {
+        type: 'network',
+        request: error.request,
+        message: error.message
+      };
       
-      if (!document.getElementById('journal-error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('journal-error-debug-info').innerHTML = errorDebugDiv.innerHTML;
-      }
+      saveDebugInfo('journal_error', errorData);
       
-      throw new Error('Journal Network Error: No response received from server');
+      updateDebugPanel();
+      
+      return { error: 'Network Error', details: errorData };
     } else {
       console.error('Error Config:', error.config);
       
-      const errorDebugDiv = document.createElement('div');
-      errorDebugDiv.id = 'journal-error-debug-info';
-      errorDebugDiv.style.display = 'block';
-      errorDebugDiv.style.whiteSpace = 'pre-wrap';
-      errorDebugDiv.style.fontFamily = 'monospace';
-      errorDebugDiv.style.padding = '10px';
-      errorDebugDiv.style.border = '1px solid #f00';
-      errorDebugDiv.style.backgroundColor = '#fff0f0';
-      errorDebugDiv.style.color = '#f00';
-      errorDebugDiv.innerHTML = `
-        <h3>Journal Request Setup Error</h3>
-        <p><strong>Error Message:</strong> ${error.message}</p>
-      `;
+      errorData = {
+        type: 'setup',
+        message: error.message
+      };
       
-      if (!document.getElementById('journal-error-debug-info')) {
-        document.body.appendChild(errorDebugDiv);
-      } else {
-        document.getElementById('journal-error-debug-info').innerHTML = errorDebugDiv.innerHTML;
-      }
+      saveDebugInfo('journal_error', errorData);
       
-      throw new Error(`Journal Request Setup Error: ${error.message}`);
+      updateDebugPanel();
+      
+      return { error: 'Request Setup Error', details: errorData };
     }
   }
 };
