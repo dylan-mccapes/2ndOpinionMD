@@ -14,8 +14,8 @@ from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
 
-from .auth import router as auth_router
-from .journal import router as journal_router
+from api.auth import router as auth_router
+from api.journal import router as journal_router
 
 load_dotenv()
 
