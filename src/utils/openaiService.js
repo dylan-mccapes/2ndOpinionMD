@@ -7,16 +7,25 @@ export const processSymptomInput = async (formData) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    const apiData = {
-      symptoms: formData.symptoms.map(s => s.label),
-      demographics: {
-        age: parseInt(formData.age),
-        sex: formData.sex.value,
-        duration_months: parseInt(formData.durationMonths),
-        prior_diagnoses: formData.priorDiagnoses ? formData.priorDiagnoses.map(d => d.label) : []
-      },
-      model: process.env.REACT_APP_MODEL_VERSION || "gpt-4-turbo"
+    const symptoms = formData.symptoms.map(s => s.label);
+    
+    const demographics = {
+      age: parseInt(formData.age) || 30,
+      sex: formData.sex?.value || "unknown",
+      duration_months: parseInt(formData.durationMonths) || 1
     };
+    
+    if (formData.priorDiagnoses && formData.priorDiagnoses.length > 0) {
+      demographics.prior_diagnoses = formData.priorDiagnoses.map(d => d.label);
+    }
+    
+    const apiData = {
+      symptoms: symptoms,
+      demographics: demographics,
+      model: process.env.REACT_APP_MODEL_VERSION || "gpt-3.5-turbo" // Match default in backend
+    };
+    
+    console.log('Sending diagnose request:', JSON.stringify(apiData, null, 2));
     
     const response = await axios.post(
       `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`,
@@ -29,9 +38,10 @@ export const processSymptomInput = async (formData) => {
       }
     );
     
+    console.log('Diagnose response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('Error processing symptom input:', error);
+    console.error('Error processing symptom input:', error.response?.data || error.message);
     throw error;
   }
 };

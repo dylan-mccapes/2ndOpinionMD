@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import './Auth.css';
 
 const LoginForm = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -61,11 +62,11 @@ const LoginForm = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="login-form-container">
+    <div className="auth-container">
       <h2>Log In</h2>
       {error && <div className="error-message">{error}</div>}
       
-      <form onSubmit={handleSubmit} className="login-form">
+      <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
           <label htmlFor="email">Email</label>
           <input
@@ -74,7 +75,8 @@ const LoginForm = ({ onLoginSuccess }) => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="form-control"
+            className={error ? "form-control input-error" : "form-control"}
+            placeholder="Enter your email"
           />
         </div>
         
@@ -86,23 +88,22 @@ const LoginForm = ({ onLoginSuccess }) => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="form-control"
+            className={error ? "form-control input-error" : "form-control"}
+            placeholder="Enter your password"
           />
         </div>
         
         <button 
           type="submit" 
-          className="submit-button"
+          className="submit-btn"
           disabled={isLoading}
         >
           {isLoading ? 'Logging in...' : 'Log In'}
         </button>
       </form>
       
-      <div className="form-footer">
-        <p>
-          Don't have an account? <Link to="/register">Sign up</Link>
-        </p>
+      <div className="auth-links">
+        Don't have an account? <Link to="/register">Sign up</Link>
       </div>
     </div>
   );
