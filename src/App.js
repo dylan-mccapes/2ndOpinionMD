@@ -13,7 +13,6 @@ import SymptomIntakeForm from './components/SymptomIntake/SymptomIntakeForm';
 import AIResponseDisplay from './components/AIResponse/AIResponseDisplay';
 
 import HeroSection from './components/HeroSection/HeroSection';
-import PricingSection from './components/PricingSection/PricingSection';
 import DoctorEndorsement from './components/DoctorEndorsement/DoctorEndorsement';
 
 import SplashPage from './components/auth/SplashPage';
@@ -27,6 +26,7 @@ import JournalDetail from './components/journal/JournalDetail';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [diagnosticResults, setDiagnosticResults] = useState(null);
   
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -98,6 +98,8 @@ function App() {
   ];
   
   const handleSymptomFormSubmit = (data) => {
+    setDiagnosticResults(data);
+    window.location.href = '/report';
   };
 
   return (
@@ -114,12 +116,56 @@ function App() {
             !isAuthenticated ? <Navigate to="/splash" /> : (
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
-                  {HeroSection && <HeroSection />}
-                  <TestimonialCarousel />
-                  <DoctorEndorsement />
-                  <ReportOverview report={sampleReport} />
-                  {PricingSection && <PricingSection />}
-                  <FAQAccordion />
+                  <div className="dashboard-container">
+                    <h1>Welcome, {user?.full_name || 'User'}</h1>
+                    
+                    <TestimonialCarousel />
+                    
+                    <div className="dashboard-description">
+                      <h2>Simple, Transparent Service</h2>
+                      <p>
+                        Choose the option that fits your needs. Track your symptoms, get insights, and share with your healthcare provider.
+                      </p>
+                      <p>
+                        Our AI-powered platform provides second-opinion reports for autoimmune disease diagnosis support, helping you on your diagnostic journey.
+                      </p>
+                      <p>
+                        No hidden fees or subscriptions. We're currently in beta testing and would love your feedback!
+                      </p>
+                    </div>
+                    
+                    <div className="dashboard-features">
+                      <div className="feature-item">
+                        <h3>Symptom Analysis</h3>
+                        <ul>
+                          <li>Comprehensive symptom evaluation</li>
+                          <li>Potential conditions identified</li>
+                          <li>Red flag symptoms highlighted</li>
+                          <li>Suggested lab tests</li>
+                        </ul>
+                      </div>
+                      <div className="feature-item">
+                        <h3>Symptom Journal</h3>
+                        <ul>
+                          <li>Track symptoms over time</li>
+                          <li>AI-powered insights</li>
+                          <li>Pattern recognition</li>
+                          <li>Share with healthcare providers</li>
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    <div className="dashboard-buttons">
+                      <Link to="/intake" className="dashboard-button symptom-button">
+                        <h3>Symptom Analysis</h3>
+                        <p>Enter your symptoms for an AI-powered analysis</p>
+                      </Link>
+                      <Link to="/journal/new" className="dashboard-button journal-button">
+                        <h3>Symptom Journal</h3>
+                        <p>Track your symptoms over time and get insights</p>
+                      </Link>
+                    </div>
+                  </div>
                 </main>
               </Layout>
             )
@@ -130,14 +176,55 @@ function App() {
             <ProtectedRoute>
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
-                  <h1>Welcome, {user?.full_name || 'User'}</h1>
-                  <div className="dashboard-actions">
-                    <Link to="/journal" className="dashboard-button">
-                      Journal
-                    </Link>
-                    <Link to="/intake" className="dashboard-button">
-                      Symptom Intake
-                    </Link>
+                  <div className="dashboard-container">
+                    <h1>Welcome, {user?.full_name || 'User'}</h1>
+                    
+                    <TestimonialCarousel />
+                    
+                    <div className="dashboard-description">
+                      <h2>Simple, Transparent Service</h2>
+                      <p>
+                        Choose the option that fits your needs. Track your symptoms, get insights, and share with your healthcare provider.
+                      </p>
+                      <p>
+                        Our AI-powered platform provides second-opinion reports for autoimmune disease diagnosis support, helping you on your diagnostic journey.
+                      </p>
+                      <p>
+                        No hidden fees or subscriptions. We're currently in beta testing and would love your feedback!
+                      </p>
+                    </div>
+                    
+                    <div className="dashboard-features">
+                      <div className="feature-item">
+                        <h3>Symptom Analysis</h3>
+                        <ul>
+                          <li>Comprehensive symptom evaluation</li>
+                          <li>Potential conditions identified</li>
+                          <li>Red flag symptoms highlighted</li>
+                          <li>Suggested lab tests</li>
+                        </ul>
+                      </div>
+                      <div className="feature-item">
+                        <h3>Symptom Journal</h3>
+                        <ul>
+                          <li>Track symptoms over time</li>
+                          <li>AI-powered insights</li>
+                          <li>Pattern recognition</li>
+                          <li>Share with healthcare providers</li>
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    <div className="dashboard-buttons">
+                      <Link to="/intake" className="dashboard-button symptom-button">
+                        <h3>Symptom Analysis</h3>
+                        <p>Enter your symptoms for an AI-powered analysis</p>
+                      </Link>
+                      <Link to="/journal/new" className="dashboard-button journal-button">
+                        <h3>Symptom Journal</h3>
+                        <p>Track your symptoms over time and get insights</p>
+                      </Link>
+                    </div>
                   </div>
                 </main>
               </Layout>
@@ -149,6 +236,9 @@ function App() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
+                  <div className="home-button-container">
+                    <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                  </div>
                 </main>
               </Layout>
             </ProtectedRoute>
@@ -158,7 +248,10 @@ function App() {
             <ProtectedRoute>
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
-                  <AIResponseDisplay diagnosticResults={sampleDiagnosticResults} />
+                  <AIResponseDisplay diagnosticResults={diagnosticResults || sampleDiagnosticResults} />
+                  <div className="home-button-container">
+                    <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                  </div>
                 </main>
               </Layout>
             </ProtectedRoute>
@@ -170,6 +263,9 @@ function App() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <JournalList />
+                  <div className="home-button-container">
+                    <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                  </div>
                 </main>
               </Layout>
             </ProtectedRoute>
@@ -180,6 +276,9 @@ function App() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <JournalForm />
+                  <div className="home-button-container">
+                    <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                  </div>
                 </main>
               </Layout>
             </ProtectedRoute>
@@ -190,6 +289,9 @@ function App() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <JournalDetail />
+                  <div className="home-button-container">
+                    <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                  </div>
                 </main>
               </Layout>
             </ProtectedRoute>
@@ -201,6 +303,9 @@ function App() {
               <main className="App-main">
                 <h1>Privacy Policy</h1>
                 <p>This is the privacy policy page.</p>
+                <div className="home-button-container">
+                  <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                </div>
               </main>
             </Layout>
           } />
@@ -210,6 +315,9 @@ function App() {
               <main className="App-main">
                 <h1>Medical Disclaimer</h1>
                 <p>This is the medical disclaimer page.</p>
+                <div className="home-button-container">
+                  <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                </div>
               </main>
             </Layout>
           } />

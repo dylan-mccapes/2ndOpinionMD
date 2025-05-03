@@ -149,7 +149,7 @@ const JournalForm = () => {
   
   return (
     <div className="journal-form-container">
-      <h2>New Journal Entry</h2>
+      <h2>Symptom Journal</h2>
       <p className="form-description">
         Track your symptoms, environmental factors, and other health metrics to help identify patterns.
       </p>
@@ -169,6 +169,7 @@ const JournalForm = () => {
                   value={symptom.symptom}
                   onChange={(e) => handleSymptomChange(index, 'symptom', e.target.value)}
                   required={index === 0}
+                  className="form-control"
                 />
               </div>
               
@@ -181,13 +182,14 @@ const JournalForm = () => {
                     max="10"
                     value={symptom.severity}
                     onChange={(e) => handleSymptomChange(index, 'severity', e.target.value)}
+                    className="form-range"
                   />
                 </label>
               </div>
               
               <button 
                 type="button" 
-                className="remove-button"
+                className="btn btn-outline-danger remove-button"
                 onClick={() => removeSymptom(index)}
                 disabled={formData.symptoms.length === 1}
               >
@@ -198,7 +200,7 @@ const JournalForm = () => {
           
           <button 
             type="button" 
-            className="add-button"
+            className="btn btn-outline-primary add-button"
             onClick={addSymptom}
           >
             Add Symptom
@@ -215,6 +217,7 @@ const JournalForm = () => {
                   value={factor.factor_type}
                   onChange={(e) => handleFactorChange(index, 'factor_type', e.target.value)}
                   required={index === 0}
+                  className="form-select"
                 >
                   <option value="">Select type</option>
                   <option value="food">Food</option>
@@ -232,12 +235,13 @@ const JournalForm = () => {
                   value={factor.description}
                   onChange={(e) => handleFactorChange(index, 'description', e.target.value)}
                   required={index === 0}
+                  className="form-control"
                 />
               </div>
               
               <button 
                 type="button" 
-                className="remove-button"
+                className="btn btn-outline-danger remove-button"
                 onClick={() => removeFactor(index)}
                 disabled={formData.environmental_factors.length === 1}
               >
@@ -248,7 +252,7 @@ const JournalForm = () => {
           
           <button 
             type="button" 
-            className="add-button"
+            className="btn btn-outline-primary add-button"
             onClick={addFactor}
           >
             Add Factor
@@ -268,6 +272,7 @@ const JournalForm = () => {
                 name="stress_level"
                 value={formData.stress_level}
                 onChange={handleChange}
+                className="form-range"
               />
             </label>
           </div>
@@ -282,6 +287,7 @@ const JournalForm = () => {
                 name="sleep_quality"
                 value={formData.sleep_quality}
                 onChange={handleChange}
+                className="form-range"
               />
             </label>
           </div>
@@ -295,6 +301,7 @@ const JournalForm = () => {
                 onChange={handleChange}
                 placeholder="Describe what you ate today, any dietary changes, etc."
                 rows="3"
+                className="form-control"
               />
             </label>
           </div>
@@ -308,16 +315,19 @@ const JournalForm = () => {
             onChange={handleChange}
             placeholder="Any other observations or notes about your health today..."
             rows="4"
+            className="form-control"
           />
         </section>
         
-        <button 
-          type="submit" 
-          className="submit-button"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Saving...' : 'Save Journal Entry'}
-        </button>
+        <div className="form-actions">
+          <button 
+            type="submit" 
+            className="btn btn-primary submit-btn"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Saving...' : 'Save Journal Entry'}
+          </button>
+        </div>
       </form>
     </div>
   );
