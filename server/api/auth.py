@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -33,7 +33,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     
     await users_collection.update_one(
         {"email": user.email},
-        {"$set": {"last_login": timedelta(minutes=0)}}
+        {"$set": {"last_login": datetime.utcnow()}}
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
