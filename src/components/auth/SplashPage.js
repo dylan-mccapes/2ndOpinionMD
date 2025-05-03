@@ -8,7 +8,7 @@ const SplashPage = () => {
       <div className="splash-content">
         <div className="logo-container">
           <img 
-            src="/2ndOpinionMD-logo.jpg" 
+            src="/images/2ndOpinionMD-logo.jpg" 
             alt="2ndOpinionMD Logo" 
             className="splash-logo" 
           />
