@@ -14,47 +14,55 @@ export const processSymptomInput = async (formData) => {
     if (formData.symptoms && Array.isArray(formData.symptoms)) {
       symptoms = formData.symptoms.map(s => {
         if (typeof s === 'object' && s.label) {
-          return s.label;
+          return s.label.trim(); // React-select returns objects with label property
         } else if (typeof s === 'string') {
-          return s;
+          return s.trim();
         } else {
-          return String(s);
+          return String(s).trim();
         }
-      });
+      }).filter(s => s.length > 0); // Remove any empty strings
     } else if (formData.symptoms && typeof formData.symptoms === 'string') {
-      symptoms = [formData.symptoms];
-    } else {
+      symptoms = [formData.symptoms.trim()];
+    }
+    
+    if (symptoms.length === 0) {
       symptoms = ["General discomfort"];
     }
     
     console.log('Processed symptoms array:', symptoms);
     
-    const demographics = {
-      age: parseInt(formData.age) || 30,
-      gender: formData.sex?.value || formData.gender || "Female",
-      race: formData.race || "Not specified",
-      height: formData.height || "5 feet 8 inches",
-      weight: parseInt(formData.weight) || 150,
-      occupation: formData.occupation || "Not specified"
-    };
-    
-    console.log('Processed demographics:', demographics);
+    const age = parseInt(formData.age);
+    const weight = parseInt(formData.weight);
     
     const apiData = {
       symptoms: symptoms,
       demographics: {
-        age: parseInt(formData.age) || 30,
+        age: isNaN(age) ? 30 : age,
         gender: formData.sex?.value || formData.gender || "Female",
         race: formData.race || "Not specified",
         height: formData.height || "5 feet 8 inches",
-        weight: parseInt(formData.weight) || 150,
+        weight: isNaN(weight) ? 150 : weight,
         occupation: formData.occupation || "Not specified"
       },
       model: "gpt-3.5-turbo" // Match default in backend
     };
     
+    console.log('===== EXACT REQUEST STRUCTURE =====');
+    console.log(JSON.stringify({
+      symptoms: apiData.symptoms,
+      demographics: apiData.demographics,
+      model: apiData.model
+    }, null, 2));
+    
     console.log('===== DIAGNOSE REQUEST PAYLOAD =====');
     console.log(JSON.stringify(apiData, null, 2));
+    
+    console.log('===== FIELD TYPES =====');
+    console.log('symptoms type:', Array.isArray(apiData.symptoms) ? 'Array' : typeof apiData.symptoms);
+    console.log('demographics type:', typeof apiData.demographics);
+    console.log('model type:', typeof apiData.model);
+    console.log('age type:', typeof apiData.demographics.age);
+    console.log('weight type:', typeof apiData.demographics.weight);
     
     const requestDebugDiv = document.createElement('div');
     requestDebugDiv.id = 'request-debug-info';
