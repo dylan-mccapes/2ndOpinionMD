@@ -12,7 +12,15 @@ export const processSymptomInput = async (formData) => {
     
     let symptoms = [];
     if (formData.symptoms && Array.isArray(formData.symptoms)) {
-      symptoms = formData.symptoms.map(s => typeof s === 'object' && s.label ? s.label : String(s));
+      symptoms = formData.symptoms.map(s => {
+        if (typeof s === 'object' && s.label) {
+          return s.label;
+        } else if (typeof s === 'string') {
+          return s;
+        } else {
+          return String(s);
+        }
+      });
     } else if (formData.symptoms && typeof formData.symptoms === 'string') {
       symptoms = [formData.symptoms];
     } else {
@@ -34,7 +42,14 @@ export const processSymptomInput = async (formData) => {
     
     const apiData = {
       symptoms: symptoms,
-      demographics: demographics,
+      demographics: {
+        age: parseInt(formData.age) || 30,
+        gender: formData.sex?.value || formData.gender || "Female",
+        race: formData.race || "Not specified",
+        height: formData.height || "5 feet 8 inches",
+        weight: parseInt(formData.weight) || 150,
+        occupation: formData.occupation || "Not specified"
+      },
       model: "gpt-3.5-turbo" // Match default in backend
     };
     
