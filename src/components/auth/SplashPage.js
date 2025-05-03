@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import '../../styles/SplashPage.css';
+import './Auth.css';
 
 const SplashPage = () => {
   return (
