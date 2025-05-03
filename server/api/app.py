@@ -1,21 +1,26 @@
 import os
 import json
+import logging
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException, Body, Depends
+from fastapi import FastAPI, HTTPException, Body, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
 import sys
+import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.query_engine import MedicalQueryEngine
+from vectordb.query_engine_improved import MedicalQueryEngine
 from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
 
 from api.auth import router as auth_router
 from api.journal import router as journal_router
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -43,6 +48,25 @@ class SymptomRequest(BaseModel):
 class DiagnosisResponse(BaseModel):
     diagnoses: List[Dict[str, Any]]
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """
+    Middleware to log all requests and handle exceptions
+    """
+    try:
+        logger.info(f"Request: {request.method} {request.url}")
+        
+        response = await call_next(request)
+        
+        logger.info(f"Response: {response.status_code}")
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
@@ -52,13 +76,27 @@ async def diagnose(
     Generate a diagnosis based on symptoms and optional demographics
     """
     try:
+        logger.info(f"Diagnose request: symptoms={request.symptoms}")
+        logger.info(f"Diagnose request: demographics={request.demographics}")
+        logger.info(f"Diagnose request: model={request.model}")
+        
+        if not request.symptoms or not isinstance(request.symptoms, list):
+            logger.error(f"Invalid symptoms format: {request.symptoms}")
+            raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
+        
         response = query_engine.generate_rag_response(
             symptoms=request.symptoms, 
             model=request.model,
             demographics=request.demographics
         )
+        
+        logger.info(f"Diagnose response: {response}")
+        
         return response
     except Exception as e:
+        logger.error(f"Error generating diagnosis: {str(e)}")
+        logger.error(traceback.format_exc())
+        
         raise HTTPException(status_code=500, detail=f"Error generating diagnosis: {str(e)}")
 
 @app.get("/api/health")
@@ -72,7 +110,8 @@ async def health_check():
         "status": "ok",
         "services": {
             "api": "ok",
-            "mongodb": mongo_status
+            "mongodb": mongo_status,
+            "chroma": "ok" if query_engine.collections else "error"
         }
     }
 
