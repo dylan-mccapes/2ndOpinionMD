@@ -174,9 +174,9 @@ const axiosInstance = axios.create();
 axiosInstance.interceptors.response.use(
   response => response,
   error => {
-    if (error.response && error.response.status === 401) {
-      console.error('Authentication error, but preventing redirect');
-      saveDebugInfo('auth_error', {
+    if (error.response) {
+      console.error(`API Error (${error.response.status}), preventing redirect`);
+      saveDebugInfo('api_error', {
         status: error.response.status,
         statusText: error.response.statusText,
         data: error.response.data,
@@ -210,41 +210,34 @@ export const processSymptomInput = async (formData) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    let symptoms = [];
-    if (formData.symptoms && Array.isArray(formData.symptoms)) {
-      symptoms = formData.symptoms.map(s => {
-        if (typeof s === 'object' && s.label) {
-          return s.label.trim(); // React-select returns objects with label property
-        } else if (typeof s === 'string') {
-          return s.trim();
-        } else {
-          return String(s).trim();
-        }
-      }).filter(s => s.length > 0); // Remove any empty strings
-    } else if (formData.symptoms && typeof formData.symptoms === 'string') {
-      symptoms = [formData.symptoms.trim()];
-    }
-    
-    if (symptoms.length === 0) {
-      symptoms = ["General discomfort"];
-    }
-    
-    console.log('Processed symptoms array:', symptoms);
-    
-    const age = parseInt(formData.age);
-    const weight = parseInt(formData.weight);
-    
     const apiData = {
-      symptoms: symptoms,
+      symptoms: [
+        "Really painful periods lasting about 7 days",
+        "Painful some times tingling in the extremities.",
+        "Lots of bloating after means",
+        "Brain fog some days.",
+        "Some days better than others",
+        "Sleep can be interrupted due to discomfort.",
+        "Migraines occasionally.",
+        "I pride myself on being strong so I push through the pain most days",
+        "Tylenol to help",
+        "Naproxen during my painful periods.",
+        "Been to the doctors when I've had consistent headaches for pain/tingling",
+        "MRI haven't shown much.",
+        "MD mentioned I may be pre-diabetic on my last visit.",
+        "All other labs mostly normal.",
+        "I feel certain days, I just power through with caffeine.",
+        "When I get sick I feel really weak. Like my limbs are super tired. But that's normal right?"
+      ],
       demographics: {
-        age: isNaN(age) ? 30 : age,
-        gender: formData.sex?.value || formData.gender || "Female",
-        race: formData.race || "Not specified",
-        height: formData.height || "5 feet 8 inches",
-        weight: isNaN(weight) ? 150 : weight,
-        occupation: formData.occupation || "Not specified"
+        age: 27,
+        gender: "Female",
+        race: "Black",
+        height: "5 feet 6 inches",
+        weight: 168,
+        occupation: "Retail manager"
       },
-      model: "gpt-3.5-turbo" // Match default in backend
+      model: "gpt-3.5-turbo"
     };
     
     console.log('===== EXACT REQUEST STRUCTURE =====');
@@ -299,6 +292,8 @@ export const processSymptomInput = async (formData) => {
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
     
+    debugger;
+    
     setBreakpointIfEnabled();
     
     let errorData = {
@@ -325,9 +320,9 @@ export const processSymptomInput = async (formData) => {
       
       updateDebugPanel();
       
-      if (error.response.status === 401 && error.preventRedirect) {
-        console.warn('Authentication error occurred but redirect prevented');
-        return { error: 'Authentication error', details: errorData };
+      if (error.preventRedirect) {
+        console.warn(`API Error (${error.response.status}) occurred but redirect prevented`);
+        return { error: `API Error (${error.response.status})`, details: errorData };
       }
       
       return { error: `API Error (${error.response.status})`, details: errorData };
