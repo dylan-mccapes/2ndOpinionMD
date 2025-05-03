@@ -6,14 +6,19 @@ import chromadb
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import openai
+import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY environment variable not set")
+    logger.warning("OPENAI_API_KEY environment variable not set. Using placeholder for demo.")
+    openai_api_key = "sk-placeholder"
 
 openai.api_key = openai_api_key
 
@@ -30,27 +35,47 @@ class MedicalQueryEngine:
         Args:
             persist_directory: Directory where ChromaDB data is persisted
         """
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        os.makedirs(persist_directory, exist_ok=True)
         
-        # Get all available collections
-        self.collections = {}
-        for collection_info in self.client.list_collections():
-            collection_name = collection_info.name
-            self.collections[collection_name] = self.client.get_collection(
-                name=collection_name,
-                embedding_function=openai_ef
-            )
-        
-        if not self.collections:
-            self.collections["disease"] = self.client.get_or_create_collection(
-                name="disease",
-                embedding_function=openai_ef
-            )
+        try:
+            self.client = chromadb.PersistentClient(path=persist_directory)
             
-            self.collections["citation"] = self.client.get_or_create_collection(
-                name="citation",
-                embedding_function=openai_ef
-            )
+            self.collections = {}
+            for collection_info in self.client.list_collections():
+                collection_name = collection_info.name
+                self.collections[collection_name] = self.client.get_collection(
+                    name=collection_name,
+                    embedding_function=openai_ef
+                )
+            
+            if not self.collections:
+                logger.info("No collections found. Creating default collections.")
+                self.collections["disease"] = self.client.get_or_create_collection(
+                    name="disease",
+                    embedding_function=openai_ef
+                )
+                
+                self.collections["citation"] = self.client.get_or_create_collection(
+                    name="citation",
+                    embedding_function=openai_ef
+                )
+                
+                from vectordb.initialize_db import initialize_chroma_db
+                initialize_chroma_db(persist_directory)
+                
+                self.collections = {}
+                for collection_info in self.client.list_collections():
+                    collection_name = collection_info.name
+                    self.collections[collection_name] = self.client.get_collection(
+                        name=collection_name,
+                        embedding_function=openai_ef
+                    )
+        except Exception as e:
+            logger.error(f"Error initializing ChromaDB: {e}")
+            self.collections = {
+                "disease": None,
+                "citation": None
+            }
     
     def query_collection(self, collection_name: str, query: str, top_k: int = 5):
         """
@@ -64,32 +89,37 @@ class MedicalQueryEngine:
         Returns:
             List of results with metadata
         """
-        if collection_name not in self.collections:
+        if collection_name not in self.collections or self.collections[collection_name] is None:
+            logger.warning(f"Collection '{collection_name}' not found or not initialized")
             return []
         
-        results = self.collections[collection_name].query(
-            query_texts=[query],
-            n_results=top_k
-        )
-        
-        formatted_results = []
-        for i, doc_id in enumerate(results["ids"][0]):
-            metadata = results["metadatas"][0][i]
-            distance = results["distances"][0][i] if "distances" in results else 0
+        try:
+            results = self.collections[collection_name].query(
+                query_texts=[query],
+                n_results=top_k
+            )
             
-            similarity = 1 - min(distance, 1.0)  # Ensure similarity is between 0 and 1
-            confidence = int(similarity * 100)
+            formatted_results = []
+            for i, doc_id in enumerate(results["ids"][0]):
+                metadata = results["metadatas"][0][i]
+                distance = results["distances"][0][i] if "distances" in results else 0
+                
+                similarity = 1 - min(distance, 1.0)  # Ensure similarity is between 0 and 1
+                confidence = int(similarity * 100)
+                
+                result = {
+                    "id": doc_id,
+                    "confidence": confidence,
+                    "text": results["documents"][0][i],
+                    "metadata": metadata
+                }
+                
+                formatted_results.append(result)
             
-            result = {
-                "id": doc_id,
-                "confidence": confidence,
-                "text": results["documents"][0][i],
-                "metadata": metadata
-            }
-            
-            formatted_results.append(result)
-        
-        return formatted_results
+            return formatted_results
+        except Exception as e:
+            logger.error(f"Error querying collection '{collection_name}': {e}")
+            return []
     
     def query_all_collections(self, query: str, top_k: int = 3):
         """
@@ -123,13 +153,33 @@ class MedicalQueryEngine:
         Returns:
             Dictionary containing the RAG response
         """
+        logger.info(f"Generating RAG response with model: {model}")
+        logger.info(f"Symptoms: {symptoms}")
+        logger.info(f"Demographics: {demographics}")
+        
+        if not symptoms or not isinstance(symptoms, list):
+            logger.error(f"Invalid symptoms format: {symptoms}")
+            return {
+                "diagnoses": [
+                    {
+                        "name": "Input Error",
+                        "confidence": 0,
+                        "explanation": "Invalid symptoms format. Please provide a list of symptom strings.",
+                        "redFlags": [],
+                        "labSuggestions": []
+                    }
+                ]
+            }
+        
         query_text = f"Patient symptoms: {', '.join(symptoms)}"
         
         if demographics:
-            demo_text = ", ".join([f"{k}: {v}" for k, v in demographics.items()])
-            query_text += f"\nPatient demographics: {demo_text}"
+            try:
+                demo_text = ", ".join([f"{k}: {v}" for k, v in demographics.items()])
+                query_text += f"\nPatient demographics: {demo_text}"
+            except Exception as e:
+                logger.error(f"Error formatting demographics: {e}")
         
-        # Query all collections
         all_results = self.query_all_collections(query_text)
         
         context = ""
@@ -171,7 +221,18 @@ class MedicalQueryEngine:
                 context += f"{result['text']}\n\n"
         
         if not context:
-            return {"diagnoses": []}
+            logger.warning("No relevant context found in vector database")
+            return {
+                "diagnoses": [
+                    {
+                        "name": "Insufficient Data",
+                        "confidence": 0,
+                        "explanation": "Unable to find relevant medical information for the provided symptoms. Please provide more detailed symptoms.",
+                        "redFlags": [],
+                        "labSuggestions": ["Complete blood count", "Comprehensive metabolic panel"]
+                    }
+                ]
+            }
         
         demographics_str = ""
         if demographics:
@@ -205,16 +266,16 @@ class MedicalQueryEngine:
         }}
         """
         
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        
         try:
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
+            
             content = response.choices[0].message['content']
             
             if content.startswith("```json") or content.startswith("```"):
@@ -229,8 +290,10 @@ class MedicalQueryEngine:
             analysis = json.loads(content)
             return analysis
         except Exception as e:
-            print(f"Error parsing response: {e}")
-            print(f"Response content: {response.choices[0].message['content']}")
+            logger.error(f"Error generating RAG response: {e}")
+            if 'response' in locals():
+                logger.error(f"Response content: {response.choices[0].message['content']}")
+            
             return {
                 "diagnoses": [
                     {
