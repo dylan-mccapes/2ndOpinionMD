@@ -21,7 +21,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       
       const response = await processSymptomInput(data);
       
-      onSubmit(response.diagnoses || response);
+      if (response && response.error) {
+        throw new Error(response.error);
+      }
+      
+      onSubmit(response);
     } catch (err) {
       console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');

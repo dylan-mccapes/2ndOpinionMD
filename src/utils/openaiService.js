@@ -194,7 +194,7 @@ axiosInstance.interceptors.response.use(
 
 const setBreakpointIfEnabled = () => {
   if (localStorage.getItem('debug_breakpoints_enabled') === 'true') {
-    debugger;
+    console.log('Debug breakpoint would be set here if debugger statements were enabled');
   }
 };
 
@@ -280,8 +280,6 @@ export const processSymptomInput = async (formData) => {
     console.error('===== DIAGNOSE ERROR =====');
     console.error('Error Type:', error.name);
     console.error('Error Message:', error.message);
-    
-    debugger;
     
     setBreakpointIfEnabled();
     
