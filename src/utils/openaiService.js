@@ -193,8 +193,12 @@ axiosInstance.interceptors.response.use(
 );
 
 const setBreakpointIfEnabled = () => {
-  if (localStorage.getItem('debug_breakpoints_enabled') === 'true') {
-    console.log('Debug breakpoint would be set here if debugger statements were enabled');
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('debug_breakpoints_enabled') === 'true') {
+      console.log('Debug breakpoint triggered - error details logged above');
+    }
+  } catch (e) {
+    console.log('Debug breakpoint check failed:', e.message);
   }
 };
 
