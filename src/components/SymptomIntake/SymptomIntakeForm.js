@@ -30,7 +30,6 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
       
-      onSubmit(data);
     } finally {
       setIsLoading(false);
     }
