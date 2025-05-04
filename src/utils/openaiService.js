@@ -260,22 +260,68 @@ export const processSymptomInput = async (formData) => {
     
     updateDebugPanel();
     
-    if (response.data && response.data.diagnoses) {
-      const transformedData = response.data.diagnoses.map(diagnosis => ({
-        name: diagnosis.name,
-        confidence: diagnosis.confidence,
-        symptoms: diagnosis.explanation ? [diagnosis.explanation] : [],
-        redFlags: diagnosis.redFlags || [],
-        labSuggestions: diagnosis.labSuggestions || []
-      }));
+    try {
+      console.log('===== RESPONSE DATA STRUCTURE =====');
+      console.log('response.data type:', typeof response.data);
+      console.log('response.data keys:', response.data ? Object.keys(response.data) : 'null/undefined');
       
-      console.log('===== TRANSFORMED RESPONSE =====');
-      console.log(JSON.stringify(transformedData, null, 2));
+      if (response.data && response.data.diagnoses && Array.isArray(response.data.diagnoses)) {
+        const transformedData = response.data.diagnoses.map(diagnosis => ({
+          name: diagnosis.name || 'Unknown Condition',
+          confidence: diagnosis.confidence || 0,
+          symptoms: diagnosis.explanation ? [diagnosis.explanation] : [],
+          redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],
+          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : []
+        }));
+        
+        console.log('===== TRANSFORMED RESPONSE (FORMAT 1) =====');
+        console.log(JSON.stringify(transformedData, null, 2));
+        
+        return transformedData;
+      } else if (response.data && Array.isArray(response.data)) {
+        const transformedData = response.data.map(diagnosis => ({
+          name: diagnosis.name || 'Unknown Condition',
+          confidence: diagnosis.confidence || 0,
+          symptoms: diagnosis.explanation ? [diagnosis.explanation] : 
+                   (Array.isArray(diagnosis.symptoms) ? diagnosis.symptoms : []),
+          redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],
+          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : []
+        }));
+        
+        console.log('===== TRANSFORMED RESPONSE (FORMAT 2) =====');
+        console.log(JSON.stringify(transformedData, null, 2));
+        
+        return transformedData;
+      } else if (response.data) {
+        console.log('===== UNKNOWN RESPONSE FORMAT =====');
+        console.log(JSON.stringify(response.data, null, 2));
+        
+        return response.data;
+      }
       
-      return transformedData;
+      console.warn('Empty or invalid response data');
+      return [];
+    } catch (transformError) {
+      console.error('Error transforming diagnoses data:', transformError);
+      console.log('Original response data:', response.data);
+      
+      if (response.data && response.data.diagnoses) {
+        return response.data.diagnoses;
+      } else if (response.data && Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data) {
+        return [{ 
+          name: 'Data Processing Error', 
+          confidence: 0,
+          explanation: 'There was an error processing the response data. Please try again.',
+          symptoms: [],
+          redFlags: ['Error in data processing'],
+          labSuggestions: []
+        }];
+      }
+      
+      return [];
     }
-    
-    return response.data;
   } catch (error) {
     console.error('===== DIAGNOSE ERROR =====');
     console.error('Error Type:', error.name);
