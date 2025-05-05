@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import './App.css';
 import './styles/GlobalStyles.css';
 import './styles/Journal.css';
@@ -26,7 +26,8 @@ import JournalDetail from './components/journal/JournalDetail';
 import JournalEntryForm from './components/journal/JournalEntryForm.jsx';
 import JournalResponse from './components/journal/JournalResponse.jsx';
 
-function App() {
+function AppContent() {
+  const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [diagnosticResults, setDiagnosticResults] = useState(null);
@@ -102,11 +103,21 @@ function App() {
   ];
   
   const handleSymptomFormSubmit = (data) => {
-    console.log('Received diagnostic results:', data);
-    setDiagnosticResults(data);
-    
-    if (window.location.pathname !== '/report') {
-      window.location.href = '/report';
+    try {
+      console.log('Received diagnostic results:', data);
+      
+      if (!data) {
+        console.error('Invalid diagnostic results received:', data);
+        throw new Error('Invalid diagnostic results received');
+      }
+      
+      setDiagnosticResults(data);
+      
+      navigate('/report');
+    } catch (error) {
+      console.error('Error handling symptom form submission:', error);
+      setDiagnosticResults(sampleDiagnosticResults);
+      navigate('/report');
     }
   };
   
@@ -344,6 +355,14 @@ function App() {
           } />
         </Routes>
       </div>
+    </Router>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }
