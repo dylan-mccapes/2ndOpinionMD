@@ -394,6 +394,75 @@ export const processSymptomInput = async (formData) => {
   }
 };
 
+/**
+ * Intelligently categorizes journal text into symptoms, environmental factors, and life stressors
+ * @param {string} journalText - The free-form journal text to categorize
+ * @returns {Object} Object containing categorized symptoms, environmental factors, and stress factors
+ */
+const categorizeJournalText = (journalText) => {
+  const phrases = journalText.split(/[.,!?;\n]+/).map(phrase => phrase.trim()).filter(phrase => phrase.length > 0);
+  
+  const symptoms = [];
+  const environmentalFactors = [];
+  const stressFactors = [];
+  
+  const dietKeywords = ['eat', 'eating', 'food', 'diet', 'gluten', 'dairy', 'sugar', 'carb', 'protein', 'meal', 'breakfast', 'lunch', 'dinner', 'snack', 'drink', 'alcohol'];
+  const environmentKeywords = ['weather', 'temperature', 'humidity', 'pollution', 'allergen', 'pollen', 'dust', 'mold', 'smoke', 'air quality', 'environment'];
+  const stressKeywords = ['stress', 'anxiety', 'worried', 'nervous', 'tension', 'pressure', 'overwhelm', 'work', 'deadline', 'relationship', 'family', 'financial', 'money'];
+  const symptomKeywords = ['pain', 'ache', 'hurt', 'sore', 'tired', 'fatigue', 'exhaust', 'dizzy', 'nausea', 'headache', 'migraine', 'fever', 'cough', 'rash', 'itch', 'swelling', 'stiff', 'weak', 'numb', 'tingle'];
+  
+  phrases.forEach(phrase => {
+    const lowerPhrase = phrase.toLowerCase();
+    
+    if (dietKeywords.some(keyword => lowerPhrase.includes(keyword))) {
+      environmentalFactors.push({
+        factor: phrase,
+        type: 'diet',
+        severity: 5
+      });
+      return; // Skip further checks for this phrase
+    }
+    
+    if (environmentKeywords.some(keyword => lowerPhrase.includes(keyword))) {
+      environmentalFactors.push({
+        factor: phrase,
+        type: 'environment',
+        severity: 5
+      });
+      return;
+    }
+    
+    if (stressKeywords.some(keyword => lowerPhrase.includes(keyword))) {
+      stressFactors.push({
+        factor: phrase,
+        severity: 5
+      });
+      return;
+    }
+    
+    if (symptomKeywords.some(keyword => lowerPhrase.includes(keyword)) || 
+        phrase.length > 5) { // Consider longer phrases as potential symptoms
+      symptoms.push({
+        symptom: phrase,
+        severity: 5
+      });
+    }
+  });
+  
+  if (symptoms.length === 0 && phrases.length > 0) {
+    symptoms.push({
+      symptom: phrases[0],
+      severity: 5
+    });
+  }
+  
+  return {
+    symptoms,
+    environmentalFactors,
+    stressFactors
+  };
+};
+
 export const processJournalEntry = async (journalText) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
@@ -406,20 +475,17 @@ export const processJournalEntry = async (journalText) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    const lines = journalText.split(/[.,!?;\n]+/);
-    const extractedSymptoms = lines
-      .filter(line => line.trim().length > 5) // Filter out very short phrases
-      .map(line => ({
-        symptom: line.trim(),
-        severity: 5 // Default middle severity since we don't have specific severity input
-      }));
+    if (typeof journalText !== 'string') {
+      console.error('Invalid journal text type:', typeof journalText);
+      throw new Error('Journal text must be a string');
+    }
     
-    const symptoms = extractedSymptoms.length > 0 
-      ? extractedSymptoms 
-      : [{ symptom: journalText, severity: 5 }];
+    const categorizedData = categorizeJournalText(journalText);
     
     const requestData = {
-      symptoms: symptoms,
+      symptoms: categorizedData.symptoms,
+      environmental_factors: categorizedData.environmentalFactors,
+      stress_factors: categorizedData.stressFactors,
       notes: journalText, // Include the full text as notes as well
       date: new Date().toISOString() // Add current date
     };
