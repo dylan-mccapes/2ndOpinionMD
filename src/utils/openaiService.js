@@ -406,7 +406,23 @@ export const processJournalEntry = async (journalText) => {
       throw new Error('Authentication required. Please log in.');
     }
     
-    const requestData = { entry: journalText };
+    const lines = journalText.split(/[.,!?;\n]+/);
+    const extractedSymptoms = lines
+      .filter(line => line.trim().length > 5) // Filter out very short phrases
+      .map(line => ({
+        symptom: line.trim(),
+        severity: 5 // Default middle severity since we don't have specific severity input
+      }));
+    
+    const symptoms = extractedSymptoms.length > 0 
+      ? extractedSymptoms 
+      : [{ symptom: journalText, severity: 5 }];
+    
+    const requestData = {
+      symptoms: symptoms,
+      notes: journalText, // Include the full text as notes as well
+      date: new Date().toISOString() // Add current date
+    };
     
     console.log('===== JOURNAL REQUEST PAYLOAD =====');
     console.log(JSON.stringify(requestData, null, 2));
@@ -438,7 +454,43 @@ export const processJournalEntry = async (journalText) => {
     
     updateDebugPanel();
     
-    return response.data;
+    if (response.data && response.data.ai_analysis) {
+      const analysis = response.data.ai_analysis;
+      
+      let responseText = '';
+      
+      if (analysis.analysis) {
+        responseText += analysis.analysis + '\n\n';
+      }
+      
+      if (analysis.followUpQuestions && analysis.followUpQuestions.length > 0) {
+        responseText += 'Follow-up Questions:\n';
+        analysis.followUpQuestions.forEach((question, index) => {
+          responseText += `${index + 1}. ${question}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0) {
+        responseText += 'Tracking Suggestions:\n';
+        analysis.trackingSuggestions.forEach((suggestion, index) => {
+          responseText += `${index + 1}. ${suggestion}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (analysis.patternObservations) {
+        responseText += `Pattern Observations: ${analysis.patternObservations}\n`;
+      }
+      
+      return { 
+        text: responseText.trim() || JSON.stringify(analysis)
+      };
+    }
+    
+    return { 
+      text: "Thank you for your journal entry. Your information has been recorded and analyzed."
+    };
   } catch (error) {
     console.error('===== JOURNAL ERROR =====');
     console.error('Error Type:', error.name);
@@ -472,10 +524,18 @@ export const processJournalEntry = async (journalText) => {
       
       if (error.response.status === 401 && error.preventRedirect) {
         console.warn('Authentication error occurred but redirect prevented');
-        return { error: 'Authentication error', details: errorData };
+        return { 
+          text: 'Authentication error. Please log in again.',
+          error: 'Authentication error', 
+          details: errorData 
+        };
       }
       
-      return { error: `API Error (${error.response.status})`, details: errorData };
+      return { 
+        text: `Error processing journal entry: ${error.response.status} ${error.response.statusText}. Please try again.`,
+        error: `API Error (${error.response.status})`, 
+        details: errorData 
+      };
     } else if (error.request) {
       console.error('Request:', error.request);
       
@@ -489,7 +549,11 @@ export const processJournalEntry = async (journalText) => {
       
       updateDebugPanel();
       
-      return { error: 'Network Error', details: errorData };
+      return { 
+        text: 'Network error. Please check your connection and try again.',
+        error: 'Network Error', 
+        details: errorData 
+      };
     } else {
       console.error('Error Config:', error.config);
       
@@ -502,7 +566,11 @@ export const processJournalEntry = async (journalText) => {
       
       updateDebugPanel();
       
-      return { error: 'Request Setup Error', details: errorData };
+      return { 
+        text: 'Error processing your journal entry. Please try again later.',
+        error: 'Request Setup Error', 
+        details: errorData 
+      };
     }
   }
 };
