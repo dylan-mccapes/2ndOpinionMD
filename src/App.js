@@ -121,14 +121,28 @@ function AppContent() {
     }
   };
   
-  const handleJournalSubmit = async (entry) => {
+  const handleJournalSubmit = async (entry, isTestMode = false) => {
     try {
-      const response = await processJournalEntry(entry);
+      console.log('Submitting journal entry in', isTestMode ? 'test mode' : 'normal mode');
+      
+      if (typeof entry !== 'string') {
+        console.error('Invalid entry type:', typeof entry);
+        throw new Error('Journal entry must be a string');
+      }
+      
+      const response = await processJournalEntry(entry, isTestMode);
+      console.log('Journal response received:', response);
       setJournalResponse(response);
     } catch (error) {
       console.error('Error processing journal entry:', error);
       setJournalResponse({ 
-        text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later." 
+        text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later.",
+        categories: {
+          symptoms: [],
+          environmental_factors: [],
+          life_stressors: []
+        },
+        fallback: true
       });
     }
   };
@@ -348,6 +362,21 @@ function AppContent() {
                 <p>This is the medical disclaimer page.</p>
                 <div className="home-button-container">
                   <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
+                </div>
+              </main>
+            </Layout>
+          } />
+          
+          {/* Test route for journal functionality without authentication */}
+          <Route path="/test/journal" element={
+            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+              <main className="App-main">
+                <h1>Journal Test Mode</h1>
+                <p>This page allows testing journal functionality without authentication.</p>
+                <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
+                {journalResponse && <JournalResponse response={journalResponse} />}
+                <div className="home-button-container">
+                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
                 </div>
               </main>
             </Layout>

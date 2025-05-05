@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useForm } from 'react-hook-form';
-import { processJournalEntry } from '../../utils/openaiService';
 import './JournalEntryForm.css';
 
 const JournalEntryForm = ({ onSubmit }) => {
@@ -14,11 +13,10 @@ const JournalEntryForm = ({ onSubmit }) => {
     setError('');
     
     try {
-      const response = await processJournalEntry(data.entry);
-      reset();
       if (onSubmit) {
-        onSubmit(response);
+        await onSubmit(data.entry);
       }
+      reset();
     } catch (err) {
       console.error('Error submitting journal entry:', err);
       setError(err.response?.data?.detail || 'Failed to process journal entry. Please try again.');

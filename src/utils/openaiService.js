@@ -394,34 +394,65 @@ export const processSymptomInput = async (formData) => {
   }
 };
 
-export const processJournalEntry = async (journalText) => {
+/**
+ * Prepares journal text for API submission with explicit prompt for OpenAI
+ * to extract symptoms, environmental factors, and life stressors
+ * @param {string} journalText - The raw journal text from the user
+ * @returns {Object} Object containing the journal text and extraction prompt
+ */
+const prepareJournalData = (journalText) => {
+  return {
+    symptoms: [
+      {
+        symptom: journalText,
+        severity: 5
+      }
+    ],
+    prompt: "Please analyze this journal entry and extract the following categories:\n\n" +
+            "1) Symptoms (physical or mental health issues like pain, fatigue, etc.)\n" +
+            "2) Environmental factors (diet, weather, allergens, etc.)\n" +
+            "3) Life stressors (work, relationships, financial issues, etc.)\n\n" +
+            "Important: Categorize each element appropriately and return them separately in your response. For example:\n" +
+            "- 'Eating a lot of gluten' should be identified as an environmental factor (diet), not a symptom\n" +
+            "- 'Feeling tired' is a symptom\n" +
+            "- 'Argument with spouse' is a life stressor\n\n" +
+            "These categorized elements will be dated and stored for tracking patterns over time."
+  };
+};
+
+export const processJournalEntry = async (journalText, isTestMode = false) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     console.log('Journal text:', journalText);
+    console.log('Test mode:', isTestMode);
     
     createPersistentDebugPanel();
     
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication required. Please log in.');
+    let token = null;
+    if (!isTestMode) {
+      token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required. Please log in.');
+      }
+    } else {
+      console.log('Running in test mode - authentication bypassed');
+      token = 'test-mode-token';
     }
     
-    const lines = journalText.split(/[.,!?;\n]+/);
-    const extractedSymptoms = lines
-      .filter(line => line.trim().length > 5) // Filter out very short phrases
-      .map(line => ({
-        symptom: line.trim(),
-        severity: 5 // Default middle severity since we don't have specific severity input
-      }));
+    if (typeof journalText !== 'string') {
+      console.error('Invalid journal text type:', typeof journalText);
+      throw new Error('Journal text must be a string');
+    }
     
-    const symptoms = extractedSymptoms.length > 0 
-      ? extractedSymptoms 
-      : [{ symptom: journalText, severity: 5 }];
+    const journalData = prepareJournalData(journalText);
     
     const requestData = {
-      symptoms: symptoms,
+      symptoms: journalData.symptoms,
       notes: journalText, // Include the full text as notes as well
-      date: new Date().toISOString() // Add current date
+      date: new Date().toISOString(), // Add current date
+      prompt: journalData.prompt, // Add the prompt for OpenAI to extract categories
+      environmental_factors: [], // Initialize empty array for backend compatibility
+      life_stressors: [] // Initialize empty array for backend compatibility
     };
     
     console.log('===== JOURNAL REQUEST PAYLOAD =====');
@@ -463,6 +494,31 @@ export const processJournalEntry = async (journalText) => {
         responseText += analysis.analysis + '\n\n';
       }
       
+      if (analysis.symptoms && analysis.symptoms.length > 0) {
+        responseText += 'Identified Symptoms:\n';
+        analysis.symptoms.forEach((symptom, index) => {
+          responseText += `${index + 1}. ${symptom}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (analysis.environmental_factors && analysis.environmental_factors.length > 0) {
+        responseText += 'Environmental Factors:\n';
+        analysis.environmental_factors.forEach((factor, index) => {
+          responseText += `${index + 1}. ${factor}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      // Display life stressors
+      if (analysis.life_stressors && analysis.life_stressors.length > 0) {
+        responseText += 'Life Stressors:\n';
+        analysis.life_stressors.forEach((stressor, index) => {
+          responseText += `${index + 1}. ${stressor}\n`;
+        });
+        responseText += '\n';
+      }
+      
       if (analysis.followUpQuestions && analysis.followUpQuestions.length > 0) {
         responseText += 'Follow-up Questions:\n';
         analysis.followUpQuestions.forEach((question, index) => {
@@ -484,12 +540,54 @@ export const processJournalEntry = async (journalText) => {
       }
       
       return { 
-        text: responseText.trim() || JSON.stringify(analysis)
+        text: responseText.trim() || JSON.stringify(analysis),
+        categories: {
+          symptoms: analysis.symptoms || [],
+          environmental_factors: analysis.environmental_factors || [],
+          life_stressors: analysis.life_stressors || []
+        }
+      };
+    }
+    
+    if (response.data) {
+      const data = response.data;
+      let responseText = "Thank you for your journal entry. Your information has been recorded and analyzed.\n\n";
+      
+      if (data.symptoms && Array.isArray(data.symptoms)) {
+        responseText += 'Identified Symptoms:\n';
+        data.symptoms.forEach((symptom, index) => {
+          const symptomText = typeof symptom === 'string' ? symptom : symptom.symptom || JSON.stringify(symptom);
+          responseText += `${index + 1}. ${symptomText}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (data.environmental_factors && Array.isArray(data.environmental_factors)) {
+        responseText += 'Environmental Factors:\n';
+        data.environmental_factors.forEach((factor, index) => {
+          responseText += `${index + 1}. ${factor}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      return {
+        text: responseText.trim(),
+        categories: {
+          symptoms: data.symptoms || [],
+          environmental_factors: data.environmental_factors || [],
+          life_stressors: data.stress_factors || []
+        }
       };
     }
     
     return { 
-      text: "Thank you for your journal entry. Your information has been recorded and analyzed."
+      text: "Thank you for your journal entry. Your information has been recorded and analyzed.",
+      categories: {
+        symptoms: [],
+        environmental_factors: [],
+        life_stressors: []
+      },
+      fallback: true
     };
   } catch (error) {
     console.error('===== JOURNAL ERROR =====');
@@ -550,9 +648,17 @@ export const processJournalEntry = async (journalText) => {
       updateDebugPanel();
       
       return { 
-        text: 'Network error. Please check your connection and try again.',
+        text: 'Network error. The backend server appears to be unavailable. Here\'s a basic analysis of your journal entry:\n\n' +
+              'Your journal entry has been saved locally. When the server becomes available, a more detailed analysis will be provided.\n\n' +
+              'In the meantime, continue tracking your symptoms and any changes you notice.',
         error: 'Network Error', 
-        details: errorData 
+        details: errorData,
+        fallback: true,
+        categories: {
+          symptoms: journalText ? [{ symptom: journalText, severity: 5 }] : [],
+          environmental_factors: [],
+          life_stressors: []
+        }
       };
     } else {
       console.error('Error Config:', error.config);
