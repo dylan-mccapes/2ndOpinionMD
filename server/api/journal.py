@@ -278,6 +278,7 @@ Format your response as JSON with the following structure:
                 content = content[start_idx:].strip()
         
         analysis = json.loads(content)
+        analysis["timestamp"] = datetime.now().isoformat()
         return analysis
     except Exception as e:
         print(f"Error generating journal analysis: {e}")
@@ -285,5 +286,6 @@ Format your response as JSON with the following structure:
             "analysis": "Unable to generate analysis at this time.",
             "symptoms": [],
             "environmental_factors": [],
-            "life_stressors": []
+            "life_stressors": [],
+            "timestamp": datetime.now().isoformat()
         }
