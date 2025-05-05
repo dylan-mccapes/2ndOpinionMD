@@ -134,7 +134,6 @@ function AppContent() {
   };
 
   return (
-    <Router>
       <div className="App">
         <Routes>
           {/* Public routes */}
@@ -355,7 +354,6 @@ function AppContent() {
           } />
         </Routes>
       </div>
-    </Router>
   );
 }
 
