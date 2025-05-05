@@ -408,20 +408,35 @@ const prepareJournalData = (journalText) => {
         severity: 5
       }
     ],
-    prompt: "Please analyze this journal entry and extract: 1) Symptoms (physical or mental health issues), 2) Environmental factors (like diet, weather, allergens, etc.), and 3) Life stressors (work, relationships, etc.). Categorize each element appropriately - for example, 'eating a lot of gluten' should be identified as an environmental factor (diet), not a symptom."
+    prompt: "Please analyze this journal entry and extract the following categories:\n\n" +
+            "1) Symptoms (physical or mental health issues like pain, fatigue, etc.)\n" +
+            "2) Environmental factors (diet, weather, allergens, etc.)\n" +
+            "3) Life stressors (work, relationships, financial issues, etc.)\n\n" +
+            "Important: Categorize each element appropriately and return them separately in your response. For example:\n" +
+            "- 'Eating a lot of gluten' should be identified as an environmental factor (diet), not a symptom\n" +
+            "- 'Feeling tired' is a symptom\n" +
+            "- 'Argument with spouse' is a life stressor\n\n" +
+            "These categorized elements will be dated and stored for tracking patterns over time."
   };
 };
 
-export const processJournalEntry = async (journalText) => {
+export const processJournalEntry = async (journalText, isTestMode = false) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     console.log('Journal text:', journalText);
+    console.log('Test mode:', isTestMode);
     
     createPersistentDebugPanel();
     
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication required. Please log in.');
+    let token = null;
+    if (!isTestMode) {
+      token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required. Please log in.');
+      }
+    } else {
+      console.log('Running in test mode - authentication bypassed');
+      token = 'test-mode-token';
     }
     
     if (typeof journalText !== 'string') {
@@ -435,7 +450,9 @@ export const processJournalEntry = async (journalText) => {
       symptoms: journalData.symptoms,
       notes: journalText, // Include the full text as notes as well
       date: new Date().toISOString(), // Add current date
-      prompt: journalData.prompt // Add the prompt for OpenAI to extract categories
+      prompt: journalData.prompt, // Add the prompt for OpenAI to extract categories
+      environmental_factors: [], // Initialize empty array for backend compatibility
+      life_stressors: [] // Initialize empty array for backend compatibility
     };
     
     console.log('===== JOURNAL REQUEST PAYLOAD =====');
@@ -564,7 +581,13 @@ export const processJournalEntry = async (journalText) => {
     }
     
     return { 
-      text: "Thank you for your journal entry. Your information has been recorded and analyzed."
+      text: "Thank you for your journal entry. Your information has been recorded and analyzed.",
+      categories: {
+        symptoms: [],
+        environmental_factors: [],
+        life_stressors: []
+      },
+      fallback: true
     };
   } catch (error) {
     console.error('===== JOURNAL ERROR =====');
@@ -625,9 +648,17 @@ export const processJournalEntry = async (journalText) => {
       updateDebugPanel();
       
       return { 
-        text: 'Network error. Please check your connection and try again.',
+        text: 'Network error. The backend server appears to be unavailable. Here\'s a basic analysis of your journal entry:\n\n' +
+              'Your journal entry has been saved locally. When the server becomes available, a more detailed analysis will be provided.\n\n' +
+              'In the meantime, continue tracking your symptoms and any changes you notice.',
         error: 'Network Error', 
-        details: errorData 
+        details: errorData,
+        fallback: true,
+        categories: {
+          symptoms: journalText ? [{ symptom: journalText, severity: 5 }] : [],
+          environmental_factors: [],
+          life_stressors: []
+        }
       };
     } else {
       console.error('Error Config:', error.config);
