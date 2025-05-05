@@ -399,67 +399,21 @@ export const processSymptomInput = async (formData) => {
  * @param {string} journalText - The free-form journal text to categorize
  * @returns {Object} Object containing categorized symptoms, environmental factors, and stress factors
  */
-const categorizeJournalText = (journalText) => {
-  const phrases = journalText.split(/[.,!?;\n]+/).map(phrase => phrase.trim()).filter(phrase => phrase.length > 0);
-  
-  const symptoms = [];
-  const environmentalFactors = [];
-  const stressFactors = [];
-  
-  const dietKeywords = ['eat', 'eating', 'food', 'diet', 'gluten', 'dairy', 'sugar', 'carb', 'protein', 'meal', 'breakfast', 'lunch', 'dinner', 'snack', 'drink', 'alcohol'];
-  const environmentKeywords = ['weather', 'temperature', 'humidity', 'pollution', 'allergen', 'pollen', 'dust', 'mold', 'smoke', 'air quality', 'environment'];
-  const stressKeywords = ['stress', 'anxiety', 'worried', 'nervous', 'tension', 'pressure', 'overwhelm', 'work', 'deadline', 'relationship', 'family', 'financial', 'money'];
-  const symptomKeywords = ['pain', 'ache', 'hurt', 'sore', 'tired', 'fatigue', 'exhaust', 'dizzy', 'nausea', 'headache', 'migraine', 'fever', 'cough', 'rash', 'itch', 'swelling', 'stiff', 'weak', 'numb', 'tingle'];
-  
-  phrases.forEach(phrase => {
-    const lowerPhrase = phrase.toLowerCase();
-    
-    if (dietKeywords.some(keyword => lowerPhrase.includes(keyword))) {
-      environmentalFactors.push({
-        factor: phrase,
-        type: 'diet',
-        severity: 5
-      });
-      return; // Skip further checks for this phrase
-    }
-    
-    if (environmentKeywords.some(keyword => lowerPhrase.includes(keyword))) {
-      environmentalFactors.push({
-        factor: phrase,
-        type: 'environment',
-        severity: 5
-      });
-      return;
-    }
-    
-    if (stressKeywords.some(keyword => lowerPhrase.includes(keyword))) {
-      stressFactors.push({
-        factor: phrase,
-        severity: 5
-      });
-      return;
-    }
-    
-    if (symptomKeywords.some(keyword => lowerPhrase.includes(keyword)) || 
-        phrase.length > 5) { // Consider longer phrases as potential symptoms
-      symptoms.push({
-        symptom: phrase,
-        severity: 5
-      });
-    }
-  });
-  
-  if (symptoms.length === 0 && phrases.length > 0) {
-    symptoms.push({
-      symptom: phrases[0],
-      severity: 5
-    });
-  }
-  
+/**
+ * Prepares journal text for API submission
+ * This is a simplified version that doesn't try to categorize the text
+ * and instead lets the backend OpenAI integration handle the intelligent extraction
+ * @param {string} journalText - The raw journal text from the user
+ * @returns {Object} Object containing the journal text as a symptom
+ */
+const prepareJournalData = (journalText) => {
   return {
-    symptoms,
-    environmentalFactors,
-    stressFactors
+    symptoms: [
+      {
+        symptom: journalText,
+        severity: 5
+      }
+    ]
   };
 };
 
@@ -480,12 +434,10 @@ export const processJournalEntry = async (journalText) => {
       throw new Error('Journal text must be a string');
     }
     
-    const categorizedData = categorizeJournalText(journalText);
+    const journalData = prepareJournalData(journalText);
     
     const requestData = {
-      symptoms: categorizedData.symptoms,
-      environmental_factors: categorizedData.environmentalFactors,
-      stress_factors: categorizedData.stressFactors,
+      symptoms: journalData.symptoms,
       notes: journalText, // Include the full text as notes as well
       date: new Date().toISOString() // Add current date
     };
