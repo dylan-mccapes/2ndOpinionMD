@@ -24,9 +24,13 @@ async def create_journal_entry(
     current_user: UserInDB = Depends(get_current_user)
 ):
     """Create a new journal entry with AI analysis"""
+    if not entry.date:
+        entry.date = datetime.now()
+        
     journal_entry = JournalEntry(
         **entry.dict(),
         user_id=current_user.id,
+        created_at=datetime.now()
     )
     
     previous_entries = await get_previous_journal_entries(current_user.id)
@@ -174,6 +178,40 @@ async def generate_journal_analysis(journal_entry: JournalEntry, user: UserInDB,
             entry_text = await format_journal_entry_for_prompt(entry)
             previous_entries_text += f"--- ENTRY {i} ---\n{entry_text}\n\n"
     
+    from vectordb.query_engine import MedicalQueryEngine
+    import os
+    
+    persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+    query_engine = MedicalQueryEngine(persist_directory)
+    
+    query_text = journal_entry.notes if journal_entry.notes else ""
+    for symptom in journal_entry.symptoms:
+        query_text += f" {symptom.symptom}"
+    
+    all_results = query_engine.query_all_collections(query_text)
+    
+    rag_context = ""
+    if all_results:
+        rag_context = "RELEVANT MEDICAL INFORMATION FROM DATABASE:\n\n"
+        
+        if "disease" in all_results:
+            rag_context += "Potential Related Conditions:\n"
+            for result in all_results["disease"][:3]:  # Limit to top 3 results
+                rag_context += f"- {result['text']}\n"
+            rag_context += "\n"
+        
+        if "autoimmune" in all_results:
+            rag_context += "Autoimmune Information:\n"
+            for result in all_results["autoimmune"][:3]:  # Limit to top 3 results
+                rag_context += f"- {result['text']}\n"
+            rag_context += "\n"
+        
+        if "case" in all_results:
+            rag_context += "Similar Case Studies:\n"
+            for result in all_results["case"][:3]:  # Limit to top 3 results
+                rag_context += f"- {result['text']}\n"
+            rag_context += "\n"
+    
     prompt = f"""
 You are a medical AI assistant analyzing a patient's journal entries for potential autoimmune conditions.
 
@@ -182,31 +220,33 @@ CURRENT JOURNAL ENTRY:
 
 {previous_entries_text}
 
-Based on the current entry and previous history, please provide:
-1. A brief analysis of the symptoms and potential connections to autoimmune conditions
-2. Specific follow-up questions about:
-   - Potential environmental triggers
-   - Stress factors
-   - Diet and nutrition
-   - Sleep patterns
-   - Other relevant factors
-3. Suggestions for tracking specific symptoms or factors in future journal entries
-4. Any patterns or changes observed compared to previous entries (if available)
+{rag_context}
+
+Analyze this journal entry to extract and categorize the following:
+1. Symptoms (e.g., "feeling tired", "joint pain", "headache")
+2. Environmental factors (e.g., "eating gluten", "exposed to allergens", "weather changes")
+3. Life stressors (e.g., "boyfriend broke up with me", "work deadline", "financial issues")
+
+Also provide a brief analysis of the symptoms and potential connections to autoimmune conditions.
 
 Format your response as JSON with the following structure:
 {{
-  "analysis": "Your analysis of the symptoms and potential conditions",
-  "followUpQuestions": [
-    "Question 1",
-    "Question 2",
+  "analysis": "Your analysis of the symptoms and potential autoimmune conditions, including follow-up questions",
+  "symptoms": [
+    "symptom 1",
+    "symptom 2",
     ...
   ],
-  "trackingSuggestions": [
-    "Suggestion 1",
-    "Suggestion 2",
+  "environmental_factors": [
+    "factor 1",
+    "factor 2",
     ...
   ],
-  "patternObservations": "Your observations about patterns or changes compared to previous entries (if available)"
+  "life_stressors": [
+    "stressor 1",
+    "stressor 2",
+    ...
+  ]
 }}
 """
     
@@ -215,12 +255,6 @@ Format your response as JSON with the following structure:
         model = "gpt-4"
     elif user.subscription_tier == "professional":
         model = "gpt-4-turbo"
-    
-    max_entries = 3  # Default for basic tier
-    if user.subscription_tier == "premium":
-        max_entries = 10
-    elif user.subscription_tier == "professional":
-        max_entries = 20
     
     try:
         response = openai.ChatCompletion.create(
@@ -249,15 +283,7 @@ Format your response as JSON with the following structure:
         print(f"Error generating journal analysis: {e}")
         return {
             "analysis": "Unable to generate analysis at this time.",
-            "followUpQuestions": [
-                "What time of day do your symptoms typically worsen?",
-                "Have you noticed any patterns related to your diet and symptom flare-ups?",
-                "How would you describe your stress levels when symptoms are at their worst?"
-            ],
-            "trackingSuggestions": [
-                "Track the time of day when symptoms occur",
-                "Note any dietary changes or patterns",
-                "Monitor stress levels in relation to symptom severity"
-            ],
-            "patternObservations": "Unable to analyze patterns at this time."
+            "symptoms": [],
+            "environmental_factors": [],
+            "life_stressors": []
         }
