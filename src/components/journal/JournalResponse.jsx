@@ -7,10 +7,27 @@ const JournalResponse = ({ response }) => {
     return null;
   }
   
+  const formattedDate = response.timestamp 
+    ? new Date(response.timestamp).toLocaleString() 
+    : new Date().toLocaleString();
+  
   return (
     <div className="journal-response-container">
-      <h2>AI Analysis</h2>
+      <div className="journal-response-header">
+        <h2>AI Analysis</h2>
+        <div className="response-date">{formattedDate}</div>
+      </div>
+      
       <div className="journal-response-content">
+        {response.analysis && (
+          <div className="analysis-section">
+            <h3>Analysis</h3>
+            <div className="analysis-text">
+              <p>{response.analysis}</p>
+            </div>
+          </div>
+        )}
+        
         <div className="response-text">
           <p>{response.text}</p>
         </div>
@@ -67,6 +84,8 @@ const JournalResponse = ({ response }) => {
 JournalResponse.propTypes = {
   response: PropTypes.shape({
     text: PropTypes.string.isRequired,
+    analysis: PropTypes.string,
+    timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.instanceOf(Date)]),
     categories: PropTypes.shape({
       symptoms: PropTypes.array,
       environmental_factors: PropTypes.array,

@@ -541,6 +541,8 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
       
       return { 
         text: responseText.trim() || JSON.stringify(analysis),
+        analysis: analysis.analysis || "",
+        timestamp: analysis.timestamp || new Date().toISOString(),
         categories: {
           symptoms: analysis.symptoms || [],
           environmental_factors: analysis.environmental_factors || [],
