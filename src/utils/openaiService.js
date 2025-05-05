@@ -395,16 +395,10 @@ export const processSymptomInput = async (formData) => {
 };
 
 /**
- * Intelligently categorizes journal text into symptoms, environmental factors, and life stressors
- * @param {string} journalText - The free-form journal text to categorize
- * @returns {Object} Object containing categorized symptoms, environmental factors, and stress factors
- */
-/**
- * Prepares journal text for API submission
- * This is a simplified version that doesn't try to categorize the text
- * and instead lets the backend OpenAI integration handle the intelligent extraction
+ * Prepares journal text for API submission with explicit prompt for OpenAI
+ * to extract symptoms, environmental factors, and life stressors
  * @param {string} journalText - The raw journal text from the user
- * @returns {Object} Object containing the journal text as a symptom
+ * @returns {Object} Object containing the journal text and extraction prompt
  */
 const prepareJournalData = (journalText) => {
   return {
@@ -413,7 +407,8 @@ const prepareJournalData = (journalText) => {
         symptom: journalText,
         severity: 5
       }
-    ]
+    ],
+    prompt: "Please analyze this journal entry and extract: 1) Symptoms (physical or mental health issues), 2) Environmental factors (like diet, weather, allergens, etc.), and 3) Life stressors (work, relationships, etc.). Categorize each element appropriately - for example, 'eating a lot of gluten' should be identified as an environmental factor (diet), not a symptom."
   };
 };
 
@@ -439,7 +434,8 @@ export const processJournalEntry = async (journalText) => {
     const requestData = {
       symptoms: journalData.symptoms,
       notes: journalText, // Include the full text as notes as well
-      date: new Date().toISOString() // Add current date
+      date: new Date().toISOString(), // Add current date
+      prompt: journalData.prompt // Add the prompt for OpenAI to extract categories
     };
     
     console.log('===== JOURNAL REQUEST PAYLOAD =====');
@@ -481,6 +477,31 @@ export const processJournalEntry = async (journalText) => {
         responseText += analysis.analysis + '\n\n';
       }
       
+      if (analysis.symptoms && analysis.symptoms.length > 0) {
+        responseText += 'Identified Symptoms:\n';
+        analysis.symptoms.forEach((symptom, index) => {
+          responseText += `${index + 1}. ${symptom}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (analysis.environmental_factors && analysis.environmental_factors.length > 0) {
+        responseText += 'Environmental Factors:\n';
+        analysis.environmental_factors.forEach((factor, index) => {
+          responseText += `${index + 1}. ${factor}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      // Display life stressors
+      if (analysis.life_stressors && analysis.life_stressors.length > 0) {
+        responseText += 'Life Stressors:\n';
+        analysis.life_stressors.forEach((stressor, index) => {
+          responseText += `${index + 1}. ${stressor}\n`;
+        });
+        responseText += '\n';
+      }
+      
       if (analysis.followUpQuestions && analysis.followUpQuestions.length > 0) {
         responseText += 'Follow-up Questions:\n';
         analysis.followUpQuestions.forEach((question, index) => {
@@ -502,7 +523,43 @@ export const processJournalEntry = async (journalText) => {
       }
       
       return { 
-        text: responseText.trim() || JSON.stringify(analysis)
+        text: responseText.trim() || JSON.stringify(analysis),
+        categories: {
+          symptoms: analysis.symptoms || [],
+          environmental_factors: analysis.environmental_factors || [],
+          life_stressors: analysis.life_stressors || []
+        }
+      };
+    }
+    
+    if (response.data) {
+      const data = response.data;
+      let responseText = "Thank you for your journal entry. Your information has been recorded and analyzed.\n\n";
+      
+      if (data.symptoms && Array.isArray(data.symptoms)) {
+        responseText += 'Identified Symptoms:\n';
+        data.symptoms.forEach((symptom, index) => {
+          const symptomText = typeof symptom === 'string' ? symptom : symptom.symptom || JSON.stringify(symptom);
+          responseText += `${index + 1}. ${symptomText}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      if (data.environmental_factors && Array.isArray(data.environmental_factors)) {
+        responseText += 'Environmental Factors:\n';
+        data.environmental_factors.forEach((factor, index) => {
+          responseText += `${index + 1}. ${factor}\n`;
+        });
+        responseText += '\n';
+      }
+      
+      return {
+        text: responseText.trim(),
+        categories: {
+          symptoms: data.symptoms || [],
+          environmental_factors: data.environmental_factors || [],
+          life_stressors: data.stress_factors || []
+        }
       };
     }
     
