@@ -37,6 +37,18 @@ export const SEX_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+export const RACE_OPTIONS = [
+  { value: 'asian', label: 'Asian' },
+  { value: 'black', label: 'Black or African American' },
+  { value: 'hispanic', label: 'Hispanic or Latino' },
+  { value: 'native_american', label: 'Native American or Alaska Native' },
+  { value: 'pacific_islander', label: 'Native Hawaiian or Pacific Islander' },
+  { value: 'white', label: 'White' },
+  { value: 'multiracial', label: 'Multiracial' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
+
 export const POSSIBLE_DIAGNOSES = [
   {
     name: 'Lupus (SLE)',

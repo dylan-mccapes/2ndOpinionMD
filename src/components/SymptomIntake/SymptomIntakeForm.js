@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import Select from 'react-select';
 import PropTypes from 'prop-types';
-import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS } from '../../utils/constants';
+import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS, RACE_OPTIONS } from '../../utils/constants';
 import { formatSymptomData } from '../../utils/formatData';
 import { processSymptomInput } from '../../utils/openaiService';
 import './SymptomIntakeForm.css';
@@ -17,7 +17,12 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     setError('');
     
     try {
+      console.log('Form data submitted:', data);
       const formattedData = formatSymptomData(data);
+      
+      if (!data.race) {
+        data.race = { value: 'prefer_not_to_say', label: 'Prefer not to say' };
+      }
       
       const response = await processSymptomInput(data);
       
@@ -82,6 +87,87 @@ const SymptomIntakeForm = ({ onSubmit }) => {
               )}
             />
             {errors.sex && <span className="error-message">{errors.sex.message}</span>}
+          </div>
+        </div>
+        
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="height">Height</label>
+            <Controller
+              name="height"
+              control={control}
+              defaultValue=""
+              render={({ field }) => (
+                <input 
+                  {...field}
+                  id="height" 
+                  type="text" 
+                  className={errors.height ? 'input-error' : ''}
+                  placeholder="e.g., 5'10&quot; or 178cm"
+                />
+              )}
+            />
+            {errors.height && <span className="error-message">{errors.height.message}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="weight">Weight (lbs)</label>
+            <Controller
+              name="weight"
+              control={control}
+              defaultValue=""
+              rules={{ min: { value: 0, message: 'Weight cannot be negative' } }}
+              render={({ field }) => (
+                <input 
+                  {...field}
+                  id="weight" 
+                  type="number" 
+                  className={errors.weight ? 'input-error' : ''}
+                  placeholder="Enter weight in pounds"
+                />
+              )}
+            />
+            {errors.weight && <span className="error-message">{errors.weight.message}</span>}
+          </div>
+        </div>
+        
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="race">Race</label>
+            <Controller
+              name="race"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  {...field}
+                  inputId="race"
+                  options={RACE_OPTIONS}
+                  className={errors.race ? 'select-error' : ''}
+                  placeholder="Select your race"
+                  classNamePrefix="select"
+                />
+              )}
+            />
+            {errors.race && <span className="error-message">{errors.race.message}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="occupation">Occupation</label>
+            <Controller
+              name="occupation"
+              control={control}
+              defaultValue=""
+              render={({ field }) => (
+                <input 
+                  {...field}
+                  id="occupation" 
+                  type="text" 
+                  className={errors.occupation ? 'input-error' : ''}
+                  placeholder="Enter your occupation"
+                />
+              )}
+            />
+            {errors.occupation && <span className="error-message">{errors.occupation.message}</span>}
           </div>
         </div>
         
