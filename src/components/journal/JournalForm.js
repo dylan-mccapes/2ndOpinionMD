@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
+import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
+import JournalTimeline from './JournalTimeline';
 import '../../styles/Journal.css';
 
 const JournalForm = () => {
@@ -23,6 +25,8 @@ const JournalForm = () => {
   const [parsedSentences, setParsedSentences] = useState([]);
   const [showParsedView, setShowParsedView] = useState(false);
   const [previousDiagnoses, setPreviousDiagnoses] = useState([]);
+  const [timelineData, setTimelineData] = useState(null);
+  const [showTimeline, setShowTimeline] = useState(false);
   const navigate = useNavigate();
   
   useEffect(() => {
@@ -72,6 +76,40 @@ const JournalForm = () => {
   }, [navigate]);
   
   useEffect(() => {
+    const fetchTimelineData = async () => {
+      if (!selectedReport) return;
+      
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/timeline/${selectedReport.id}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (response.data) {
+          setTimelineData({
+            initialDiagnosis: {
+              date: selectedReport.createdAt,
+              diagnoses: selectedReport.diagnosticResults || []
+            },
+            journalEntries: response.data.journalEntries || []
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching timeline data:', err);
+      }
+    };
+    
+    fetchTimelineData();
+  }, [selectedReport]);
+  
+  useEffect(() => {
     if (formData.notes) {
       const sentences = formData.notes
         .split(/[.,!?;]+/)
@@ -85,6 +123,28 @@ const JournalForm = () => {
   
   const toggleParsedView = () => {
     setShowParsedView(!showParsedView);
+  };
+  
+  const toggleTimeline = () => {
+    setShowTimeline(!showTimeline);
+  };
+  
+  const generateTimelinePdf = async () => {
+    if (!selectedReport || !timelineData) {
+      setError('No timeline data available to generate PDF');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      await downloadTimelinePdf(timelineData, `diagnosis-timeline-${selectedReport.id}.pdf`);
+      setError(''); // Clear any previous errors
+    } catch (err) {
+      console.error('Error generating timeline PDF:', err);
+      setError('Failed to generate timeline PDF. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleReportSelect = (e) => {
@@ -294,7 +354,28 @@ const JournalForm = () => {
         <div className="selected-report-info">
           <h3>Based on Your Symptom Intake</h3>
           <div className="report-diagnoses">
-            <p><strong>Current Diagnoses:</strong></p>
+            <div className="diagnoses-header">
+              <p><strong>Current Diagnoses:</strong></p>
+              <div className="timeline-buttons">
+                <button 
+                  type="button" 
+                  className="btn btn-outline-info btn-sm"
+                  onClick={toggleTimeline}
+                >
+                  {showTimeline ? 'Hide Timeline' : 'Show Timeline'}
+                </button>
+                {timelineData && (
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm ml-2"
+                    onClick={generateTimelinePdf}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Generating...' : 'Download Timeline PDF'}
+                  </button>
+                )}
+              </div>
+            </div>
             <ul>
               {previousDiagnoses.map((diagnosis, index) => (
                 <li key={index}>
@@ -307,6 +388,12 @@ const JournalForm = () => {
               ))}
             </ul>
           </div>
+          
+          {showTimeline && timelineData && (
+            <div className="timeline-container">
+              <JournalTimeline timelineData={timelineData} />
+            </div>
+          )}
         </div>
       )}
       

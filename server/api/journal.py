@@ -1,4 +1,4 @@
-ronfrom typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 import re
@@ -181,6 +181,35 @@ async def get_journal_entry(
         )
 
     return JournalEntry(**entry)
+
+@router.get("/timeline/{report_id}")
+async def get_timeline_data(
+    report_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get timeline data for a specific report including initial diagnosis and all journal entries"""
+    # Get the report for initial diagnosis
+    report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
+    
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+    
+    journal_entries = await journal_entries_collection.find(
+        {"reportId": report_id, "user_id": current_user.id}
+    ).sort("date", 1).to_list(length=100)  # Sort chronologically
+    
+    timeline_data = {
+        "initialDiagnosis": {
+            "date": report.get("createdAt", datetime.now()),
+            "diagnoses": report.get("diagnosticResults", [])
+        },
+        "journalEntries": journal_entries
+    }
+    
+    return timeline_data
 
 @router.delete("/journal/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_journal_entry(
