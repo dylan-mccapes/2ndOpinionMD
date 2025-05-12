@@ -80,9 +80,20 @@ async def create_journal_entry(
 
     journal_entry_dict = journal_entry.dict()
     journal_entry_dict["ai_analysis"] = ai_analysis
+    
     print("\n=== JOURNAL ANALYSIS RESULTS ===")
     print(json.dumps(ai_analysis, indent=2))
-
+    
+    print("\n=== CATEGORIZED DATA SUMMARY ===")
+    print(f"Symptoms: {len(ai_analysis.get('symptoms', []))} items")
+    print(f"Environmental factors: {len(ai_analysis.get('environmental_factors', []))} items")
+    print(f"Life stressors: {len(ai_analysis.get('life_stressors', []))} items")
+    print(f"Diagnoses: {len(ai_analysis.get('diagnoses', []))} items")
+    
+    if 'analysis' in ai_analysis:
+        print("\n=== ANALYSIS TEXT ===")
+        print(ai_analysis['analysis'])
+    
     result = await journal_entries_collection.insert_one(journal_entry_dict)
 
     if report_id and report and "diagnoses" in ai_analysis:
@@ -430,10 +441,12 @@ For each individual sentence in the parsed sentences list, determine whether it 
 - Environmental factors: External elements that might affect health (diet, allergens, etc.)
 - Life stressors: Personal events or situations causing stress or emotional impact
 
-You MUST categorize each sentence carefully and separately. Do not group all sentences together.
+You MUST categorize each sentence carefully and separately. Every sentence MUST be placed in a category.
 - Symptoms are physical or mental health complaints (pain, fatigue, rashes, mood changes)
-- Environmental factors are external elements like diet, allergens, weather, or exposures
-- Life stressors are personal situations causing emotional stress (relationships, work, finances)
+- Environmental factors are external elements like diet, food, allergens, weather, or exposures
+- Life stressors are personal situations causing emotional stress (relationships, work, finances, pets)
+
+DO NOT combine multiple sentences into a single category item. Each sentence should be analyzed individually.
 
 Each sentence may contain multiple categories or none at all. Be thorough and precise in your categorization.
 
@@ -511,6 +524,9 @@ Format your response as JSON with the following structure:
 
         content = response.choices[0].message['content']
 
+        print("\n=== RAW CONTENT FROM OPENAI ===")
+        print(content)
+
         if content.startswith("```json") or content.startswith("```"):
             start_idx = content.find("\n") + 1
             end_idx = content.rfind("```")
@@ -519,22 +535,47 @@ Format your response as JSON with the following structure:
                 content = content[start_idx:end_idx].strip()
             else:
                 content = content[start_idx:].strip()
-
-        analysis = json.loads(content)
-        analysis["timestamp"] = datetime.now().isoformat()
-
-        if "diagnoses" in analysis:
-            for diagnosis in analysis["diagnoses"]:
-                if "staxLevel" not in diagnosis:
-                    diagnosis["staxLevel"] = 1
-                if "zone" not in diagnosis:
-                    diagnosis["zone"] = 1
-                if "tags" not in diagnosis:
-                    diagnosis["tags"] = []
-                if "status" not in diagnosis:
-                    diagnosis["status"] = "confirmed"
-
-        return analysis
+        
+        try:
+            analysis = json.loads(content)
+            analysis["timestamp"] = datetime.now().isoformat()
+            
+            print("\n=== PARSED JSON ===")
+            print(json.dumps(analysis, indent=2))
+            
+            if "symptoms" not in analysis:
+                analysis["symptoms"] = []
+            if "environmental_factors" not in analysis:
+                analysis["environmental_factors"] = []
+            if "life_stressors" not in analysis:
+                analysis["life_stressors"] = []
+            if "analysis" not in analysis:
+                analysis["analysis"] = "No analysis provided."
+                
+            if "diagnoses" in analysis:
+                for diagnosis in analysis["diagnoses"]:
+                    if "staxLevel" not in diagnosis:
+                        diagnosis["staxLevel"] = 1
+                    if "zone" not in diagnosis:
+                        diagnosis["zone"] = 1
+                    if "tags" not in diagnosis:
+                        diagnosis["tags"] = []
+                    if "status" not in diagnosis:
+                        diagnosis["status"] = "confirmed"
+            
+            return analysis
+        except json.JSONDecodeError as e:
+            print(f"\n=== JSON PARSING ERROR ===")
+            print(f"Error: {e}")
+            print(f"Content: {content}")
+            return {
+                "analysis": "Unable to parse OpenAI response.",
+                "symptoms": [],
+                "environmental_factors": [],
+                "life_stressors": [],
+                "diagnoses": [],
+                "timestamp": datetime.now().isoformat()
+            }
     except Exception as e:
         print(f"Error generating journal analysis: {e}")
         return {
