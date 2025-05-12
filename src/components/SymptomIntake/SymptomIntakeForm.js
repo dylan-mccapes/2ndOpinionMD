@@ -50,7 +50,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     <div className="symptom-intake-container">
       <h2>Symptom Intake Form</h2>
       <div className="form-header">
-        <p>Please provide your information to receive a second opinion analysis</p>
+        <p>Please provide your information to receive a second opinion analysis with STAX/Zone evaluation</p>
         <button 
           type="button" 
           className="info-button"
@@ -213,7 +213,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
         </div>
         
         <div className="form-group">
-          <label htmlFor="symptoms">Symptoms</label>
+          <label htmlFor="symptoms">Symptoms <span className="ethos-label">(Used for STAX/Zone evaluation)</span></label>
           <Controller
             name="symptoms"
             control={control}
@@ -271,12 +271,23 @@ const SymptomIntakeForm = ({ onSubmit }) => {
           />
         </div>
         
+        <div className="ethos-evaluation-info">
+          <h3>Diagnostic Terrain Evaluation</h3>
+          <p>Your symptom data will be analyzed using our Ethos of Health model to determine:</p>
+          <ul>
+            <li><strong>STAX Level (1-4):</strong> The complexity and layering of your condition</li>
+            <li><strong>Zone (1-5):</strong> The stability and frequency of your symptoms</li>
+            <li><strong>Diagnostic Confidence:</strong> How certain we are about potential diagnoses</li>
+          </ul>
+          <p>This information will be displayed in your diagnostic report.</p>
+        </div>
+        
         <button 
           type="submit" 
           className="btn btn-primary submit-btn"
           disabled={isLoading}
         >
-          {isLoading ? 'Analyzing Symptoms...' : 'Generate Report'}
+          {isLoading ? 'Analyzing Symptoms...' : 'Generate Report with STAX/Zone Analysis'}
         </button>
       </form>
     </div>

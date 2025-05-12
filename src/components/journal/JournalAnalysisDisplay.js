@@ -28,68 +28,117 @@ const JournalAnalysisDisplay = ({ analysis }) => {
   
   return (
     <div className="journal-analysis">
-      <h3>Journal Analysis</h3>
+      <h3>AI Analysis</h3>
       
-      {analysis.symptoms && analysis.symptoms.length > 0 && (
+      {/* Summary section */}
+      <div className="analysis-summary">
+        <p>Thank you for your journal entry. Your information has been recorded and analyzed.</p>
+        {analysis.summary && <p>{analysis.summary}</p>}
+      </div>
+      
+      <div className="analysis-categories">
+        {/* Symptoms section */}
         <div className="analysis-section">
           <h4>Identified Symptoms:</h4>
-          <ul>
-            {analysis.symptoms.map((symptom, index) => (
-              <li key={index}>{symptom}</li>
-            ))}
-          </ul>
+          {analysis.symptoms && analysis.symptoms.length > 0 ? (
+            <ul>
+              {analysis.symptoms.map((symptom, index) => (
+                <li key={index}>{symptom}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="no-data">No symptoms identified.</p>
+          )}
         </div>
-      )}
-      
-      {analysis.environmental_factors && analysis.environmental_factors.length > 0 && (
+        
+        {/* Environmental factors section */}
         <div className="analysis-section">
           <h4>Environmental Factors:</h4>
-          <ul>
-            {analysis.environmental_factors.map((factor, index) => (
-              <li key={index}>{factor}</li>
-            ))}
-          </ul>
+          {analysis.environmental_factors && analysis.environmental_factors.length > 0 ? (
+            <ul>
+              {analysis.environmental_factors.map((factor, index) => (
+                <li key={index}>{factor}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="no-data">No environmental factors identified.</p>
+          )}
         </div>
-      )}
-      
-      {analysis.life_stressors && analysis.life_stressors.length > 0 && (
+        
+        {/* Life stressors section */}
         <div className="analysis-section">
           <h4>Life Stressors:</h4>
-          <ul>
-            {analysis.life_stressors.map((stressor, index) => (
-              <li key={index}>{stressor}</li>
-            ))}
-          </ul>
+          {analysis.life_stressors && analysis.life_stressors.length > 0 ? (
+            <ul>
+              {analysis.life_stressors.map((stressor, index) => (
+                <li key={index}>{stressor}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="no-data">No life stressors identified.</p>
+          )}
         </div>
-      )}
+      </div>
       
+      {/* Diagnoses section with updated confidence scores */}
       {analysis.diagnoses && analysis.diagnoses.length > 0 && (
-        <div className="analysis-section">
-          <h4>Diagnoses:</h4>
+        <div className="analysis-section diagnoses-section">
+          <h4>Updated Diagnoses:</h4>
           <ul className="diagnoses-list">
             {analysis.diagnoses.map((diagnosis, index) => (
-              <li key={index} className={`diagnosis-item ${diagnosis.status}`}>
+              <li key={index} className={`diagnosis-item ${diagnosis.status || ''}`}>
                 <div className="diagnosis-header">
                   <span className="diagnosis-name">{diagnosis.name}</span>
-                  <span className="diagnosis-confidence">{diagnosis.confidence}%</span>
+                  <div className="confidence-container">
+                    <span className="confidence-label">Confidence:</span>
+                    <div className="confidence-bar-container">
+                      <div 
+                        className="confidence-bar" 
+                        style={{width: `${diagnosis.confidence}%`, backgroundColor: diagnosis.confidence > 70 ? '#28a745' : diagnosis.confidence > 40 ? '#ffc107' : '#dc3545'}}
+                      ></div>
+                    </div>
+                    <span className="confidence-value">{diagnosis.confidence}%</span>
+                  </div>
                 </div>
+                
                 <div className="diagnosis-terrain">
                   {diagnosis.staxLevel && (
-                    <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                      STAX {diagnosis.staxLevel}
-                    </span>
+                    <div className="terrain-indicator">
+                      <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
+                        STAX {diagnosis.staxLevel}
+                      </span>
+                      <span className="terrain-description">
+                        {STAX_LEVELS[diagnosis.staxLevel] || `Complexity level ${diagnosis.staxLevel}`}
+                      </span>
+                    </div>
                   )}
+                  
                   {diagnosis.zone && (
-                    <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                      Zone {diagnosis.zone}
-                    </span>
-                  )}
-                  {diagnosis.status && (
-                    <span className={`status-badge status-${diagnosis.status}`}>
-                      {diagnosis.status.charAt(0).toUpperCase() + diagnosis.status.slice(1)}
-                    </span>
+                    <div className="terrain-indicator">
+                      <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
+                        Zone {diagnosis.zone}
+                      </span>
+                      <span className="terrain-description">
+                        {ZONES[diagnosis.zone] || `Stability level ${diagnosis.zone}`}
+                      </span>
+                    </div>
                   )}
                 </div>
+                
+                {diagnosis.status && (
+                  <div className="diagnosis-status-container">
+                    <span className={`status-badge status-${diagnosis.status}`}>
+                      {diagnosis.status === 'new' ? 'New Diagnosis' : 
+                       diagnosis.status === 'confirmed' ? 'Confirmed' : 
+                       diagnosis.status === 'eliminated' ? 'Eliminated' : 
+                       diagnosis.status.charAt(0).toUpperCase() + diagnosis.status.slice(1)}
+                    </span>
+                    {diagnosis.statusReason && (
+                      <span className="status-reason">{diagnosis.statusReason}</span>
+                    )}
+                  </div>
+                )}
+                
                 {diagnosis.tags && diagnosis.tags.length > 0 && (
                   <div className="diagnosis-tags">
                     {diagnosis.tags.map((tag, i) => (
@@ -102,6 +151,30 @@ const JournalAnalysisDisplay = ({ analysis }) => {
           </ul>
         </div>
       )}
+      
+      {/* Journaling recommendation section */}
+      {analysis.journalingRecommendation && (
+        <div className="analysis-section recommendation-section">
+          <h4>Journaling Recommendation:</h4>
+          <div className="recommendation-content">
+            {analysis.journalingRecommendation.promptType && (
+              <div className="prompt-type">
+                <span className="prompt-label">Recommended Approach:</span>
+                <span className="prompt-value">{analysis.journalingRecommendation.promptType}</span>
+              </div>
+            )}
+            {analysis.journalingRecommendation.suggestedPrompt && (
+              <div className="suggested-prompt">
+                <p className="prompt-suggestion">{analysis.journalingRecommendation.suggestedPrompt}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      <div className="important-note">
+        <p>This analysis is for informational purposes only and is not a medical diagnosis. Please consult with a healthcare professional for proper evaluation and diagnosis.</p>
+      </div>
     </div>
   );
 };

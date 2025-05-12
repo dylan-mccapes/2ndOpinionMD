@@ -80,6 +80,8 @@ async def create_journal_entry(
 
     journal_entry_dict = journal_entry.dict()
     journal_entry_dict["ai_analysis"] = ai_analysis
+    print("\n=== JOURNAL ANALYSIS RESULTS ===")
+    print(json.dumps(ai_analysis, indent=2))
 
     result = await journal_entries_collection.insert_one(journal_entry_dict)
 
@@ -428,6 +430,13 @@ For each individual sentence in the parsed sentences list, determine whether it 
 - Environmental factors: External elements that might affect health (diet, allergens, etc.)
 - Life stressors: Personal events or situations causing stress or emotional impact
 
+You MUST categorize each sentence carefully and separately. Do not group all sentences together.
+- Symptoms are physical or mental health complaints (pain, fatigue, rashes, mood changes)
+- Environmental factors are external elements like diet, allergens, weather, or exposures
+- Life stressors are personal situations causing emotional stress (relationships, work, finances)
+
+Each sentence may contain multiple categories or none at all. Be thorough and precise in your categorization.
+
 Then, based on this analysis:
 - Confirm or adjust confidence in existing diagnoses
 - Suggest new potential diagnoses if indicated
@@ -485,6 +494,9 @@ Format your response as JSON with the following structure:
         model = "gpt-4-turbo"
 
     try:
+        print("\n=== JOURNAL ENTRY PROMPT ===")
+        print(prompt)
+        
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
@@ -493,6 +505,9 @@ Format your response as JSON with the following structure:
             ],
             temperature=0.3
         )
+        
+        print("\n=== OPENAI RESPONSE ===")
+        print(response.choices[0].message['content'])
 
         content = response.choices[0].message['content']
 

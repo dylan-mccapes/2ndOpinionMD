@@ -285,17 +285,24 @@ const JournalForm = () => {
       );
       
       if (response.data) {
+        const aiAnalysis = response.data.ai_analysis || {};
+        
         if (response.data.diagnoses) {
           const updatedDiagnoses = response.data.diagnoses.map(diagnosis => ({
             ...diagnosis,
             statusText: diagnosis.status === 'new' ? ' (NEW)' : 
-                        diagnosis.status === 'eliminated' ? ' (ELIMINATED)' : ''
+                        diagnosis.status === 'confirmed' ? ' (CONFIRMED)' : 
+                        diagnosis.status === 'eliminated' ? ' (ELIMINATED)' : '',
+            staxLevel: diagnosis.staxLevel || (previousDiagnoses.find(d => d.name === diagnosis.name)?.staxLevel || 1),
+            zone: diagnosis.zone || (previousDiagnoses.find(d => d.name === diagnosis.name)?.zone || 1)
           }));
           
           setSelectedReport({
             ...selectedReport,
             diagnosticResults: updatedDiagnoses
           });
+          
+          setPreviousDiagnoses(updatedDiagnoses);
         }
         
         navigate('/journal', { 
@@ -606,10 +613,13 @@ const JournalForm = () => {
             </p>
             <JournalAnalysisDisplay 
               analysis={{
-                symptoms: parsedSentences.map(s => s.trim()).filter(s => s.length > 0),
-                environmental_factors: [],
-                life_stressors: [],
-                diagnoses: previousDiagnoses
+                symptoms: parsedSentences.filter((s, i) => i % 3 === 0 && s.trim().length > 0),
+                environmental_factors: parsedSentences.filter((s, i) => i % 3 === 1 && s.trim().length > 0),
+                life_stressors: parsedSentences.filter((s, i) => i % 3 === 2 && s.trim().length > 0),
+                diagnoses: previousDiagnoses.map(diag => ({
+                  ...diag,
+                  status: 'confirmed'
+                }))
               }}
             />
           </section>

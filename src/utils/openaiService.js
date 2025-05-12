@@ -1,5 +1,42 @@
 import axios from 'axios';
-import { generateEthosPrompt } from './ethosOfHealth';
+import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
+
+const calculateStaxLevel = (diagnosis) => {
+  if (!diagnosis) return 1;
+  
+  const confidence = diagnosis.confidence || 0;
+  const hasRedFlags = Array.isArray(diagnosis.redFlags) && diagnosis.redFlags.length > 0;
+  const hasLabSuggestions = Array.isArray(diagnosis.labSuggestions) && diagnosis.labSuggestions.length > 0;
+  
+  if (confidence < 40 || hasRedFlags) {
+    return 4; // Most complex - low confidence or red flags
+  } else if (confidence < 60 || hasLabSuggestions) {
+    return 3; // Moderately complex
+  } else if (confidence < 80) {
+    return 2; // Somewhat complex
+  } else {
+    return 1; // Simple case - high confidence
+  }
+};
+
+const calculateZone = (diagnosis) => {
+  if (!diagnosis) return 1;
+  
+  const confidence = diagnosis.confidence || 0;
+  const hasRedFlags = Array.isArray(diagnosis.redFlags) && diagnosis.redFlags.length > 0;
+  
+  if (hasRedFlags && confidence < 50) {
+    return 5; // Critical - red flags with low confidence
+  } else if (hasRedFlags) {
+    return 4; // Unstable - has red flags
+  } else if (confidence < 40) {
+    return 3; // Concerning - low confidence
+  } else if (confidence < 70) {
+    return 2; // Mild concern
+  } else {
+    return 1; // Stable - high confidence
+  }
+};
 
 const saveDebugInfo = (key, data) => {
   try {
@@ -279,10 +316,12 @@ export const processSymptomInput = async (formData) => {
           confidence: diagnosis.confidence || 0,
           symptoms: diagnosis.explanation ? [diagnosis.explanation] : [],
           redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],
-          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : []
+          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : [],
+          staxLevel: diagnosis.staxLevel || calculateStaxLevel(diagnosis),
+          zone: diagnosis.zone || calculateZone(diagnosis)
         }));
         
-        console.log('===== TRANSFORMED RESPONSE (FORMAT 1) =====');
+        console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 1) =====');
         console.log(JSON.stringify(transformedData, null, 2));
         
         return transformedData;
@@ -293,10 +332,12 @@ export const processSymptomInput = async (formData) => {
           symptoms: diagnosis.explanation ? [diagnosis.explanation] : 
                    (Array.isArray(diagnosis.symptoms) ? diagnosis.symptoms : []),
           redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],
-          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : []
+          labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : [],
+          staxLevel: diagnosis.staxLevel || calculateStaxLevel(diagnosis),
+          zone: diagnosis.zone || calculateZone(diagnosis)
         }));
         
-        console.log('===== TRANSFORMED RESPONSE (FORMAT 2) =====');
+        console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 2) =====');
         console.log(JSON.stringify(transformedData, null, 2));
         
         return transformedData;
