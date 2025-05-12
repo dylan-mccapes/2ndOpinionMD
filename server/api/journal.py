@@ -1,10 +1,11 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
+import re
 
 from models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB
 from models.mongodb.auth import get_current_user
-from models.mongodb.database import journal_entries_collection
+from models.mongodb.database import journal_entries_collection, reports_collection
 import openai
 import os
 from dotenv import load_dotenv
@@ -16,14 +17,42 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY environment variable not set")
 
+ZONES = {
+    1: "Zone 1 - Stable Terrain",
+    2: "Zone 2 - Mild Fluctuation",
+    3: "Zone 3 - Moderate Instability",
+    4: "Zone 4 - Flare-Dominant State",
+    5: "Zone 5 - Collapsed Capacity"
+}
+
+STAX_LEVELS = {
+    1: "STAX 1 - Single-diagnosis threshold",
+    2: "STAX 2 - Multi-diagnosis state",
+    3: "STAX 3 - Multisystem failure",
+    4: "STAX 4 - Complex collapse"
+}
+
+def generate_ethos_prompt():
+    """Generate a prompt based on the ethos of health model"""
+    return """
+Using the 2OPMD Diagnostic Terrain System:
+- Consider Nucleus State of Health and Parallel-Adjusted Nucleus State (PANS)
+- Assess STAX levels (Z-Axis progression) for disease complexity
+- Evaluate patient stability using Zones 1-5
+- Identify Early Zone Shifts, Epigenetic Echoes, and Overshoot patterns
+- Detect Somatic Healing Threshold Responses and potential Safe Pause needs
+- Consider misdiagnosis patterns and tags
+"""
+
 router = APIRouter()
 
 @router.post("/journal", response_model=JournalEntry)
 async def create_journal_entry(
     entry: JournalEntryCreate,
-    current_user: UserInDB = Depends(get_current_user)
+    current_user: UserInDB = Depends(get_current_user),
+    report_id: Optional[str] = None
 ):
-    """Create a new journal entry with AI analysis"""
+    """Create a new journal entry with AI analysis using the ethos of health model"""
     if not entry.date:
         entry.date = datetime.now()
         
@@ -35,12 +64,75 @@ async def create_journal_entry(
     
     previous_entries = await get_previous_journal_entries(current_user.id)
     
-    ai_analysis = await generate_journal_analysis(journal_entry, user=current_user, previous_entries=previous_entries)
+    previous_diagnoses = []
+    report = None
+    if report_id:
+        report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
+        if report and "diagnosticResults" in report:
+            previous_diagnoses = report["diagnosticResults"]
+    
+    ai_analysis = await generate_journal_analysis(
+        journal_entry, 
+        user=current_user, 
+        previous_entries=previous_entries,
+        previous_diagnoses=previous_diagnoses
+    )
     
     journal_entry_dict = journal_entry.dict()
     journal_entry_dict["ai_analysis"] = ai_analysis
     
-    await journal_entries_collection.insert_one(journal_entry_dict)
+    result = await journal_entries_collection.insert_one(journal_entry_dict)
+    
+    if report_id and report and "diagnoses" in ai_analysis:
+        updated_diagnoses = []
+        
+        existing_diagnoses_map = {}
+        for diagnosis in report["diagnosticResults"]:
+            existing_diagnoses_map[diagnosis["name"]] = diagnosis
+        
+        for diagnosis in ai_analysis["diagnoses"]:
+            if diagnosis["status"] == "eliminated":
+                continue
+            elif diagnosis["status"] == "new":
+                updated_diagnoses.append(diagnosis)
+            elif diagnosis["name"] in existing_diagnoses_map:
+                existing_diagnosis = existing_diagnoses_map[diagnosis["name"]]
+                updated_diagnoses.append({
+                    **existing_diagnosis,
+                    "confidence": diagnosis["confidence"],
+                    "staxLevel": diagnosis["staxLevel"],
+                    "zone": diagnosis["zone"],
+                    "tags": diagnosis["tags"],
+                    "status": diagnosis["status"]
+                })
+        
+        for diagnosis in report["diagnosticResults"]:
+            if not any(d["name"] == diagnosis["name"] for d in updated_diagnoses):
+                updated_diagnoses.append(diagnosis)
+        
+        await reports_collection.update_one(
+            {"id": report_id},
+            {"$set": {
+                "diagnosticResults": updated_diagnoses,
+                "updatedAt": datetime.now()
+            }}
+        )
+        
+        await reports_collection.update_one(
+            {"id": report_id},
+            {"$push": {
+                "journalEntries": {
+                    "entryDate": entry.date,
+                    "content": entry.notes,
+                    "analysis": {
+                        "symptoms": ai_analysis.get("symptoms", []),
+                        "environmentalFactors": ai_analysis.get("environmental_factors", []),
+                        "lifeStressors": ai_analysis.get("life_stressors", [])
+                    },
+                    "journalingRecommendation": ai_analysis.get("journalingRecommendation", None)
+                }
+            }}
+        )
     
     return journal_entry
 
@@ -105,8 +197,8 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20):
     
     return [JournalEntry(**entry) for entry in entries]
 
-async def format_journal_entry_for_prompt(entry: JournalEntry):
-    """Format a journal entry for inclusion in the prompt"""
+async def format_journal_entry_for_prompt(entry: JournalEntry, include_ethos: bool = True):
+    """Format a journal entry for inclusion in the prompt with ethos of health model"""
     symptoms_text = "\n".join([
         f"- {symptom.symptom} (Severity: {symptom.severity}/10)"
         for symptom in entry.symptoms
@@ -118,6 +210,11 @@ async def format_journal_entry_for_prompt(entry: JournalEntry):
             f"- {factor.factor_type}: {factor.description}"
             for factor in entry.environmental_factors
         ])
+    
+    parsed_sentences = []
+    if entry.notes:
+        raw_sentences = re.split(r'[.,!?;]+', entry.notes)
+        parsed_sentences = [s.strip() for s in raw_sentences if s.strip()]
     
     entry_text = f"""
 ENTRY DATE: {entry.date.strftime('%Y-%m-%d')}
@@ -143,6 +240,11 @@ ENVIRONMENTAL FACTORS:
     
     if entry.notes:
         entry_text += f"ADDITIONAL NOTES: {entry.notes}\n"
+        
+        if parsed_sentences:
+            entry_text += "\nPARSED SENTENCES:\n"
+            for i, sentence in enumerate(parsed_sentences, 1):
+                entry_text += f"{i}. {sentence}\n"
     
     if hasattr(entry, 'ai_analysis') and entry.ai_analysis:
         analysis = entry.ai_analysis
@@ -151,6 +253,26 @@ ENVIRONMENTAL FACTORS:
         
         if "analysis" in analysis:
             entry_text += f"Analysis: {analysis['analysis']}\n"
+        
+        if "diagnoses" in analysis and analysis["diagnoses"]:
+            entry_text += "Diagnoses:\n"
+            for i, diagnosis in enumerate(analysis["diagnoses"], 1):
+                status_text = ""
+                if "status" in diagnosis:
+                    status_text = f" ({diagnosis['status'].upper()})"
+                
+                entry_text += f"{i}. {diagnosis['name']}{status_text} - Confidence: {diagnosis['confidence']}%\n"
+                
+                if "staxLevel" in diagnosis:
+                    stax_desc = STAX_LEVELS.get(diagnosis['staxLevel'], f"STAX {diagnosis['staxLevel']}")
+                    entry_text += f"   STAX Level: {stax_desc}\n"
+                
+                if "zone" in diagnosis:
+                    zone_desc = ZONES.get(diagnosis['zone'], f"Zone {diagnosis['zone']}")
+                    entry_text += f"   Zone: {zone_desc}\n"
+                
+                if "tags" in diagnosis and diagnosis["tags"]:
+                    entry_text += f"   Tags: {', '.join(diagnosis['tags'])}\n"
         
         if "followUpQuestions" in analysis and analysis["followUpQuestions"]:
             entry_text += "Follow-up Questions:\n"
@@ -164,12 +286,27 @@ ENVIRONMENTAL FACTORS:
         
         if "patternObservations" in analysis and analysis["patternObservations"]:
             entry_text += f"Pattern Observations: {analysis['patternObservations']}\n"
+        
+        if "journalingRecommendation" in analysis and analysis["journalingRecommendation"]:
+            entry_text += "Journaling Recommendation:\n"
+            entry_text += f"Type: {analysis['journalingRecommendation']['promptType']}\n"
+            entry_text += f"Prompt: {analysis['journalingRecommendation']['suggestedPrompt']}\n"
     
     return entry_text
 
-async def generate_journal_analysis(journal_entry: JournalEntry, user: UserInDB, previous_entries: List[JournalEntry] = None):
-    """Generate AI analysis and follow-up questions for a journal entry, including previous entries for context"""
-    current_entry_text = await format_journal_entry_for_prompt(journal_entry)
+async def generate_journal_analysis(
+    journal_entry: JournalEntry, 
+    user: UserInDB, 
+    previous_entries: List[JournalEntry] = None,
+    previous_diagnoses: List[Dict[str, Any]] = None
+):
+    """Generate AI analysis and follow-up questions for a journal entry using the ethos of health model"""
+    current_entry_text = await format_journal_entry_for_prompt(journal_entry, include_ethos=True)
+    
+    parsed_sentences = []
+    if journal_entry.notes:
+        raw_sentences = re.split(r'[.,!?;]+', journal_entry.notes)
+        parsed_sentences = [s.strip() for s in raw_sentences if s.strip()]
     
     previous_entries_text = ""
     if previous_entries:
@@ -177,6 +314,22 @@ async def generate_journal_analysis(journal_entry: JournalEntry, user: UserInDB,
         for i, entry in enumerate(previous_entries, 1):
             entry_text = await format_journal_entry_for_prompt(entry)
             previous_entries_text += f"--- ENTRY {i} ---\n{entry_text}\n\n"
+    
+    ethos_prompt = generate_ethos_prompt()
+    
+    previous_diagnoses_text = ""
+    if previous_diagnoses:
+        previous_diagnoses_text = "PREVIOUS DIAGNOSES:\n"
+        for i, diagnosis in enumerate(previous_diagnoses, 1):
+            confidence = diagnosis.get("confidence", 0)
+            stax_level = diagnosis.get("staxLevel", 1)
+            zone = diagnosis.get("zone", 1)
+            tags = diagnosis.get("tags", [])
+            
+            previous_diagnoses_text += f"{i}. {diagnosis['name']} - Confidence: {confidence}%\n"
+            previous_diagnoses_text += f"   STAX Level: {stax_level}, Zone: {zone}\n"
+            if tags:
+                previous_diagnoses_text += f"   Tags: {', '.join(tags)}\n"
     
     from vectordb.query_engine import MedicalQueryEngine
     import os
@@ -213,10 +366,17 @@ async def generate_journal_analysis(journal_entry: JournalEntry, user: UserInDB,
             rag_context += "\n"
     
     prompt = f"""
-You are a medical AI assistant analyzing a patient's journal entries for potential autoimmune conditions.
+You are a medical AI assistant analyzing a patient's journal entries using the 2OPMD Diagnostic Terrain System.
+
+{ethos_prompt}
 
 CURRENT JOURNAL ENTRY:
 {current_entry_text}
+
+PARSED SENTENCES:
+{chr(10).join([f"{i+1}. {sentence}" for i, sentence in enumerate(parsed_sentences)])}
+
+{previous_diagnoses_text}
 
 {previous_entries_text}
 
@@ -227,26 +387,53 @@ Analyze this journal entry to extract and categorize the following:
 2. Environmental factors (e.g., "eating gluten", "exposed to allergens", "weather changes")
 3. Life stressors (e.g., "boyfriend broke up with me", "work deadline", "financial issues")
 
-Also provide a brief analysis of the symptoms and potential connections to autoimmune conditions.
+For each sentence in the journal entry, determine if it contains symptoms, environmental factors, or life stressors.
+
+Then, based on this analysis:
+- Confirm or adjust confidence in existing diagnoses
+- Suggest new potential diagnoses if indicated
+- Identify any diagnoses that should be eliminated
+- Assign appropriate STAX levels and Zone classifications
+- Apply relevant clinical and symbolic tags
 
 Format your response as JSON with the following structure:
 {{
-  "analysis": "Your analysis of the symptoms and potential autoimmune conditions, including follow-up questions",
+  "analysis": "Your analysis of the symptoms and potential autoimmune conditions",
   "symptoms": [
     "symptom 1",
-    "symptom 2",
-    ...
+    "symptom 2"
   ],
   "environmental_factors": [
     "factor 1",
-    "factor 2",
-    ...
+    "factor 2"
   ],
   "life_stressors": [
     "stressor 1",
-    "stressor 2",
-    ...
-  ]
+    "stressor 2"
+  ],
+  "diagnoses": [
+    {{
+      "name": "Diagnosis name",
+      "confidence": 85,
+      "status": "confirmed/new/eliminated",
+      "staxLevel": 1,
+      "zone": 2,
+      "tags": ["#SuspectedDx_DiagnosisName", "#EarlyZoneShift"]
+    }}
+  ],
+  "journalingRecommendation": {{
+    "promptType": "Clinical/Somatic/Symbolic/Remission",
+    "suggestedPrompt": "What was lost when health left?"
+  }},
+  "followUpQuestions": [
+    "question 1",
+    "question 2"
+  ],
+  "trackingSuggestions": [
+    "suggestion 1",
+    "suggestion 2"
+  ],
+  "patternObservations": "Any patterns observed across journal entries"
 }}
 """
     
@@ -260,7 +447,7 @@ Format your response as JSON with the following structure:
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases."},
+                {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases and the 2OPMD Diagnostic Terrain System."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3
@@ -279,6 +466,18 @@ Format your response as JSON with the following structure:
         
         analysis = json.loads(content)
         analysis["timestamp"] = datetime.now().isoformat()
+        
+        if "diagnoses" in analysis:
+            for diagnosis in analysis["diagnoses"]:
+                if "staxLevel" not in diagnosis:
+                    diagnosis["staxLevel"] = 1
+                if "zone" not in diagnosis:
+                    diagnosis["zone"] = 1
+                if "tags" not in diagnosis:
+                    diagnosis["tags"] = []
+                if "status" not in diagnosis:
+                    diagnosis["status"] = "confirmed"
+        
         return analysis
     except Exception as e:
         print(f"Error generating journal analysis: {e}")
@@ -287,5 +486,10 @@ Format your response as JSON with the following structure:
             "symptoms": [],
             "environmental_factors": [],
             "life_stressors": [],
+            "diagnoses": [],
+            "journalingRecommendation": {
+                "promptType": "Clinical",
+                "suggestedPrompt": "Please describe your symptoms in detail."
+            },
             "timestamp": datetime.now().isoformat()
         }
