@@ -13,6 +13,7 @@ database = client[DATABASE_NAME]
 
 users_collection = database.users
 journal_entries_collection = database.journal_entries
+reports_collection = database.reports
 
 async def ping_database():
     """Verify database connection is working"""
