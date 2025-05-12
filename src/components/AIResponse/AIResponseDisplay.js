@@ -115,6 +115,34 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
               </div>
             )}
             
+            {(diagnosis.staxLevel || diagnosis.zone) && (
+              <div className="diagnostic-terrain">
+                <h4>Diagnostic Terrain</h4>
+                <div className="terrain-indicators">
+                  {diagnosis.staxLevel && (
+                    <div className="terrain-indicator">
+                      <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
+                        STAX {diagnosis.staxLevel}
+                      </span>
+                      <p className="terrain-description">
+                        {STAX_LEVELS[diagnosis.staxLevel] || `STAX Level ${diagnosis.staxLevel}: Complexity level ${diagnosis.staxLevel}`}
+                      </p>
+                    </div>
+                  )}
+                  {diagnosis.zone && (
+                    <div className="terrain-indicator">
+                      <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
+                        Zone {diagnosis.zone}
+                      </span>
+                      <p className="terrain-description">
+                        {ZONES[diagnosis.zone] || `Zone ${diagnosis.zone}: Stability level ${diagnosis.zone}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             <div className="diagnosis-details">
               {diagnosis.explanation && (
                 <div className="detail-section">

@@ -178,6 +178,40 @@
   font-weight: 500;
 }
 
+.diagnostic-terrain {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 0 16px 16px;
+  border-left: 4px solid #3498db;
+}
+
+.diagnostic-terrain h4 {
+  color: var(--color-text-secondary);
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.terrain-indicators {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.terrain-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.terrain-description {
+  margin: 0;
+  color: #495057;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .diagnosis-details {
   padding: 16px;
 }

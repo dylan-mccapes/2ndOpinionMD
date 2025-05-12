@@ -65,6 +65,73 @@
   background-color: var(--color-primary-dark);
 }
 
+.ethos-label {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  font-weight: normal;
+  margin-left: 5px;
+}
+
+.ethos-evaluation-info {
+  background-color: #f0f7ff;
+  border: 1px solid #cce5ff;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+}
+
+.ethos-evaluation-info h3 {
+  color: var(--color-primary);
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+}
+
+.ethos-evaluation-info p {
+  margin-bottom: 10px;
+  color: #495057;
+}
+
+.ethos-evaluation-info ul {
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
+
+.ethos-evaluation-info li {
+  margin-bottom: 6px;
+  color: #495057;
+}
+
+.stax-badge, .zone-badge {
+  display: inline-block;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.stax-badge {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.stax-1 { background-color: #bbdefb; color: #0d47a1; }
+.stax-2 { background-color: #90caf9; color: #0d47a1; }
+.stax-3 { background-color: #64b5f6; color: #0d47a1; }
+.stax-4 { background-color: #42a5f5; color: #0d47a1; }
+
+.zone-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.zone-1 { background-color: #c8e6c9; color: #1b5e20; }
+.zone-2 { background-color: #a5d6a7; color: #1b5e20; }
+.zone-3 { background-color: #fff9c4; color: #f57f17; }
+.zone-4 { background-color: #ffcc80; color: #e65100; }
+.zone-5 { background-color: #ffab91; color: #bf360c; }
+
 .symptom-form {
   background-color: white;
   border-radius: 8px;
