@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { generateEthosPrompt } from './ethosOfHealth';
 
 const saveDebugInfo = (key, data) => {
   try {
@@ -214,6 +215,8 @@ export const processSymptomInput = async (formData) => {
       throw new Error('Authentication required. Please log in.');
     }
     
+    const ethosPrompt = generateEthosPrompt();
+    
     const apiData = {
       symptoms: formData.symptoms.map(s => s.label),
       demographics: {
@@ -224,7 +227,8 @@ export const processSymptomInput = async (formData) => {
         weight: parseInt(formData.weight) || 0,
         occupation: formData.occupation || "Not specified"
       },
-      model: "gpt-3.5-turbo"
+      model: "gpt-3.5-turbo",
+      ethosPrompt: ethosPrompt // Add the ethos prompt to the API data
     };
     
     console.log('===== DIAGNOSE REQUEST PAYLOAD =====');
@@ -398,9 +402,17 @@ export const processSymptomInput = async (formData) => {
  * Prepares journal text for API submission with explicit prompt for OpenAI
  * to extract symptoms, environmental factors, and life stressors
  * @param {string} journalText - The raw journal text from the user
- * @returns {Object} Object containing the journal text and extraction prompt
+ * @param {Array} previousDiagnoses - Previous diagnoses from symptom intake
+ * @returns {Object} Object containing the journal text, parsed sentences, and extraction prompt
  */
-const prepareJournalData = (journalText) => {
+const prepareJournalData = (journalText, previousDiagnoses = []) => {
+  const sentences = journalText
+    .split(/[.,!?;]+/)
+    .map(sentence => sentence.trim())
+    .filter(sentence => sentence.length > 0);
+
+  const ethosPrompt = generateEthosPrompt();
+  
   return {
     symptoms: [
       {
@@ -408,22 +420,54 @@ const prepareJournalData = (journalText) => {
         severity: 5
       }
     ],
-    prompt: "Please analyze this journal entry and extract the following categories:\n\n" +
+    parsedSentences: sentences,
+    previousDiagnoses: previousDiagnoses,
+    prompt: `${ethosPrompt}\n\n` +
+            "Please analyze this journal entry using the 2OPMD Diagnostic Terrain System.\n" +
+            "Parse each sentence to identify symptoms, environmental factors, and life stressors.\n\n" +
+            `Previous diagnoses: ${JSON.stringify(previousDiagnoses)}\n\n` +
+            "Journal sentences:\n" +
+            sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join('\n') + "\n\n" +
+            "For each sentence, determine if it contains:\n" +
             "1) Symptoms (physical or mental health issues like pain, fatigue, etc.)\n" +
             "2) Environmental factors (diet, weather, allergens, etc.)\n" +
             "3) Life stressors (work, relationships, financial issues, etc.)\n\n" +
-            "Important: Categorize each element appropriately and return them separately in your response. For example:\n" +
-            "- 'Eating a lot of gluten' should be identified as an environmental factor (diet), not a symptom\n" +
-            "- 'Feeling tired' is a symptom\n" +
-            "- 'Argument with spouse' is a life stressor\n\n" +
-            "These categorized elements will be dated and stored for tracking patterns over time."
+            "Then, based on this analysis:\n" +
+            "- Confirm or adjust confidence in existing diagnoses\n" +
+            "- Suggest new potential diagnoses if indicated\n" +
+            "- Identify any diagnoses that should be eliminated\n" +
+            "- Assign appropriate STAX levels and Zone classifications\n" +
+            "- Apply relevant clinical and symbolic tags\n\n" +
+            "Format your response as a JSON with the following structure:\n" +
+            "{\n" +
+            '  "analysis": {\n' +
+            '    "symptoms": ["symptom1", "symptom2"],\n' +
+            '    "environmental_factors": ["factor1", "factor2"],\n' +
+            '    "life_stressors": ["stressor1", "stressor2"]\n' +
+            "  },\n" +
+            '  "diagnoses": [\n' +
+            "    {\n" +
+            '      "name": "Diagnosis name",\n' +
+            '      "confidence": 85,\n' +
+            '      "status": "confirmed/new/eliminated",\n' +
+            '      "staxLevel": 1,\n' +
+            '      "zone": 2,\n' +
+            '      "tags": ["#SuspectedDx_DiagnosisName", "#EarlyZoneShift"]\n' +
+            "    }\n" +
+            "  ],\n" +
+            '  "journalingRecommendation": {\n' +
+            '    "promptType": "Clinical/Somatic/Symbolic/Remission",\n' +
+            '    "suggestedPrompt": "What was lost when health left?"\n' +
+            "  }\n" +
+            "}"
   };
 };
 
-export const processJournalEntry = async (journalText, isTestMode = false) => {
+export const processJournalEntry = async (journalText, previousDiagnoses = [], isTestMode = false) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     console.log('Journal text:', journalText);
+    console.log('Previous diagnoses:', previousDiagnoses);
     console.log('Test mode:', isTestMode);
     
     createPersistentDebugPanel();
@@ -444,13 +488,15 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
       throw new Error('Journal text must be a string');
     }
     
-    const journalData = prepareJournalData(journalText);
+    const journalData = prepareJournalData(journalText, previousDiagnoses);
     
     const requestData = {
       symptoms: journalData.symptoms,
       notes: journalText, // Include the full text as notes as well
       date: new Date().toISOString(), // Add current date
       prompt: journalData.prompt, // Add the prompt for OpenAI to extract categories
+      parsedSentences: journalData.parsedSentences, // Add parsed sentences
+      previousDiagnoses: journalData.previousDiagnoses, // Add previous diagnoses
       environmental_factors: [], // Initialize empty array for backend compatibility
       life_stressors: [] // Initialize empty array for backend compatibility
     };
@@ -494,6 +540,7 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
         responseText += analysis.analysis + '\n\n';
       }
       
+      // Display symptoms
       if (analysis.symptoms && analysis.symptoms.length > 0) {
         responseText += 'Identified Symptoms:\n';
         analysis.symptoms.forEach((symptom, index) => {
@@ -502,6 +549,7 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
         responseText += '\n';
       }
       
+      // Display environmental factors
       if (analysis.environmental_factors && analysis.environmental_factors.length > 0) {
         responseText += 'Environmental Factors:\n';
         analysis.environmental_factors.forEach((factor, index) => {
@@ -519,6 +567,22 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
         responseText += '\n';
       }
       
+      // Display diagnoses with STAX levels and Zones
+      if (analysis.diagnoses && analysis.diagnoses.length > 0) {
+        responseText += 'Diagnoses:\n';
+        analysis.diagnoses.forEach((diagnosis, index) => {
+          const statusText = diagnosis.status === 'new' ? ' (NEW)' : 
+                            diagnosis.status === 'eliminated' ? ' (ELIMINATED)' : '';
+          responseText += `${index + 1}. ${diagnosis.name}${statusText} - Confidence: ${diagnosis.confidence}%\n`;
+          responseText += `   STAX Level: ${diagnosis.staxLevel}, Zone: ${diagnosis.zone}\n`;
+          if (diagnosis.tags && diagnosis.tags.length > 0) {
+            responseText += `   Tags: ${diagnosis.tags.join(', ')}\n`;
+          }
+          responseText += '\n';
+        });
+      }
+      
+      // Display follow-up questions
       if (analysis.followUpQuestions && analysis.followUpQuestions.length > 0) {
         responseText += 'Follow-up Questions:\n';
         analysis.followUpQuestions.forEach((question, index) => {
@@ -527,6 +591,7 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
         responseText += '\n';
       }
       
+      // Display tracking suggestions
       if (analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0) {
         responseText += 'Tracking Suggestions:\n';
         analysis.trackingSuggestions.forEach((suggestion, index) => {
@@ -535,8 +600,16 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
         responseText += '\n';
       }
       
+      // Display pattern observations
       if (analysis.patternObservations) {
         responseText += `Pattern Observations: ${analysis.patternObservations}\n`;
+      }
+      
+      // Display journaling recommendation
+      if (analysis.journalingRecommendation) {
+        responseText += '\nJournaling Recommendation:\n';
+        responseText += `Type: ${analysis.journalingRecommendation.promptType}\n`;
+        responseText += `Prompt: "${analysis.journalingRecommendation.suggestedPrompt}"\n`;
       }
       
       return { 
@@ -547,7 +620,9 @@ export const processJournalEntry = async (journalText, isTestMode = false) => {
           symptoms: analysis.symptoms || [],
           environmental_factors: analysis.environmental_factors || [],
           life_stressors: analysis.life_stressors || []
-        }
+        },
+        diagnoses: analysis.diagnoses || [],
+        journalingRecommendation: analysis.journalingRecommendation || null
       };
     }
     
