@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 /**
- * Report schema for MongoDB
+ * Report schema for MongoDB with ethos of health model integration
  */
 const ReportSchema = new mongoose.Schema({
   userId: {
@@ -52,6 +52,50 @@ const ReportSchema = new mongoose.Schema({
     labSuggestions: {
       type: [String],
       default: []
+    },
+    staxLevel: {
+      type: Number,
+      min: 1,
+      max: 4,
+      default: 1
+    },
+    zone: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: 1
+    },
+    tags: {
+      type: [String],
+      default: []
+    },
+    status: {
+      type: String,
+      enum: ['confirmed', 'new', 'eliminated', 'initial'],
+      default: 'initial'
+    }
+  }],
+  journalEntries: [{
+    entryDate: {
+      type: Date,
+      default: Date.now
+    },
+    content: {
+      type: String,
+      required: true
+    },
+    analysis: {
+      symptoms: [String],
+      environmentalFactors: [String],
+      lifeStressors: [String]
+    },
+    journalingRecommendation: {
+      promptType: {
+        type: String,
+        enum: ['Clinical', 'Somatic', 'Symbolic', 'Remission'],
+        default: 'Clinical'
+      },
+      suggestedPrompt: String
     }
   }],
   pdfUrl: {

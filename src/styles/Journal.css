@@ -10,10 +10,167 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* No Reports Message */
+.no-reports-message {
+  text-align: center;
+  padding: 2rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.no-reports-message p {
+  margin-bottom: 1rem;
+  color: #495057;
+}
+
+/* Selected Report Info */
+.selected-report-info {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border-left: 4px solid #3498db;
+}
+
+.selected-report-info h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+.report-diagnoses ul {
+  list-style: none;
+  padding: 0;
+}
+
+.report-diagnoses li {
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.diagnosis-terrain {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.stax-badge, .zone-badge {
+  display: inline-block;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.stax-badge {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.stax-1 { background-color: #bbdefb; color: #0d47a1; }
+.stax-2 { background-color: #90caf9; color: #0d47a1; }
+.stax-3 { background-color: #64b5f6; color: #0d47a1; }
+.stax-4 { background-color: #42a5f5; color: #0d47a1; }
+
+.zone-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.zone-1 { background-color: #c8e6c9; color: #1b5e20; }
+.zone-2 { background-color: #a5d6a7; color: #1b5e20; }
+.zone-3 { background-color: #fff9c4; color: #f57f17; }
+.zone-4 { background-color: #ffcc80; color: #e65100; }
+.zone-5 { background-color: #ffab91; color: #bf360c; }
+
 /* Journal Form */
 .form-description {
   color: #666;
   margin-bottom: 2rem;
+}
+
+/* Notes Header and Parsed View */
+.notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.toggle-parsed-view {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.8rem;
+}
+
+.parsed-sentences {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+  border: 1px solid #e9ecef;
+}
+
+.parsed-sentences h4 {
+  margin-top: 0;
+  color: #2c3e50;
+  margin-bottom: 0.8rem;
+}
+
+.parsed-info {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.sentence-list {
+  list-style: none;
+  padding: 0;
+}
+
+.parsed-sentence {
+  display: flex;
+  margin-bottom: 0.8rem;
+  padding: 0.8rem;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.sentence-number {
+  font-weight: 600;
+  color: #3498db;
+  margin-right: 0.8rem;
+  min-width: 1.5rem;
+}
+
+.sentence-text {
+  flex: 1;
+}
+
+.ethos-info {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.ethos-info p {
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+.ethos-info ul {
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.ethos-info li {
+  margin-bottom: 0.5rem;
+  color: #6c757d;
+  font-size: 0.9rem;
 }
 
 .form-section {

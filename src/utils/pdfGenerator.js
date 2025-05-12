@@ -63,6 +63,31 @@ export const generatePdfReport = async (diagnosticResults) => {
     
     yPosition += 6;
     
+    if (diagnosis.staxLevel || diagnosis.zone) {
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'italic');
+      
+      let terrainText = '';
+      if (diagnosis.staxLevel) {
+        terrainText += `STAX Level: ${diagnosis.staxLevel}`;
+      }
+      
+      if (diagnosis.zone) {
+        terrainText += terrainText ? ' | ' : '';
+        terrainText += `Zone: ${diagnosis.zone}`;
+      }
+      
+      pdf.text(terrainText, margin, yPosition);
+      yPosition += 5;
+    }
+    
+    if (diagnosis.tags && diagnosis.tags.length > 0) {
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'italic');
+      pdf.text(`Tags: ${diagnosis.tags.join(', ')}`, margin, yPosition);
+      yPosition += 5;
+    }
+    
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
     pdf.text('Common Symptoms:', margin, yPosition);
