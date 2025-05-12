@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
+import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import JournalTimeline from './JournalTimeline';
 import '../../styles/Journal.css';
@@ -126,6 +127,24 @@ const JournalForm = () => {
   
   const toggleTimeline = () => {
     setShowTimeline(!showTimeline);
+  };
+  
+  const generateTimelinePdf = async () => {
+    if (!selectedReport || !timelineData) {
+      setError('No timeline data available to generate PDF');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      await downloadTimelinePdf(timelineData, `diagnosis-timeline-${selectedReport.id}.pdf`);
+      setError(''); // Clear any previous errors
+    } catch (err) {
+      console.error('Error generating timeline PDF:', err);
+      setError('Failed to generate timeline PDF. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleReportSelect = (e) => {
@@ -337,13 +356,25 @@ const JournalForm = () => {
           <div className="report-diagnoses">
             <div className="diagnoses-header">
               <p><strong>Current Diagnoses:</strong></p>
-              <button 
-                type="button" 
-                className="btn btn-outline-info btn-sm"
-                onClick={toggleTimeline}
-              >
-                {showTimeline ? 'Hide Timeline' : 'Show Timeline'}
-              </button>
+              <div className="timeline-buttons">
+                <button 
+                  type="button" 
+                  className="btn btn-outline-info btn-sm"
+                  onClick={toggleTimeline}
+                >
+                  {showTimeline ? 'Hide Timeline' : 'Show Timeline'}
+                </button>
+                {timelineData && (
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm ml-2"
+                    onClick={generateTimelinePdf}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Generating...' : 'Download Timeline PDF'}
+                  </button>
+                )}
+              </div>
             </div>
             <ul>
               {previousDiagnoses.map((diagnosis, index) => (

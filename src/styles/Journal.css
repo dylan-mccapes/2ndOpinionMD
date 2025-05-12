@@ -582,6 +582,32 @@ textarea {
   }
 }
 
+/* Timeline Styles */
+.timeline-container {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.timeline-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.diagnoses-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.ml-2 {
+  margin-left: 8px;
+}
+
 /* Messages */
 .error-message {
   padding: 1rem;
