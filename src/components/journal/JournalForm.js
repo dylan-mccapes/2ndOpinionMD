@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
+import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import '../../styles/Journal.css';
 
 const JournalForm = () => {
@@ -241,9 +242,13 @@ const JournalForm = () => {
           state: { 
             message: 'Journal entry created successfully!',
             entryId: response.data.id,
-            analysis: response.data.analysis,
-            diagnoses: response.data.diagnoses,
-            journalingRecommendation: response.data.journalingRecommendation
+            analysis: {
+              symptoms: response.data.ai_analysis?.symptoms || [],
+              environmental_factors: response.data.ai_analysis?.environmental_factors || [],
+              life_stressors: response.data.ai_analysis?.life_stressors || [],
+              diagnoses: response.data.ai_analysis?.diagnoses || [],
+              journalingRecommendation: response.data.ai_analysis?.journalingRecommendation
+            }
           } 
         });
       }
@@ -505,6 +510,23 @@ const JournalForm = () => {
             </div>
           )}
         </section>
+        
+        {formData.notes && (
+          <section className="form-section">
+            <h3>Preview Analysis</h3>
+            <p className="analysis-preview-info">
+              This is a preview of how your journal entry will be analyzed. The actual results may vary.
+            </p>
+            <JournalAnalysisDisplay 
+              analysis={{
+                symptoms: parsedSentences.map(s => s.trim()).filter(s => s.length > 0),
+                environmental_factors: [],
+                life_stressors: [],
+                diagnoses: previousDiagnoses
+              }}
+            />
+          </section>
+        )}
         
         <div className="form-actions">
           <button 
