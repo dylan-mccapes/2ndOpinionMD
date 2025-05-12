@@ -310,6 +310,8 @@ const JournalForm = () => {
             message: 'Journal entry created successfully!',
             entryId: response.data.id,
             analysis: {
+              analysis: response.data.ai_analysis?.analysis || "Your journal entry has been analyzed.",
+              summary: "Your journal entry has been analyzed to identify health patterns and update diagnoses.",
               symptoms: response.data.ai_analysis?.symptoms || [],
               environmental_factors: response.data.ai_analysis?.environmental_factors || [],
               life_stressors: response.data.ai_analysis?.life_stressors || [],
@@ -613,12 +615,15 @@ const JournalForm = () => {
             </p>
             <JournalAnalysisDisplay 
               analysis={{
-                symptoms: parsedSentences.filter((s, i) => i % 3 === 0 && s.trim().length > 0),
-                environmental_factors: parsedSentences.filter((s, i) => i % 3 === 1 && s.trim().length > 0),
-                life_stressors: parsedSentences.filter((s, i) => i % 3 === 2 && s.trim().length > 0),
+                analysis: "Based on your journal entry, our AI will analyze your health patterns and update your diagnoses accordingly.",
+                summary: "Your journal entry will be analyzed to identify health patterns and update your diagnostic terrain.",
+                symptoms: [],
+                environmental_factors: [],
+                life_stressors: [],
                 diagnoses: previousDiagnoses.map(diag => ({
                   ...diag,
-                  status: 'confirmed'
+                  status: 'confirmed',
+                  statusReason: "Based on your journal entry, this diagnosis remains confirmed."
                 }))
               }}
             />

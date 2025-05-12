@@ -36,49 +36,58 @@ const JournalAnalysisDisplay = ({ analysis }) => {
         {analysis.summary && <p>{analysis.summary}</p>}
       </div>
       
-      <div className="analysis-categories">
-        {/* Symptoms section */}
-        <div className="analysis-section">
-          <h4>Identified Symptoms:</h4>
-          {analysis.symptoms && analysis.symptoms.length > 0 ? (
-            <ul>
-              {analysis.symptoms.map((symptom, index) => (
-                <li key={index}>{symptom}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="no-data">No symptoms identified.</p>
-          )}
-        </div>
-        
-        {/* Environmental factors section */}
-        <div className="analysis-section">
-          <h4>Environmental Factors:</h4>
-          {analysis.environmental_factors && analysis.environmental_factors.length > 0 ? (
-            <ul>
-              {analysis.environmental_factors.map((factor, index) => (
-                <li key={index}>{factor}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="no-data">No environmental factors identified.</p>
-          )}
-        </div>
-        
-        {/* Life stressors section */}
-        <div className="analysis-section">
-          <h4>Life Stressors:</h4>
-          {analysis.life_stressors && analysis.life_stressors.length > 0 ? (
-            <ul>
-              {analysis.life_stressors.map((stressor, index) => (
-                <li key={index}>{stressor}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="no-data">No life stressors identified.</p>
-          )}
-        </div>
+      {/* Analysis section */}
+      <div className="analysis-results">
+        <h4>Analysis Results:</h4>
+        <p>{analysis.analysis || "No analysis available."}</p>
       </div>
+      
+      {/* Categorized data - only show if specifically requested */}
+      {(window.location.search.includes('showDetails=true') || localStorage.getItem('showJournalDetails') === 'true') && (
+        <div className="analysis-categories">
+          {/* Symptoms section */}
+          <div className="analysis-section">
+            <h4>Identified Symptoms:</h4>
+            {analysis.symptoms && analysis.symptoms.length > 0 ? (
+              <ul>
+                {analysis.symptoms.map((symptom, index) => (
+                  <li key={index}>{symptom}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="no-data">No symptoms identified.</p>
+            )}
+          </div>
+          
+          {/* Environmental factors section */}
+          <div className="analysis-section">
+            <h4>Environmental Factors:</h4>
+            {analysis.environmental_factors && analysis.environmental_factors.length > 0 ? (
+              <ul>
+                {analysis.environmental_factors.map((factor, index) => (
+                  <li key={index}>{factor}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="no-data">No environmental factors identified.</p>
+            )}
+          </div>
+          
+          {/* Life stressors section */}
+          <div className="analysis-section">
+            <h4>Life Stressors:</h4>
+            {analysis.life_stressors && analysis.life_stressors.length > 0 ? (
+              <ul>
+                {analysis.life_stressors.map((stressor, index) => (
+                  <li key={index}>{stressor}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="no-data">No life stressors identified.</p>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Diagnoses section with updated confidence scores */}
       {analysis.diagnoses && analysis.diagnoses.length > 0 && (
