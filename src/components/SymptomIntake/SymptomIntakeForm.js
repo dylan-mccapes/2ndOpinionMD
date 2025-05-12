@@ -5,12 +5,18 @@ import PropTypes from 'prop-types';
 import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS, RACE_OPTIONS } from '../../utils/constants';
 import { formatSymptomData } from '../../utils/formatData';
 import { processSymptomInput } from '../../utils/openaiService';
+import { ZONES, STAX_LEVELS, MISDIAGNOSIS_PATTERNS } from '../../utils/ethosOfHealth';
 import './SymptomIntakeForm.css';
 
 const SymptomIntakeForm = ({ onSubmit }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showEthosInfo, setShowEthosInfo] = useState(false);
   const { control, handleSubmit, formState: { errors } } = useForm();
+  
+  const toggleEthosInfo = () => {
+    setShowEthosInfo(!showEthosInfo);
+  };
 
   const processForm = async (data) => {
     setIsLoading(true);
@@ -43,7 +49,42 @@ const SymptomIntakeForm = ({ onSubmit }) => {
   return (
     <div className="symptom-intake-container">
       <h2>Symptom Intake Form</h2>
-      <p>Please provide your information to receive a second opinion analysis</p>
+      <div className="form-header">
+        <p>Please provide your information to receive a second opinion analysis</p>
+        <button 
+          type="button" 
+          className="info-button"
+          onClick={toggleEthosInfo}
+        >
+          ℹ️ About Ethos of Health
+        </button>
+      </div>
+      
+      {showEthosInfo && (
+        <div className="ethos-info-box">
+          <h3>About the Ethos of Health Model</h3>
+          <p>The 2OPMD Diagnostic Terrain System is designed for autoimmune, rare, and misdiagnosed conditions. It evaluates:</p>
+          <ul>
+            <li><strong>Zones (1-5):</strong> {Object.entries(ZONES).map(([key, value]) => (
+              <span key={key}>{key === '1' ? '' : ', '}{value}</span>
+            ))}</li>
+            <li><strong>STAX Levels (1-4):</strong> {Object.entries(STAX_LEVELS).map(([key, value]) => (
+              <span key={key}>{key === '1' ? '' : ', '}{value}</span>
+            ))}</li>
+            <li><strong>Misdiagnosis Patterns:</strong> Identifying commonly misdiagnosed conditions through pattern recognition</li>
+            <li><strong>Early Zone Shifts:</strong> Detecting early signs of terrain destabilization</li>
+            <li><strong>Diagnostic Confidence:</strong> Requiring 95%+ certainty for final diagnoses</li>
+          </ul>
+          <p>This system helps provide more accurate diagnoses and personalized recommendations based on your unique health terrain.</p>
+          <button 
+            type="button" 
+            className="close-info-button"
+            onClick={toggleEthosInfo}
+          >
+            Close
+          </button>
+        </div>
+      )}
       
       {error && <div className="error-message">{error}</div>}
       

@@ -4,6 +4,67 @@
   margin: 0 auto;
 }
 
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.info-button {
+  background-color: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.info-button:hover {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.ethos-info-box {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.ethos-info-box h3 {
+  color: var(--color-primary);
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.ethos-info-box ul {
+  padding-left: 20px;
+}
+
+.ethos-info-box li {
+  margin-bottom: 8px;
+}
+
+.close-info-button {
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+.close-info-button:hover {
+  background-color: var(--color-primary-dark);
+}
+
 .symptom-form {
   background-color: white;
   border-radius: 8px;
