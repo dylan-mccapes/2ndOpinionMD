@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import '../../styles/Journal.css';
 
 const JournalDetail = () => {
   const [entry, setEntry] = useState(null);
+  const [timelineData, setTimelineData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const { entryId } = useParams();
@@ -29,6 +31,31 @@ const JournalDetail = () => {
         );
         
         setEntry(response.data);
+        
+        if (response.data && response.data.reportId) {
+          try {
+            const timelineResponse = await axios.get(
+              `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/timeline/${response.data.reportId}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              }
+            );
+            
+            if (timelineResponse.data) {
+              setTimelineData({
+                initialDiagnosis: {
+                  date: response.data.createdAt,
+                  diagnoses: response.data.previousDiagnoses || []
+                },
+                journalEntries: timelineResponse.data.journalEntries || []
+              });
+            }
+          } catch (timelineErr) {
+            console.error('Error fetching timeline data:', timelineErr);
+          }
+        }
       } catch (err) {
         console.error('Error fetching journal entry:', err);
         setError('Unable to load journal entry. Please try again later.');
@@ -156,41 +183,10 @@ const JournalDetail = () => {
         
         {entry.ai_analysis && (
           <section className="detail-section ai-analysis">
-            <h3>AI Analysis</h3>
-            
-            <div className="analysis-content">
-              <h4>Analysis</h4>
-              <p>{entry.ai_analysis.analysis}</p>
-            </div>
-            
-            {entry.ai_analysis.patternObservations && (
-              <div className="pattern-observations">
-                <h4>Pattern Observations</h4>
-                <p>{entry.ai_analysis.patternObservations}</p>
-              </div>
-            )}
-            
-            {entry.ai_analysis.followUpQuestions && entry.ai_analysis.followUpQuestions.length > 0 && (
-              <div className="follow-up-questions">
-                <h4>Follow-up Questions</h4>
-                <ul>
-                  {entry.ai_analysis.followUpQuestions.map((question, index) => (
-                    <li key={index}>{question}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-            {entry.ai_analysis.trackingSuggestions && entry.ai_analysis.trackingSuggestions.length > 0 && (
-              <div className="tracking-suggestions">
-                <h4>Tracking Suggestions</h4>
-                <ul>
-                  {entry.ai_analysis.trackingSuggestions.map((suggestion, index) => (
-                    <li key={index}>{suggestion}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <JournalAnalysisDisplay 
+              analysis={entry.ai_analysis} 
+              timelineData={timelineData} 
+            />
           </section>
         )}
       </div>
