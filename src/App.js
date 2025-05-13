@@ -320,7 +320,7 @@ function AppContent() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <JournalEntryForm onSubmit={handleJournalSubmit} />
-                  {journalResponse && <JournalResponse response={journalResponse} />}
+                  {journalResponse && <JournalResponse response={journalResponse} timelineData={null} />}
                   <div className="home-button-container">
                     <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
                   </div>
@@ -374,7 +374,7 @@ function AppContent() {
                 <h1>Journal Test Mode</h1>
                 <p>This page allows testing journal functionality without authentication.</p>
                 <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
-                {journalResponse && <JournalResponse response={journalResponse} />}
+                {journalResponse && <JournalResponse response={journalResponse} timelineData={null} />}
                 <div className="home-button-container">
                   <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
                 </div>
