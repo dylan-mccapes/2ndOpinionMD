@@ -311,13 +311,12 @@ const JournalForm = () => {
             entryId: response.data.id,
             analysis: {
               analysis: response.data.ai_analysis?.analysis || "Your journal entry has been analyzed.",
-              summary: "Your journal entry has been analyzed to identify health patterns and update diagnoses.",
               symptoms: response.data.ai_analysis?.symptoms || [],
               environmental_factors: response.data.ai_analysis?.environmental_factors || [],
               life_stressors: response.data.ai_analysis?.life_stressors || [],
-              diagnoses: response.data.ai_analysis?.diagnoses || [],
-              journalingRecommendation: response.data.ai_analysis?.journalingRecommendation
-            }
+              diagnoses: response.data.ai_analysis?.diagnoses || []
+            },
+            timelineData: timelineData
           } 
         });
       }
