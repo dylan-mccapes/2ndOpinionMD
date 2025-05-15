@@ -133,17 +133,53 @@ function AppContent() {
       const response = await processJournalEntry(entry, isTestMode);
       console.log('Journal response received:', response);
       
+      let previousEntries = [];
+      if (!isTestMode && localStorage.getItem('token')) {
+        try {
+          const token = localStorage.getItem('token');
+          const entriesResponse = await fetch(
+            `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal?limit=20`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+          
+          if (entriesResponse.ok) {
+            const entriesData = await entriesResponse.json();
+            previousEntries = entriesData;
+          }
+        } catch (err) {
+          console.error('Error fetching previous journal entries:', err);
+        }
+      }
+      
       const timelineData = {
         initialDiagnosis: {
           date: new Date(),
           diagnoses: response.diagnoses || response.analysis?.diagnoses || []
         },
-        journalEntries: [{
-          date: new Date(),
-          notes: entry,
-          symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
-          ai_analysis: response.analysis || {}
-        }]
+        journalEntries: [
+          {
+            date: new Date(),
+            notes: entry,
+            symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
+            ai_analysis: {
+              analysis: typeof response.analysis === 'string' 
+                ? response.analysis 
+                : (response.analysis?.analysis || "No analysis available."),
+              patternObservations: response.patternObservations || response.analysis?.patternObservations || "",
+              diagnoses: response.diagnoses || response.analysis?.diagnoses || []
+            }
+          },
+          ...previousEntries.map(prevEntry => ({
+            date: new Date(prevEntry.date),
+            notes: prevEntry.notes,
+            symptoms: prevEntry.symptoms || [],
+            ai_analysis: prevEntry.ai_analysis || {}
+          }))
+        ]
       };
       
       setJournalResponse({

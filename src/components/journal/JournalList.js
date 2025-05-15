@@ -155,7 +155,10 @@ const JournalList = () => {
               
               {entry.ai_analysis && (
                 <div className="entry-analysis-preview">
-                  <p>{entry.ai_analysis.analysis.substring(0, 100)}...</p>
+                  {entry.ai_analysis.patternObservations && (
+                    <p><strong>Pattern Observations:</strong> {entry.ai_analysis.patternObservations.substring(0, 80)}...</p>
+                  )}
+                  <p>{entry.ai_analysis.analysis ? entry.ai_analysis.analysis.substring(0, 100) + '...' : 'No analysis available.'}</p>
                 </div>
               )}
             </div>
