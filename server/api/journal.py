@@ -147,7 +147,9 @@ async def create_journal_entry(
                         "symptoms": ai_analysis.get("symptoms", []),
                         "environmentalFactors": ai_analysis.get("environmental_factors", []),
                         "lifeStressors": ai_analysis.get("life_stressors", []),
-                        "diagnoses": ai_analysis.get("diagnoses", [])
+                        "diagnoses": ai_analysis.get("diagnoses", []),
+                        "analysis": ai_analysis.get("analysis", ""),
+                        "patternObservations": ai_analysis.get("patternObservations", "")
                     },
                     "journalingRecommendation": ai_analysis.get("journalingRecommendation", None)
                 }
