@@ -46,12 +46,35 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
       {/* Analysis section */}
       <div className="analysis-results">
         <h4>Analysis Results:</h4>
-        {analysis.patternObservation && (
+        {analysis.patternObservations && (
           <div className="pattern-observations">
-            <p><strong>Pattern Observations:</strong> {analysis.patternObservation}</p>
+            <p><strong>Pattern Observations:</strong> {analysis.patternObservations}</p>
           </div>
         )}
         <p>{analysis.analysis || "No analysis available."}</p>
+        <div className="debug-info">
+          <button 
+            onClick={() => {
+              const debugDiv = document.getElementById('journal-debug-info');
+              if (debugDiv) {
+                debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
+              }
+            }}
+            style={{
+              fontSize: '10px',
+              padding: '2px 5px',
+              marginTop: '5px',
+              backgroundColor: '#f0f0f0',
+              border: '1px solid #ccc',
+              borderRadius: '3px',
+              cursor: 'pointer',
+              display: process.env.NODE_ENV === 'development' ? 'block' : 'none'
+            }}
+          >
+            Toggle Debug Info
+          </button>
+          <pre style={{ display: 'none' }}>{JSON.stringify(analysis, null, 2)}</pre>
+        </div>
       </div>
       
       {/* Diagnoses section with updated confidence scores */}
@@ -352,10 +375,33 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <div className="analysis-section">
           <h5>Journal Entry Analysis:</h5>
           <div className="analysis-text">
-            {analysis.patternObservation && (
-              <p><strong>Pattern Observations:</strong> {analysis.patternObservation}</p>
+            {analysis.patternObservations && (
+              <p><strong>Pattern Observations:</strong> {analysis.patternObservations}</p>
             )}
             <p>{analysis.analysis || "No analysis available."}</p>
+            <div className="debug-info">
+              <button 
+                onClick={() => {
+                  const debugDiv = document.getElementById('journal-debug-info');
+                  if (debugDiv) {
+                    debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
+                  }
+                }}
+                style={{
+                  fontSize: '10px',
+                  padding: '2px 5px',
+                  marginTop: '5px',
+                  backgroundColor: '#f0f0f0',
+                  border: '1px solid #ccc',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  display: process.env.NODE_ENV === 'development' ? 'block' : 'none'
+                }}
+              >
+                Toggle Debug Info
+              </button>
+              <pre style={{ display: 'none' }}>{JSON.stringify(analysis, null, 2)}</pre>
+            </div>
           </div>
         </div>
       </div>
