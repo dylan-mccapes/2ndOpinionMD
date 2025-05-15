@@ -123,11 +123,24 @@ const JournalDetail = () => {
         <section className="detail-section">
           <h3>Symptoms</h3>
           <div className="symptom-tags">
-            {entry.symptoms.map((symptom, index) => (
-              <div key={index} className={`symptom-tag ${getSeverityColor(symptom.severity)}`}>
-                {symptom.symptom} ({symptom.severity}/10)
-              </div>
-            ))}
+            {entry.symptoms.map((symptom, index) => {
+              if (typeof symptom === 'string') {
+                return (
+                  <div key={index} className="symptom-tag low-severity">
+                    {symptom}
+                  </div>
+                );
+              } else if (symptom && typeof symptom === 'object') {
+                const symptomText = symptom.symptom || '';
+                const severity = symptom.severity || 5;
+                return (
+                  <div key={index} className={`symptom-tag ${getSeverityColor(severity)}`}>
+                    {symptomText} ({severity}/10)
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
         </section>
         

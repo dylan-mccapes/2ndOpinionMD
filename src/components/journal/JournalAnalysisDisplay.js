@@ -353,7 +353,16 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
               {analysis.symptoms && analysis.symptoms.length > 0 ? (
                 <ul>
                   {analysis.symptoms.map((symptom, index) => (
-                    <li key={index}>{symptom}</li>
+                    <li key={index}>
+                      {typeof symptom === 'string' 
+                        ? symptom 
+                        : (symptom && typeof symptom === 'object' 
+                            ? (symptom.symptom || JSON.stringify(symptom)) 
+                            : String(symptom))}
+                      {symptom && typeof symptom === 'object' && symptom.severity 
+                        ? ` (Severity: ${symptom.severity}/10)` 
+                        : ''}
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -367,7 +376,13 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
               {analysis.environmental_factors && analysis.environmental_factors.length > 0 ? (
                 <ul>
                   {analysis.environmental_factors.map((factor, index) => (
-                    <li key={index}>{factor}</li>
+                    <li key={index}>
+                      {typeof factor === 'string' 
+                        ? factor 
+                        : (factor && typeof factor === 'object' 
+                            ? (factor.description || factor.factor_type || JSON.stringify(factor)) 
+                            : String(factor))}
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -381,7 +396,13 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
               {analysis.life_stressors && analysis.life_stressors.length > 0 ? (
                 <ul>
                   {analysis.life_stressors.map((stressor, index) => (
-                    <li key={index}>{stressor}</li>
+                    <li key={index}>
+                      {typeof stressor === 'string' 
+                        ? stressor 
+                        : (stressor && typeof stressor === 'object' 
+                            ? (stressor.description || JSON.stringify(stressor)) 
+                            : String(stressor))}
+                    </li>
                   ))}
                 </ul>
               ) : (

@@ -127,11 +127,24 @@ const JournalList = () => {
               <div className="entry-symptoms">
                 <h4>Symptoms:</h4>
                 <ul className="symptom-list">
-                  {entry.symptoms.slice(0, 3).map((symptom, index) => (
-                    <li key={index} className={`symptom-tag ${getSeverityColor(symptom.severity)}`}>
-                      {symptom.symptom} ({symptom.severity}/10)
-                    </li>
-                  ))}
+                  {entry.symptoms.slice(0, 3).map((symptom, index) => {
+                    if (typeof symptom === 'string') {
+                      return (
+                        <li key={index} className="symptom-tag low-severity">
+                          {symptom}
+                        </li>
+                      );
+                    } else if (symptom && typeof symptom === 'object') {
+                      const symptomText = symptom.symptom || '';
+                      const severity = symptom.severity || 5;
+                      return (
+                        <li key={index} className={`symptom-tag ${getSeverityColor(severity)}`}>
+                          {symptomText} ({severity}/10)
+                        </li>
+                      );
+                    }
+                    return null;
+                  })}
                   {entry.symptoms.length > 3 && (
                     <li className="more-symptoms">
                       +{entry.symptoms.length - 3} more
