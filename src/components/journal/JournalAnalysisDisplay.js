@@ -346,69 +346,8 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         {/* Journal Entry Analysis */}
         <div className="analysis-section">
           <h5>Journal Entry Analysis:</h5>
-          <div className="journal-categories">
-            {/* Symptoms section */}
-            <div className="category-subsection">
-              <h6>Identified Symptoms:</h6>
-              {analysis.symptoms && analysis.symptoms.length > 0 ? (
-                <ul>
-                  {analysis.symptoms.map((symptom, index) => (
-                    <li key={index}>
-                      {typeof symptom === 'string' 
-                        ? symptom 
-                        : (symptom && typeof symptom === 'object' 
-                            ? (symptom.symptom || JSON.stringify(symptom)) 
-                            : String(symptom))}
-                      {symptom && typeof symptom === 'object' && symptom.severity 
-                        ? ` (Severity: ${symptom.severity}/10)` 
-                        : ''}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="no-data">No symptoms identified.</p>
-              )}
-            </div>
-            
-            {/* Environmental factors section */}
-            <div className="category-subsection">
-              <h6>Environmental Factors:</h6>
-              {analysis.environmental_factors && analysis.environmental_factors.length > 0 ? (
-                <ul>
-                  {analysis.environmental_factors.map((factor, index) => (
-                    <li key={index}>
-                      {typeof factor === 'string' 
-                        ? factor 
-                        : (factor && typeof factor === 'object' 
-                            ? (factor.description || factor.factor_type || JSON.stringify(factor)) 
-                            : String(factor))}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="no-data">No environmental factors identified.</p>
-              )}
-            </div>
-            
-            {/* Life stressors section */}
-            <div className="category-subsection">
-              <h6>Life Stressors:</h6>
-              {analysis.life_stressors && analysis.life_stressors.length > 0 ? (
-                <ul>
-                  {analysis.life_stressors.map((stressor, index) => (
-                    <li key={index}>
-                      {typeof stressor === 'string' 
-                        ? stressor 
-                        : (stressor && typeof stressor === 'object' 
-                            ? (stressor.description || JSON.stringify(stressor)) 
-                            : String(stressor))}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="no-data">No life stressors identified.</p>
-              )}
-            </div>
+          <div className="analysis-text">
+            <p>{analysis.analysis || "No analysis available."}</p>
           </div>
         </div>
       </div>
