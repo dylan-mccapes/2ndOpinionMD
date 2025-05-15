@@ -17,6 +17,7 @@ const JournalResponse = ({ response, timelineData }) => {
     analysis: typeof response.analysis === 'string' 
       ? response.analysis 
       : (response.analysis?.analysis || "No analysis available."),
+    patternObservation: response.patternObservation || response.analysis?.patternObservations || "",
     diagnoses: response.diagnoses || response.analysis?.diagnoses || [],
     symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
     environmental_factors: response.categories?.environmental_factors || response.analysis?.environmental_factors || [],

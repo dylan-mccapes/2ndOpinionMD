@@ -46,6 +46,11 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
       {/* Analysis section */}
       <div className="analysis-results">
         <h4>Analysis Results:</h4>
+        {analysis.patternObservation && (
+          <div className="pattern-observations">
+            <p><strong>Pattern Observations:</strong> {analysis.patternObservation}</p>
+          </div>
+        )}
         <p>{analysis.analysis || "No analysis available."}</p>
       </div>
       
@@ -347,6 +352,9 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <div className="analysis-section">
           <h5>Journal Entry Analysis:</h5>
           <div className="analysis-text">
+            {analysis.patternObservation && (
+              <p><strong>Pattern Observations:</strong> {analysis.patternObservation}</p>
+            )}
             <p>{analysis.analysis || "No analysis available."}</p>
           </div>
         </div>
