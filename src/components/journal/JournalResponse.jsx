@@ -14,11 +14,13 @@ const JournalResponse = ({ response, timelineData }) => {
     : new Date().toLocaleString();
   
   const analysisData = {
-    analysis: response.analysis,
-    diagnoses: response.diagnoses || [],
-    symptoms: response.categories?.symptoms || [],
-    environmental_factors: response.categories?.environmental_factors || [],
-    life_stressors: response.categories?.life_stressors || []
+    analysis: typeof response.analysis === 'string' 
+      ? response.analysis 
+      : (response.analysis?.analysis || "No analysis available."),
+    diagnoses: response.diagnoses || response.analysis?.diagnoses || [],
+    symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
+    environmental_factors: response.categories?.environmental_factors || response.analysis?.environmental_factors || [],
+    life_stressors: response.categories?.life_stressors || response.analysis?.life_stressors || []
   };
   
   return (

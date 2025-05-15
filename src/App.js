@@ -132,7 +132,24 @@ function AppContent() {
       
       const response = await processJournalEntry(entry, isTestMode);
       console.log('Journal response received:', response);
-      setJournalResponse(response);
+      
+      const timelineData = {
+        initialDiagnosis: {
+          date: new Date(),
+          diagnoses: response.diagnoses || response.analysis?.diagnoses || []
+        },
+        journalEntries: [{
+          date: new Date(),
+          notes: entry,
+          symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
+          ai_analysis: response.analysis || {}
+        }]
+      };
+      
+      setJournalResponse({
+        ...response,
+        timelineData: timelineData
+      });
     } catch (error) {
       console.error('Error processing journal entry:', error);
       setJournalResponse({ 
@@ -320,7 +337,7 @@ function AppContent() {
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <JournalEntryForm onSubmit={handleJournalSubmit} />
-                  {journalResponse && <JournalResponse response={journalResponse} timelineData={null} />}
+                  {journalResponse && <JournalResponse response={journalResponse} timelineData={journalResponse.timelineData} />}
                   <div className="home-button-container">
                     <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
                   </div>
@@ -374,7 +391,7 @@ function AppContent() {
                 <h1>Journal Test Mode</h1>
                 <p>This page allows testing journal functionality without authentication.</p>
                 <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
-                {journalResponse && <JournalResponse response={journalResponse} timelineData={null} />}
+                {journalResponse && <JournalResponse response={journalResponse} timelineData={journalResponse.timelineData} />}
                 <div className="home-button-container">
                   <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
                 </div>
