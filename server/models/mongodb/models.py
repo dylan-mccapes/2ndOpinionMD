@@ -44,6 +44,8 @@ class JournalEntryBase(BaseModel):
     diet_notes: Optional[str] = None
     sleep_quality: Optional[int] = Field(None, ge=1, le=10)  # 1-10 scale
     notes: Optional[str] = None
+    analysis: Optional[str] = None
+    patternObservations: Optional[str] = None
 
 class JournalEntryCreate(JournalEntryBase):
     pass
@@ -53,3 +55,4 @@ class JournalEntry(JournalEntryBase):
     user_id: str
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
+    ai_analysis: Optional[Dict[str, Any]] = None

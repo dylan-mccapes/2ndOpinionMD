@@ -13,16 +13,63 @@ const JournalResponse = ({ response, timelineData }) => {
     ? new Date(response.timestamp).toLocaleString() 
     : new Date().toLocaleString();
   
+  console.log('Response structure:', JSON.stringify(response, null, 2));
+  
+  console.log('Analysis data extraction - DETAILED:', {
+    responseType: typeof response,
+    analysisType: typeof response.analysis,
+    directAnalysis: response.analysis,
+    nestedAnalysis: response.analysis?.analysis,
+    aiAnalysis: response.ai_analysis,
+    aiAnalysisType: typeof response.ai_analysis,
+    aiAnalysisAnalysis: response.ai_analysis?.analysis,
+    aiAnalysisPatternObservations: response.ai_analysis?.patternObservations,
+    patternObservations: response.patternObservations || response.analysis?.patternObservations,
+    categories: response.categories,
+    rawAnalysis: JSON.stringify(response.analysis)
+  });
+  
   const analysisData = {
-    analysis: typeof response.analysis === 'string' 
-      ? response.analysis 
-      : (response.analysis?.analysis || "No analysis available."),
-    patternObservation: response.patternObservation || response.analysis?.patternObservations || "",
-    diagnoses: response.diagnoses || response.analysis?.diagnoses || [],
-    symptoms: response.categories?.symptoms || response.analysis?.symptoms || [],
-    environmental_factors: response.categories?.environmental_factors || response.analysis?.environmental_factors || [],
-    life_stressors: response.categories?.life_stressors || response.analysis?.life_stressors || []
+    analysis: response.ai_analysis?.analysis || 
+              (typeof response.analysis === 'string' ? response.analysis : response.analysis?.analysis) || 
+              response.text ||
+              "No analysis available.",
+    patternObservations: response.ai_analysis?.patternObservations || 
+                         response.patternObservations || 
+                         response.analysis?.patternObservations || 
+                         "",
+    diagnoses: response.ai_analysis?.diagnoses || 
+               response.diagnoses || 
+               response.analysis?.diagnoses || 
+               [],
+    symptoms: response.ai_analysis?.symptoms || 
+              response.categories?.symptoms || 
+              response.analysis?.symptoms || 
+              [],
+    environmental_factors: response.ai_analysis?.environmental_factors || 
+                          response.categories?.environmental_factors || 
+                          response.analysis?.environmental_factors || 
+                          [],
+    life_stressors: response.ai_analysis?.life_stressors || 
+                   response.categories?.life_stressors || 
+                   response.analysis?.life_stressors || 
+                   []
   };
+  
+  console.log('Final analysisData being passed to JournalAnalysisDisplay:', analysisData);
+  
+  if (process.env.NODE_ENV === 'development') {
+    setTimeout(() => {
+      const debugDiv = document.createElement('div');
+      debugDiv.id = 'journal-debug-info';
+      debugDiv.style.display = 'none';
+      debugDiv.innerHTML = `
+        <h3>Debug Info</h3>
+        <pre>${JSON.stringify({response, analysisData}, null, 2)}</pre>
+      `;
+      document.body.appendChild(debugDiv);
+    }, 1000);
+  }
   
   return (
     <div className="journal-response-container">
