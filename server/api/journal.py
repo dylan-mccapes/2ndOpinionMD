@@ -153,6 +153,8 @@ async def create_journal_entry(
                 }
             }}
         )
+    
+    journal_entry.ai_analysis = ai_analysis
 
     return journal_entry
 

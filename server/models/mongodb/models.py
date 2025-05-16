@@ -53,3 +53,4 @@ class JournalEntry(JournalEntryBase):
     user_id: str
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
+    ai_analysis: Optional[Dict[str, Any]] = None
