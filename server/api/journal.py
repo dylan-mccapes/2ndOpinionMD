@@ -155,6 +155,8 @@ async def create_journal_entry(
         )
     
     journal_entry.ai_analysis = ai_analysis
+    journal_entry.analysis = ai_analysis.get("analysis", "")
+    journal_entry.patternObservations = ai_analysis.get("patternObservations", "")
 
     return journal_entry
 
