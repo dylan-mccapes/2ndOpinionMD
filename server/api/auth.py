@@ -41,6 +41,12 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @router.post("/register", response_model=User)
 async def register_user(user: UserCreate):
     """Register a new user"""
+    if not user.email.endswith("@2ndopinionmd.ai"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only 2ndopinionmd.ai email addresses are allowed to register"
+        )
+        
     existing_user = await users_collection.find_one({"email": user.email})
     if existing_user:
         raise HTTPException(

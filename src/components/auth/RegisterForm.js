@@ -31,6 +31,11 @@ const RegisterForm = () => {
       return;
     }
     
+    if (!formData.email.endsWith('@2ndopinionmd.ai')) {
+      setError('Only 2ndopinionmd.ai email addresses are allowed to register');
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
