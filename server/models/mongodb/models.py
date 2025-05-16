@@ -44,6 +44,8 @@ class JournalEntryBase(BaseModel):
     diet_notes: Optional[str] = None
     sleep_quality: Optional[int] = Field(None, ge=1, le=10)  # 1-10 scale
     notes: Optional[str] = None
+    analysis: Optional[str] = None
+    patternObservations: Optional[str] = None
 
 class JournalEntryCreate(JournalEntryBase):
     pass
