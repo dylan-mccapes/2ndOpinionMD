@@ -151,3 +151,7 @@ server/venv312/
 server/secure/
 server/**/log_encryption.key
 server/~/           # accidental home-tilde paths
+server/chroma_db/
+server/venv/
+server/package.json
+server/package-lock.json
