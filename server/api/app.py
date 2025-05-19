@@ -65,7 +65,7 @@ async def log_requests(request: Request, call_next):
         logger.error(f"Error processing request: {str(e)}")
         logger.error(traceback.format_exc())
         
-        return HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
