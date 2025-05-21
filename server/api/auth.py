@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr
+import logging
 
 from models.mongodb.models import UserCreate, User, Token, UserInDB
 from models.mongodb.auth import (
@@ -13,11 +14,13 @@ from models.mongodb.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from models.mongodb.database import users_collection
+from utils.rate_limiter import auth_rate_limiter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter)):
     """Login endpoint to get JWT token"""
     user = await authenticate_user(form_data.username, form_data.password)
     if not user:
@@ -39,7 +42,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/register", response_model=User)
-async def register_user(user: UserCreate):
+async def register_user(user: UserCreate, _: None = Depends(auth_rate_limiter)):
     """Register a new user"""
     if not user.email.endswith("@2ndopinionmd.ai"):
         raise HTTPException(
@@ -71,7 +74,7 @@ async def register_user(user: UserCreate):
     )
 
 @router.get("/users/me", response_model=User)
-async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
+async def read_users_me(current_user: UserInDB = Depends(get_current_user), _: None = Depends(auth_rate_limiter)):
     """Get current user profile"""
     return User(
         id=current_user.id,
