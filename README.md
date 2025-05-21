@@ -232,6 +232,16 @@ User registration requires email verification:
 - Verification tokens expire after 30 minutes
 - Users can request a new verification email if needed
 
+### Email Allow-List
+
+The system supports an email allow-list for non-2ndopinionmd.ai email addresses:
+
+- Emails in the allow-list can register even if they don't have a 2ndopinionmd.ai domain
+- The allow-list is stored in a plain text file at `/server/allowed_emails.txt`
+- Each email should be on a separate line
+- Lines starting with `#` are treated as comments and ignored
+- Email matching is case-insensitive
+
 ## 🧠 Notes for Devin & Future Devs
 - All commands assume Node 18 is active.
 - Yarn must be used instead of npm.
