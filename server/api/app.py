@@ -2,8 +2,9 @@ import os
 import json
 import logging
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException, Body, Depends, Request
+from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
@@ -15,6 +16,7 @@ from vectordb.query_engine import MedicalQueryEngine
 from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
+from utils.rate_limiter import general_rate_limiter
 
 from api.auth import router as auth_router
 from api.journal import router as journal_router
@@ -67,10 +69,19 @@ async def log_requests(request: Request, call_next):
         
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+@app.exception_handler(status.HTTP_429_TOO_MANY_REQUESTS)
+async def rate_limit_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": str(exc.detail)},
+        headers={"Retry-After": request.headers.get("Retry-After", "60")}
+    )
+
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
-    current_user: UserInDB = Depends(get_current_user)
+    current_user: UserInDB = Depends(get_current_user),
+    _: None = Depends(general_rate_limiter)
 ):
     """
     Generate a diagnosis based on symptoms and optional demographics

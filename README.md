@@ -211,6 +211,17 @@ We are not using a test suite at MVP stage.
 - Border Radius: 8px
 - Spacing Scale: 8px / 16px / 24px
 
+## 🔐 Security Features
+
+### Rate Limiting
+
+The API implements rate limiting to protect against brute force attacks and abuse:
+
+- Authentication endpoints: 5 requests per minute per IP address
+- General API endpoints: 60 requests per minute per IP address
+
+When rate limits are exceeded, the API returns a 429 Too Many Requests response with a Retry-After header indicating when the client should try again.
+
 ## 🧠 Notes for Devin & Future Devs
 - All commands assume Node 18 is active.
 - Yarn must be used instead of npm.
