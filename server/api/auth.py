@@ -16,6 +16,7 @@ from models.mongodb.auth import (
 from models.mongodb.database import users_collection
 from utils.rate_limiter import auth_rate_limiter
 from utils.email.verification import send_verification_email, create_verification_token, verify_token
+from utils.email_allowlist import is_email_allowed
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -53,10 +54,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @router.post("/register", response_model=User)
 async def register_user(user: UserCreate, request: Request, _: None = Depends(auth_rate_limiter)):
     """Register a new user"""
-    if not user.email.endswith("@2ndopinionmd.ai"):
+    if not (user.email.endswith("@2ndopinionmd.ai") or is_email_allowed(user.email)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only 2ndopinionmd.ai email addresses are allowed to register"
+            detail="Email not authorized for registration. Please use a 2ndopinionmd.ai email or contact support."
         )
         
     existing_user = await users_collection.find_one({"email": user.email})
