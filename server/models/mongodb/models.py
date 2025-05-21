@@ -15,6 +15,9 @@ class UserInDB(UserBase):
     subscription_tier: str = "basic"  # basic, premium, professional
     created_at: datetime = Field(default_factory=datetime.now)
     last_login: Optional[datetime] = None
+    is_verified: bool = False
+    verification_token: Optional[str] = None
+    verification_token_expires: Optional[datetime] = None
 
 class User(UserBase):
     id: str

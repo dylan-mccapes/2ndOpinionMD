@@ -11,3 +11,4 @@ passlib==1.7.4
 python-jose==3.3.0
 bcrypt==4.1.2
 python-multipart==0.0.6
+fastapi-mail==1.4.1

@@ -222,6 +222,16 @@ The API implements rate limiting to protect against brute force attacks and abus
 
 When rate limits are exceeded, the API returns a 429 Too Many Requests response with a Retry-After header indicating when the client should try again.
 
+### Email Verification
+
+User registration requires email verification:
+
+- When a user registers, a verification email is sent to their email address
+- The user must click the verification link to activate their account
+- Unverified users cannot log in to the application
+- Verification tokens expire after 30 minutes
+- Users can request a new verification email if needed
+
 ## 🧠 Notes for Devin & Future Devs
 - All commands assume Node 18 is active.
 - Yarn must be used instead of npm.
