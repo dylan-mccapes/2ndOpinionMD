@@ -16,7 +16,7 @@ from vectordb.query_engine import MedicalQueryEngine
 from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
-from utils.rate_limiter import general_rate_limiter
+from utils.rate_limiter import general_rate_limiter, get_client_ip
 
 from api.auth import router as auth_router
 from api.journal import router as journal_router
@@ -49,6 +49,37 @@ class SymptomRequest(BaseModel):
 
 class DiagnosisResponse(BaseModel):
     diagnoses: List[Dict[str, Any]]
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    """
+    Middleware to block access to sensitive files and paths
+    """
+    path = request.url.path.lower()
+    
+    blocked_patterns = [
+        "/.env", 
+        "/.git", 
+        "/.config", 
+        "/.aws", 
+        "/.ssh",
+        "/wp-login.php",  # Common WordPress attack vector
+        "/wp-admin",      # Common WordPress attack vector
+        "/admin",         # Common admin panel paths
+        "/phpinfo.php",   # PHP info disclosure
+        "/config.php",    # Common config files
+    ]
+    
+    for pattern in blocked_patterns:
+        if pattern in path:
+            client_ip = get_client_ip(request)
+            logger.warning(f"Blocked suspicious request: {request.method} {request.url} from {client_ip}")
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"detail": "Access denied"}
+            )
+    
+    return await call_next(request)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

@@ -242,6 +242,15 @@ The system supports an email allow-list for non-2ndopinionmd.ai email addresses:
 - Lines starting with `#` are treated as comments and ignored
 - Email matching is case-insensitive
 
+### Security Middleware
+
+The API implements security middleware to block suspicious requests:
+
+- Blocks access to sensitive files and paths (/.env, /.git, etc.)
+- Returns 403 Forbidden for blocked requests
+- Logs blocked requests with source IP address
+- Protects against common scanning and exploitation attempts
+
 ## 🧠 Notes for Devin & Future Devs
 - All commands assume Node 18 is active.
 - Yarn must be used instead of npm.
