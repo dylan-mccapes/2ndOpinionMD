@@ -3,6 +3,7 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from pydantic import EmailStr
 from typing import List
 from dotenv import load_dotenv
+from utils.email.pydantic_compat import Secret  # Add compatibility layer
 
 load_dotenv()
 
