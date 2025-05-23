@@ -8,7 +8,6 @@ import datetime
 import json
 from pathlib import Path
 
-
 class EncryptedLogFormatter(logging.Formatter):
     """
     Custom formatter that encrypts log records before writing them to file.
