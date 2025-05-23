@@ -17,11 +17,18 @@ from models.mongodb.database import ping_database
 from models.mongodb.auth import get_current_user
 from models.mongodb.models import UserInDB
 from utils.rate_limiter import general_rate_limiter, get_client_ip
+from utils.encrypted_logging import setup_encrypted_logging
 
 from api.auth import router as auth_router
 from api.journal import router as journal_router
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+load_dotenv()
+
+setup_encrypted_logging(
+    log_dir=os.environ.get('LOG_DIR', './logs'),
+    log_level=logging.INFO,
+    console_logging=True
+)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -158,4 +165,4 @@ async def health_check():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=3001, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
