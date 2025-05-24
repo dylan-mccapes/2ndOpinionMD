@@ -87,6 +87,7 @@ const JournalResponse = ({ response, timelineData }) => {
         <div className="disclaimer">
           <h3>Important Note</h3>
           <p>This analysis is for informational purposes only and is not a medical diagnosis. 
+             This journal analysis is designed to help you track patterns and share insights with your healthcare provider.
              Please consult with a healthcare professional for proper evaluation and diagnosis.</p>
         </div>
       </div>
