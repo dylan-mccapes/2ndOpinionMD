@@ -191,6 +191,7 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
       <div className="disclaimer">
         <h3>Important Disclaimer</h3>
         <p>This report is for informational purposes only and is not a medical diagnosis. 
+           This tool is designed to help you track and journal your symptoms to share with your healthcare provider.
            Please consult with a healthcare professional for proper evaluation and diagnosis. 
            The confidence percentages are based on symptom matching and are not clinical assessments.</p>
         <button onClick={() => downloadPdfReport(diagnoses)} className="btn btn-primary download-btn">

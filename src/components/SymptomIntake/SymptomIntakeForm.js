@@ -282,6 +282,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
           <p>This information will be displayed in your diagnostic report.</p>
         </div>
         
+        <div className="disclaimer">
+          <h3>Important Notice</h3>
+          <p>This tool is designed to help you track and journal your symptoms to share with your healthcare provider. The generated report is for informational purposes only and is not a medical diagnosis. Please consult with a healthcare professional for proper evaluation and diagnosis.</p>
+        </div>
+        
         <button 
           type="submit" 
           className="btn btn-primary submit-btn"

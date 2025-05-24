@@ -417,8 +417,9 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         </button>
       </div>
       
-      <div className="important-note">
-        <p>This analysis is for informational purposes only and is not a medical diagnosis. Please consult with a healthcare professional for proper evaluation and diagnosis.</p>
+      <div className="disclaimer">
+        <h3>Important Notice</h3>
+        <p>This analysis is for informational purposes only and is not a medical diagnosis. This tool helps you track symptom patterns over time to share with your healthcare provider. Please consult with a healthcare professional for proper evaluation and diagnosis.</p>
       </div>
     </div>
   );

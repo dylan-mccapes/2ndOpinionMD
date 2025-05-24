@@ -154,6 +154,7 @@ export const generatePdfReport = async (diagnosticResults) => {
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   const disclaimerText = 'This report is for informational purposes only and is not a medical diagnosis. ' +
+    'This tool is designed to help you track and journal your symptoms to share with your healthcare provider. ' +
     'Please consult with a healthcare professional for proper evaluation and diagnosis. ' +
     'The confidence percentages are based on symptom matching and are not clinical assessments. ' +
     '2ndOpinionMD.ai provides this information as a tool to assist in discussions with healthcare providers.';
@@ -477,6 +478,7 @@ export const generateTimelinePdf = async (timelineData) => {
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   const disclaimerText = 'This timeline report is for informational purposes only and is not a medical diagnosis. ' +
+    'This tool helps you track symptom patterns over time to share with your healthcare provider. ' +
     'Please consult with a healthcare professional for proper evaluation and diagnosis. ' +
     'The confidence percentages are based on symptom matching and are not clinical assessments. ' +
     '2ndOpinionMD.ai provides this information as a tool to assist in discussions with healthcare providers.';

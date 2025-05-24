@@ -412,7 +412,7 @@ function AppContent() {
             <Layout user={user} onLogout={handleLogout}>
               <main className="App-main">
                 <h1>Medical Disclaimer</h1>
-                <p>This is the medical disclaimer page.</p>
+                <p>2ndOpinionMD.ai is a journaling tool designed to help you track your symptoms and health patterns to share with your healthcare provider. This platform is for informational purposes only and is not intended to provide medical diagnosis or advice. All AI-generated content should be discussed with a qualified healthcare professional for proper evaluation and diagnosis.</p>
                 <div className="home-button-container">
                   <Link to="/dashboard" className="btn btn-secondary home-button">Return to Dashboard</Link>
                 </div>
