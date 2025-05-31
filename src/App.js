@@ -19,6 +19,7 @@ import DoctorEndorsement from './components/DoctorEndorsement/DoctorEndorsement'
 import SplashPage from './components/auth/SplashPage';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
+import EmailVerification from './components/auth/EmailVerification';
 
 import JournalForm from './components/journal/JournalForm';
 import JournalList from './components/journal/JournalList';
@@ -207,6 +208,7 @@ function AppContent() {
           <Route path="/splash" element={<SplashPage />} />
           <Route path="/login" element={<LoginForm onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/register" element={<RegisterForm />} />
+          <Route path="/verify-email" element={<EmailVerification />} />
           
           {/* Redirect to splash if not authenticated */}
           <Route path="/" element={
