@@ -132,6 +132,27 @@
   text-decoration: underline;
 }
 
+.verification-status {
+  text-align: center;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+}
+
+.verification-status.success {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.verification-status.error {
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
 @media (max-width: 768px) {
   .auth-container {
     margin: var(--spacing-lg) var(--spacing-md);
