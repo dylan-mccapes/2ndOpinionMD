@@ -20,6 +20,8 @@ import SplashPage from './components/auth/SplashPage';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import EmailVerification from './components/auth/EmailVerification';
+import ForgotPassword from './components/auth/ForgotPassword';
+import ResetPassword from './components/auth/ResetPassword';
 
 import JournalForm from './components/journal/JournalForm';
 import JournalList from './components/journal/JournalList';
@@ -209,6 +211,8 @@ function AppContent() {
           <Route path="/login" element={<LoginForm onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/register" element={<RegisterForm />} />
           <Route path="/verify-email" element={<EmailVerification />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Redirect to splash if not authenticated */}
           <Route path="/" element={

@@ -153,6 +153,33 @@
   color: #721c24;
 }
 
+.error-message {
+  color: #dc3545;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.success-message {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.password-requirements {
+  color: #666;
+  font-size: 12px;
+  margin-top: 5px;
+  display: block;
+}
+
 @media (max-width: 768px) {
   .auth-container {
     margin: var(--spacing-lg) var(--spacing-md);
