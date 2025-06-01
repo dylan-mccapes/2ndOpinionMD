@@ -76,10 +76,52 @@ async def register_user(user: UserCreate, request: Request, _: None = Depends(au
         
     existing_user = await users_collection.find_one({"email": user.email})
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+        existing_user_obj = UserInDB(**existing_user)
+        
+        if existing_user_obj.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        if (existing_user_obj.verification_token_expires and 
+            datetime.utcnow() > existing_user_obj.verification_token_expires):
+            
+            verification_token = create_verification_token({"sub": user.email})
+            token_expires = datetime.utcnow() + timedelta(minutes=30)
+            
+            await users_collection.update_one(
+                {"email": user.email},
+                {"$set": {
+                    "full_name": user.full_name,
+                    "hashed_password": get_password_hash(user.password),
+                    "verification_token": verification_token,
+                    "verification_token_expires": token_expires,
+                    "failed_login_attempts": 0,
+                    "locked_until": None
+                }}
+            )
+            
+            await send_verification_email(
+                email=user.email,
+                name=user.full_name,
+                token=verification_token,
+                request=request
+            )
+            
+            return User(
+                id=existing_user_obj.id,
+                email=user.email,
+                full_name=user.full_name,
+                subscription_tier=existing_user_obj.subscription_tier,
+                created_at=existing_user_obj.created_at
+            )
+        
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered but not verified. Please check your email for verification link or request a new one."
+            )
     
     verification_token = create_verification_token({"sub": user.email})
     token_expires = datetime.utcnow() + timedelta(minutes=30)
