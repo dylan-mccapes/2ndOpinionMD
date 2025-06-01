@@ -14,6 +14,7 @@ from server.api.auth_postgres import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_user_by_email
 )
+<<<<<<< HEAD
 from database.models.postgresql.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -54,6 +55,13 @@ from server.utils.rate_limiter import auth_rate_limiter
 from server.utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
 from server.utils.email_allowlist import is_email_allowed
 from server.utils.password_validation import validate_password_complexity
+=======
+from models.mongodb.database import users_collection
+from utils.rate_limiter import auth_rate_limiter
+from utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
+from utils.email_allowlist import is_email_allowed
+from utils.password_validation import validate_password_complexity
+>>>>>>> 417ae9ae (Implement password reset functionality with complexity validation and failed login tracking)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -61,7 +69,11 @@ logger = logging.getLogger(__name__)
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter), db: AsyncSession = Depends(get_db)):
     """Login endpoint to get JWT token"""
+<<<<<<< HEAD
     user = await authenticate_user(form_data.username, form_data.password, db)
+=======
+    user = await authenticate_user(form_data.username, form_data.password)
+>>>>>>> 417ae9ae (Implement password reset functionality with complexity validation and failed login tracking)
     if user == "locked":
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,

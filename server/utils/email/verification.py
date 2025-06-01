@@ -103,11 +103,19 @@ def verify_password_reset_token(token: str) -> Optional[str]:
     except Exception:
         return None
 
+<<<<<<< HEAD
 async def send_password_reset_email(email: EmailStr, name: str, token: str):
     """
     Send a password reset email with a token link
     """
     domain = os.getenv("FRONTEND_URL", "http://localhost:3000")
+=======
+async def send_password_reset_email(email: EmailStr, name: str, token: str, request: Request):
+    """
+    Send a password reset email with a token link
+    """
+    domain = os.getenv("DOMAIN_URL", "http://localhost:3000")
+>>>>>>> 417ae9ae (Implement password reset functionality with complexity validation and failed login tracking)
     reset_url = f"{domain}/reset-password?token={token}"
     
     template_path = Path(__file__).parent.parent.parent / "templates" / "password_reset.html"
