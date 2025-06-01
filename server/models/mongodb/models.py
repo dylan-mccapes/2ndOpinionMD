@@ -18,6 +18,10 @@ class UserInDB(UserBase):
     is_verified: bool = False
     verification_token: Optional[str] = None
     verification_token_expires: Optional[datetime] = None
+    failed_login_attempts: int = 0
+    locked_until: Optional[datetime] = None
+    password_reset_token: Optional[str] = None
+    password_reset_token_expires: Optional[datetime] = None
 
 class User(UserBase):
     id: str

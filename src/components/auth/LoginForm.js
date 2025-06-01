@@ -52,10 +52,14 @@ const LoginForm = ({ onLoginSuccess }) => {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(
-        err.response?.data?.detail || 
-        'Unable to log in. Please check your credentials and try again.'
-      );
+      if (err.response?.status === 423) {
+        setError('Account locked due to too many failed login attempts. Please reset your password or wait 15 minutes.');
+      } else {
+        setError(
+          err.response?.data?.detail || 
+          'Unable to log in. Please check your credentials and try again.'
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -108,6 +112,7 @@ const LoginForm = ({ onLoginSuccess }) => {
       </form>
       
       <div className="auth-links">
+        <Link to="/forgot-password">Forgot your password?</Link><br />
         Don't have an account? <Link to="/register">Sign up</Link>
       </div>
     </div>

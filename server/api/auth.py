@@ -2,7 +2,7 @@ from datetime import timedelta, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import EmailStr
+from pydantic import EmailStr, BaseModel
 import logging
 
 from models.mongodb.models import UserCreate, User, Token, UserInDB
@@ -15,8 +15,9 @@ from models.mongodb.auth import (
 )
 from models.mongodb.database import users_collection
 from utils.rate_limiter import auth_rate_limiter
-from utils.email.verification import send_verification_email, create_verification_token, verify_token
+from utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
 from utils.email_allowlist import is_email_allowed
+from utils.password_validation import validate_password_complexity
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,6 +26,12 @@ logger = logging.getLogger(__name__)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter)):
     """Login endpoint to get JWT token"""
     user = await authenticate_user(form_data.username, form_data.password)
+    if user == "locked":
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account locked due to too many failed login attempts. Please reset your password or wait 15 minutes.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -54,6 +61,13 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @router.post("/register", response_model=User)
 async def register_user(user: UserCreate, request: Request, _: None = Depends(auth_rate_limiter)):
     """Register a new user"""
+    password_errors = validate_password_complexity(user.password)
+    if password_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Password does not meet requirements", "errors": password_errors}
+        )
+    
     if not (user.email.endswith("@2ndopinionmd.ai") or is_email_allowed(user.email)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -172,3 +186,76 @@ async def resend_verification(email: EmailStr, request: Request, _: None = Depen
     )
     
     return {"detail": "Verification email sent"}
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+@router.post("/forgot-password")
+async def forgot_password(request_data: ForgotPasswordRequest, request: Request, _: None = Depends(auth_rate_limiter)):
+    """Send password reset email"""
+    user_dict = await users_collection.find_one({"email": request_data.email})
+    if not user_dict:
+        return {"detail": "If an account with that email exists, a password reset link has been sent"}
+        
+    user = UserInDB(**user_dict)
+    
+    reset_token = create_password_reset_token({"sub": request_data.email})
+    token_expires = datetime.utcnow() + timedelta(minutes=30)
+    
+    await users_collection.update_one(
+        {"email": request_data.email},
+        {"$set": {
+            "password_reset_token": reset_token,
+            "password_reset_token_expires": token_expires
+        }}
+    )
+    
+    await send_password_reset_email(
+        email=request_data.email,
+        name=user.full_name,
+        token=reset_token,
+        request=request
+    )
+    
+    return {"detail": "If an account with that email exists, a password reset link has been sent"}
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+@router.post("/reset-password")
+async def reset_password(request_data: ResetPasswordRequest, _: None = Depends(auth_rate_limiter)):
+    """Reset password with token"""
+    password_errors = validate_password_complexity(request_data.new_password)
+    if password_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Password does not meet requirements", "errors": password_errors}
+        )
+    
+    email = verify_password_reset_token(request_data.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+        
+    user = await users_collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    await users_collection.update_one(
+        {"email": email},
+        {"$set": {
+            "hashed_password": get_password_hash(request_data.new_password),
+            "password_reset_token": None,
+            "password_reset_token_expires": None,
+            "failed_login_attempts": 0,
+            "locked_until": None
+        }}
+    )
+    
+    return {"detail": "Password reset successfully"}

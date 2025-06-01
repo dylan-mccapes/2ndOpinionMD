@@ -53,10 +53,14 @@ const RegisterForm = () => {
       }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(
-        err.response?.data?.detail || 
-        'Unable to register. Please try again with a different email.'
-      );
+      if (err.response?.data?.detail?.errors) {
+        setError(err.response.data.detail.errors.join(', '));
+      } else {
+        setError(
+          err.response?.data?.detail || 
+          'Unable to register. Please try again with a different email.'
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -109,6 +113,9 @@ const RegisterForm = () => {
             className={error && error.includes('password') ? "form-control input-error" : "form-control"}
             placeholder="Create a password (min 8 characters)"
           />
+          <small className="password-requirements">
+            Password must contain: uppercase letter, lowercase letter, number, special character, minimum 8 characters
+          </small>
         </div>
         
         <div className="form-group">
