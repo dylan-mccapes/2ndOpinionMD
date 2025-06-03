@@ -440,6 +440,20 @@ function AppContent() {
               </main>
             </Layout>
           } />
+          
+          {/* Test route for symptom intake functionality without authentication */}
+          <Route path="/test/intake" element={
+            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+              <main className="App-main">
+                <h1>Symptom Intake Test Mode</h1>
+                <p>This page allows testing symptom intake functionality without authentication.</p>
+                <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
+                <div className="home-button-container">
+                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                </div>
+              </main>
+            </Layout>
+          } />
         </Routes>
       </div>
   );

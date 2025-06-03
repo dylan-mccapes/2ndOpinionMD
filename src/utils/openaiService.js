@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
+import { calculateAgeFromBirthdate } from './formatData';
 
 const calculateStaxLevel = (diagnosis) => {
   if (!diagnosis) return 1;
@@ -254,16 +255,21 @@ export const processSymptomInput = async (formData) => {
     
     const ethosPrompt = generateEthosPrompt();
     
+    const age = formData.birthdate ? calculateAgeFromBirthdate(formData.birthdate) : 0;
+    
     const apiData = {
-      symptoms: formData.symptoms.map(s => s.label),
+      symptoms: Array.isArray(formData.symptoms) ? formData.symptoms.map(s => s.label || s) : [formData.symptoms],
       demographics: {
-        age: parseInt(formData.age),
+        age: age,
+        birthdate: formData.birthdate,
         gender: formData.sex.value,
-        race: formData.race || "Not specified",
+        race: formData.race?.value || formData.race || "Not specified",
         height: formData.height || "Not specified",
         weight: parseInt(formData.weight) || 0,
         occupation: formData.occupation || "Not specified"
       },
+      environmental_factors: formData.environmental_factors || [],
+      life_stressors: formData.life_stressors || "",
       model: "gpt-3.5-turbo",
       ethosPrompt: ethosPrompt // Add the ethos prompt to the API data
     };

@@ -89,29 +89,31 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       {error && <div className="error-message">{error}</div>}
       
       <form onSubmit={handleSubmit(processForm)} className="symptom-form">
-        <div className="form-row">
+        <section className="form-section">
+          <h3>What is your birthdate?</h3>
           <div className="form-group">
-            <label htmlFor="age">Age</label>
             <Controller
-              name="age"
+              name="birthdate"
               control={control}
-              rules={{ required: 'Age is required', min: { value: 1, message: 'Must be at least 1' }, max: { value: 120, message: 'Must be 120 or less' } }}
+              rules={{ required: 'Birthdate is required' }}
               defaultValue=""
               render={({ field }) => (
                 <input 
                   {...field}
-                  id="age" 
-                  type="number" 
-                  className={errors.age ? 'input-error' : ''}
-                  placeholder="Enter your age"
+                  id="birthdate" 
+                  type="date" 
+                  className={errors.birthdate ? 'input-error' : ''}
+                  max={new Date().toISOString().split('T')[0]}
                 />
               )}
             />
-            {errors.age && <span className="error-message">{errors.age.message}</span>}
+            {errors.birthdate && <span className="error-message">{errors.birthdate.message}</span>}
           </div>
-          
+        </section>
+
+        <section className="form-section">
+          <h3>What is your sex?</h3>
           <div className="form-group">
-            <label htmlFor="sex">Sex</label>
             <Controller
               name="sex"
               control={control}
@@ -129,11 +131,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
             />
             {errors.sex && <span className="error-message">{errors.sex.message}</span>}
           </div>
-        </div>
+        </section>
         
-        <div className="form-row">
+        <section className="form-section">
+          <h3>What is your height?</h3>
           <div className="form-group">
-            <label htmlFor="height">Height</label>
             <Controller
               name="height"
               control={control}
@@ -150,9 +152,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
             />
             {errors.height && <span className="error-message">{errors.height.message}</span>}
           </div>
-          
+        </section>
+
+        <section className="form-section">
+          <h3>What is your weight?</h3>
           <div className="form-group">
-            <label htmlFor="weight">Weight (lbs)</label>
             <Controller
               name="weight"
               control={control}
@@ -170,11 +174,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
             />
             {errors.weight && <span className="error-message">{errors.weight.message}</span>}
           </div>
-        </div>
+        </section>
         
-        <div className="form-row">
+        <section className="form-section">
+          <h3>What is your race/ethnicity?</h3>
           <div className="form-group">
-            <label htmlFor="race">Race</label>
             <Controller
               name="race"
               control={control}
@@ -184,16 +188,18 @@ const SymptomIntakeForm = ({ onSubmit }) => {
                   inputId="race"
                   options={RACE_OPTIONS}
                   className={errors.race ? 'select-error' : ''}
-                  placeholder="Select your race"
+                  placeholder="Select your race/ethnicity"
                   classNamePrefix="select"
                 />
               )}
             />
             {errors.race && <span className="error-message">{errors.race.message}</span>}
           </div>
-          
+        </section>
+
+        <section className="form-section">
+          <h3>What is your occupation?</h3>
           <div className="form-group">
-            <label htmlFor="occupation">Occupation</label>
             <Controller
               name="occupation"
               control={control}
@@ -210,66 +216,114 @@ const SymptomIntakeForm = ({ onSubmit }) => {
             />
             {errors.occupation && <span className="error-message">{errors.occupation.message}</span>}
           </div>
-        </div>
+        </section>
         
-        <div className="form-group">
-          <label htmlFor="symptoms">Symptoms <span className="ethos-label">(Used for STAX/Zone evaluation)</span></label>
-          <Controller
-            name="symptoms"
-            control={control}
-            rules={{ required: 'At least one symptom is required' }}
-            render={({ field }) => (
-              <Select
-                {...field}
-                inputId="symptoms"
-                options={SYMPTOMS}
-                isMulti
-                className={errors.symptoms ? 'select-error' : ''}
-                placeholder="Select your symptoms"
-                classNamePrefix="select"
-              />
-            )}
-          />
-          {errors.symptoms && <span className="error-message">{errors.symptoms.message}</span>}
-        </div>
+        <section className="form-section">
+          <h3>What are your symptoms? <span className="ethos-label">(Used for STAX/Zone evaluation)</span></h3>
+          <div className="form-group">
+            <Controller
+              name="symptoms"
+              control={control}
+              rules={{ required: 'Please describe your symptoms' }}
+              defaultValue=""
+              render={({ field }) => (
+                <textarea
+                  {...field}
+                  id="symptoms"
+                  className={errors.symptoms ? 'input-error' : ''}
+                  placeholder="Please describe all your symptoms in detail..."
+                  rows="4"
+                />
+              )}
+            />
+            {errors.symptoms && <span className="error-message">{errors.symptoms.message}</span>}
+          </div>
+        </section>
         
-        <div className="form-group">
-          <label htmlFor="durationMonths">Duration (months)</label>
-          <Controller
-            name="durationMonths"
-            control={control}
-            rules={{ required: 'Duration is required', min: { value: 0, message: 'Cannot be negative' } }}
-            defaultValue=""
-            render={({ field }) => (
-              <input 
-                {...field}
-                id="durationMonths" 
-                type="number" 
-                className={errors.durationMonths ? 'input-error' : ''}
-                placeholder="How long have you had these symptoms?"
-              />
-            )}
-          />
-          {errors.durationMonths && <span className="error-message">{errors.durationMonths.message}</span>}
-        </div>
+        <section className="form-section">
+          <h3>How long have you had these symptoms?</h3>
+          <div className="form-group">
+            <Controller
+              name="durationMonths"
+              control={control}
+              rules={{ required: 'Duration is required', min: { value: 0, message: 'Cannot be negative' } }}
+              defaultValue=""
+              render={({ field }) => (
+                <input 
+                  {...field}
+                  id="durationMonths" 
+                  type="number" 
+                  className={errors.durationMonths ? 'input-error' : ''}
+                  placeholder="Duration in months"
+                />
+              )}
+            />
+            {errors.durationMonths && <span className="error-message">{errors.durationMonths.message}</span>}
+          </div>
+        </section>
         
-        <div className="form-group">
-          <label htmlFor="priorDiagnoses">Prior Diagnoses (Optional)</label>
-          <Controller
-            name="priorDiagnoses"
-            control={control}
-            render={({ field }) => (
-              <Select
-                {...field}
-                inputId="priorDiagnoses"
-                options={PRIOR_DIAGNOSES}
-                isMulti
-                placeholder="Select any prior diagnoses"
-                classNamePrefix="select"
-              />
-            )}
-          />
-        </div>
+        <section className="form-section">
+          <h3>What environmental factors might be affecting your health?</h3>
+          <div className="form-group">
+            <Controller
+              name="environmental_factors"
+              control={control}
+              defaultValue=""
+              render={({ field }) => (
+                <textarea
+                  {...field}
+                  id="environmental_factors"
+                  className={errors.environmental_factors ? 'input-error' : ''}
+                  placeholder="Describe any environmental factors such as foods, products, chemicals, workplace conditions, living environment, etc. that you think might be affecting your health..."
+                  rows="3"
+                />
+              )}
+            />
+            {errors.environmental_factors && <span className="error-message">{errors.environmental_factors.message}</span>}
+          </div>
+        </section>
+
+        <section className="form-section">
+          <h3>What life stressors are you currently experiencing?</h3>
+          <div className="form-group">
+            <Controller
+              name="life_stressors"
+              control={control}
+              defaultValue=""
+              render={({ field }) => (
+                <textarea
+                  {...field}
+                  id="life_stressors"
+                  className={errors.life_stressors ? 'input-error' : ''}
+                  placeholder="Describe any current life stressors such as work stress, relationship issues, financial concerns, major life changes, etc..."
+                  rows="3"
+                />
+              )}
+            />
+            {errors.life_stressors && <span className="error-message">{errors.life_stressors.message}</span>}
+          </div>
+        </section>
+
+        <section className="form-section">
+          <h3>Do you have any prior diagnoses? (Optional)</h3>
+          <div className="form-group">
+            <Controller
+              name="priorDiagnoses"
+              control={control}
+              defaultValue=""
+              render={({ field }) => (
+                <textarea
+                  {...field}
+                  id="priorDiagnoses"
+                  className={errors.priorDiagnoses ? 'input-error' : ''}
+                  placeholder="List any previous medical diagnoses you have received..."
+                  rows="3"
+                />
+              )}
+            />
+            {errors.priorDiagnoses && <span className="error-message">{errors.priorDiagnoses.message}</span>}
+          </div>
+        </section>
         
         <div className="ethos-evaluation-info">
           <h3>Diagnostic Terrain Evaluation</h3>
