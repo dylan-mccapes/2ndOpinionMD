@@ -250,8 +250,8 @@ p {
   }
 }
 
-/* Tablet (768px) */
-@media (min-width: 376px) and (max-width: 768px) {
+/* Large Mobile (376px - 414px) */
+@media (min-width: 376px) and (max-width: 414px) {
   .container {
     padding: 0 var(--spacing-md);
   }
@@ -262,6 +262,17 @@ p {
   
   h2 {
     font-size: var(--font-size-2xl);
+  }
+  
+  .btn {
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+}
+
+/* Tablet (415px - 768px) */
+@media (min-width: 415px) and (max-width: 768px) {
+  .container {
+    padding: 0 var(--spacing-md);
   }
   
   .form-row {

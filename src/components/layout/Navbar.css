@@ -55,3 +55,56 @@
 .navbar-link:hover {
   color: var(--color-primary);
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .navbar-container {
+    padding: 0 12px;
+  }
+  
+  .navbar-logo {
+    font-size: var(--font-size-lg);
+  }
+  
+  .navbar-menu {
+    gap: 16px;
+  }
+  
+  .navbar-link {
+    font-size: var(--font-size-sm);
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 414px) {
+  .navbar-container {
+    padding: 0 8px;
+  }
+  
+  .navbar {
+    height: 60px;
+  }
+  
+  .navbar-item {
+    height: 60px;
+  }
+  
+  .navbar-menu {
+    gap: 8px;
+  }
+  
+  .navbar-link {
+    font-size: var(--font-size-xs);
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 375px) {
+  .navbar-container {
+    padding: 0 6px;
+  }
+  
+  .navbar-logo {
+    font-size: var(--font-size-md);
+  }
+}
