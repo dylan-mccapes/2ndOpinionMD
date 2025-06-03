@@ -452,13 +452,30 @@ export const processSymptomInput = async (formData) => {
  * @param {Array} previousDiagnoses - Previous diagnoses from symptom intake
  * @returns {Object} Object containing the journal text, parsed sentences, and extraction prompt
  */
-const prepareJournalData = (journalText, previousDiagnoses = []) => {
+const prepareJournalData = (journalText, previousDiagnoses = [], symptomIntakeData = null) => {
   const sentences = journalText
     .split(/[.,!?;]+/)
     .map(sentence => sentence.trim())
     .filter(sentence => sentence.length > 0);
 
   const ethosPrompt = generateEthosPrompt();
+  
+  let symptomIntakeContext = "";
+  if (symptomIntakeData) {
+    symptomIntakeContext = "INITIAL SYMPTOM INTAKE DATA:\n";
+    if (symptomIntakeData.intake_timestamp) symptomIntakeContext += `Intake Date: ${symptomIntakeData.intake_timestamp}\n`;
+    if (symptomIntakeData.age) symptomIntakeContext += `Age: ${symptomIntakeData.age}\n`;
+    if (symptomIntakeData.birthdate) symptomIntakeContext += `Birthdate: ${symptomIntakeData.birthdate}\n`;
+    if (symptomIntakeData.sex) symptomIntakeContext += `Sex: ${symptomIntakeData.sex}\n`;
+    if (symptomIntakeData.height) symptomIntakeContext += `Height: ${symptomIntakeData.height}\n`;
+    if (symptomIntakeData.weight) symptomIntakeContext += `Weight: ${symptomIntakeData.weight}\n`;
+    if (symptomIntakeData.race) symptomIntakeContext += `Race/Ethnicity: ${symptomIntakeData.race}\n`;
+    if (symptomIntakeData.occupation) symptomIntakeContext += `Occupation: ${symptomIntakeData.occupation}\n`;
+    if (symptomIntakeData.environmental_factors) symptomIntakeContext += `Environmental Factors: ${symptomIntakeData.environmental_factors.join(', ')}\n`;
+    if (symptomIntakeData.life_stressors) symptomIntakeContext += `Life Stressors: ${symptomIntakeData.life_stressors}\n`;
+    if (symptomIntakeData.prior_diagnoses) symptomIntakeContext += `Prior Diagnoses: ${symptomIntakeData.prior_diagnoses.join(', ')}\n`;
+    symptomIntakeContext += "\n";
+  }
   
   return {
     symptoms: [
@@ -469,7 +486,9 @@ const prepareJournalData = (journalText, previousDiagnoses = []) => {
     ],
     parsedSentences: sentences,
     previousDiagnoses: previousDiagnoses,
+    symptomIntakeData: symptomIntakeData,
     prompt: `${ethosPrompt}\n\n` +
+            `${symptomIntakeContext}` +
             "Please analyze this journal entry using the 2OPMD Diagnostic Terrain System.\n" +
             "Parse each sentence to identify symptoms, environmental factors, and life stressors.\n\n" +
             `Previous diagnoses: ${JSON.stringify(previousDiagnoses)}\n\n` +
@@ -535,7 +554,7 @@ export const processJournalEntry = async (journalText, previousDiagnoses = [], i
       throw new Error('Journal text must be a string');
     }
     
-    const journalData = prepareJournalData(journalText, previousDiagnoses);
+    const journalData = prepareJournalData(journalText, previousDiagnoses, null);
     
     const requestData = {
       symptoms: journalData.symptoms,

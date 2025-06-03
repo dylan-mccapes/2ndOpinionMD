@@ -37,7 +37,8 @@ export const formatSymptomData = (formData) => {
       duration_months: parseInt(formData.durationMonths || 0),
       prior_diagnoses: priorDiagnoses,
       environmental_factors: formData.environmental_factors || [],
-      life_stressors: formData.life_stressors || ""
+      life_stressors: formData.life_stressors || "",
+      intake_timestamp: new Date()
     },
     context_flags: {
       hipaa_mode: true,

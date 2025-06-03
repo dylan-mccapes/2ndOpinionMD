@@ -14,10 +14,30 @@ const ReportSchema = new mongoose.Schema({
       type: Number,
       required: true
     },
+    birthdate: {
+      type: Date,
+      required: false
+    },
     sex: {
       type: String,
       required: true,
       enum: ['male', 'female', 'other']
+    },
+    height: {
+      type: String,
+      required: false
+    },
+    weight: {
+      type: Number,
+      required: false
+    },
+    race: {
+      type: String,
+      required: false
+    },
+    occupation: {
+      type: String,
+      required: false
     },
     symptoms: {
       type: [String],
@@ -27,9 +47,21 @@ const ReportSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
+    environmental_factors: {
+      type: [String],
+      default: []
+    },
+    life_stressors: {
+      type: String,
+      default: ""
+    },
     prior_diagnoses: {
       type: [String],
       default: []
+    },
+    intake_timestamp: {
+      type: Date,
+      default: Date.now
     }
   },
   diagnosticResults: [{
