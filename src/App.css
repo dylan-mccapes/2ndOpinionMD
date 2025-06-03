@@ -154,10 +154,47 @@
   font-weight: 500;
 }
 
-/* Media query for mobile (≤375px) */
+/* Mobile (≤375px) */
 @media (max-width: 375px) {
   .App-header {
     padding: 12px 0;
+  }
+  
+  .dashboard-features {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  
+  .feature-item {
+    padding: var(--spacing-md);
+  }
+  
+  .dashboard-buttons {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .dashboard-button {
+    width: 100%;
+    padding: var(--spacing-md);
+    font-size: var(--font-size-sm);
+  }
+}
+
+/* Large Mobile (376px - 414px) */
+@media (min-width: 376px) and (max-width: 414px) {
+  .dashboard-features {
+    flex-direction: column;
+    gap: var(--spacing-lg);
+  }
+  
+  .dashboard-buttons {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  
+  .dashboard-button {
+    width: 100%;
   }
   
   .App-header h1 {
@@ -176,14 +213,7 @@
     font-size: 12px;
   }
   
-  .dashboard-features,
-  .dashboard-buttons {
-    flex-direction: column;
-    gap: var(--spacing-lg);
-  }
-  
-  .feature-item,
-  .dashboard-button {
+  .feature-item {
     width: 100%;
   }
 }

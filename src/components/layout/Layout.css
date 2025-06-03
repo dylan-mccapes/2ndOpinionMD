@@ -11,3 +11,16 @@
   margin: 0 auto;
   width: 100%;
 }
+
+/* Mobile styles */
+@media (max-width: 414px) {
+  .main-content {
+    padding: 16px 12px;
+  }
+}
+
+@media (max-width: 375px) {
+  .main-content {
+    padding: 12px 8px;
+  }
+}

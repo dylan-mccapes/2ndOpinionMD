@@ -201,3 +201,71 @@ input {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .symptom-intake-container {
+    padding: 20px 16px;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .form-group {
+    width: 100%;
+  }
+  
+  input, select, textarea {
+    font-size: var(--font-size-md);
+    padding: 12px;
+  }
+  
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: var(--font-size-md);
+  }
+}
+
+@media (max-width: 414px) {
+  .symptom-intake-container {
+    padding: 16px 12px;
+  }
+  
+  input, select, textarea {
+    font-size: var(--font-size-sm);
+    padding: 10px;
+  }
+  
+  .submit-btn {
+    padding: 12px;
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 375px) {
+  .symptom-intake-container {
+    padding: 12px 8px;
+  }
+  
+  .form-header {
+    margin-bottom: 24px;
+  }
+  
+  label {
+    font-size: var(--font-size-sm);
+    margin-bottom: 6px;
+  }
+  
+  input, select, textarea {
+    padding: 8px;
+    font-size: var(--font-size-xs);
+  }
+  
+  .submit-btn {
+    padding: 12px;
+    font-size: var(--font-size-sm);
+  }
+}

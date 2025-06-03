@@ -261,3 +261,67 @@
   font-size: 14px;
   line-height: 1.5;
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .ai-response-container {
+    padding: 20px 16px;
+  }
+  
+  .diagnosis-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .diagnosis-badges {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .diagnostic-terrain {
+    margin: 0 0 16px;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 414px) {
+  .ai-response-container {
+    padding: 16px 12px;
+  }
+  
+  .diagnosis-header h3 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .diagnosis-details {
+    padding: 12px;
+  }
+  
+  .detail-section h4 {
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 375px) {
+  .ai-response-container {
+    padding: 12px 8px;
+  }
+  
+  .response-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .info-button {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .diagnosis-badges {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
