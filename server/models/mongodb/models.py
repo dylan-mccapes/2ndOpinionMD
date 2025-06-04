@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, EmailStr
 class UserBase(BaseModel):
     email: str
     full_name: str
+    birthdate: Optional[datetime] = None
 
 class UserCreate(UserBase):
     password: str
@@ -40,8 +41,22 @@ class SymptomEntry(BaseModel):
     severity: int = Field(ge=1, le=10)  # 1-10 scale
 
 class EnvironmentalFactor(BaseModel):
-    factor_type: str  # food, stress, product, etc.
+    factor_type: str  # food, product, environment, medication, other
     description: str
+
+class SymptomIntakeData(BaseModel):
+    birthdate: Optional[datetime] = None
+    age: Optional[int] = None
+    sex: str
+    height: Optional[str] = None
+    weight: Optional[int] = None
+    race: Optional[str] = None
+    occupation: Optional[str] = None
+    symptoms: str
+    duration_months: Optional[int] = None
+    environmental_factors: Optional[List[EnvironmentalFactor]] = []
+    life_stressors: Optional[str] = None
+    prior_diagnoses: Optional[str] = None
 
 class JournalEntryBase(BaseModel):
     date: datetime = Field(default_factory=datetime.now)

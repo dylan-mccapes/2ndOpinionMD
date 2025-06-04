@@ -65,17 +65,21 @@ async def create_journal_entry(
     previous_entries = await get_previous_journal_entries(current_user.id)
 
     previous_diagnoses = []
+    symptom_intake_data = None
     report = None
     if report_id:
         report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
         if report and "diagnosticResults" in report:
             previous_diagnoses = report["diagnosticResults"]
+        if report and "inputData" in report:
+            symptom_intake_data = report["inputData"]
 
     ai_analysis = await generate_journal_analysis(
         journal_entry,
         user=current_user,
         previous_entries=previous_entries,
-        previous_diagnoses=previous_diagnoses
+        previous_diagnoses=previous_diagnoses,
+        symptom_intake_data=symptom_intake_data
     )
 
     journal_entry_dict = journal_entry.dict()
@@ -351,7 +355,8 @@ async def generate_journal_analysis(
     journal_entry: JournalEntry,
     user: UserInDB,
     previous_entries: List[JournalEntry] = None,
-    previous_diagnoses: List[Dict[str, Any]] = None
+    previous_diagnoses: List[Dict[str, Any]] = None,
+    symptom_intake_data: Dict[str, Any] = None
 ):
     """Generate AI analysis and follow-up questions for a journal entry using the ethos of health model"""
     current_entry_text = await format_journal_entry_for_prompt(journal_entry, include_ethos=True)
@@ -383,6 +388,37 @@ async def generate_journal_analysis(
             previous_diagnoses_text += f"   STAX Level: {stax_level}, Zone: {zone}\n"
             if tags:
                 previous_diagnoses_text += f"   Tags: {', '.join(tags)}\n"
+
+    symptom_intake_context = ""
+    if symptom_intake_data:
+        symptom_intake_context = "INITIAL SYMPTOM INTAKE DATA:\n"
+        if symptom_intake_data.get("intake_timestamp"):
+            symptom_intake_context += f"Intake Date: {symptom_intake_data['intake_timestamp']}\n"
+        if symptom_intake_data.get("age"):
+            symptom_intake_context += f"Age: {symptom_intake_data['age']}\n"
+        if symptom_intake_data.get("birthdate"):
+            symptom_intake_context += f"Birthdate: {symptom_intake_data['birthdate']}\n"
+        if symptom_intake_data.get("sex"):
+            symptom_intake_context += f"Sex: {symptom_intake_data['sex']}\n"
+        if symptom_intake_data.get("height"):
+            symptom_intake_context += f"Height: {symptom_intake_data['height']}\n"
+        if symptom_intake_data.get("weight"):
+            symptom_intake_context += f"Weight: {symptom_intake_data['weight']}\n"
+        if symptom_intake_data.get("race"):
+            symptom_intake_context += f"Race/Ethnicity: {symptom_intake_data['race']}\n"
+        if symptom_intake_data.get("occupation"):
+            symptom_intake_context += f"Occupation: {symptom_intake_data['occupation']}\n"
+        if symptom_intake_data.get("symptoms"):
+            symptom_intake_context += f"Initial Symptoms: {', '.join(symptom_intake_data['symptoms'])}\n"
+        if symptom_intake_data.get("duration_months"):
+            symptom_intake_context += f"Symptom Duration: {symptom_intake_data['duration_months']} months\n"
+        if symptom_intake_data.get("environmental_factors"):
+            symptom_intake_context += f"Environmental Factors: {', '.join(symptom_intake_data['environmental_factors'])}\n"
+        if symptom_intake_data.get("life_stressors"):
+            symptom_intake_context += f"Life Stressors: {symptom_intake_data['life_stressors']}\n"
+        if symptom_intake_data.get("prior_diagnoses"):
+            symptom_intake_context += f"Prior Diagnoses: {', '.join(symptom_intake_data['prior_diagnoses'])}\n"
+        symptom_intake_context += "\n"
 
     from vectordb.query_engine import MedicalQueryEngine
     import os
@@ -422,6 +458,8 @@ async def generate_journal_analysis(
 You are a medical AI assistant analyzing a patient's journal entries using the 2OPMD Diagnostic Terrain System.
 
 {ethos_prompt}
+
+{symptom_intake_context}
 
 CURRENT JOURNAL ENTRY:
 {current_entry_text}
