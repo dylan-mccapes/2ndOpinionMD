@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS, RACE_OPTIONS } from '../../utils/constants';
 import { formatSymptomData } from '../../utils/formatData';
 import { processSymptomInput } from '../../utils/openaiService';
-import { ZONES, STAX_LEVELS, MISDIAGNOSIS_PATTERNS } from '../../utils/ethosOfHealth';
+import { MISDIAGNOSIS_PATTERNS } from '../../utils/ethosOfHealth';
 import './SymptomIntakeForm.css';
 
 const SymptomIntakeForm = ({ onSubmit }) => {
@@ -50,7 +50,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     <div className="symptom-intake-container">
       <h2>Symptom Intake Form</h2>
       <div className="form-header">
-        <p>Please provide your information to receive a second opinion analysis with STAX/Zone evaluation</p>
+        <p>Please provide your information to receive a second opinion diagnostic analysis</p>
         <button 
           type="button" 
           className="info-button"
@@ -65,17 +65,12 @@ const SymptomIntakeForm = ({ onSubmit }) => {
           <h3>About the Ethos of Health Model</h3>
           <p>The 2OPMD Diagnostic Terrain System is designed for autoimmune, rare, and misdiagnosed conditions. It evaluates:</p>
           <ul>
-            <li><strong>Zones (1-5):</strong> {Object.entries(ZONES).map(([key, value]) => (
-              <span key={key}>{key === '1' ? '' : ', '}{value}</span>
-            ))}</li>
-            <li><strong>STAX Levels (1-4):</strong> {Object.entries(STAX_LEVELS).map(([key, value]) => (
-              <span key={key}>{key === '1' ? '' : ', '}{value}</span>
-            ))}</li>
+            <li><strong>Symptom Analysis:</strong> Comprehensive evaluation of your symptom patterns and presentation</li>
             <li><strong>Misdiagnosis Patterns:</strong> Identifying commonly misdiagnosed conditions through pattern recognition</li>
-            <li><strong>Early Zone Shifts:</strong> Detecting early signs of terrain destabilization</li>
-            <li><strong>Diagnostic Confidence:</strong> Requiring 95%+ certainty for final diagnoses</li>
+            <li><strong>Risk Assessment:</strong> Detecting early signs of health changes and potential concerns</li>
+            <li><strong>Diagnostic Confidence:</strong> Providing confidence scores for potential diagnoses</li>
           </ul>
-          <p>This system helps provide more accurate diagnoses and personalized recommendations based on your unique health terrain.</p>
+          <p>This system helps provide more accurate diagnoses and personalized recommendations based on your unique health profile.</p>
           <button 
             type="button" 
             className="close-info-button"
@@ -219,7 +214,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
         </section>
         
         <section className="form-section">
-          <h3>What are your symptoms? <span className="ethos-label">(Used for STAX/Zone evaluation)</span></h3>
+          <h3>What are your symptoms? <span className="ethos-label">(Used for diagnostic analysis)</span></h3>
           <div className="form-group">
             <Controller
               name="symptoms"
@@ -326,11 +321,11 @@ const SymptomIntakeForm = ({ onSubmit }) => {
         </section>
         
         <div className="ethos-evaluation-info">
-          <h3>Diagnostic Terrain Evaluation</h3>
+          <h3>Diagnostic Health Evaluation</h3>
           <p>Your symptom data will be analyzed using our Ethos of Health model to determine:</p>
           <ul>
-            <li><strong>STAX Level (1-4):</strong> The complexity and layering of your condition</li>
-            <li><strong>Zone (1-5):</strong> The stability and frequency of your symptoms</li>
+            <li><strong>Symptom Patterns:</strong> How your symptoms relate to potential conditions</li>
+            <li><strong>Risk Factors:</strong> Important symptoms and suggested tests to discuss with your doctor</li>
             <li><strong>Diagnostic Confidence:</strong> How certain we are about potential diagnoses</li>
           </ul>
           <p>This information will be displayed in your diagnostic report.</p>
@@ -346,7 +341,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
           className="btn btn-primary submit-btn"
           disabled={isLoading}
         >
-          {isLoading ? 'Analyzing Symptoms...' : 'Generate Report with STAX/Zone Analysis'}
+          {isLoading ? 'Analyzing Symptoms...' : 'Generate Diagnostic Report'}
         </button>
       </form>
     </div>

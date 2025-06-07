@@ -101,3 +101,21 @@ export const simulateAIResponse = (formData) => {
   
   return filteredDiagnoses;
 };
+
+export const formatAutoimmuneDxTag = (tag) => {
+  if (!tag || typeof tag !== 'string') return tag;
+  
+  const withoutPrefix = tag.replace(/^#[A-Za-z]*Dx_/, '');
+  
+  return withoutPrefix
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+};
+
+export const formatDxType = (type) => {
+  if (!type || typeof type !== 'string') return type;
+  
+  return type
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, str => str.toUpperCase());
+};

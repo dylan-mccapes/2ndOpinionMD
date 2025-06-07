@@ -529,7 +529,7 @@ const prepareJournalData = (journalText, previousDiagnoses = [], symptomIntakeDa
   };
 };
 
-export const processJournalEntry = async (journalText, previousDiagnoses = [], isTestMode = false) => {
+export const processJournalEntry = async (journalText, isTestMode = false, previousDiagnoses = []) => {
   try {
     console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     console.log('Journal text:', journalText);
@@ -545,8 +545,45 @@ export const processJournalEntry = async (journalText, previousDiagnoses = [], i
         throw new Error('Authentication required. Please log in.');
       }
     } else {
-      console.log('Running in test mode - authentication bypassed');
-      token = 'test-mode-token';
+      console.log('Running in test mode - returning mock data immediately');
+      return {
+        text: 'Test mode analysis: Your journal entry has been analyzed with mock data.',
+        analysis: 'Based on your journal entry describing persistent fatigue, joint pain, and brain fog, this appears to be a pattern consistent with autoimmune-related symptoms. The combination of morning fatigue that doesn\'t improve with rest, along with joint pain in hands and wrists, suggests possible inflammatory processes.',
+        ai_analysis: {
+          analysis: 'Based on your journal entry describing persistent fatigue, joint pain, and brain fog, this appears to be a pattern consistent with autoimmune-related symptoms. The combination of morning fatigue that doesn\'t improve with rest, along with joint pain in hands and wrists, suggests possible inflammatory processes.',
+          patternObservations: 'The patient consistently reports cognitive issues and dizziness, which may indicate a chronic underlying condition exacerbated by stress. The morning fatigue pattern is particularly notable as it suggests inflammatory processes that are typically worse upon waking.',
+          trackingSuggestions: [
+            'Track daily food intake to assess correlation with symptom severity.',
+            'Maintain a symptom diary noting times of day and activities during onset of symptoms.',
+            'Monitor sleep quality and duration to identify patterns.',
+            'Record stress levels and major life events that may trigger symptom flares.'
+          ],
+          symptoms: ['Persistent fatigue', 'Joint pain in hands and wrists', 'Brain fog', 'Morning stiffness', 'Mild dizziness'],
+          environmental_factors: ['Stress levels', 'Sleep quality'],
+          life_stressors: ['Work-related stress', 'Physical symptoms affecting daily activities'],
+          diagnoses: [
+            {
+              name: 'Autoimmune Myocarditis',
+              confidence: 75,
+              status: 'confirmed',
+              tags: ['#AutoimmuneDx_AutoimmuneMyocarditis']
+            },
+            {
+              name: 'Chronic Fatigue Syndrome',
+              confidence: 68,
+              status: 'new',
+              tags: ['#AutoimmuneAdjacentDx_ChronicFatigueSyndrome']
+            }
+          ]
+        },
+        categories: {
+          symptoms: ['Persistent fatigue', 'Joint pain in hands and wrists', 'Brain fog', 'Morning stiffness', 'Mild dizziness'],
+          environmental_factors: ['Stress levels', 'Sleep quality'],
+          life_stressors: ['Work-related stress', 'Physical symptoms affecting daily activities']
+        },
+        timestamp: new Date().toISOString(),
+        testMode: true
+      };
     }
     
     if (typeof journalText !== 'string') {
@@ -688,6 +725,8 @@ export const processJournalEntry = async (journalText, previousDiagnoses = [], i
           life_stressors: analysis.life_stressors || []
         },
         diagnoses: analysis.diagnoses || [],
+        patternObservations: analysis.patternObservations || "",
+        trackingSuggestions: analysis.trackingSuggestions || [],
         journalingRecommendation: analysis.journalingRecommendation || null
       };
     }
@@ -814,6 +853,48 @@ export const processJournalEntry = async (journalText, previousDiagnoses = [], i
       saveDebugInfo('journal_error', errorData);
       
       updateDebugPanel();
+      
+      if (isTestMode) {
+        console.log('Test mode: Returning mock data with pattern observations and tracking suggestions');
+        return {
+          text: 'Test mode analysis: Your journal entry has been analyzed with mock data.',
+          analysis: 'Based on your journal entry describing persistent fatigue, joint pain, and brain fog, this appears to be a pattern consistent with autoimmune-related symptoms. The combination of morning fatigue that doesn\'t improve with rest, along with joint pain in hands and wrists, suggests possible inflammatory processes.',
+          ai_analysis: {
+            analysis: 'Based on your journal entry describing persistent fatigue, joint pain, and brain fog, this appears to be a pattern consistent with autoimmune-related symptoms. The combination of morning fatigue that doesn\'t improve with rest, along with joint pain in hands and wrists, suggests possible inflammatory processes.',
+            patternObservations: 'The patient consistently reports cognitive issues and dizziness, which may indicate a chronic underlying condition exacerbated by stress. The morning fatigue pattern is particularly notable as it suggests inflammatory processes that are typically worse upon waking.',
+            trackingSuggestions: [
+              'Track daily food intake to assess correlation with symptom severity.',
+              'Maintain a symptom diary noting times of day and activities during onset of symptoms.',
+              'Monitor sleep quality and duration to identify patterns.',
+              'Record stress levels and major life events that may trigger symptom flares.'
+            ],
+            symptoms: ['Persistent fatigue', 'Joint pain in hands and wrists', 'Brain fog', 'Morning stiffness', 'Mild dizziness'],
+            environmental_factors: ['Stress levels', 'Sleep quality'],
+            life_stressors: ['Work-related stress', 'Physical symptoms affecting daily activities'],
+            diagnoses: [
+              {
+                name: 'Autoimmune Myocarditis',
+                confidence: 75,
+                status: 'confirmed',
+                tags: ['#AutoimmuneDx_AutoimmuneMyocarditis']
+              },
+              {
+                name: 'Chronic Fatigue Syndrome',
+                confidence: 68,
+                status: 'new',
+                tags: ['#AutoimmuneAdjacentDx_ChronicFatigueSyndrome']
+              }
+            ]
+          },
+          categories: {
+            symptoms: ['Persistent fatigue', 'Joint pain in hands and wrists', 'Brain fog', 'Morning stiffness', 'Mild dizziness'],
+            environmental_factors: ['Stress levels', 'Sleep quality'],
+            life_stressors: ['Work-related stress', 'Physical symptoms affecting daily activities']
+          },
+          timestamp: new Date().toISOString(),
+          testMode: true
+        };
+      }
       
       return { 
         text: 'Error processing your journal entry. Please try again later.',

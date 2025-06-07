@@ -38,6 +38,10 @@ const JournalResponse = ({ response, timelineData }) => {
                          response.patternObservations || 
                          response.analysis?.patternObservations || 
                          "",
+    trackingSuggestions: response.ai_analysis?.trackingSuggestions || 
+                        response.trackingSuggestions || 
+                        response.analysis?.trackingSuggestions || 
+                        [],
     diagnoses: response.ai_analysis?.diagnoses || 
                response.diagnoses || 
                response.analysis?.diagnoses || 

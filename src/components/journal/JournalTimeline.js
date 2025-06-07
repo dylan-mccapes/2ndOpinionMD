@@ -1,6 +1,5 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
 import '../../styles/Journal.css';
 
 const JournalTimeline = ({ timelineData }) => {
@@ -8,26 +7,7 @@ const JournalTimeline = ({ timelineData }) => {
     return <div className="timeline-empty">No timeline data available</div>;
   }
 
-  const getStaxColor = (level) => {
-    switch (level) {
-      case 1: return 'stax-1';
-      case 2: return 'stax-2';
-      case 3: return 'stax-3';
-      case 4: return 'stax-4';
-      default: return 'stax-1';
-    }
-  };
-  
-  const getZoneColor = (zone) => {
-    switch (zone) {
-      case 1: return 'zone-1';
-      case 2: return 'zone-2';
-      case 3: return 'zone-3';
-      case 4: return 'zone-4';
-      case 5: return 'zone-5';
-      default: return 'zone-1';
-    }
-  };
+
 
   const getStatusClass = (status) => {
     switch (status) {
@@ -62,18 +42,7 @@ const JournalTimeline = ({ timelineData }) => {
                     <span className="diagnosis-name">{diagnosis.name}</span>
                     <span className="diagnosis-confidence">{diagnosis.confidence}%</span>
                   </div>
-                  <div className="diagnosis-terrain">
-                    {diagnosis.staxLevel && (
-                      <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                        STAX {diagnosis.staxLevel}
-                      </span>
-                    )}
-                    {diagnosis.zone && (
-                      <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                        Zone {diagnosis.zone}
-                      </span>
-                    )}
-                  </div>
+
                 </li>
               ))}
             </ul>
@@ -142,18 +111,7 @@ const JournalTimeline = ({ timelineData }) => {
                                 </span>
                               )}
                             </div>
-                            <div className="diagnosis-terrain">
-                              {diagnosis.staxLevel && (
-                                <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                                  STAX {diagnosis.staxLevel}
-                                </span>
-                              )}
-                              {diagnosis.zone && (
-                                <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                                  Zone {diagnosis.zone}
-                                </span>
-                              )}
-                            </div>
+
                           </li>
                         ))}
                       </ul>

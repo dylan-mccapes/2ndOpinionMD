@@ -127,6 +127,7 @@ function AppContent() {
   const handleJournalSubmit = async (entry, isTestMode = false) => {
     try {
       console.log('Submitting journal entry in', isTestMode ? 'test mode' : 'normal mode');
+      console.log('isTestMode parameter value:', isTestMode);
       
       if (typeof entry !== 'string') {
         console.error('Invalid entry type:', typeof entry);
