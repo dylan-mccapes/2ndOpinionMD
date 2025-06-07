@@ -24,14 +24,29 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
     <div className="journal-analysis">
       <h3>AI Analysis</h3>
       
+      {/* Pattern Observations section */}
+      {analysis.patternObservations && (
+        <div className="pattern-observations-section">
+          <h4>Pattern Observations</h4>
+          <p>{analysis.patternObservations}</p>
+        </div>
+      )}
+      
+      {/* Tracking Suggestions section */}
+      {analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0 && (
+        <div className="tracking-suggestions-section">
+          <h4>Tracking Suggestions</h4>
+          <ul>
+            {analysis.trackingSuggestions.map((suggestion, index) => (
+              <li key={index}>{suggestion}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      
       {/* Analysis section */}
       <div className="analysis-results">
         <h4>Analysis Results:</h4>
-        {analysis.patternObservations && (
-          <div className="pattern-observations">
-            <p><strong>Pattern Observations:</strong> {analysis.patternObservations}</p>
-          </div>
-        )}
         <p>{analysis.analysis || "No analysis available."}</p>
         <div className="debug-info">
           <button 
@@ -318,9 +333,6 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <div className="analysis-section">
           <h5>Journal Entry Analysis:</h5>
           <div className="analysis-text">
-            {analysis.patternObservations && (
-              <p><strong>Pattern Observations:</strong> {analysis.patternObservations}</p>
-            )}
             <p>{analysis.analysis || "No analysis available."}</p>
             <div className="debug-info">
               <button 
