@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
 import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import JournalTimeline from './JournalTimeline';
@@ -388,10 +387,6 @@ const JournalForm = () => {
               {previousDiagnoses.map((diagnosis, index) => (
                 <li key={index}>
                   {diagnosis.name} - Confidence: {diagnosis.confidence}%
-                  <div className="diagnosis-terrain">
-                    <span className={`stax-badge stax-${diagnosis.staxLevel}`}>STAX {diagnosis.staxLevel}</span>
-                    <span className={`zone-badge zone-${diagnosis.zone}`}>Zone {diagnosis.zone}</span>
-                  </div>
                 </li>
               ))}
             </ul>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { downloadPdfReport } from '../../utils/pdfGenerator';
-import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
 import './AIResponseDisplay.css';
 
 const AIResponseDisplay = ({ diagnosticResults }) => {
@@ -19,26 +18,7 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
     setShowEthosInfo(!showEthosInfo);
   };
 
-  const getStaxColor = (level) => {
-    switch (level) {
-      case 1: return 'stax-1';
-      case 2: return 'stax-2';
-      case 3: return 'stax-3';
-      case 4: return 'stax-4';
-      default: return 'stax-1';
-    }
-  };
-  
-  const getZoneColor = (zone) => {
-    switch (zone) {
-      case 1: return 'zone-1';
-      case 2: return 'zone-2';
-      case 3: return 'zone-3';
-      case 4: return 'zone-4';
-      case 5: return 'zone-5';
-      default: return 'zone-1';
-    }
-  };
+
 
   return (
     <div className="ai-response-container">
@@ -58,11 +38,11 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
           <h3>Ethos of Health Analysis</h3>
           <p>Our diagnostic system evaluates your health using the 2OPMD Diagnostic Terrain System:</p>
           <ul>
-            <li><strong>STAX Levels (1-4):</strong> Measure the complexity and layering of conditions</li>
-            <li><strong>Zones (1-5):</strong> Indicate stability and symptom frequency</li>
+            <li><strong>Confidence Scores:</strong> Indicate how well your symptoms match potential conditions</li>
             <li><strong>Tags:</strong> Provide additional context about your diagnostic terrain</li>
+            <li><strong>Risk Factors:</strong> Highlight important symptoms and suggested tests</li>
           </ul>
-          <p>Higher STAX levels indicate more complex conditions, while higher Zone numbers indicate less stability.</p>
+          <p>Higher confidence scores indicate better symptom matching with potential conditions.</p>
           <button 
             type="button" 
             className="close-info-button"
@@ -84,18 +64,6 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
                 }}>
                   {diagnosis.confidence}% confidence
                 </div>
-                
-                {diagnosis.staxLevel && (
-                  <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                    STAX {diagnosis.staxLevel}
-                  </span>
-                )}
-                
-                {diagnosis.zone && (
-                  <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                    Zone {diagnosis.zone}
-                  </span>
-                )}
               </div>
             </div>
             
@@ -115,33 +83,7 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
               </div>
             )}
             
-            {(diagnosis.staxLevel || diagnosis.zone) && (
-              <div className="diagnostic-terrain">
-                <h4>Diagnostic Terrain</h4>
-                <div className="terrain-indicators">
-                  {diagnosis.staxLevel && (
-                    <div className="terrain-indicator">
-                      <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                        STAX {diagnosis.staxLevel}
-                      </span>
-                      <p className="terrain-description">
-                        {STAX_LEVELS[diagnosis.staxLevel] || `STAX Level ${diagnosis.staxLevel}: Complexity level ${diagnosis.staxLevel}`}
-                      </p>
-                    </div>
-                  )}
-                  {diagnosis.zone && (
-                    <div className="terrain-indicator">
-                      <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                        Zone {diagnosis.zone}
-                      </span>
-                      <p className="terrain-description">
-                        {ZONES[diagnosis.zone] || `Zone ${diagnosis.zone}: Stability level ${diagnosis.zone}`}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+
             
             <div className="diagnosis-details">
               {diagnosis.explanation && (
@@ -223,8 +165,7 @@ AIResponseDisplay.propTypes = {
       symptoms: PropTypes.arrayOf(PropTypes.string),
       redFlags: PropTypes.arrayOf(PropTypes.string),
       labSuggestions: PropTypes.arrayOf(PropTypes.string),
-      staxLevel: PropTypes.number,
-      zone: PropTypes.number,
+
       tags: PropTypes.arrayOf(PropTypes.string),
       status: PropTypes.string,
       explanation: PropTypes.string

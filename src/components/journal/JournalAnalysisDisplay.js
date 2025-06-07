@@ -1,31 +1,12 @@
 import React from 'react';
-import { ZONES, STAX_LEVELS } from '../../utils/ethosOfHealth';
 import { downloadTimelinePdf } from '../../utils/pdfGenerator';
+import { formatAutoimmuneDxTag, formatDxType } from '../../utils/formatData';
 import '../../styles/Journal.css';
 
 const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
   if (!analysis) return null;
   
-  const getStaxColor = (level) => {
-    switch (level) {
-      case 1: return 'stax-1';
-      case 2: return 'stax-2';
-      case 3: return 'stax-3';
-      case 4: return 'stax-4';
-      default: return 'stax-1';
-    }
-  };
-  
-  const getZoneColor = (zone) => {
-    switch (zone) {
-      case 1: return 'zone-1';
-      case 2: return 'zone-2';
-      case 3: return 'zone-3';
-      case 4: return 'zone-4';
-      case 5: return 'zone-5';
-      default: return 'zone-1';
-    }
-  };
+
   
   const getConfidenceColor = (confidence) => {
     if (confidence >= 80) return '#28a745'; // Green
@@ -91,18 +72,6 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
                   }}>
                     {diagnosis.confidence}% confidence
                   </div>
-                  
-                  {diagnosis.staxLevel && (
-                    <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                      STAX {diagnosis.staxLevel}
-                    </span>
-                  )}
-                  
-                  {diagnosis.zone && (
-                    <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                      Zone {diagnosis.zone}
-                    </span>
-                  )}
                 </div>
               </div>
               
@@ -122,33 +91,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
                 </div>
               )}
               
-              {(diagnosis.staxLevel || diagnosis.zone) && (
-                <div className="diagnostic-terrain">
-                  <h4>Diagnostic Terrain</h4>
-                  <div className="terrain-indicators">
-                    {diagnosis.staxLevel && (
-                      <div className="terrain-indicator">
-                        <span className={`stax-badge ${getStaxColor(diagnosis.staxLevel)}`}>
-                          STAX {diagnosis.staxLevel}
-                        </span>
-                        <p className="terrain-description">
-                          {STAX_LEVELS[diagnosis.staxLevel] || `STAX Level ${diagnosis.staxLevel}: Complexity level ${diagnosis.staxLevel}`}
-                        </p>
-                      </div>
-                    )}
-                    {diagnosis.zone && (
-                      <div className="terrain-indicator">
-                        <span className={`zone-badge ${getZoneColor(diagnosis.zone)}`}>
-                          Zone {diagnosis.zone}
-                        </span>
-                        <p className="terrain-description">
-                          {ZONES[diagnosis.zone] || `Zone ${diagnosis.zone}: Stability level ${diagnosis.zone}`}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+
             </div>
           ))}
         </div>
@@ -258,9 +201,9 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
           <h5>Autoimmune Information:</h5>
           <div className="autoimmune-info">
             <div className="autoimmune-card">
-              <h6>#AutoimmuneDx_AutoimmuneMyocarditis</h6>
+              <h6>{formatAutoimmuneDxTag('#AutoimmuneDx_AutoimmuneMyocarditis')}</h6>
               <div className="autoimmune-details">
-                <p><strong>Type:</strong> confirmedAutoimmuneDx</p>
+                <p><strong>Type:</strong> {formatDxType('confirmedAutoimmuneDx')}</p>
                 <p><strong>Immune Risk Level:</strong> High</p>
                 <p><strong>Mechanism:</strong> Immune cells attack the heart muscle, leading to chest pain, arrhythmias, and impaired cardiac function.</p>
                 <p><strong>Zone Impact:</strong> +1.0 / +1.0</p>
@@ -272,9 +215,9 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
             </div>
             
             <div className="autoimmune-card">
-              <h6>#AutoimmuneAdjacentDx_ChronicFatigueSyndrome</h6>
+              <h6>{formatAutoimmuneDxTag('#AutoimmuneAdjacentDx_ChronicFatigueSyndrome')}</h6>
               <div className="autoimmune-details">
-                <p><strong>Type:</strong> autoimmuneAdjacentDx</p>
+                <p><strong>Type:</strong> {formatDxType('autoimmuneAdjacentDx')}</p>
                 <p><strong>Immune Risk Level:</strong> Moderate</p>
                 <p><strong>Mechanism:</strong> Complex immune dysregulation and chronic inflammation (often post-viral) lead to profound fatigue unrelieved by rest.</p>
                 <p><strong>Zone Impact:</strong> +0.5 / +1.0</p>
@@ -286,9 +229,9 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
             </div>
             
             <div className="autoimmune-card">
-              <h6>#AutoimmuneAdjacentDx_PersistentVertigoSyndrome</h6>
+              <h6>{formatAutoimmuneDxTag('#AutoimmuneAdjacentDx_PersistentVertigoSyndrome')}</h6>
               <div className="autoimmune-details">
-                <p><strong>Type:</strong> autoimmuneAdjacentDx</p>
+                <p><strong>Type:</strong> {formatDxType('autoimmuneAdjacentDx')}</p>
                 <p><strong>Immune Risk Level:</strong> Moderate</p>
                 <p><strong>Mechanism:</strong> Vestibular hypersensitivity, immune dysfunction, and trauma-linked brainstem dysregulation result in chronic dizziness and spatial disorientation.</p>
                 <p><strong>Zone Impact:</strong> +0.6 / +0.5</p>
