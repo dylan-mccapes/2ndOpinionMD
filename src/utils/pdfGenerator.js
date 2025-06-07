@@ -508,3 +508,196 @@ export const downloadTimelinePdf = async (timelineData, filename = 'diagnosis-ti
     console.error('Error generating timeline PDF:', error);
   }
 };
+
+export const generateJournalTimelinePdf = async (journalEntries) => {
+  if (!journalEntries || journalEntries.length === 0) {
+    console.error('No journal entries to generate PDF');
+    return;
+  }
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - (margin * 2);
+  
+  pdf.setFont('helvetica');
+  
+  pdf.setFillColor(59, 130, 246);
+  pdf.rect(0, 0, pageWidth, 30, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(20);
+  pdf.text('2ndOpinionMD.ai', margin, 15);
+  pdf.setFontSize(12);
+  pdf.text('Journal Timeline Report', margin, 23);
+  
+  pdf.setTextColor(0, 0, 0);
+  
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  pdf.setFontSize(10);
+  pdf.text(`Generated on: ${currentDate}`, margin, 40);
+  pdf.text(`Total Entries: ${journalEntries.length}`, margin, 48);
+  
+  journalEntries.forEach((entry, entryIndex) => {
+    if (entryIndex > 0) {
+      pdf.addPage();
+    }
+    
+    let yPosition = entryIndex === 0 ? 60 : 20;
+    
+    const entryDate = new Date(entry.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    pdf.setFillColor(240, 240, 240);
+    pdf.rect(margin, yPosition - 4, contentWidth, 8, 'F');
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Journal Entry: ${entryDate}`, margin + 2, yPosition);
+    yPosition += 12;
+    
+    if (entry.symptoms && entry.symptoms.length > 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Symptoms', margin, yPosition);
+      yPosition += 6;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      entry.symptoms.forEach(symptom => {
+        const symptomText = typeof symptom === 'string' ? symptom : 
+          `${symptom.symptom || ''} (Severity: ${symptom.severity || 'N/A'}/10)`;
+        pdf.text(`• ${symptomText}`, margin + 5, yPosition);
+        yPosition += 5;
+      });
+      yPosition += 3;
+    }
+    
+    if (entry.environmental_factors && entry.environmental_factors.length > 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Environmental Factors', margin, yPosition);
+      yPosition += 6;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      entry.environmental_factors.forEach(factor => {
+        const factorText = typeof factor === 'string' ? factor : 
+          `${factor.factor_type || ''}: ${factor.description || ''}`;
+        pdf.text(`• ${factorText}`, margin + 5, yPosition);
+        yPosition += 5;
+      });
+      yPosition += 3;
+    }
+    
+    if (entry.ai_analysis?.life_stressors && entry.ai_analysis.life_stressors.length > 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Life Stressors', margin, yPosition);
+      yPosition += 6;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      entry.ai_analysis.life_stressors.forEach(stressor => {
+        pdf.text(`• ${stressor}`, margin + 5, yPosition);
+        yPosition += 5;
+      });
+      yPosition += 3;
+    }
+    
+    if (entry.ai_analysis?.analysis) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Analysis Results', margin, yPosition);
+      yPosition += 6;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      const splitAnalysis = pdf.splitTextToSize(entry.ai_analysis.analysis, contentWidth - 10);
+      pdf.text(splitAnalysis, margin + 5, yPosition);
+      yPosition += splitAnalysis.length * 4 + 3;
+    }
+    
+    if (entry.ai_analysis?.patternObservations) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Pattern Observations', margin, yPosition);
+      yPosition += 6;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      const splitObservations = pdf.splitTextToSize(entry.ai_analysis.patternObservations, contentWidth - 10);
+      pdf.text(splitObservations, margin + 5, yPosition);
+      yPosition += splitObservations.length * 4 + 3;
+    }
+    
+    if (entry.ai_analysis?.diagnoses && entry.ai_analysis.diagnoses.length > 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Diagnoses', margin, yPosition);
+      yPosition += 6;
+      
+      entry.ai_analysis.diagnoses.forEach(diagnosis => {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        
+        let statusText = '';
+        if (diagnosis.status === 'new') {
+          statusText = ' (NEW)';
+          pdf.setTextColor(0, 128, 0);
+        } else if (diagnosis.status === 'eliminated') {
+          statusText = ' (ELIMINATED)';
+          pdf.setTextColor(192, 0, 0);
+        } else {
+          pdf.setTextColor(0, 0, 0);
+        }
+        
+        pdf.text(`• ${diagnosis.name}${statusText} - Confidence: ${diagnosis.confidence}%`, margin + 5, yPosition);
+        pdf.setTextColor(0, 0, 0);
+        yPosition += 5;
+      });
+    }
+  });
+  
+  pdf.addPage();
+  let yPosition = 20;
+  
+  pdf.setFontSize(12);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Important Disclaimer', margin, yPosition);
+  yPosition += 6;
+  
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  const disclaimerText = 'This timeline report is for informational purposes only and is not a medical diagnosis. ' +
+    'This tool helps you track symptom patterns over time to share with your healthcare provider. ' +
+    'Please consult with a healthcare professional for proper evaluation and diagnosis. ' +
+    'The confidence percentages are based on symptom matching and are not clinical assessments. ' +
+    '2ndOpinionMD.ai provides this information as a tool to assist in discussions with healthcare providers.';
+  
+  const splitDisclaimer = pdf.splitTextToSize(disclaimerText, contentWidth);
+  pdf.text(splitDisclaimer, margin, yPosition);
+  
+  const footerText = '© 2023 2ndOpinionMD.ai - All Rights Reserved';
+  pdf.setFontSize(8);
+  pdf.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+  
+  return pdf;
+};
+
+export const downloadJournalTimelinePdf = async (journalEntries, filename = 'journal-timeline-report.pdf') => {
+  try {
+    const pdf = await generateJournalTimelinePdf(journalEntries);
+    if (pdf) {
+      pdf.save(filename);
+    }
+  } catch (error) {
+    console.error('Error generating journal timeline PDF:', error);
+  }
+};
