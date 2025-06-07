@@ -24,26 +24,6 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
     <div className="journal-analysis">
       <h3>AI Analysis</h3>
       
-      {/* Pattern Observations section */}
-      {analysis.patternObservations && (
-        <div className="pattern-observations-section">
-          <h4>Pattern Observations</h4>
-          <p>{analysis.patternObservations}</p>
-        </div>
-      )}
-      
-      {/* Tracking Suggestions section */}
-      {analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0 && (
-        <div className="tracking-suggestions-section">
-          <h4>Tracking Suggestions</h4>
-          <ul>
-            {analysis.trackingSuggestions.map((suggestion, index) => (
-              <li key={index}>{suggestion}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      
       {/* Analysis section */}
       <div className="analysis-results">
         <h4>Analysis Results:</h4>
@@ -109,6 +89,26 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
 
             </div>
           ))}
+        </div>
+      )}
+      
+      {/* Pattern Observations section */}
+      {analysis.patternObservations && (
+        <div className="pattern-observations-section">
+          <h4>Pattern Observations</h4>
+          <p>{analysis.patternObservations}</p>
+        </div>
+      )}
+      
+      {/* Tracking Suggestions section */}
+      {analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0 && (
+        <div className="tracking-suggestions-section">
+          <h4>Tracking Suggestions</h4>
+          <ul>
+            {analysis.trackingSuggestions.map((suggestion, index) => (
+              <li key={index}>{suggestion}</li>
+            ))}
+          </ul>
         </div>
       )}
       
