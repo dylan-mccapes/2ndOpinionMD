@@ -605,8 +605,9 @@ export const generateJournalTimelinePdf = async (journalEntries) => {
       entry.environmental_factors.forEach(factor => {
         const factorText = typeof factor === 'string' ? factor : 
           `${factor.factor_type || ''}: ${factor.description || ''}`;
-        pdf.text(`• ${factorText}`, margin + 5, yPosition);
-        yPosition += 5;
+        const splitFactor = pdf.splitTextToSize(`• ${factorText}`, contentWidth - 10);
+        pdf.text(splitFactor, margin + 5, yPosition);
+        yPosition += splitFactor.length * 4;
       });
       yPosition += 3;
     }
@@ -620,8 +621,9 @@ export const generateJournalTimelinePdf = async (journalEntries) => {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(10);
       entry.ai_analysis.life_stressors.forEach(stressor => {
-        pdf.text(`• ${stressor}`, margin + 5, yPosition);
-        yPosition += 5;
+        const splitStressor = pdf.splitTextToSize(`• ${stressor}`, contentWidth - 10);
+        pdf.text(splitStressor, margin + 5, yPosition);
+        yPosition += splitStressor.length * 4;
       });
       yPosition += 3;
     }
@@ -673,9 +675,11 @@ export const generateJournalTimelinePdf = async (journalEntries) => {
           pdf.setTextColor(0, 0, 0);
         }
         
-        pdf.text(`• ${diagnosis.name}${statusText} - Confidence: ${diagnosis.confidence}%`, margin + 5, yPosition);
+        const diagnosisText = `• ${diagnosis.name}${statusText} - Confidence: ${diagnosis.confidence}%`;
+        const splitDiagnosis = pdf.splitTextToSize(diagnosisText, contentWidth - 10);
+        pdf.text(splitDiagnosis, margin + 5, yPosition);
         pdf.setTextColor(0, 0, 0);
-        yPosition += 5;
+        yPosition += splitDiagnosis.length * 4;
       });
     }
   });
