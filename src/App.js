@@ -442,6 +442,20 @@ function AppContent() {
             </Layout>
           } />
           
+          {/* Test route for journal list functionality without authentication */}
+          <Route path="/test/journal-list" element={
+            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+              <main className="App-main">
+                <h1>Journal List Test Mode</h1>
+                <p>This page allows testing journal list and download functionality without authentication.</p>
+                <JournalList />
+                <div className="home-button-container">
+                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                </div>
+              </main>
+            </Layout>
+          } />
+          
           {/* Test route for symptom intake functionality without authentication */}
           <Route path="/test/intake" element={
             <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
