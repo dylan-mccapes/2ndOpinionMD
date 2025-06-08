@@ -562,7 +562,15 @@ export const generateJournalTimelinePdf = async (journalEntries) => {
     pdf.text(`Journal Entry: ${entryDate}`, margin + 2, yPosition);
     yPosition += 12;
     
-    if (entry.symptoms && entry.symptoms.length > 0) {
+    let symptomsToDisplay = [];
+    
+    if (entry.symptoms && Array.isArray(entry.symptoms) && entry.symptoms.length > 0) {
+      symptomsToDisplay = entry.symptoms;
+    } else if (entry.ai_analysis?.symptoms && Array.isArray(entry.ai_analysis.symptoms) && entry.ai_analysis.symptoms.length > 0) {
+      symptomsToDisplay = entry.ai_analysis.symptoms;
+    }
+    
+    if (symptomsToDisplay.length > 0) {
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.text('Symptoms', margin, yPosition);
@@ -570,11 +578,18 @@ export const generateJournalTimelinePdf = async (journalEntries) => {
       
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(10);
-      entry.symptoms.forEach(symptom => {
-        const symptomText = typeof symptom === 'string' ? symptom : 
-          `${symptom.symptom || ''} (Severity: ${symptom.severity || 'N/A'}/10)`;
-        pdf.text(`• ${symptomText}`, margin + 5, yPosition);
-        yPosition += 5;
+      symptomsToDisplay.forEach(symptom => {
+        let symptomText = '';
+        if (typeof symptom === 'string') {
+          symptomText = symptom;
+        } else if (symptom && typeof symptom === 'object') {
+          symptomText = `${symptom.symptom || symptom.name || ''} ${symptom.severity ? `(Severity: ${symptom.severity}/10)` : ''}`;
+        }
+        
+        if (symptomText.trim()) {
+          pdf.text(`• ${symptomText}`, margin + 5, yPosition);
+          yPosition += 5;
+        }
       });
       yPosition += 3;
     }
