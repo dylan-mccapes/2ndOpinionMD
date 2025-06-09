@@ -85,6 +85,25 @@ async def create_journal_entry(
     journal_entry_dict = journal_entry.dict()
     journal_entry_dict["ai_analysis"] = ai_analysis
     
+    if "symptoms" in ai_analysis and ai_analysis["symptoms"]:
+        structured_symptoms = []
+        for symptom in ai_analysis["symptoms"]:
+            if isinstance(symptom, str):
+                structured_symptoms.append({
+                    "symptom": symptom,
+                    "severity": 5  # Default severity for AI-extracted symptoms
+                })
+            elif isinstance(symptom, dict) and "symptom" in symptom:
+                structured_symptoms.append(symptom)
+        
+        if structured_symptoms:
+            journal_entry_dict["symptoms"] = structured_symptoms
+            print(f"\n=== REPLACED RAW SYMPTOMS WITH AI-EXTRACTED ===")
+            print(f"Original symptoms count: {len(journal_entry.symptoms)}")
+            print(f"AI-extracted symptoms count: {len(structured_symptoms)}")
+            for i, symptom in enumerate(structured_symptoms):
+                print(f"  {i+1}. {symptom['symptom']} (Severity: {symptom['severity']}/10)")
+    
     print("\n=== JOURNAL ANALYSIS RESULTS ===")
     print(json.dumps(ai_analysis, indent=2))
     
