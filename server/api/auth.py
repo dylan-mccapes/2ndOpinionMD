@@ -58,6 +58,42 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.post("/mobile-token", response_model=Token)
+async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter)):
+    """Login endpoint to get long-lasting JWT token for mobile apps"""
+    user = await authenticate_user(form_data.username, form_data.password)
+    if user == "locked":
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account locked due to too many failed login attempts. Please reset your password or wait 15 minutes.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified. Please check your email for verification link.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    access_token_expires = timedelta(days=7)
+    access_token = create_access_token(
+        data={"sub": user.email, "mobile": True}, expires_delta=access_token_expires
+    )
+    
+    await users_collection.update_one(
+        {"email": user.email},
+        {"$set": {"last_login": datetime.utcnow()}}
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @router.post("/register", response_model=User)
 async def register_user(user: UserCreate, request: Request, _: None = Depends(auth_rate_limiter)):
     """Register a new user"""
