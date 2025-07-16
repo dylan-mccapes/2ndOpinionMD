@@ -15,9 +15,6 @@ class UserInDB(UserBase):
     subscription_tier: str = "basic"  # basic, premium, professional
     created_at: datetime = Field(default_factory=datetime.now)
     last_login: Optional[datetime] = None
-<<<<<<< HEAD
-    
-=======
     is_verified: bool = False
     verification_token: Optional[str] = None
     verification_token_expires: Optional[datetime] = None
@@ -26,7 +23,6 @@ class UserInDB(UserBase):
     password_reset_token: Optional[str] = None
     password_reset_token_expires: Optional[datetime] = None
 
->>>>>>> 417ae9ae (Implement password reset functionality with complexity validation and failed login tracking)
 class User(UserBase):
     id: str
     subscription_tier: str

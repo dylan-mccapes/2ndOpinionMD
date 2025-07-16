@@ -155,3 +155,7 @@ server/chroma_db/
 server/venv/
 server/package.json
 server/package-lock.json
+
+# editor/merge backups
+*.backup
+*.orig
