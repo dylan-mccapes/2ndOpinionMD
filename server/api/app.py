@@ -22,7 +22,9 @@ from utils.encrypted_logging import setup_encrypted_logging
 from api.auth import router as auth_router
 from api.journal import router as journal_router
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 setup_encrypted_logging(
     log_dir=os.environ.get('LOG_DIR', './logs'),
@@ -30,8 +32,6 @@ setup_encrypted_logging(
     console_logging=True
 )
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 app = FastAPI(title="2ndOpinionMD API", description="API for 2ndOpinionMD medical diagnosis")
 

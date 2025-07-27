@@ -13,7 +13,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vectordb.query_engine import MedicalQueryEngine
 
 def main():
-    load_dotenv()
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env_path = os.path.join(project_root, '.env')
+    load_dotenv(env_path)
     
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:

@@ -6,14 +6,16 @@ from dotenv import load_dotenv
 import sys
 import re
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 server_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(server_dir)
 sys.path.insert(0, parent_dir)
 
 from models.postgresql.database import async_session, init_db
 from models.postgresql.models import MedicalKnowledge
-
-load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 async def get_embedding(text: str):

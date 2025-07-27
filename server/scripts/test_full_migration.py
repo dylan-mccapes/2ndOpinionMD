@@ -5,6 +5,12 @@ Comprehensive test script for the complete PostgreSQL migration
 import asyncio
 import sys
 import os
+from dotenv import load_dotenv
+
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 sys.path.append('/home/ubuntu/repos/2ndOpinionMD-MVP/server')
 
 from models.postgresql.database import async_session, ping_database

@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 import asyncpg
 from pgvector.asyncpg import register_vector
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@localhost/2ndopinionmd")
 
