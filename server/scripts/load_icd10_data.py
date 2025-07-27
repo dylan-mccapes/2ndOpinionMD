@@ -1,117 +1,157 @@
-import xml.etree.ElementTree as ET
 import asyncio
 import openai
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.postgresql.database import async_session, init_db
-from models.postgresql.models import MedicalKnowledge
 import os
 from dotenv import load_dotenv
 import sys
+import re
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
+server_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(server_dir)
+sys.path.insert(0, parent_dir)
+
+from models.postgresql.database import async_session, init_db
+from models.postgresql.models import MedicalKnowledge
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 async def get_embedding(text: str):
     import numpy as np
     return np.random.random(1536).tolist()
 
-async def process_icd10_tabular(xml_file_path: str):
-    print(f"Processing ICD-10 tabular data from {xml_file_path}")
-    tree = ET.parse(xml_file_path)
-    root = tree.getroot()
+async def process_icd10_main_codes(txt_file_path: str):
+    print(f"Processing ICD-10 main codes from {txt_file_path}")
     
     medical_entries = []
     count = 0
     
-    for chapter in root.findall('.//chapter'):
-        for section in chapter.findall('.//section'):
-            for diag in section.findall('.//diag'):
-                code = diag.get('code', '')
-                name = diag.find('name')
-                if name is not None:
-                    title = name.text
-                    content = f"ICD-10 Code: {code}\nCondition: {title}"
-                    
+    with open(txt_file_path, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.rstrip('\r\n')
+            if not line.strip():
+                continue
+            
+            code_match = re.match(r'^([A-Z0-9]+)\s+(.+)$', line)
+            if code_match:
+                code = code_match.group(1).strip()
+                description = code_match.group(2).strip()
+                
+                if code and description:
+                    content = f"ICD-10 Code: {code}\nCondition: {description}"
                     embedding = await get_embedding(content)
                     
                     medical_entries.append({
                         'content_type': 'icd10_condition',
-                        'title': title,
+                        'title': description,
                         'content': content,
                         'icd10_code': code,
-                        'meta_data': {'source': 'icd10_tabular'},
+                        'meta_data': {'source': 'icd10_main_codes', 'line_number': line_num},
+                        'embedding': embedding
+                    })
+                    
+                    count += 1
+                    if count % 1000 == 0:
+                        print(f"Processed {count} main code entries")
+                else:
+                    print(f"Warning: Empty code or description at line {line_num}: '{line}'")
+            else:
+                print(f"Warning: Could not parse line {line_num}: '{line[:50]}...'")
+    
+    print(f"Completed processing {count} ICD-10 main code entries")
+    return medical_entries
+
+async def process_icd10_addenda(txt_file_path: str):
+    print(f"Processing ICD-10 addenda from {txt_file_path}")
+    
+    medical_entries = []
+    count = 0
+    
+    with open(txt_file_path, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.rstrip('\r\n')
+            if not line.strip():
+                continue
+            
+            if line.startswith('Add:'):
+                action = 'Add'
+                rest = line[4:].strip()
+            elif line.startswith('Delete:'):
+                action = 'Delete'
+                rest = line[7:].strip()
+            else:
+                continue
+            
+            if action == 'Add':
+                parts = rest.split(None, 1)
+                if len(parts) >= 2:
+                    code = parts[0].strip()
+                    description = parts[1].strip()
+                    
+                    content = f"ICD-10 Code: {code}\nCondition: {description}"
+                    embedding = await get_embedding(content)
+                    
+                    medical_entries.append({
+                        'content_type': 'icd10_condition',
+                        'title': description,
+                        'content': content,
+                        'icd10_code': code,
+                        'meta_data': {'source': 'icd10_addenda', 'action': action, 'line_number': line_num},
                         'embedding': embedding
                     })
                     
                     count += 1
                     if count % 100 == 0:
-                        print(f"Processed {count} entries")
+                        print(f"Processed {count} addenda entries")
     
-    print(f"Completed processing {count} ICD-10 tabular entries")
-    return medical_entries
-
-async def process_icd10_drug(xml_file_path: str):
-    print(f"Processing ICD-10 drug data from {xml_file_path}")
-    tree = ET.parse(xml_file_path)
-    root = tree.getroot()
-    
-    medical_entries = []
-    count = 0
-    
-    for main_term in root.findall('.//mainTerm'):
-        title_elem = main_term.find('title')
-        if title_elem is not None:
-            drug_name = title_elem.text
-            
-            code = None
-            cell = main_term.find('./cell[@col="2"]')
-            if cell is not None and cell.text:
-                code = cell.text
-            
-            content = f"Drug: {drug_name}"
-            if code:
-                content += f"\nICD-10 Code: {code}"
-            
-            embedding = await get_embedding(content)
-            
-            medical_entries.append({
-                'content_type': 'icd10_drug',
-                'title': drug_name,
-                'content': content,
-                'icd10_code': code,
-                'meta_data': {'source': 'icd10_drug'},
-                'embedding': embedding
-            })
-            
-            count += 1
-            if count % 100 == 0:
-                print(f"Processed {count} entries")
-    
-    print(f"Completed processing {count} ICD-10 drug entries")
+    print(f"Completed processing {count} ICD-10 addenda entries")
     return medical_entries
 
 async def load_icd10_data():
     await init_db()
     
-    tabular_file = os.path.expanduser('~/attachments/9c3e5209-765d-4c62-9f26-5adaa840ced1/icd10cm-tabular-2026.xml')
-    drug_file = os.path.expanduser('~/attachments/de4b02cb-ac70-468c-b7b0-bfe1b59cc91d/icd10cm-drug-2026.xml')
+    main_codes_file = os.getenv("ICD10_MAIN_CODES_FILE")
+    if not main_codes_file or not os.path.exists(os.path.expanduser(main_codes_file)):
+        main_codes_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
+        if not os.path.exists(main_codes_file):
+            project_data_dir = os.path.join(project_root, "server", "data", "icd10")
+            main_codes_file = os.path.join(project_data_dir, "icd10cm-codes-2026.txt")
+    else:
+        main_codes_file = os.path.expanduser(main_codes_file)
     
-    if not os.path.exists(tabular_file):
-        print(f"Error: ICD-10 tabular file not found at {tabular_file}")
+    addenda_file = os.getenv("ICD10_ADDENDA_FILE")
+    if not addenda_file or not os.path.exists(os.path.expanduser(addenda_file)):
+        addenda_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-addenda-2026.txt")
+        if not os.path.exists(addenda_file):
+            project_data_dir = os.path.join(project_root, "server", "data", "icd10")
+            addenda_file = os.path.join(project_data_dir, "icd10cm-codes-addenda-2026.txt")
+    else:
+        addenda_file = os.path.expanduser(addenda_file)
+    
+    if not os.path.exists(main_codes_file):
+        print(f"Error: ICD-10 main codes file not found at {main_codes_file}")
+        print("Please ensure the file exists at one of these locations:")
+        print(f"  1. {os.getenv('ICD10_MAIN_CODES_FILE', 'Set ICD10_MAIN_CODES_FILE environment variable')}")
+        print(f"  2. ~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
+        print(f"  3. {os.path.join(project_root, 'server', 'data', 'icd10', 'icd10cm-codes-2026.txt')}")
         return
     
-    if not os.path.exists(drug_file):
-        print(f"Error: ICD-10 drug file not found at {drug_file}")
-        return
+    if not os.path.exists(addenda_file):
+        print(f"Warning: ICD-10 addenda file not found at {addenda_file}")
+        addenda_file = None
     
-    tabular_entries = await process_icd10_tabular(tabular_file)
+    main_entries = await process_icd10_main_codes(main_codes_file)
     
-    drug_entries = await process_icd10_drug(drug_file)
+    addenda_entries = []
+    if addenda_file:
+        addenda_entries = await process_icd10_addenda(addenda_file)
     
-    all_entries = tabular_entries + drug_entries
+    all_entries = main_entries + addenda_entries
     
-    print(f"Saving {len(all_entries)} entries to database")
-    batch_size = 100
+    print(f"Saving {len(all_entries)} total entries to database")
+    batch_size = 500
     for i in range(0, len(all_entries), batch_size):
         batch = all_entries[i:i+batch_size]
         async with async_session() as session:
@@ -120,6 +160,8 @@ async def load_icd10_data():
                 session.add(medical_knowledge)
             await session.commit()
             print(f"Committed batch {i//batch_size + 1}/{(len(all_entries) + batch_size - 1)//batch_size}")
+    
+    print(f"Successfully loaded {len(all_entries)} ICD-10 entries into PostgreSQL")
 
 if __name__ == "__main__":
     asyncio.run(load_icd10_data())
