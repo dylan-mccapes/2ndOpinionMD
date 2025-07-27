@@ -8,6 +8,10 @@ import json
 import sys
 from dotenv import load_dotenv
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.normalized_data_processor import process_medical_data_file
@@ -15,7 +19,6 @@ import chromadb
 from chromadb.utils import embedding_functions
 
 def main():
-    load_dotenv()
     
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:

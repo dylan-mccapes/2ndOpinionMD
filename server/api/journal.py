@@ -15,7 +15,9 @@ import os
 from dotenv import load_dotenv
 import json
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:

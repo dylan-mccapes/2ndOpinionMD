@@ -19,7 +19,9 @@ target_metadata = Base.metadata
 
 from dotenv import load_dotenv
 import os
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/2ndopinionmd"))
 

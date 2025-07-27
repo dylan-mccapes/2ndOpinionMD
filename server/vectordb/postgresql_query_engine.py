@@ -8,7 +8,9 @@ from models.postgresql.models import MedicalKnowledge
 from dotenv import load_dotenv
 import logging
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 logger = logging.getLogger(__name__)
 

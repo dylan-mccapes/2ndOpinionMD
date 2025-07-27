@@ -13,7 +13,9 @@ from models.postgresql.database import get_db
 from models.postgresql.models import User
 from models.mongodb.models import TokenData, UserInDB
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-jwt")
 ALGORITHM = "HS256"

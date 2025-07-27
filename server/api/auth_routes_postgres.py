@@ -8,6 +8,10 @@ import uuid
 import os
 from dotenv import load_dotenv
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 from models.postgresql.database import get_db
 from models.postgresql.models import User
 from models.mongodb.models import UserCreate, User as UserResponse, Token
@@ -19,8 +23,6 @@ from api.auth_postgres import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from utils.email.verification import send_verification_email
-
-load_dotenv()
 
 router = APIRouter()
 

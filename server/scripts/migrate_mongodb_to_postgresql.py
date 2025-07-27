@@ -8,7 +8,9 @@ from datetime import datetime
 import uuid
 import json
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
 
 async def migrate_data():
     print("Starting migration from MongoDB to PostgreSQL")

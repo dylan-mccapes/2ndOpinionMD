@@ -3,12 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 from api.journal import router as journal_router
 from api.auth_routes_postgres import router as auth_router
 from models.postgresql.database import init_db
 from api.auth_postgres import get_current_user_postgres
-
-load_dotenv()
 
 app = FastAPI(title="2ndOpinionMD API")
 

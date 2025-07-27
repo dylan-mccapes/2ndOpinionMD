@@ -4,11 +4,14 @@ import asyncio
 import uvicorn
 from dotenv import load_dotenv
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 def setup_and_run():
     """Setup database and run the FastAPI application"""
-    load_dotenv()
     
     try:
         from models.postgresql.database import init_db
