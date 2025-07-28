@@ -22,6 +22,14 @@ psql -c "GRANT ALL PRIVILEGES ON DATABASE 2ndopinionmd TO devin;"
 psql 2ndopinionmd -c "CREATE EXTENSION vector;"
 ```
 
+4. **Fix database permissions (run after migrations):**
+```bash
+# Grant proper permissions to devin user for all tables
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO devin;"
+```
+
 ## Configuration
 
 1. **Update .env file:**
@@ -57,12 +65,20 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
-3. **Load ICD-10 data:**
+3. **Fix database permissions (IMPORTANT):**
+```bash
+# Grant proper permissions to devin user
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO devin;"
+```
+
+4. **Load ICD-10 data:**
 ```bash
 python scripts/load_icd10_data.py
 ```
 
-4. **Start the application:**
+5. **Start the application:**
 ```bash
 python scripts/run_postgres_app.py
 ```
