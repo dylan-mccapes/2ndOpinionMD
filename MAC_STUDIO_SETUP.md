@@ -4,13 +4,13 @@
 
 1. **Install PostgreSQL and pgvector:**
 ```bash
-brew install postgresql@15 pgvector
-brew services start postgresql@15
+brew install postgresql@14 pgvector
+brew services start postgresql@14
 ```
 
 2. **Add PostgreSQL to PATH (if needed):**
 ```bash
-echo 'export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="/opt/homebrew/opt/postgresql@14/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -73,8 +73,8 @@ The application will be available at http://localhost:3000
 
 ### PostgreSQL Issues
 - If `psql` command is not found, ensure PostgreSQL is properly installed and added to PATH
-- Try using the full path: `/opt/homebrew/opt/postgresql@15/bin/psql`
-- Restart PostgreSQL service: `brew services restart postgresql@15`
+- Try using the full path: `/opt/homebrew/opt/postgresql@14/bin/psql`
+- Restart PostgreSQL service: `brew services restart postgresql@14`
 
 ### Database Connection Issues
 - Verify PostgreSQL is running: `brew services list | grep postgresql`

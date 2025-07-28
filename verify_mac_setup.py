@@ -101,6 +101,8 @@ def main():
         print("3. python scripts/run_postgres_app.py")
     else:
         print("⚠️ Some checks failed. Please address the issues above.")
+        print("\nFirst, make sure PostgreSQL is running:")
+        print("brew services start postgresql@14")
         print("\nIf you just pulled the latest changes, try running:")
         print("git pull origin devin/1752707339-postgresql-icd10-migration")
 

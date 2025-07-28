@@ -112,30 +112,43 @@ async def process_icd10_addenda(txt_file_path: str):
 async def load_icd10_data():
     await init_db()
     
-    main_codes_file = os.getenv("ICD10_MAIN_CODES_FILE")
-    if not main_codes_file or not os.path.exists(os.path.expanduser(main_codes_file)):
-        main_codes_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
-        if not os.path.exists(main_codes_file):
-            project_data_dir = os.path.join(project_root, "server", "data", "icd10")
-            main_codes_file = os.path.join(project_data_dir, "icd10cm-codes-2026.txt")
-    else:
-        main_codes_file = os.path.expanduser(main_codes_file)
+    print(f"DEBUG: ICD10_MAIN_CODES_FILE env var: {os.getenv('ICD10_MAIN_CODES_FILE')}")
+    print(f"DEBUG: ICD10_ADDENDA_FILE env var: {os.getenv('ICD10_ADDENDA_FILE')}")
+    print(f"DEBUG: Project root: {project_root}")
     
-    addenda_file = os.getenv("ICD10_ADDENDA_FILE")
-    if not addenda_file or not os.path.exists(os.path.expanduser(addenda_file)):
-        addenda_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-addenda-2026.txt")
-        if not os.path.exists(addenda_file):
-            project_data_dir = os.path.join(project_root, "server", "data", "icd10")
-            addenda_file = os.path.join(project_data_dir, "icd10cm-codes-addenda-2026.txt")
-    else:
-        addenda_file = os.path.expanduser(addenda_file)
+    project_data_dir = os.path.join(project_root, "server", "data", "icd10")
+    main_codes_file = os.path.join(project_data_dir, "icd10cm-codes-2026.txt")
+    addenda_file = os.path.join(project_data_dir, "icd10cm-codes-addenda-2026.txt")
+    
+    if not os.path.exists(main_codes_file):
+        env_main_file = os.getenv("ICD10_MAIN_CODES_FILE")
+        if env_main_file and os.path.exists(os.path.expanduser(env_main_file)):
+            main_codes_file = os.path.expanduser(env_main_file)
+        else:
+            docs_main_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
+            if os.path.exists(docs_main_file):
+                main_codes_file = docs_main_file
+    
+    if not os.path.exists(addenda_file):
+        env_addenda_file = os.getenv("ICD10_ADDENDA_FILE")
+        if env_addenda_file and os.path.exists(os.path.expanduser(env_addenda_file)):
+            addenda_file = os.path.expanduser(env_addenda_file)
+        else:
+            docs_addenda_file = os.path.expanduser("~/Documents/2ndOpinionMD-data/icd10cm-codes-addenda-2026.txt")
+            if os.path.exists(docs_addenda_file):
+                addenda_file = docs_addenda_file
+    
+    print(f"DEBUG: Final main_codes_file path: {main_codes_file}")
+    print(f"DEBUG: Final addenda_file path: {addenda_file}")
+    print(f"DEBUG: Main file exists: {os.path.exists(main_codes_file)}")
+    print(f"DEBUG: Addenda file exists: {os.path.exists(addenda_file)}")
     
     if not os.path.exists(main_codes_file):
         print(f"Error: ICD-10 main codes file not found at {main_codes_file}")
         print("Please ensure the file exists at one of these locations:")
-        print(f"  1. {os.getenv('ICD10_MAIN_CODES_FILE', 'Set ICD10_MAIN_CODES_FILE environment variable')}")
-        print(f"  2. ~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
-        print(f"  3. {os.path.join(project_root, 'server', 'data', 'icd10', 'icd10cm-codes-2026.txt')}")
+        print(f"  1. {os.path.join(project_root, 'server', 'data', 'icd10', 'icd10cm-codes-2026.txt')} (project directory)")
+        print(f"  2. {os.getenv('ICD10_MAIN_CODES_FILE', 'Set ICD10_MAIN_CODES_FILE environment variable')}")
+        print(f"  3. ~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt")
         return
     
     if not os.path.exists(addenda_file):
