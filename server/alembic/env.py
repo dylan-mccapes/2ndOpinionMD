@@ -23,7 +23,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/2ndopinionmd"))
+config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd"))
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

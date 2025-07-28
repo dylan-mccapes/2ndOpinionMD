@@ -13,7 +13,7 @@ async def setup_postgres():
     """
     Set up PostgreSQL database with pgvector extension
     """
-    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/2ndopinionmd")
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd")
     
     parts = db_url.replace("postgresql+asyncpg://", "").split("/")
     dbname = parts[1]
