@@ -27,7 +27,7 @@ psql 2ndopinionmd -c "CREATE EXTENSION vector;"
 1. **Update .env file:**
 Ensure your `.env` file in the project root contains:
 ```
-DATABASE_URL=postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd
+DATABASE_URL=postgresql+asyncpg://devin:devin123@2ndopinionmd.ai:5432/2ndopinionmd
 ICD10_MAIN_CODES_FILE=~/Documents/2ndOpinionMD-data/icd10cm-codes-2026.txt
 ICD10_ADDENDA_FILE=~/Documents/2ndOpinionMD-data/icd10cm-codes-addenda-2026.txt
 ```

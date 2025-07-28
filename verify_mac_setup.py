@@ -16,12 +16,12 @@ def check_env_file():
     with open(env_path, 'r') as f:
         content = f.read()
     
-    if "DATABASE_URL=postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd" in content:
-        print("✅ DATABASE_URL correctly configured for localhost")
+    if "DATABASE_URL=postgresql+asyncpg://devin:devin123@2ndopinionmd.ai:5432/2ndopinionmd" in content:
+        print("✅ DATABASE_URL correctly configured for 2ndopinionmd.ai server")
         return True
     elif "DATABASE_URL=" in content:
-        print("⚠️ DATABASE_URL found but not configured for localhost")
-        print("   Expected: DATABASE_URL=postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd")
+        print("⚠️ DATABASE_URL found but not configured for 2ndopinionmd.ai server")
+        print("   Expected: DATABASE_URL=postgresql+asyncpg://devin:devin123@2ndopinionmd.ai:5432/2ndopinionmd")
         return False
     else:
         print("❌ DATABASE_URL not found in .env file")
@@ -59,7 +59,7 @@ def check_database_connection():
         async def test_connection():
             try:
                 conn = await asyncpg.connect(
-                    "postgresql://devin:devin123@localhost:5432/2ndopinionmd"
+                    "postgresql://devin:devin123@2ndopinionmd.ai:5432/2ndopinionmd"
                 )
                 await conn.close()
                 return True
