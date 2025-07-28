@@ -83,7 +83,7 @@ python scripts/load_icd10_data.py
 python scripts/run_postgres_app.py
 ```
 
-The application will be available at http://localhost:3000
+The application will be available at http://localhost:8000
 
 ## Frontend Setup
 
@@ -101,15 +101,15 @@ npm start
 The React frontend will start on port 3001 (or another available port if 3001 is busy). It's configured to connect to the PostgreSQL backend running on port 3000.
 
 3. **Access the application:**
-- Backend API: http://localhost:3000
-- API Documentation: http://localhost:3000/docs  
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs  
 - Frontend Application: http://localhost:3001
 
 ## Complete Application Stack
 
 With both servers running, you have:
 - **PostgreSQL Database**: Running locally with 75,206 ICD-10 entries
-- **FastAPI Backend**: Port 3000 with full API endpoints
+- **FastAPI Backend**: Port 8000 with full API endpoints
 - **React Frontend**: Port 3001 with user interface
 - **Vector Search**: pgvector-powered medical knowledge search
 
