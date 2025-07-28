@@ -135,3 +135,5 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .DS_Store
+*.pyc
+__pycache__/
