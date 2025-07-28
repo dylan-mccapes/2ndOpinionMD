@@ -11,16 +11,16 @@ import uvicorn
 import sys
 import traceback
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from database.models.postgresql.database import init_db, ping_database
-from database.models.postgresql.models import User as UserInDB
-from server.utils.rate_limiter import general_rate_limiter, get_client_ip
-from server.utils.encrypted_logging import setup_encrypted_logging
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+from models.postgresql.database import init_db, ping_database
+from models.postgresql.models import User as UserInDB
+from utils.rate_limiter import general_rate_limiter, get_client_ip
+from utils.encrypted_logging import setup_encrypted_logging
 
-from server.api.journal import router as journal_router
-from server.api.auth_routes_postgres import router as auth_router
-from server.api.auth_postgres import get_current_user_postgres
+from api.journal import router as journal_router
+from api.auth_routes_postgres import router as auth_router
+from api.auth_postgres import get_current_user_postgres
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
@@ -144,18 +144,7 @@ async def diagnose(
         
         logger.info(f"Diagnose response: {response}")
         
-        if isinstance(response, str):
-            try:
-                response = json.loads(response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse RAG response: {e}")
-                raise HTTPException(status_code=500, detail="Invalid response format from query engine")
-
-        if not isinstance(response, dict) or "diagnoses" not in response:
-            logger.error(f"Malformed RAG response: {response}")
-            raise HTTPException(status_code=500, detail="Malformed RAG response: missing 'diagnoses' key")
-
-        return DiagnosisResponse(**response)
+        return response
     except Exception as e:
         logger.error(f"Error generating diagnosis: {str(e)}")
         logger.error(traceback.format_exc())
@@ -177,11 +166,6 @@ async def health_check():
             "pgvector": "ok" if query_engine else "error"
         }
     }
-
-@app.get("/api/meta/ping")
-async def meta_ping():
-    from datetime import datetime, timezone
-    return {"ok": True, "now": datetime.now(timezone.utc).isoformat()}
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))

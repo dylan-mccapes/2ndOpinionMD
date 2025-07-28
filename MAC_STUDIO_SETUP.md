@@ -4,13 +4,13 @@
 
 1. **Install PostgreSQL and pgvector:**
 ```bash
-brew install postgresql@15 pgvector
-brew services start postgresql@15
+brew install postgresql@14 pgvector
+brew services start postgresql@14
 ```
 
 2. **Add PostgreSQL to PATH (if needed):**
 ```bash
-echo 'export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="/opt/homebrew/opt/postgresql@14/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -20,6 +20,14 @@ createdb 2ndopinionmd
 psql -c "CREATE USER devin WITH PASSWORD 'devin123';"
 psql -c "GRANT ALL PRIVILEGES ON DATABASE 2ndopinionmd TO devin;"
 psql 2ndopinionmd -c "CREATE EXTENSION vector;"
+```
+
+4. **Fix database permissions (run after migrations):**
+```bash
+# Grant proper permissions to devin user for all tables
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO devin;"
 ```
 
 ## Configuration
@@ -57,24 +65,60 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
-3. **Load ICD-10 data:**
+3. **Fix database permissions (IMPORTANT):**
+```bash
+# Grant proper permissions to devin user
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO devin;"
+psql 2ndopinionmd -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO devin;"
+```
+
+4. **Load ICD-10 data:**
 ```bash
 python scripts/load_icd10_data.py
 ```
 
-4. **Start the application:**
+5. **Start the application:**
 ```bash
 python scripts/run_postgres_app.py
 ```
 
-The application will be available at http://localhost:3000
+The application will be available at http://localhost:8000
+
+## Frontend Setup
+
+1. **Install frontend dependencies:**
+```bash
+cd ~/Sites/2ndOpinionMD-MVP  # or wherever you cloned the repo
+npm install
+```
+
+2. **Start the React development server:**
+```bash
+npm start
+```
+
+The React frontend will start on port 3001 (or another available port if 3001 is busy). It's configured to connect to the PostgreSQL backend running on port 3000.
+
+3. **Access the application:**
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs  
+- Frontend Application: http://localhost:3001
+
+## Complete Application Stack
+
+With both servers running, you have:
+- **PostgreSQL Database**: Running locally with 75,206 ICD-10 entries
+- **FastAPI Backend**: Port 8000 with full API endpoints
+- **React Frontend**: Port 3001 with user interface
+- **Vector Search**: pgvector-powered medical knowledge search
 
 ## Troubleshooting
 
 ### PostgreSQL Issues
 - If `psql` command is not found, ensure PostgreSQL is properly installed and added to PATH
-- Try using the full path: `/opt/homebrew/opt/postgresql@15/bin/psql`
-- Restart PostgreSQL service: `brew services restart postgresql@15`
+- Try using the full path: `/opt/homebrew/opt/postgresql@14/bin/psql`
+- Restart PostgreSQL service: `brew services restart postgresql@14`
 
 ### Database Connection Issues
 - Verify PostgreSQL is running: `brew services list | grep postgresql`
