@@ -14,7 +14,7 @@ async def send_verification_email(email: EmailStr, name: str, token: str):
     """
     Send a verification email with a token link
     """
-    domain = os.getenv("DOMAIN_URL", "http://localhost:3000")
+    domain = os.getenv("FRONTEND_URL", "http://localhost:3000")
     verification_url = f"{domain}/verify-email?token={token}"
     
     template_path = Path(__file__).parent.parent.parent / "templates" / "verification.html"
@@ -99,7 +99,7 @@ async def send_password_reset_email(email: EmailStr, name: str, token: str):
     """
     Send a password reset email with a token link
     """
-    domain = os.getenv("DOMAIN_URL", "http://localhost:3000")
+    domain = os.getenv("FRONTEND_URL", "http://localhost:3000")
     reset_url = f"{domain}/reset-password?token={token}"
     
     template_path = Path(__file__).parent.parent.parent / "templates" / "password_reset.html"
