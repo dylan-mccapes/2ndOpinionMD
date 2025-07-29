@@ -4,6 +4,14 @@ set -e
 
 echo "🚀 Setting up PostgreSQL Knowledge Graph database..."
 
+if [[ "$OSTYPE" == "darwin"* ]] && [[ $EUID -eq 0 ]]; then
+    echo "❌ ERROR: Do not run this script with 'sudo' on macOS!"
+    echo "   macOS PostgreSQL (Homebrew) uses your regular user account, not root."
+    echo "   Please run: ./scripts/setup_knowledgegraph_complete.sh"
+    echo "   (without sudo)"
+    exit 1
+fi
+
 if [[ "$OSTYPE" == "darwin"* ]]; then
     OS="macos"
     POSTGRES_USER=$(whoami)
@@ -11,6 +19,17 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     BACKUP_DIR="/usr/local/var/backups/pg"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     BACKUP_SCRIPT="$SCRIPT_DIR/pg_backup_knowledgegraph.sh"
+    
+    if ! psql --version &>/dev/null; then
+        echo "❌ ERROR: PostgreSQL not found or not accessible."
+        echo "   Please install PostgreSQL first: brew install postgresql@14"
+        exit 1
+    fi
+    
+    if ! brew services list | grep -q "postgresql.*started"; then
+        echo "⚠️  PostgreSQL service not running. Starting it now..."
+        brew services start postgresql@14 2>/dev/null || brew services start postgresql@15 2>/dev/null || brew services start postgresql
+    fi
 else
     OS="linux"
     POSTGRES_USER="postgres"
@@ -55,6 +74,7 @@ echo "🗄️ Creating knowledge graph database and schemas..."
 cp "$SCRIPT_DIR/setup_knowledgegraph.sql" /tmp/setup_knowledgegraph.sql
 
 if [[ "$OS" == "macos" ]]; then
+    echo "Connecting to PostgreSQL as user: $(whoami)"
     psql postgres -f /tmp/setup_knowledgegraph.sql
 else
     sudo -u postgres psql -f /tmp/setup_knowledgegraph.sql
@@ -83,6 +103,9 @@ if [[ "$OS" == "macos" ]]; then
     echo "1. psql -d knowledgegraph -c '\dn'"
     echo "2. psql -c 'SHOW wal_level; SHOW archive_mode;'"
     echo "3. crontab -l"
+    echo ""
+    echo "⚠️  IMPORTANT: On macOS, always run this script WITHOUT 'sudo'"
+    echo "   PostgreSQL uses your regular user account, not root."
 else
     echo "1. sudo -u postgres psql -d knowledgegraph -c '\dn'"
     echo "2. sudo -u postgres psql -c 'SHOW wal_level; SHOW archive_mode;'"
