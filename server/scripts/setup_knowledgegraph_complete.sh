@@ -71,12 +71,15 @@ else
 fi
 
 echo "🗄️ Creating knowledge graph database and schemas..."
-cp "$SCRIPT_DIR/setup_knowledgegraph.sql" /tmp/setup_knowledgegraph.sql
 
 if [[ "$OS" == "macos" ]]; then
+    TEMP_SQL_FILE="$HOME/.setup_knowledgegraph_temp.sql"
+    cp "$SCRIPT_DIR/setup_knowledgegraph.sql" "$TEMP_SQL_FILE"
     echo "Connecting to PostgreSQL as user: $(whoami)"
-    psql postgres -f /tmp/setup_knowledgegraph.sql
+    psql postgres -f "$TEMP_SQL_FILE"
+    rm -f "$TEMP_SQL_FILE"
 else
+    cp "$SCRIPT_DIR/setup_knowledgegraph.sql" /tmp/setup_knowledgegraph.sql
     sudo -u postgres psql -f /tmp/setup_knowledgegraph.sql
 fi
 
