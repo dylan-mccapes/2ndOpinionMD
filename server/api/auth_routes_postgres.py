@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
@@ -13,31 +12,31 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-from database.models.postgresql.database import get_db
-from database.models.postgresql.models import User
-from server.api.auth import UserCreate, User as UserResponse, Token
-from server.api.auth_postgres import (
+from models.postgresql.database import get_db
+from models.postgresql.models import User
+from models.mongodb.models import UserCreate, User as UserResponse, Token
+from api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
     create_access_token, 
     get_current_user_postgres,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from server.utils.email.verification import send_verification_email
+from utils.email.verification import send_verification_email
 from pydantic import EmailStr
 
 router = APIRouter()
 
-@router.post("/register")
+@router.post("/register", response_model=UserResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     query = select(User).where(User.email == user.email)
     result = await db.execute(query)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
-        return JSONResponse(
-            status_code=200,
-            content={"success": True, "message": "Registration request received. Please check your email for verification instructions."}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
         )
     
     verification_token = str(uuid.uuid4())
@@ -64,9 +63,13 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db:
         verification_token
     )
     
-    return JSONResponse(
-        status_code=201,
-        content={"success": True, "message": "Registration successful. Please check your email for verification instructions."}
+    return UserResponse(
+        id=str(db_user.id),
+        email=db_user.email,
+        full_name=db_user.full_name,
+        birthdate=db_user.birthdate,
+        subscription_tier=db_user.subscription_tier,
+        created_at=db_user.created_at
     )
 
 @router.post("/token", response_model=Token)
@@ -227,17 +230,6 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user_postgres)):
-    return UserResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        full_name=current_user.full_name,
-        birthdate=current_user.birthdate,
-        subscription_tier=current_user.subscription_tier,
-        created_at=current_user.created_at
-    )
-
-@router.get("/users/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_user_postgres)):
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
