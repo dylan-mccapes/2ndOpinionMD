@@ -34,8 +34,8 @@ const ResetPassword = () => {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/reset-password`,
-        { token, new_password: password }
+        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/reset-password/${token}`,
+        { new_password: password }
       );
       
       alert('Password reset successfully! You can now log in with your new password.');
