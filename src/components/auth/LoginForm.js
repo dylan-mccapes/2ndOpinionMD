@@ -34,7 +34,7 @@ const LoginForm = ({ onLoginSuccess }) => {
         localStorage.setItem('token', response.data.access_token);
         
         const userResponse = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/users/me`,
+          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/me`,
           {
             headers: {
               'Authorization': `Bearer ${response.data.access_token}`

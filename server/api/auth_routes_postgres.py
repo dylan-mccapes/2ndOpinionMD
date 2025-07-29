@@ -105,7 +105,7 @@ async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = D
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/verify-email/{token}")
+@router.get("/verify-email")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     query = select(User).where(User.verification_token == token)
     result = await db.execute(query)
