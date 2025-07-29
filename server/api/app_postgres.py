@@ -12,15 +12,15 @@ import sys
 import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.query_engine import MedicalQueryEngine
-from models.mongodb.database import ping_database
-from models.mongodb.auth import get_current_user
-from models.mongodb.models import UserInDB
+from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+from models.postgresql.database import init_db, ping_database
+from models.postgresql.models import User as UserInDB
 from utils.rate_limiter import general_rate_limiter, get_client_ip
 from utils.encrypted_logging import setup_encrypted_logging
 
-from api.auth import router as auth_router
 from api.journal import router as journal_router
+from api.auth_routes_postgres import router as auth_router
+from api.auth_postgres import get_current_user_postgres
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
@@ -37,17 +37,16 @@ app = FastAPI(title="2ndOpinionMD API", description="API for 2ndOpinionMD medica
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
-persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-query_engine = MedicalQueryEngine(persist_directory)
+query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
     symptoms: List[str]
@@ -70,11 +69,11 @@ async def security_middleware(request: Request, call_next):
         "/.config", 
         "/.aws", 
         "/.ssh",
-        "/wp-login.php",  # Common WordPress attack vector
-        "/wp-admin",      # Common WordPress attack vector
-        "/admin",         # Common admin panel paths
-        "/phpinfo.php",   # PHP info disclosure
-        "/config.php",    # Common config files
+        "/wp-login.php",
+        "/wp-admin",
+        "/admin",
+        "/phpinfo.php",
+        "/config.php",
     ]
     
     for pattern in blocked_patterns:
@@ -115,10 +114,14 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
         headers={"Retry-After": request.headers.get("Retry-After", "60")}
     )
 
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: UserInDB = Depends(get_current_user_postgres),
     _: None = Depends(general_rate_limiter)
 ):
     """
@@ -133,7 +136,7 @@ async def diagnose(
             logger.error(f"Invalid symptoms format: {request.symptoms}")
             raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
         
-        response = query_engine.generate_rag_response(
+        response = await query_engine.generate_rag_response(
             symptoms=request.symptoms, 
             model=request.model,
             demographics=request.demographics
@@ -153,16 +156,18 @@ async def health_check():
     """
     Health check endpoint
     """
-    mongo_status = "ok" if await ping_database() else "error"
+    postgres_status = "ok" if await ping_database() else "error"
     
     return {
         "status": "ok",
         "services": {
             "api": "ok",
-            "mongodb": mongo_status,
-            "chroma": "ok" if query_engine.collections else "error"
+            "postgresql": postgres_status,
+            "pgvector": "ok" if query_engine else "error"
         }
     }
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("api.app_postgres:app", host=host, port=port, reload=True)

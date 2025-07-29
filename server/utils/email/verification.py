@@ -1,7 +1,6 @@
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional
-from fastapi import Request
 from jose import jwt
 from pathlib import Path
 from pydantic import EmailStr
@@ -11,7 +10,7 @@ from utils.email.config import send_email
 
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 30
 
-async def send_verification_email(email: EmailStr, name: str, token: str, request: Request):
+async def send_verification_email(email: EmailStr, name: str, token: str):
     """
     Send a verification email with a token link
     """
@@ -96,7 +95,7 @@ def verify_password_reset_token(token: str) -> Optional[str]:
     except Exception:
         return None
 
-async def send_password_reset_email(email: EmailStr, name: str, token: str, request: Request):
+async def send_password_reset_email(email: EmailStr, name: str, token: str):
     """
     Send a password reset email with a token link
     """

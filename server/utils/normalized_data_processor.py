@@ -596,7 +596,9 @@ if __name__ == "__main__":
     from chromadb.utils import embedding_functions
     from dotenv import load_dotenv
     
-    load_dotenv()
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env_path = os.path.join(project_root, '.env')
+    load_dotenv(env_path)
     
     parser = argparse.ArgumentParser(description="Process medical data and add to Chroma")
     parser.add_argument("file_path", help="Path to the medical data JSON file")
