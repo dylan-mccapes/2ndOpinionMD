@@ -13,7 +13,7 @@ pg_dump -F c -b -v -f "$BACKUP_FILE" "$DATABASE"
 if [ $? -eq 0 ]; then
     echo "Backup completed successfully: $BACKUP_FILE"
     
-    find "$BACKUP_DIR" -name "knowledgegraph_*.backup" -mtime +7 -delete
+    find "$BACKUP_DIR" -name "knowledgegraph_*.backup" -mtime +7 -delete 2>/dev/null || true
     echo "Old backups cleaned up (kept last 7 days)"
 else
     echo "Backup failed!"
