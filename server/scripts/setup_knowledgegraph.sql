@@ -7,6 +7,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS vector;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+        RAISE EXCEPTION 'pgvector extension failed to install. Please run: brew install pgvector';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
+        RAISE EXCEPTION 'pg_trgm extension failed to install. Please reinstall PostgreSQL.';
+    END IF;
+END $$;
+
 CREATE SCHEMA ontology;
 CREATE SCHEMA ehr;
 CREATE SCHEMA text;
