@@ -4,6 +4,7 @@ CREATE DATABASE knowledgegraph;
 \c knowledgegraph;
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE SCHEMA ontology;
@@ -12,108 +13,111 @@ CREATE SCHEMA text;
 CREATE SCHEMA molecular;
 CREATE SCHEMA guidelines;
 
+
 CREATE TABLE ontology.concepts (
-    concept_id SERIAL PRIMARY KEY,
-    code VARCHAR(50) NOT NULL,
-    name TEXT NOT NULL,
-    system VARCHAR(50), -- SNOMED, ICD10, etc.
-    description TEXT
+  concept_id        BIGINT PRIMARY KEY,      -- SNOMED ID
+  effective_time    DATE NOT NULL,
+  active            BOOLEAN NOT NULL,
+  module_id         BIGINT NOT NULL,
+  definition_status SMALLINT,
+  concept_status    SMALLINT
 );
+CREATE INDEX ON ontology.concepts(module_id);
+
+CREATE TABLE ontology.descriptions (
+  description_id    BIGINT PRIMARY KEY,
+  concept_id        BIGINT REFERENCES ontology.concepts(concept_id),
+  effective_time    DATE,
+  active            BOOLEAN,
+  module_id         BIGINT,
+  language_code     VARCHAR(2),
+  type_id           BIGINT,                  -- FSN / Synonym
+  term              TEXT,
+  case_significance SMALLINT,
+  term_vec          vector(768)              -- PGVector embedding placeholder
+);
+CREATE INDEX desc_term_trgm ON ontology.descriptions USING GIN (term gin_trgm_ops);
+CREATE INDEX desc_vec_cos ON ontology.descriptions USING ivfflat (term_vec vector_cosine_ops) WITH (lists = 100);
 
 CREATE TABLE ontology.relationships (
-    relationship_id SERIAL PRIMARY KEY,
-    source_id INT REFERENCES ontology.concepts(concept_id),
-    target_id INT REFERENCES ontology.concepts(concept_id),
-    type VARCHAR(50) -- e.g., "is_a", "part_of"
+  relationship_id        BIGINT PRIMARY KEY,
+  source_id              BIGINT REFERENCES ontology.concepts(concept_id),
+  destination_id         BIGINT REFERENCES ontology.concepts(concept_id),
+  type_id                BIGINT,
+  relationship_group     SMALLINT,
+  characteristic_type_id BIGINT,
+  modifier_id            BIGINT,
+  effective_time         DATE,
+  active                 BOOLEAN,
+  module_id              BIGINT
 );
+CREATE INDEX rel_src_idx ON ontology.relationships(source_id);
+CREATE INDEX rel_dst_idx ON ontology.relationships(destination_id);
+
+CREATE TABLE ontology.refset_members (
+  member_id              BIGINT PRIMARY KEY,
+  refset_id              BIGINT,
+  referenced_component_id BIGINT,
+  value_id               BIGINT,
+  effective_time         DATE,
+  active                 BOOLEAN,
+  module_id              BIGINT
+);
+CREATE INDEX refset_idx ON ontology.refset_members(refset_id);
 
 CREATE TABLE ehr.patients (
-    patient_id UUID PRIMARY KEY,
-    first_name TEXT,
-    last_name TEXT,
-    dob DATE,
-    gender TEXT
+  patient_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  sex        CHAR(1),
+  yob        SMALLINT,
+  yob_offset SMALLINT          -- for de-ID date shifting
 );
 
 CREATE TABLE ehr.encounters (
-    encounter_id UUID PRIMARY KEY,
-    patient_id UUID REFERENCES ehr.patients(patient_id),
-    visit_date DATE,
-    type TEXT -- inpatient, outpatient
+  encounter_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id   UUID REFERENCES ehr.patients(patient_id),
+  admit_time   TIMESTAMP,
+  discharge_time TIMESTAMP,
+  encounter_type TEXT
 );
 
 CREATE TABLE ehr.diagnoses (
-    diagnosis_id UUID PRIMARY KEY,
-    encounter_id UUID REFERENCES ehr.encounters(encounter_id),
-    concept_id INT REFERENCES ontology.concepts(concept_id),
-    diagnosed_on DATE
-);
-
-CREATE TABLE ehr.medications (
-    med_id UUID PRIMARY KEY,
-    encounter_id UUID REFERENCES ehr.encounters(encounter_id),
-    drug_name TEXT,
-    dose TEXT,
-    route TEXT
+  diagnosis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  encounter_id UUID REFERENCES ehr.encounters(encounter_id),
+  concept_id   BIGINT REFERENCES ontology.concepts(concept_id),
+  dx_time      TIMESTAMP
 );
 
 CREATE TABLE text.clinical_notes (
-    note_id UUID PRIMARY KEY,
-    patient_id UUID REFERENCES ehr.patients(patient_id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    note_text TEXT
+  note_id     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id  UUID REFERENCES ehr.patients(patient_id),
+  note_time   TIMESTAMP,
+  note_text   TEXT,
+  note_vec    vector(1536)     -- OpenAI text-embedding-3 size (example)
 );
+CREATE INDEX note_vec_cos ON text.clinical_notes USING ivfflat (note_vec vector_cosine_ops) WITH (lists = 200);
 
-CREATE TABLE molecular.biomarkers (
-    biomarker_id SERIAL PRIMARY KEY,
-    patient_id UUID REFERENCES ehr.patients(patient_id),
-    name TEXT,
-    value TEXT,
-    units TEXT,
-    measured_on DATE
-);
-
-CREATE TABLE molecular.genomic_variants (
-    variant_id SERIAL PRIMARY KEY,
-    patient_id UUID REFERENCES ehr.patients(patient_id),
-    gene TEXT,
-    variant TEXT,
-    effect TEXT,
-    clinical_significance TEXT
+CREATE TABLE molecular.clinvar_variants (
+  variation_id BIGINT PRIMARY KEY,
+  gene         TEXT,
+  snp_id       TEXT,
+  significance TEXT,
+  condition_id BIGINT REFERENCES ontology.concepts(concept_id)
 );
 
 CREATE TABLE guidelines.guideline_sets (
-    guideline_id SERIAL PRIMARY KEY,
-    title TEXT,
-    source TEXT,
-    effective_date DATE
+  guideline_id  SERIAL PRIMARY KEY,
+  title         TEXT,
+  source        TEXT,
+  effective_date DATE
 );
 
 CREATE TABLE guidelines.rules (
-    rule_id SERIAL PRIMARY KEY,
-    guideline_id INT REFERENCES guidelines.guideline_sets(guideline_id),
-    condition TEXT,  -- e.g., SQL/logic for triggering
-    recommendation TEXT
+  rule_id       SERIAL PRIMARY KEY,
+  guideline_id  INT REFERENCES guidelines.guideline_sets(guideline_id),
+  s_expression  TEXT,          -- machine-readable logic
+  narrative     TEXT
 );
 
-GRANT ALL PRIVILEGES ON DATABASE knowledgegraph TO devin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ontology TO devin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ehr TO devin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA text TO devin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA molecular TO devin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA guidelines TO devin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ontology TO devin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ehr TO devin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA text TO devin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA molecular TO devin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA guidelines TO devin;
-
-CREATE INDEX idx_concepts_code ON ontology.concepts(code);
-CREATE INDEX idx_concepts_system ON ontology.concepts(system);
-CREATE INDEX idx_clinical_notes_text ON text.clinical_notes USING gin(to_tsvector('english', note_text));
-CREATE INDEX idx_patients_name ON ehr.patients(last_name, first_name);
-CREATE INDEX idx_encounters_date ON ehr.encounters(visit_date);
-CREATE INDEX idx_biomarkers_name ON molecular.biomarkers(name);
-CREATE INDEX idx_genomic_variants_gene ON molecular.genomic_variants(gene);
+ANALYZE;
 
 \echo 'Knowledge graph database setup complete!'
