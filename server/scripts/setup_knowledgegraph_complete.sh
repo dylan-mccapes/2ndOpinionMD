@@ -22,14 +22,29 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     
     if ! psql --version &>/dev/null; then
         echo "❌ ERROR: PostgreSQL not found or not accessible."
-        echo "   Please install PostgreSQL first: brew install postgresql@14"
+        echo ""
+        echo "📦 Please install PostgreSQL and required extensions first:"
+        echo "   brew install postgresql@14 pgvector"
+        echo "   brew services start postgresql@14"
+        echo ""
+        echo "📋 Then create the initial database:"
+        echo "   createdb postgres"
+        echo "   psql postgres -c \"CREATE EXTENSION IF NOT EXISTS pg_trgm;\""
+        echo ""
+        echo "🔄 After installation, run this script again."
         exit 1
     fi
     
     if ! brew services list | grep -q "postgresql.*started"; then
         echo "⚠️  PostgreSQL service not running. Starting it now..."
-        brew services start postgresql@14 2>/dev/null || brew services start postgresql@15 2>/dev/null || brew services start postgresql
+        if ! brew services start postgresql@14 2>/dev/null && ! brew services start postgresql@15 2>/dev/null && ! brew services start postgresql 2>/dev/null; then
+            echo "❌ ERROR: Failed to start PostgreSQL service."
+            echo "   Please install PostgreSQL first: brew install postgresql@14 pgvector"
+            exit 1
+        fi
+        sleep 2
     fi
+    
 else
     OS="linux"
     POSTGRES_USER="postgres"
@@ -63,11 +78,46 @@ echo "🔄 Restarting PostgreSQL to apply WAL configuration..."
 if [[ "$OS" == "macos" ]]; then
     if brew services list | grep -q postgresql; then
         brew services restart postgresql@14 2>/dev/null || brew services restart postgresql@15 2>/dev/null || brew services restart postgresql
+        echo "⏳ Waiting for PostgreSQL to fully start..."
+        sleep 3
+        
+        for i in {1..10}; do
+            if psql postgres -c "SELECT 1;" &>/dev/null; then
+                echo "✅ PostgreSQL is ready"
+                break
+            fi
+            echo "⏳ Waiting for PostgreSQL... (attempt $i/10)"
+            sleep 2
+        done
+        
+        if ! psql postgres -c "SELECT 1;" &>/dev/null; then
+            echo "❌ ERROR: PostgreSQL failed to start properly after restart"
+            echo "   Please check service status: brew services list | grep postgresql"
+            echo "   Try manual restart: brew services restart postgresql@14"
+            exit 1
+        fi
     else
         echo "⚠️ Please restart PostgreSQL manually (e.g., brew services restart postgresql@14)"
     fi
 else
     sudo systemctl restart postgresql
+    sleep 2
+fi
+
+echo "Connecting to PostgreSQL as user: $(whoami)"
+
+if ! psql postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'vector';" &>/dev/null; then
+    echo "❌ ERROR: pgvector extension not available."
+    echo "   Please install pgvector: brew install pgvector"
+    echo "   Then restart PostgreSQL: brew services restart postgresql@14"
+    exit 1
+fi
+
+if ! psql postgres -c "SELECT 1 FROM pg_available_extensions WHERE name = 'pg_trgm';" &>/dev/null; then
+    echo "❌ ERROR: pg_trgm extension not available."
+    echo "   This should be included with PostgreSQL. Try reinstalling:"
+    echo "   brew reinstall postgresql@14"
+    exit 1
 fi
 
 echo "🗄️ Creating knowledge graph database and schemas..."
@@ -75,7 +125,6 @@ echo "🗄️ Creating knowledge graph database and schemas..."
 if [[ "$OS" == "macos" ]]; then
     TEMP_SQL_FILE="$HOME/.setup_knowledgegraph_temp.sql"
     cp "$SCRIPT_DIR/setup_knowledgegraph.sql" "$TEMP_SQL_FILE"
-    echo "Connecting to PostgreSQL as user: $(whoami)"
     
     if psql -h localhost postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
         echo "Connected via localhost"
@@ -86,10 +135,12 @@ if [[ "$OS" == "macos" ]]; then
     elif psql postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
         echo "Connected via default method"
     else
-        echo "❌ ERROR: Could not connect to PostgreSQL. Please check:"
-        echo "   1. PostgreSQL is running: brew services list | grep postgresql"
-        echo "   2. Try connecting manually: psql postgres"
-        echo "   3. Check PostgreSQL logs: brew services info postgresql@14"
+        echo "❌ ERROR: Could not connect to PostgreSQL after installation verification."
+        echo "   PostgreSQL is installed but not accessible. Please check:"
+        echo "   1. Service status: brew services list | grep postgresql"
+        echo "   2. Manual connection: psql postgres"
+        echo "   3. Service logs: brew services info postgresql@14"
+        echo "   4. Try restarting: brew services restart postgresql@14"
         rm -f "$TEMP_SQL_FILE"
         exit 1
     fi
