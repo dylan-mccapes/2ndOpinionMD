@@ -76,7 +76,24 @@ if [[ "$OS" == "macos" ]]; then
     TEMP_SQL_FILE="$HOME/.setup_knowledgegraph_temp.sql"
     cp "$SCRIPT_DIR/setup_knowledgegraph.sql" "$TEMP_SQL_FILE"
     echo "Connecting to PostgreSQL as user: $(whoami)"
-    psql postgres -f "$TEMP_SQL_FILE"
+    
+    if psql -h localhost postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
+        echo "Connected via localhost"
+    elif psql -h /usr/local/var/postgresql postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
+        echo "Connected via /usr/local/var/postgresql socket"
+    elif psql -h /opt/homebrew/var/postgresql postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
+        echo "Connected via /opt/homebrew/var/postgresql socket (Apple Silicon)"
+    elif psql postgres -f "$TEMP_SQL_FILE" 2>/dev/null; then
+        echo "Connected via default method"
+    else
+        echo "❌ ERROR: Could not connect to PostgreSQL. Please check:"
+        echo "   1. PostgreSQL is running: brew services list | grep postgresql"
+        echo "   2. Try connecting manually: psql postgres"
+        echo "   3. Check PostgreSQL logs: brew services info postgresql@14"
+        rm -f "$TEMP_SQL_FILE"
+        exit 1
+    fi
+    
     rm -f "$TEMP_SQL_FILE"
 else
     cp "$SCRIPT_DIR/setup_knowledgegraph.sql" /tmp/setup_knowledgegraph.sql
