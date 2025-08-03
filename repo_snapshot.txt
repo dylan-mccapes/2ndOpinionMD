@@ -1,0 +1,266 @@
+# 2ndOpinionMD-MVP Repository Snapshot
+Generated: August 03, 2025 21:31:13 UTC
+For: Hedy (ChatGPT Agent - Lead Architect/PM)
+
+## Executive Summary
+
+The 2ndOpinionMD-MVP repository is a comprehensive medical knowledge graph platform focused on autoimmune disease diagnosis. It implements a dual database architecture (MongoDB + PostgreSQL with pgvector), multiple FastAPI applications, and sophisticated ETL loaders for medical ontologies (ICD-10-CM, ICD-11). The codebase is currently in a transitional state with legacy, modern, and unified loader implementations coexisting.
+
+## Repository Architecture Overview
+
+### 1. Three FastAPI Application Versions
+
+#### Version 1: MongoDB + ChromaDB (server/api/app.py)
+- **Database**: MongoDB for user data, ChromaDB for vector search
+- **Vector Engine**: ChromaDB with OpenAI embeddings (text-embedding-3-small)
+- **Authentication**: MongoDB-based user management
+- **Collections**: disease, citation, case, condition, autoimmune, patient
+- **Key Features**: 
+  - Security middleware blocking sensitive paths
+  - Rate limiting (5 req/min auth, 60 req/min general)
+  - Encrypted logging system
+  - RAG-based diagnosis generation
+
+#### Version 2: PostgreSQL + pgvector (server/api/app_postgres.py)
+- **Database**: PostgreSQL with pgvector extension for both user data and vector search
+- **Vector Engine**: PostgreSQL pgvector with cosine similarity
+- **Authentication**: PostgreSQL-based user management
+- **Content Types**: icd10_condition, disease, case, icd10_drug
+- **Key Features**:
+  - Same security middleware as Version 1
+  - Database initialization on startup
+  - ICD-10 code integration in responses
+  - Async database operations
+
+#### Version 3: Shared Journal Component (server/api/journal.py)
+- **Purpose**: Shared journaling functionality used by both app versions
+- **Features**:
+  - AI-powered journal analysis using "ethos of health model"
+  - STAX levels (Z-Axis progression) for disease complexity
+  - Zone-based patient stability assessment (Zones 1-5)
+  - Dual database support (MongoDB fallback to PostgreSQL)
+  - Symptom extraction and categorization
+  - Environmental factor tracking
+
+### 2. ETL Loader Architecture
+
+#### Legacy Loaders (server/scripts/)
+- **load_icd10_data.py**: Original PostgreSQL loader for ICD-10 main codes and addenda
+  - Processes fixed-width text format
+  - Loads into medical_knowledge table
+  - Uses mock embeddings for testing
+  - Supports both main codes and addenda files
+
+#### Modern Loaders (root directory)
+- **load_icd10cm.py**: Hierarchical ICD-10-CM loader for ontology.icd table
+  - Parses official ICD-10-CM hierarchy file
+  - Builds parent-child relationships
+  - Creates full path breadcrumbs
+  - Handles foreign key constraints properly
+
+#### Unified Loaders (root directory)
+- **load_unified_icd10cm.py**: Advanced ICD-10-CM loader with vector embeddings
+  - Loads into unified ontology.icd schema
+  - Generates OpenAI embeddings (currently mock for testing)
+  - Supports both pgvector and JSON fallback
+  - Comprehensive metadata tracking
+  - Batch processing with parent relationship resolution
+
+- **load_unified_icd11.py**: ICD-11 TSV loader with vector embeddings
+  - Processes ICD-11 TSV format with Foundation/Linearization URIs
+  - Handles complex hierarchy parsing with dash counting
+  - Supports class kinds (chapter, block, category)
+  - Residual code detection
+  - Full path construction with cycle detection
+
+### 3. Database Schema Architecture
+
+#### Legacy Schema (setup_knowledgegraph.sql)
+- Simple ontology.icd table with basic hierarchy support
+- Foreign key self-reference for parent_code
+- Basic indexing on parent_code, version, full_path
+
+#### Unified Schema (unified_icd_schema.sql)
+- Advanced ontology.icd table supporting both ICD-10-CM and ICD-11
+- pgvector extension with vector(1536) for OpenAI embeddings
+- JSON fallback (term_vector_json) when pgvector unavailable
+- Cross-reference table for ontology mapping
+- Comprehensive indexing including vector similarity search
+- Metadata JSONB field for extensible data storage
+
+#### PostgreSQL Models (server/models/postgresql/models.py)
+- **User**: Full authentication with verification, rate limiting, password reset
+- **JournalEntry**: JSON storage for symptoms/environmental factors, AI analysis
+- **MedicalKnowledge**: Vector embeddings with content type categorization
+
+#### MongoDB Models (server/models/mongodb/models.py)
+- **UserInDB**: Pydantic models with subscription tiers
+- **JournalEntry**: Structured symptom and environmental factor tracking
+- **SymptomIntakeData**: Comprehensive patient demographics and history
+
+### 4. Vector Search Implementation
+
+#### ChromaDB Engine (server/vectordb/query_engine.py)
+- **Collections**: disease, citation, case, condition, autoimmune, patient
+- **Embedding**: OpenAI text-embedding-3-small
+- **Features**:
+  - Multi-collection querying
+  - Confidence scoring (1 - distance)
+  - RAG response generation with structured JSON output
+  - Context aggregation from multiple collections
+  - Fallback handling for missing collections
+
+#### PostgreSQL Engine (server/vectordb/postgresql_query_engine.py)
+- **Storage**: medical_knowledge table with pgvector
+- **Content Types**: icd10_condition, disease, case, icd10_drug
+- **Features**:
+  - Cosine similarity search
+  - Content type filtering
+  - ICD-10 code integration
+  - Async database operations
+  - Grouped results by content type
+
+### 5. Frontend Architecture
+
+#### React Application (src/)
+- **Framework**: Create React App with Node.js v18
+- **Package Manager**: Yarn (npm forbidden)
+- **Components**:
+  - Authentication: LoginForm, RegisterForm, SplashPage
+  - Journal: JournalForm, JournalList, JournalDetail
+  - UI: NavBar, HeroSection, PricingSection, TestimonialCarousel
+- **Styling**: GlobalStyles.css with CSS variables
+- **Integration**: Axios for API communication with FastAPI backend
+
+### 6. Security and Infrastructure
+
+#### Security Features
+- **Rate Limiting**: IP-based with configurable limits
+- **Security Middleware**: Blocks access to sensitive files (.env, .git, etc.)
+- **Email Verification**: Required for account activation
+- **Email Allow-List**: Support for non-2ndopinionmd.ai domains
+- **Encrypted Logging**: Secure log storage with decryption utilities
+- **Password Validation**: Comprehensive password requirements
+
+#### Configuration Management
+- **Environment Variables**: Centralized .env configuration
+- **Database Connections**: Multiple fallback configurations
+- **API Keys**: OpenAI, Bastion API integration
+- **HIPAA Mode**: Configurable for compliance requirements
+
+## Current State Analysis
+
+### Strengths
+1. **Comprehensive Medical Ontology Support**: Full ICD-10-CM and ICD-11 integration
+2. **Dual Database Architecture**: Flexibility between MongoDB and PostgreSQL
+3. **Advanced Vector Search**: Both ChromaDB and pgvector implementations
+4. **Sophisticated Journal Analysis**: AI-powered with medical domain expertise
+5. **Security-First Design**: Multiple layers of protection and compliance features
+6. **Modular Authentication**: Support for multiple user management systems
+
+### Areas for Improvement
+1. **Code Organization**: Mixed legacy, modern, and unified implementations
+2. **Import Path Complexity**: Nested directory structure with relative imports
+3. **Database Abstraction**: Tight coupling between apps and specific databases
+4. **Configuration Management**: Scattered environment variable handling
+5. **Testing Infrastructure**: Limited test coverage for complex medical logic
+6. **Documentation**: Inconsistent documentation across components
+
+### Technical Debt
+1. **Multiple Loader Versions**: Legacy loaders should be deprecated
+2. **Duplicate Functionality**: Similar code in MongoDB and PostgreSQL apps
+3. **Mock Embeddings**: Production should use real OpenAI embeddings
+4. **Error Handling**: Inconsistent error handling patterns
+5. **Database Migrations**: No formal migration system for schema changes
+
+## Integration Points
+
+### Database Integration
+- **PostgreSQL**: Primary knowledge graph storage with pgvector
+- **MongoDB**: User data and journal entries (with PostgreSQL fallback)
+- **Vector Search**: Dual implementation supporting both databases
+- **Cross-References**: Ontology mapping between ICD systems
+
+### API Integration
+- **OpenAI**: Embeddings and chat completion for medical analysis
+- **Authentication**: JWT-based with multiple provider support
+- **Rate Limiting**: Configurable per-endpoint limits
+- **CORS**: Full cross-origin support for frontend integration
+
+### Frontend Integration
+- **API Communication**: RESTful endpoints with structured responses
+- **Authentication Flow**: Login, registration, verification
+- **Journal Interface**: Real-time symptom tracking and analysis
+- **Responsive Design**: Mobile-first with consistent styling
+
+## Recommended Modular Structure
+
+### Proposed Directory Organization
+```
+/ontology_loaders/          # Medical ontology ETL
+  /icd/                     # ICD-10-CM, ICD-11 loaders
+  /snomed/                  # Future SNOMED CT integration
+  /hpo/                     # Future HPO integration
+  /legacy/                  # Deprecated loaders
+  base_loader.py            # Common loader interface
+
+/nlp_engines/               # NLP and vector search
+  /embeddings/              # OpenAI embedding services
+  /vector_stores/           # ChromaDB, pgvector implementations
+  /query_engines/           # RAG and similarity search
+  unified_engine.py         # Database-agnostic interface
+
+/api/                       # Unified FastAPI application
+  /routes/                  # Endpoint definitions
+  /middleware/              # Security, rate limiting
+  /auth/                    # Authentication providers
+  main.py                   # Single configurable app
+
+/database/                  # Schema and migration management
+  /schemas/                 # SQL schema definitions
+  /migrations/              # Database migration scripts
+  /models/                  # ORM model definitions
+
+/frontend/                  # Multi-platform frontend
+  /react/                   # Current React application
+  /ios/                     # Future iOS development
+  /android/                 # Future Android development
+
+/shared/                    # Common utilities
+  /config/                  # Configuration management
+  /utils/                   # Shared utility functions
+  /models/                  # Pydantic model definitions
+```
+
+### Migration Benefits
+1. **Clear Separation of Concerns**: Each directory has single responsibility
+2. **Scalable Architecture**: Easy to add new ontologies and platforms
+3. **Reduced Duplication**: Shared utilities and interfaces
+4. **Improved Testing**: Isolated components for unit testing
+5. **Better Documentation**: Organized structure for API documentation
+6. **Future-Proof**: Ready for SNOMED CT, HPO, and mobile development
+
+## Next Steps for Hedy
+
+### Immediate Priorities
+1. **Review Modular Structure**: Validate proposed directory organization
+2. **Database Strategy**: Decide on primary database architecture
+3. **Loader Consolidation**: Plan deprecation of legacy loaders
+4. **API Unification**: Design single configurable FastAPI application
+5. **Testing Strategy**: Plan comprehensive test suite implementation
+
+### Future Integrations
+1. **SNOMED CT**: Clinical terminology integration
+2. **HPO**: Human Phenotype Ontology for genetic conditions
+3. **Mobile Applications**: iOS and Android development
+4. **Advanced Analytics**: Patient outcome tracking and analysis
+5. **HIPAA Compliance**: Full healthcare data protection
+
+### Technical Decisions Needed
+1. **Primary Database**: MongoDB vs PostgreSQL for production
+2. **Vector Store**: ChromaDB vs pgvector for vector search
+3. **Embedding Strategy**: Real-time vs batch embedding generation
+4. **Authentication**: Single provider vs multi-provider support
+5. **Deployment**: Local-first vs cloud-hybrid architecture
+
+This snapshot provides a comprehensive foundation for system design decisions and architectural planning. The codebase demonstrates strong medical domain expertise and sophisticated technical implementation, with clear opportunities for structural improvement and scalability enhancement.
