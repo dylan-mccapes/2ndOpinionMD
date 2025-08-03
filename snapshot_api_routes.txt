@@ -1,0 +1,578 @@
+# API Routes Snapshot - 2ndOpinionMD-MVP
+Generated: August 03, 2025 21:34:06 UTC
+
+## Overview
+The repository implements three FastAPI applications representing different architectural approaches: MongoDB+ChromaDB, PostgreSQL+pgvector, and a shared journal component. Each provides comprehensive medical diagnosis APIs with sophisticated security, authentication, and AI-powered analysis capabilities.
+
+## Application Architecture
+
+### App Version 1: MongoDB + ChromaDB (server/api/app.py)
+**Database**: MongoDB for user data, ChromaDB for vector search
+**Vector Engine**: ChromaDB with OpenAI embeddings
+**Port**: Configurable (default 8000)
+**Key Features**: Legacy-compatible with extensive ChromaDB integration
+
+### App Version 2: PostgreSQL + pgvector (server/api/app_postgres.py)
+**Database**: PostgreSQL with pgvector for unified storage
+**Vector Engine**: PostgreSQL pgvector with cosine similarity
+**Port**: Configurable (default 8001)
+**Key Features**: Modern unified database approach with ICD-10 integration
+
+### App Version 3: Shared Journal Component (server/api/journal.py)
+**Purpose**: Reusable journal functionality for both applications
+**Integration**: Dual database support with fallback mechanisms
+**Features**: AI-powered analysis with medical domain expertise
+
+## Security Middleware
+
+### Comprehensive Security Layer
+```python
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    # Block access to sensitive files
+    sensitive_paths = [
+        "/.env", "/.git", "/server/", "/node_modules/",
+        "/package.json", "/yarn.lock", "/.gitignore"
+    ]
+    
+    if any(request.url.path.startswith(path) for path in sensitive_paths):
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Security headers
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    return response
+```
+
+### Rate Limiting Implementation
+```python
+# IP-based rate limiting with configurable limits
+rate_limiter = RateLimiter(
+    auth_limit=5,      # 5 requests per minute for auth endpoints
+    general_limit=60   # 60 requests per minute for general endpoints
+)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host
+    
+    if request.url.path.startswith("/api/auth/"):
+        if not rate_limiter.allow_request(client_ip, "auth"):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    else:
+        if not rate_limiter.allow_request(client_ip, "general"):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    
+    return await call_next(request)
+```
+
+## Core API Endpoints
+
+### Health Check and Status
+```python
+@app.get("/api/health")
+async def health_check():
+    """Comprehensive health check with service status monitoring"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": {}
+    }
+    
+    # Database connectivity check
+    try:
+        # MongoDB check (app.py)
+        client.admin.command('ping')
+        health_status["services"]["mongodb"] = "healthy"
+        
+        # PostgreSQL check (app_postgres.py)
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        health_status["services"]["postgresql"] = "healthy"
+        
+    except Exception as e:
+        health_status["services"]["database"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Vector database check
+    try:
+        # ChromaDB check
+        collections = client.list_collections()
+        health_status["services"]["chromadb"] = "healthy"
+        
+        # pgvector check
+        result = await session.execute(text("SELECT COUNT(*) FROM medical_knowledge"))
+        health_status["services"]["pgvector"] = "healthy"
+        
+    except Exception as e:
+        health_status["services"]["vector_db"] = f"unhealthy: {str(e)}"
+    
+    return health_status
+```
+
+### Authentication Endpoints
+
+#### User Registration
+```python
+@app.post("/api/auth/register", response_model=User)
+async def register_user(user_data: UserCreate):
+    """User registration with email verification"""
+    
+    # Email validation and allow-list check
+    if not is_email_allowed(user_data.email):
+        raise HTTPException(status_code=400, detail="Email domain not allowed")
+    
+    # Password strength validation
+    if not is_password_strong(user_data.password):
+        raise HTTPException(status_code=400, detail="Password does not meet requirements")
+    
+    # Check for existing user
+    existing_user = await get_user_by_email(user_data.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create user with verification token
+    hashed_password = get_password_hash(user_data.password)
+    verification_token = generate_verification_token()
+    
+    user = UserInDB(
+        email=user_data.email,
+        full_name=user_data.full_name,
+        hashed_password=hashed_password,
+        verification_token=verification_token,
+        verification_token_expires=datetime.utcnow() + timedelta(hours=24)
+    )
+    
+    # Save to database (MongoDB or PostgreSQL)
+    created_user = await create_user(user)
+    
+    # Send verification email
+    await send_verification_email(user_data.email, verification_token)
+    
+    return User(**created_user.dict())
+```
+
+#### User Login
+```python
+@app.post("/api/auth/login", response_model=Token)
+async def login_user(form_data: OAuth2PasswordRequestForm = Depends()):
+    """User authentication with rate limiting and account lockout"""
+    
+    user = await get_user_by_email(form_data.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Check account lockout
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(status_code=423, detail="Account temporarily locked")
+    
+    # Verify password
+    if not verify_password(form_data.password, user.hashed_password):
+        # Increment failed attempts
+        await increment_failed_attempts(user.email)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Check email verification
+    if not user.is_verified:
+        raise HTTPException(status_code=401, detail="Email not verified")
+    
+    # Generate JWT token
+    access_token = create_access_token(data={"sub": user.email})
+    
+    # Update last login
+    await update_last_login(user.email)
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+```
+
+### Medical Diagnosis Endpoint
+
+#### Symptom Analysis (MongoDB + ChromaDB Version)
+```python
+@app.post("/api/diagnose", response_model=DiagnosisResponse)
+async def diagnose_symptoms(
+    request: SymptomRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """AI-powered medical diagnosis using ChromaDB vector search"""
+    
+    try:
+        # Initialize query engine
+        query_engine = MedicalQueryEngine(persist_directory="./chroma_db")
+        
+        # Generate RAG response
+        analysis = query_engine.generate_rag_response(
+            symptoms=request.symptoms,
+            model=request.model or "gpt-3.5-turbo",
+            demographics=request.demographics
+        )
+        
+        # Log request for audit trail
+        await log_diagnosis_request(current_user.id, request, analysis)
+        
+        return DiagnosisResponse(
+            diagnoses=analysis.get("diagnoses", []),
+            confidence_score=calculate_overall_confidence(analysis),
+            recommendations=extract_recommendations(analysis),
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        logger.error(f"Diagnosis error for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Diagnosis service unavailable")
+```
+
+#### Symptom Analysis (PostgreSQL + pgvector Version)
+```python
+@app.post("/api/diagnose", response_model=DiagnosisResponse)
+async def diagnose_symptoms_postgres(
+    request: SymptomRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """AI-powered medical diagnosis using PostgreSQL pgvector"""
+    
+    try:
+        # Initialize PostgreSQL query engine
+        query_engine = PostgreSQLMedicalQueryEngine()
+        
+        # Generate RAG response with ICD-10 integration
+        analysis = await query_engine.generate_rag_response(
+            symptoms=request.symptoms,
+            model=request.model or "gpt-3.5-turbo",
+            demographics=request.demographics
+        )
+        
+        # Parse structured response
+        parsed_analysis = parse_medical_response(analysis)
+        
+        # Enhance with ICD-10 codes
+        enhanced_diagnoses = await enhance_with_icd_codes(parsed_analysis)
+        
+        return DiagnosisResponse(
+            diagnoses=enhanced_diagnoses,
+            icd_codes=extract_icd_codes(enhanced_diagnoses),
+            confidence_score=calculate_confidence(enhanced_diagnoses),
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        logger.error(f"PostgreSQL diagnosis error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Diagnosis service unavailable")
+```
+
+## Journal API Routes (Shared Component)
+
+### Journal Entry Management
+```python
+@router.post("/", response_model=JournalEntry)
+async def create_journal_entry(
+    entry: JournalEntryCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create new journal entry with AI analysis"""
+    
+    try:
+        # Create base journal entry
+        journal_entry = JournalEntry(
+            user_id=current_user.id,
+            **entry.dict()
+        )
+        
+        # Generate AI analysis using ethos of health model
+        ai_analysis = await generate_journal_analysis(
+            symptoms=entry.symptoms,
+            environmental_factors=entry.environmental_factors,
+            stress_level=entry.stress_level,
+            user_history=await get_user_journal_history(current_user.id)
+        )
+        
+        journal_entry.ai_analysis = ai_analysis
+        
+        # Save to database (dual database support)
+        try:
+            # Try PostgreSQL first
+            saved_entry = await save_journal_entry_postgres(journal_entry)
+        except Exception:
+            # Fallback to MongoDB
+            saved_entry = await save_journal_entry_mongo(journal_entry)
+        
+        return saved_entry
+        
+    except Exception as e:
+        logger.error(f"Journal creation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create journal entry")
+```
+
+### AI-Powered Journal Analysis
+```python
+async def generate_journal_analysis(
+    symptoms: List[SymptomEntry],
+    environmental_factors: List[EnvironmentalFactor],
+    stress_level: Optional[int],
+    user_history: List[JournalEntry]
+) -> Dict[str, Any]:
+    """Generate comprehensive AI analysis using ethos of health model"""
+    
+    # Extract symptom patterns
+    symptom_text = ", ".join([f"{s.symptom} (severity: {s.severity})" for s in symptoms])
+    
+    # Environmental factor analysis
+    env_text = ", ".join([f"{ef.factor_type}: {ef.description}" for ef in environmental_factors])
+    
+    # Historical pattern analysis
+    historical_patterns = analyze_historical_patterns(user_history)
+    
+    # STAX level assessment (Z-Axis progression)
+    stax_level = calculate_stax_level(symptoms, historical_patterns)
+    
+    # Zone-based stability assessment (Zones 1-5)
+    stability_zone = assess_stability_zone(symptoms, stress_level, historical_patterns)
+    
+    prompt = f"""
+    Analyze this journal entry using the ethos of health model:
+    
+    Current Symptoms: {symptom_text}
+    Environmental Factors: {env_text}
+    Stress Level: {stress_level}/10
+    Historical Patterns: {historical_patterns}
+    Current STAX Level: {stax_level}
+    Stability Zone: {stability_zone}
+    
+    Provide analysis focusing on:
+    1. Symptom progression and patterns
+    2. Environmental trigger identification
+    3. Stress correlation analysis
+    4. Zone stability recommendations
+    5. STAX level progression guidance
+    """
+    
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune disease pattern analysis using the ethos of health model."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        
+        analysis_text = response.choices[0].message['content']
+        
+        return {
+            "analysis_text": analysis_text,
+            "stax_level": stax_level,
+            "stability_zone": stability_zone,
+            "pattern_insights": extract_pattern_insights(analysis_text),
+            "recommendations": extract_recommendations(analysis_text),
+            "trigger_analysis": analyze_triggers(environmental_factors, symptoms),
+            "generated_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"AI analysis error: {str(e)}")
+        return {
+            "analysis_text": "AI analysis temporarily unavailable",
+            "stax_level": stax_level,
+            "stability_zone": stability_zone,
+            "error": str(e)
+        }
+```
+
+### Journal History and Analytics
+```python
+@router.get("/analytics", response_model=JournalAnalytics)
+async def get_journal_analytics(
+    current_user: User = Depends(get_current_user),
+    days: int = Query(30, ge=1, le=365)
+):
+    """Generate comprehensive journal analytics and trends"""
+    
+    # Retrieve journal history
+    entries = await get_user_journal_entries(
+        user_id=current_user.id,
+        days=days
+    )
+    
+    if not entries:
+        return JournalAnalytics(
+            total_entries=0,
+            symptom_trends={},
+            environmental_correlations={},
+            stax_progression=[],
+            zone_stability_history=[]
+        )
+    
+    # Symptom trend analysis
+    symptom_trends = analyze_symptom_trends(entries)
+    
+    # Environmental correlation analysis
+    env_correlations = analyze_environmental_correlations(entries)
+    
+    # STAX level progression
+    stax_progression = track_stax_progression(entries)
+    
+    # Zone stability tracking
+    zone_history = track_zone_stability(entries)
+    
+    # Pattern recognition
+    patterns = identify_health_patterns(entries)
+    
+    return JournalAnalytics(
+        total_entries=len(entries),
+        date_range={"start": entries[-1].date, "end": entries[0].date},
+        symptom_trends=symptom_trends,
+        environmental_correlations=env_correlations,
+        stax_progression=stax_progression,
+        zone_stability_history=zone_history,
+        identified_patterns=patterns,
+        recommendations=generate_analytics_recommendations(patterns)
+    )
+```
+
+## Request/Response Models
+
+### Core Data Models
+```python
+class SymptomRequest(BaseModel):
+    symptoms: List[str]
+    demographics: Optional[Dict[str, Any]] = None
+    model: Optional[str] = "gpt-3.5-turbo"
+    include_icd_codes: bool = True
+
+class DiagnosisResponse(BaseModel):
+    diagnoses: List[Dict[str, Any]]
+    icd_codes: Optional[List[str]] = None
+    confidence_score: float
+    recommendations: List[str]
+    timestamp: datetime
+
+class JournalEntryCreate(BaseModel):
+    symptoms: List[SymptomEntry]
+    environmental_factors: Optional[List[EnvironmentalFactor]] = []
+    stress_level: Optional[int] = Field(None, ge=1, le=10)
+    diet_notes: Optional[str] = None
+    sleep_quality: Optional[int] = Field(None, ge=1, le=10)
+    notes: Optional[str] = None
+
+class JournalAnalytics(BaseModel):
+    total_entries: int
+    date_range: Dict[str, datetime]
+    symptom_trends: Dict[str, List[float]]
+    environmental_correlations: Dict[str, float]
+    stax_progression: List[Dict[str, Any]]
+    zone_stability_history: List[Dict[str, Any]]
+    identified_patterns: List[str]
+    recommendations: List[str]
+```
+
+## Error Handling and Logging
+
+### Comprehensive Error Handling
+```python
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom HTTP exception handling with logging"""
+    
+    # Log error details
+    logger.error(f"HTTP {exc.status_code}: {exc.detail} - {request.url}")
+    
+    # Sanitize error response for security
+    if exc.status_code == 500:
+        detail = "Internal server error"
+    else:
+        detail = exc.detail
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail, "timestamp": datetime.utcnow().isoformat()}
+    )
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    """Pydantic validation error handling"""
+    
+    logger.warning(f"Validation error: {exc.errors()} - {request.url}")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": exc.errors(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+```
+
+### Encrypted Logging System
+```python
+class EncryptedLogger:
+    def __init__(self, encryption_key: str):
+        self.encryption_key = encryption_key.encode()
+        self.cipher_suite = Fernet(base64.urlsafe_b64encode(self.encryption_key[:32]))
+    
+    def log_encrypted(self, level: str, message: str, user_id: Optional[str] = None):
+        """Log sensitive information with encryption"""
+        
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": level,
+            "message": message,
+            "user_id": user_id
+        }
+        
+        encrypted_entry = self.cipher_suite.encrypt(
+            json.dumps(log_entry).encode()
+        )
+        
+        # Store encrypted log entry
+        with open("encrypted_logs.bin", "ab") as f:
+            f.write(encrypted_entry + b"\n")
+```
+
+## Database Initialization
+
+### Startup Event Handlers
+```python
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connections and create tables"""
+    
+    try:
+        # PostgreSQL initialization
+        await init_db()
+        logger.info("PostgreSQL database initialized")
+        
+        # MongoDB connection test
+        client.admin.command('ping')
+        logger.info("MongoDB connection established")
+        
+        # Vector database initialization
+        query_engine = MedicalQueryEngine()
+        logger.info("Vector database initialized")
+        
+    except Exception as e:
+        logger.error(f"Startup initialization error: {str(e)}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database connections"""
+    
+    try:
+        # Close PostgreSQL connections
+        await engine.dispose()
+        
+        # Close MongoDB connections
+        client.close()
+        
+        logger.info("Database connections closed")
+        
+    except Exception as e:
+        logger.error(f"Shutdown error: {str(e)}")
+```
+
+This API architecture provides comprehensive medical diagnosis capabilities with sophisticated security, dual database support, and AI-powered analysis using both ChromaDB and PostgreSQL pgvector implementations.
