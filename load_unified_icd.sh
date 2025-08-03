@@ -75,12 +75,21 @@ echo "✅ Cross-system mapping completed"
 echo ""
 
 echo "🔍 Step 5: Final verification..."
+
 if [[ "$OSTYPE" == "darwin"* ]]; then
+    VECTOR_COLUMN=$(psql -d knowledgegraph -t -c "
+    SELECT CASE 
+        WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='icd' AND column_name='term_vector') 
+        THEN 'term_vector' 
+        ELSE 'term_vector_json' 
+    END;
+    " | xargs)
+    
     psql -d knowledgegraph -c "
     SELECT 
         system,
         COUNT(*) as total_codes,
-        COUNT(*) FILTER (WHERE term_vector_json IS NOT NULL) as with_vectors,
+        COUNT(*) FILTER (WHERE $VECTOR_COLUMN IS NOT NULL) as with_vectors,
         COUNT(*) FILTER (WHERE parent_code IS NOT NULL) as with_parents
     FROM ontology.icd 
     GROUP BY system
@@ -98,11 +107,19 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     FROM ontology.code_cross_references;
     "
 else
+    VECTOR_COLUMN=$(sudo -u postgres psql -d knowledgegraph -t -c "
+    SELECT CASE 
+        WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='icd' AND column_name='term_vector') 
+        THEN 'term_vector' 
+        ELSE 'term_vector_json' 
+    END;
+    " | xargs)
+    
     sudo -u postgres psql -d knowledgegraph -c "
     SELECT 
         system,
         COUNT(*) as total_codes,
-        COUNT(*) FILTER (WHERE term_vector IS NOT NULL) as with_vectors,
+        COUNT(*) FILTER (WHERE $VECTOR_COLUMN IS NOT NULL) as with_vectors,
         COUNT(*) FILTER (WHERE parent_code IS NOT NULL) as with_parents
     FROM ontology.icd 
     GROUP BY system
