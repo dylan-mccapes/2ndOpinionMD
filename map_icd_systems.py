@@ -95,13 +95,34 @@ def map_icd_systems(confidence_threshold=0.80):
         print("Computing cosine similarities using vectorized operations...")
         
         print("Converting vectors to matrices...")
-        icd10cm_codes = [code for code, vector, title in icd10cm_data if vector]
-        icd10cm_vectors = np.array([vector for code, vector, title in icd10cm_data if vector])
-        icd10cm_titles = [title for code, vector, title in icd10cm_data if vector]
+        icd10cm_codes = []
+        icd10cm_vectors = []
+        icd10cm_titles = []
         
-        icd11_codes = [code for code, vector, title in icd11_data if vector]
-        icd11_vectors = np.array([vector for code, vector, title in icd11_data if vector])
-        icd11_titles = [title for code, vector, title in icd11_data if vector]
+        for code, vector, title in icd10cm_data:
+            if vector:
+                if isinstance(vector, str):
+                    import json
+                    vector = json.loads(vector)
+                icd10cm_codes.append(code)
+                icd10cm_vectors.append(vector)
+                icd10cm_titles.append(title)
+        
+        icd11_codes = []
+        icd11_vectors = []
+        icd11_titles = []
+        
+        for code, vector, title in icd11_data:
+            if vector:
+                if isinstance(vector, str):
+                    import json
+                    vector = json.loads(vector)
+                icd11_codes.append(code)
+                icd11_vectors.append(vector)
+                icd11_titles.append(title)
+        
+        icd10cm_vectors = np.array(icd10cm_vectors)
+        icd11_vectors = np.array(icd11_vectors)
         
         print(f"Matrix shapes: ICD-10-CM {icd10cm_vectors.shape}, ICD-11 {icd11_vectors.shape}")
         
