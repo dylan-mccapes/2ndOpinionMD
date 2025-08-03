@@ -50,8 +50,12 @@ echo "✅ All prerequisites met"
 echo ""
 
 echo "🏗️  Step 1: Setting up unified database schema..."
-sudo cp unified_icd_schema.sql /tmp/ && sudo chmod 644 /tmp/unified_icd_schema.sql
-sudo -u postgres psql -d knowledgegraph -f /tmp/unified_icd_schema.sql
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    psql -d knowledgegraph -f unified_icd_schema.sql
+else
+    sudo cp unified_icd_schema.sql /tmp/ && sudo chmod 644 /tmp/unified_icd_schema.sql
+    sudo -u postgres psql -d knowledgegraph -f /tmp/unified_icd_schema.sql
+fi
 echo "✅ Schema setup completed"
 echo ""
 
@@ -71,27 +75,51 @@ echo "✅ Cross-system mapping completed"
 echo ""
 
 echo "🔍 Step 5: Final verification..."
-sudo -u postgres psql -d knowledgegraph -c "
-SELECT 
-    system,
-    COUNT(*) as total_codes,
-    COUNT(*) FILTER (WHERE term_vector IS NOT NULL) as with_vectors,
-    COUNT(*) FILTER (WHERE parent_code IS NOT NULL) as with_parents
-FROM ontology.icd 
-GROUP BY system
-ORDER BY system;
-"
-
-echo ""
-sudo -u postgres psql -d knowledgegraph -c "
-SELECT 
-    'Cross-references' as table_name,
-    COUNT(*) as total_mappings,
-    COUNT(*) FILTER (WHERE confidence >= 0.80) as high_confidence,
-    COUNT(*) FILTER (WHERE confidence >= 0.90) as very_high_confidence,
-    ROUND(AVG(confidence), 3) as avg_confidence
-FROM ontology.code_cross_references;
-"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    psql -d knowledgegraph -c "
+    SELECT 
+        system,
+        COUNT(*) as total_codes,
+        COUNT(*) FILTER (WHERE term_vector_json IS NOT NULL) as with_vectors,
+        COUNT(*) FILTER (WHERE parent_code IS NOT NULL) as with_parents
+    FROM ontology.icd 
+    GROUP BY system
+    ORDER BY system;
+    "
+    
+    echo ""
+    psql -d knowledgegraph -c "
+    SELECT 
+        'Cross-references' as table_name,
+        COUNT(*) as total_mappings,
+        COUNT(*) FILTER (WHERE confidence >= 0.80) as high_confidence,
+        COUNT(*) FILTER (WHERE confidence >= 0.90) as very_high_confidence,
+        ROUND(AVG(confidence), 3) as avg_confidence
+    FROM ontology.code_cross_references;
+    "
+else
+    sudo -u postgres psql -d knowledgegraph -c "
+    SELECT 
+        system,
+        COUNT(*) as total_codes,
+        COUNT(*) FILTER (WHERE term_vector IS NOT NULL) as with_vectors,
+        COUNT(*) FILTER (WHERE parent_code IS NOT NULL) as with_parents
+    FROM ontology.icd 
+    GROUP BY system
+    ORDER BY system;
+    "
+    
+    echo ""
+    sudo -u postgres psql -d knowledgegraph -c "
+    SELECT 
+        'Cross-references' as table_name,
+        COUNT(*) as total_mappings,
+        COUNT(*) FILTER (WHERE confidence >= 0.80) as high_confidence,
+        COUNT(*) FILTER (WHERE confidence >= 0.90) as very_high_confidence,
+        ROUND(AVG(confidence), 3) as avg_confidence
+    FROM ontology.code_cross_references;
+    "
+fi
 
 echo ""
 echo "🎉 Unified ICD Loader Pipeline Completed Successfully!"
