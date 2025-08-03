@@ -15,17 +15,41 @@ import os
 
 def get_db_connection():
     """Create database connection with error handling"""
-    try:
-        conn = psycopg2.connect(
-            dbname="knowledgegraph",
-            user="postgres",
-            host="localhost",
-            port="5432"
-        )
-        return conn
-    except psycopg2.Error as e:
-        print(f"Error connecting to database: {e}")
-        sys.exit(1)
+    import getpass
+    
+    connection_configs = [
+        {
+            "dbname": "knowledgegraph",
+            "user": getpass.getuser(),
+            "host": "localhost",
+            "port": "5432"
+        },
+        {
+            "dbname": "knowledgegraph",
+            "user": "postgres",
+            "password": "postgres",
+            "host": "localhost",
+            "port": "5432"
+        },
+        {
+            "dbname": "knowledgegraph",
+            "user": "postgres",
+            "host": "localhost",
+            "port": "5432"
+        }
+    ]
+    
+    for config in connection_configs:
+        try:
+            conn = psycopg2.connect(**config)
+            print(f"Connected to database as user: {config['user']}")
+            return conn
+        except psycopg2.Error as e:
+            continue
+    
+    print("Error: Could not connect to database with any configuration")
+    print("Please ensure PostgreSQL is running and the knowledgegraph database exists")
+    sys.exit(1)
 
 def parse_icd_line(line):
     """Parse a single line from the ICD-10-CM file"""
