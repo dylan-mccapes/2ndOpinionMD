@@ -14,7 +14,7 @@ def setup_and_run():
     """Setup database and run the FastAPI application"""
     
     try:
-        from models.postgresql.database import init_db
+        from database.models.postgresql.database import init_db
         asyncio.run(init_db())
         print("Database connection initialized successfully")
     except Exception as e:

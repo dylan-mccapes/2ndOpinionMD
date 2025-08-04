@@ -7,9 +7,9 @@ import sys
 import os
 sys.path.append('/home/ubuntu/repos/2ndOpinionMD-MVP/server')
 
-from models.postgresql.database import async_session, ping_database
-from models.postgresql.models import User, JournalEntry, MedicalKnowledge
-from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+from database.models.postgresql.database import async_session, ping_database
+from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
+from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from sqlalchemy import select, func
 import uuid
 from datetime import datetime

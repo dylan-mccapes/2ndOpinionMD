@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vectordb.query_engine import MedicalQueryEngine
+from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
 
 def main():
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

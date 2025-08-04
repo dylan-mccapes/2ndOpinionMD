@@ -5,7 +5,7 @@ from jose import jwt
 from pathlib import Path
 from pydantic import EmailStr
 
-from models.mongodb.auth import SECRET_KEY, ALGORITHM
+from database.models.mongodb.auth import SECRET_KEY, ALGORITHM
 from utils.email.config import send_email
 
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 30

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from models.mongodb.database import users_collection
+from database.models.mongodb.database import users_collection
 
 async def clear_users_collection():
     """Clear all users from the MongoDB collection."""

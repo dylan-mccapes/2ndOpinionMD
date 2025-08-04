@@ -10,8 +10,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from models.postgresql.database import async_session
-from models.postgresql.models import User, JournalEntry
+from database.models.postgresql.database import async_session
+from database.models.postgresql.models import User, JournalEntry
 from sqlalchemy import delete
 
 async def clear_users_table():
