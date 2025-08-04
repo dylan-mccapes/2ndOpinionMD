@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vectordb.query_engine import MedicalQueryEngine
+from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
 
 def main():
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +22,8 @@ def main():
         print("Error: OPENAI_API_KEY environment variable not set")
         return
     
-    engine = MedicalQueryEngine(persist_directory="./chroma_db")
+    from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+    engine = PostgreSQLMedicalQueryEngine()
     
     symptoms = [
         "joint pain",

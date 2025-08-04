@@ -9,9 +9,9 @@ from sqlalchemy import select
 import os
 from dotenv import load_dotenv
 
-from models.postgresql.database import get_db
-from models.postgresql.models import User
-from models.mongodb.models import TokenData, UserInDB
+from database.models.postgresql.database import get_db
+from database.models.postgresql.models import User
+from database.models.postgresql.models import TokenData, UserInDB
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')

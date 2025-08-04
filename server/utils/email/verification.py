@@ -5,7 +5,15 @@ from jose import jwt
 from pathlib import Path
 from pydantic import EmailStr
 
-from models.mongodb.auth import SECRET_KEY, ALGORITHM
+import os
+from dotenv import load_dotenv
+
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-jwt")
+ALGORITHM = "HS256"
 from utils.email.config import send_email
 
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 30

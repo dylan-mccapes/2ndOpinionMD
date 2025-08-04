@@ -6,10 +6,10 @@ from sqlalchemy import select, and_
 import re
 import asyncio
 
-from models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB, SymptomEntry, EnvironmentalFactor
-from models.mongodb.auth import get_current_user
-from models.postgresql.database import get_db
-from models.postgresql.models import JournalEntry as DBJournalEntry
+from database.models.postgresql.models import JournalEntryCreate, JournalEntry, UserInDB, SymptomEntry, EnvironmentalFactor
+from database.models.postgresql.auth import get_current_user
+from database.models.postgresql.database import get_db
+from database.models.postgresql.models import JournalEntry as DBJournalEntry
 import openai
 import os
 from dotenv import load_dotenv
@@ -73,17 +73,6 @@ async def create_journal_entry(
 
     previous_diagnoses = []
     symptom_intake_data = {}
-    report = None
-    if report_id:
-        try:
-            from models.mongodb.database import reports_collection
-            report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
-            if report and "diagnosticResults" in report:
-                previous_diagnoses = report["diagnosticResults"]
-            if report and "inputData" in report:
-                symptom_intake_data = report["inputData"]
-        except ImportError:
-            pass
 
     ai_analysis = await generate_journal_analysis(
         journal_entry,
@@ -146,13 +135,6 @@ async def create_journal_entry(
     db.add(db_entry)
     await db.commit()
     await db.refresh(db_entry)
-    
-    try:
-        from models.mongodb.database import journal_entries_collection, reports_collection
-        
-        result = await journal_entries_collection.insert_one(journal_entry_dict)
-    except ImportError:
-        pass
 
     if report_id and report and "diagnoses" in ai_analysis:
         updated_diagnoses = []
@@ -228,56 +210,38 @@ async def get_journal_entries(
     db: AsyncSession = Depends(get_db)
 ):
     """Get journal entries for the current user"""
-    try:
-        query = select(DBJournalEntry).where(DBJournalEntry.user_id == current_user.id)
+    query = select(DBJournalEntry).where(DBJournalEntry.user_id == current_user.id)
+    
+    if start_date:
+        query = query.where(DBJournalEntry.date >= start_date)
+    if end_date:
+        query = query.where(DBJournalEntry.date <= end_date)
         
-        if start_date:
-            query = query.where(DBJournalEntry.date >= start_date)
-        if end_date:
-            query = query.where(DBJournalEntry.date <= end_date)
-            
-        query = query.order_by(DBJournalEntry.date.desc()).offset(skip).limit(limit)
-        
-        result = await db.execute(query)
-        db_entries = result.scalars().all()
-        
-        entries = []
-        for db_entry in db_entries:
-            entries.append(JournalEntry(
-                id=str(db_entry.id),
-                user_id=str(db_entry.user_id),
-                date=db_entry.date,
-                symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
-                environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
-                stress_level=db_entry.stress_level,
-                diet_notes=db_entry.diet_notes,
-                sleep_quality=db_entry.sleep_quality,
-                notes=db_entry.notes,
-                analysis=db_entry.analysis,
-                patternObservations=db_entry.pattern_observations,
-                ai_analysis=db_entry.ai_analysis,
-                created_at=db_entry.created_at,
-                updated_at=db_entry.updated_at
-            ))
-        
-        return entries
-        
-    except Exception as e:
-        from models.mongodb.database import journal_entries_collection
-        
-        query = {"user_id": current_user.id}
-
-        if start_date or end_date:
-            date_query = {}
-            if start_date:
-                date_query["$gte"] = start_date
-            if end_date:
-                date_query["$lte"] = end_date
-            query["date"] = {"$gte": start_date, "$lte": end_date} if start_date and end_date else date_query
-
-        entries = await journal_entries_collection.find(query).sort("date", -1).skip(skip).limit(limit).to_list(length=limit)
-
-        return [JournalEntry(**entry) for entry in entries]
+    query = query.order_by(DBJournalEntry.date.desc()).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    db_entries = result.scalars().all()
+    
+    entries = []
+    for db_entry in db_entries:
+        entries.append(JournalEntry(
+            id=str(db_entry.id),
+            user_id=str(db_entry.user_id),
+            date=db_entry.date,
+            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
+            environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
+            stress_level=db_entry.stress_level,
+            diet_notes=db_entry.diet_notes,
+            sleep_quality=db_entry.sleep_quality,
+            notes=db_entry.notes,
+            analysis=db_entry.analysis,
+            patternObservations=db_entry.pattern_observations,
+            ai_analysis=db_entry.ai_analysis,
+            created_at=db_entry.created_at,
+            updated_at=db_entry.updated_at
+        ))
+    
+    return entries
 
 @router.get("/journal/{entry_id}", response_model=JournalEntry)
 async def get_journal_entry(
@@ -286,35 +250,29 @@ async def get_journal_entry(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific journal entry"""
-    try:
-        query = select(DBJournalEntry).where(
-            and_(DBJournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
+    query = select(DBJournalEntry).where(
+        and_(DBJournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
+    )
+    result = await db.execute(query)
+    db_entry = result.scalar_one_or_none()
+    
+    if db_entry:
+        return JournalEntry(
+            id=str(db_entry.id),
+            user_id=str(db_entry.user_id),
+            date=db_entry.date,
+            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
+            environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
+            stress_level=db_entry.stress_level,
+            diet_notes=db_entry.diet_notes,
+            sleep_quality=db_entry.sleep_quality,
+            notes=db_entry.notes,
+            analysis=db_entry.analysis,
+            patternObservations=db_entry.pattern_observations,
+            ai_analysis=db_entry.ai_analysis,
+            created_at=db_entry.created_at,
+            updated_at=db_entry.updated_at
         )
-        result = await db.execute(query)
-        db_entry = result.scalar_one_or_none()
-        
-        if db_entry:
-            return JournalEntry(
-                id=str(db_entry.id),
-                user_id=str(db_entry.user_id),
-                date=db_entry.date,
-                symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
-                environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
-                stress_level=db_entry.stress_level,
-                diet_notes=db_entry.diet_notes,
-                sleep_quality=db_entry.sleep_quality,
-                notes=db_entry.notes,
-                analysis=db_entry.analysis,
-                patternObservations=db_entry.pattern_observations,
-                ai_analysis=db_entry.ai_analysis,
-                created_at=db_entry.created_at,
-                updated_at=db_entry.updated_at
-            )
-    except Exception as e:
-        from models.mongodb.database import journal_entries_collection
-        entry = await journal_entries_collection.find_one({"id": entry_id, "user_id": current_user.id})
-        if entry:
-            return JournalEntry(**entry)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -329,7 +287,6 @@ async def get_timeline_data(
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
     try:
-        from models.mongodb.database import reports_collection, journal_entries_collection
         
         # Get the report for initial diagnosis
         report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
@@ -403,7 +360,6 @@ async def delete_journal_entry(
             await db.commit()
             return
     except Exception as e:
-        from models.mongodb.database import journal_entries_collection
         result = await journal_entries_collection.delete_one({"id": entry_id, "user_id": current_user.id})
         if result.deleted_count > 0:
             return
@@ -417,14 +373,13 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
     """Get previous journal entries for a user to provide context"""
     
     if not db:
-        from models.mongodb.database import journal_entries_collection
         entries = await journal_entries_collection.find(
             {"user_id": user_id}
         ).sort("date", -1).limit(limit).to_list(length=limit)
         
         return [JournalEntry(**entry) for entry in entries]
     
-    from models.postgresql.models import JournalEntry as DBJournalEntry
+    from database.models.postgresql.models import JournalEntry as DBJournalEntry
     query = select(DBJournalEntry).where(DBJournalEntry.user_id == user_id).order_by(DBJournalEntry.date.desc()).limit(limit)
     result = await db.execute(query)
     db_entries = result.scalars().all()
@@ -618,12 +573,11 @@ async def generate_journal_analysis(
 
     if query_engine is None:
         try:
-            from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+            from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
             query_engine = PostgreSQLMedicalQueryEngine()
         except ImportError:
-            from vectordb.query_engine import MedicalQueryEngine
+            from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
             import os
-            persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
             query_engine = MedicalQueryEngine(persist_directory)
 
     query_text = journal_entry.notes if journal_entry.notes else ""

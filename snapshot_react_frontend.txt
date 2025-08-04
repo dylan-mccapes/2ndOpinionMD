@@ -1,0 +1,1067 @@
+# React Frontend Snapshot - 2ndOpinionMD-MVP
+Generated: August 03, 2025 21:39:23 UTC
+
+## Overview
+The React frontend is a comprehensive medical application built with Create React App, featuring user authentication, journal management, symptom tracking, and AI-powered health analysis. The application follows modern React patterns with hooks, context providers, and modular component architecture.
+
+## Application Architecture
+
+### Technology Stack
+- **Framework**: Create React App (CRA)
+- **Node Version**: v18 (managed via .nvmrc)
+- **Package Manager**: Yarn (npm forbidden)
+- **Styling**: CSS with CSS variables and GlobalStyles.css
+- **HTTP Client**: Axios for API communication
+- **State Management**: React Context + useState/useEffect hooks
+- **Routing**: React Router for navigation
+
+### Project Structure
+```
+src/
+├── components/           # Reusable UI components
+│   ├── auth/            # Authentication components
+│   ├── journal/         # Journal management components
+│   ├── ui/              # Generic UI components
+│   └── layout/          # Layout and navigation components
+├── pages/               # Page-level components
+├── contexts/            # React Context providers
+├── hooks/               # Custom React hooks
+├── services/            # API service layer
+├── utils/               # Utility functions
+├── styles/              # Global styles
+└── assets/              # Static assets
+```
+
+## Core Components
+
+### Authentication Components
+
+#### LoginForm Component
+```jsx
+import React, { useState, useContext } from 'react';
+import { AuthContext } from '../../contexts/AuthContext';
+import { loginUser } from '../../services/authService';
+
+const LoginForm = () => {
+    const [formData, setFormData] = useState({
+        email: '',
+        password: ''
+    });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const { login } = useContext(AuthContext);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await loginUser(formData);
+            login(response.access_token, response.user);
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Login failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="login-form">
+            <div className="form-group">
+                <label htmlFor="email">Email</label>
+                <input
+                    type="email"
+                    id="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    required
+                />
+            </div>
+            <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    required
+                />
+            </div>
+            {error && <div className="error-message">{error}</div>}
+            <button type="submit" disabled={loading}>
+                {loading ? 'Logging in...' : 'Login'}
+            </button>
+        </form>
+    );
+};
+
+export default LoginForm;
+```
+
+#### RegisterForm Component
+```jsx
+import React, { useState } from 'react';
+import { registerUser } from '../../services/authService';
+
+const RegisterForm = () => {
+    const [formData, setFormData] = useState({
+        email: '',
+        full_name: '',
+        password: '',
+        confirmPassword: ''
+    });
+    const [loading, setLoading] = useState(false);
+    const [success, setSuccess] = useState(false);
+    const [error, setError] = useState('');
+
+    const validatePassword = (password) => {
+        const minLength = 8;
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasLowerCase = /[a-z]/.test(password);
+        const hasNumbers = /\d/.test(password);
+        const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+        return password.length >= minLength && hasUpperCase && 
+               hasLowerCase && hasNumbers && hasSpecialChar;
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        if (formData.password !== formData.confirmPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+
+        if (!validatePassword(formData.password)) {
+            setError('Password must be at least 8 characters with uppercase, lowercase, number, and special character');
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            await registerUser({
+                email: formData.email,
+                full_name: formData.full_name,
+                password: formData.password
+            });
+            setSuccess(true);
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Registration failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (success) {
+        return (
+            <div className="success-message">
+                Registration successful! Please check your email to verify your account.
+            </div>
+        );
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="register-form">
+            <div className="form-group">
+                <label htmlFor="full_name">Full Name</label>
+                <input
+                    type="text"
+                    id="full_name"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({...formData, full_name: e.target.value})}
+                    required
+                />
+            </div>
+            <div className="form-group">
+                <label htmlFor="email">Email</label>
+                <input
+                    type="email"
+                    id="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    required
+                />
+            </div>
+            <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    required
+                />
+            </div>
+            <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <input
+                    type="password"
+                    id="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                    required
+                />
+            </div>
+            {error && <div className="error-message">{error}</div>}
+            <button type="submit" disabled={loading}>
+                {loading ? 'Creating Account...' : 'Register'}
+            </button>
+        </form>
+    );
+};
+
+export default RegisterForm;
+```
+
+### Journal Components
+
+#### JournalForm Component
+```jsx
+import React, { useState } from 'react';
+import { createJournalEntry } from '../../services/journalService';
+
+const JournalForm = ({ onEntryCreated }) => {
+    const [formData, setFormData] = useState({
+        symptoms: [],
+        environmental_factors: [],
+        stress_level: 5,
+        diet_notes: '',
+        sleep_quality: 5,
+        notes: ''
+    });
+    const [loading, setLoading] = useState(false);
+
+    const addSymptom = () => {
+        setFormData({
+            ...formData,
+            symptoms: [...formData.symptoms, { symptom: '', severity: 5 }]
+        });
+    };
+
+    const updateSymptom = (index, field, value) => {
+        const updatedSymptoms = [...formData.symptoms];
+        updatedSymptoms[index][field] = value;
+        setFormData({ ...formData, symptoms: updatedSymptoms });
+    };
+
+    const removeSymptom = (index) => {
+        const updatedSymptoms = formData.symptoms.filter((_, i) => i !== index);
+        setFormData({ ...formData, symptoms: updatedSymptoms });
+    };
+
+    const addEnvironmentalFactor = () => {
+        setFormData({
+            ...formData,
+            environmental_factors: [...formData.environmental_factors, { factor_type: 'other', description: '' }]
+        });
+    };
+
+    const updateEnvironmentalFactor = (index, field, value) => {
+        const updatedFactors = [...formData.environmental_factors];
+        updatedFactors[index][field] = value;
+        setFormData({ ...formData, environmental_factors: updatedFactors });
+    };
+
+    const removeEnvironmentalFactor = (index) => {
+        const updatedFactors = formData.environmental_factors.filter((_, i) => i !== index);
+        setFormData({ ...formData, environmental_factors: updatedFactors });
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            const entry = await createJournalEntry(formData);
+            onEntryCreated(entry);
+            setFormData({
+                symptoms: [],
+                environmental_factors: [],
+                stress_level: 5,
+                diet_notes: '',
+                sleep_quality: 5,
+                notes: ''
+            });
+        } catch (error) {
+            console.error('Failed to create journal entry:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="journal-form">
+            <div className="form-section">
+                <h3>Symptoms</h3>
+                {formData.symptoms.map((symptom, index) => (
+                    <div key={index} className="symptom-entry">
+                        <input
+                            type="text"
+                            placeholder="Symptom description"
+                            value={symptom.symptom}
+                            onChange={(e) => updateSymptom(index, 'symptom', e.target.value)}
+                            required
+                        />
+                        <div className="severity-slider">
+                            <label>Severity: {symptom.severity}</label>
+                            <input
+                                type="range"
+                                min="1"
+                                max="10"
+                                value={symptom.severity}
+                                onChange={(e) => updateSymptom(index, 'severity', parseInt(e.target.value))}
+                            />
+                        </div>
+                        <button type="button" onClick={() => removeSymptom(index)}>Remove</button>
+                    </div>
+                ))}
+                <button type="button" onClick={addSymptom}>Add Symptom</button>
+            </div>
+
+            <div className="form-section">
+                <h3>Environmental Factors</h3>
+                {formData.environmental_factors.map((factor, index) => (
+                    <div key={index} className="environmental-factor-entry">
+                        <select
+                            value={factor.factor_type}
+                            onChange={(e) => updateEnvironmentalFactor(index, 'factor_type', e.target.value)}
+                        >
+                            <option value="food">Food</option>
+                            <option value="product">Product</option>
+                            <option value="environment">Environment</option>
+                            <option value="medication">Medication</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <input
+                            type="text"
+                            placeholder="Description"
+                            value={factor.description}
+                            onChange={(e) => updateEnvironmentalFactor(index, 'description', e.target.value)}
+                            required
+                        />
+                        <button type="button" onClick={() => removeEnvironmentalFactor(index)}>Remove</button>
+                    </div>
+                ))}
+                <button type="button" onClick={addEnvironmentalFactor}>Add Environmental Factor</button>
+            </div>
+
+            <div className="form-section">
+                <div className="slider-group">
+                    <label>Stress Level: {formData.stress_level}</label>
+                    <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={formData.stress_level}
+                        onChange={(e) => setFormData({...formData, stress_level: parseInt(e.target.value)})}
+                    />
+                </div>
+
+                <div className="slider-group">
+                    <label>Sleep Quality: {formData.sleep_quality}</label>
+                    <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={formData.sleep_quality}
+                        onChange={(e) => setFormData({...formData, sleep_quality: parseInt(e.target.value)})}
+                    />
+                </div>
+            </div>
+
+            <div className="form-section">
+                <label htmlFor="diet_notes">Diet Notes</label>
+                <textarea
+                    id="diet_notes"
+                    value={formData.diet_notes}
+                    onChange={(e) => setFormData({...formData, diet_notes: e.target.value})}
+                    placeholder="Any notable dietary changes or observations..."
+                />
+            </div>
+
+            <div className="form-section">
+                <label htmlFor="notes">Additional Notes</label>
+                <textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                    placeholder="Any other observations or notes..."
+                />
+            </div>
+
+            <button type="submit" disabled={loading}>
+                {loading ? 'Saving...' : 'Save Entry'}
+            </button>
+        </form>
+    );
+};
+
+export default JournalForm;
+```
+
+#### JournalList Component
+```jsx
+import React, { useState, useEffect } from 'react';
+import { getJournalEntries } from '../../services/journalService';
+import JournalDetail from './JournalDetail';
+
+const JournalList = () => {
+    const [entries, setEntries] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedEntry, setSelectedEntry] = useState(null);
+    const [filter, setFilter] = useState('all');
+
+    useEffect(() => {
+        loadEntries();
+    }, []);
+
+    const loadEntries = async () => {
+        try {
+            const data = await getJournalEntries();
+            setEntries(data);
+        } catch (error) {
+            console.error('Failed to load journal entries:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filteredEntries = entries.filter(entry => {
+        if (filter === 'all') return true;
+        if (filter === 'high_stress') return entry.stress_level >= 7;
+        if (filter === 'recent') {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return new Date(entry.date) >= weekAgo;
+        }
+        return true;
+    });
+
+    if (loading) {
+        return <div className="loading">Loading journal entries...</div>;
+    }
+
+    return (
+        <div className="journal-list">
+            <div className="journal-filters">
+                <button 
+                    className={filter === 'all' ? 'active' : ''}
+                    onClick={() => setFilter('all')}
+                >
+                    All Entries
+                </button>
+                <button 
+                    className={filter === 'recent' ? 'active' : ''}
+                    onClick={() => setFilter('recent')}
+                >
+                    Recent (7 days)
+                </button>
+                <button 
+                    className={filter === 'high_stress' ? 'active' : ''}
+                    onClick={() => setFilter('high_stress')}
+                >
+                    High Stress
+                </button>
+            </div>
+
+            <div className="entries-grid">
+                {filteredEntries.map(entry => (
+                    <div 
+                        key={entry.id} 
+                        className="entry-card"
+                        onClick={() => setSelectedEntry(entry)}
+                    >
+                        <div className="entry-date">
+                            {new Date(entry.date).toLocaleDateString()}
+                        </div>
+                        <div className="entry-summary">
+                            <div className="symptom-count">
+                                {entry.symptoms.length} symptoms
+                            </div>
+                            <div className="stress-indicator">
+                                Stress: {entry.stress_level}/10
+                            </div>
+                        </div>
+                        {entry.ai_analysis && (
+                            <div className="ai-badge">AI Analyzed</div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {selectedEntry && (
+                <JournalDetail 
+                    entry={selectedEntry}
+                    onClose={() => setSelectedEntry(null)}
+                />
+            )}
+        </div>
+    );
+};
+
+export default JournalList;
+```
+
+### UI Components
+
+#### NavBar Component
+```jsx
+import React, { useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../contexts/AuthContext';
+
+const NavBar = () => {
+    const { user, logout } = useContext(AuthContext);
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        logout();
+        navigate('/');
+    };
+
+    return (
+        <nav className="navbar">
+            <div className="nav-brand">
+                <Link to="/">2ndOpinionMD</Link>
+            </div>
+            
+            <div className="nav-links">
+                {user ? (
+                    <>
+                        <Link to="/dashboard">Dashboard</Link>
+                        <Link to="/journal">Journal</Link>
+                        <Link to="/diagnose">Diagnose</Link>
+                        <div className="user-menu">
+                            <span>Welcome, {user.full_name}</span>
+                            <button onClick={handleLogout}>Logout</button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <Link to="/login">Login</Link>
+                        <Link to="/register">Register</Link>
+                        <Link to="/about">About</Link>
+                    </>
+                )}
+            </div>
+        </nav>
+    );
+};
+
+export default NavBar;
+```
+
+#### HeroSection Component
+```jsx
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+const HeroSection = () => {
+    return (
+        <section className="hero-section">
+            <div className="hero-content">
+                <h1>Get Your Second Opinion</h1>
+                <p>
+                    AI-powered medical analysis focused on autoimmune diseases. 
+                    Track symptoms, identify patterns, and get insights from our 
+                    comprehensive medical knowledge graph.
+                </p>
+                <div className="hero-actions">
+                    <Link to="/register" className="cta-button primary">
+                        Start Your Journey
+                    </Link>
+                    <Link to="/about" className="cta-button secondary">
+                        Learn More
+                    </Link>
+                </div>
+            </div>
+            <div className="hero-image">
+                <img src="/assets/medical-analysis.svg" alt="Medical Analysis" />
+            </div>
+        </section>
+    );
+};
+
+export default HeroSection;
+```
+
+## Context Providers
+
+### AuthContext
+```jsx
+import React, { createContext, useState, useEffect } from 'react';
+import { verifyToken } from '../services/authService';
+
+export const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            verifyToken(token)
+                .then(userData => {
+                    setUser(userData);
+                })
+                .catch(() => {
+                    localStorage.removeItem('access_token');
+                })
+                .finally(() => {
+                    setLoading(false);
+                });
+        } else {
+            setLoading(false);
+        }
+    }, []);
+
+    const login = (token, userData) => {
+        localStorage.setItem('access_token', token);
+        setUser(userData);
+    };
+
+    const logout = () => {
+        localStorage.removeItem('access_token');
+        setUser(null);
+    };
+
+    const value = {
+        user,
+        login,
+        logout,
+        loading
+    };
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+```
+
+## Service Layer
+
+### API Service
+```jsx
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const apiClient = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 10000,
+});
+
+apiClient.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
+export default apiClient;
+```
+
+### Auth Service
+```jsx
+import apiClient from './apiClient';
+
+export const loginUser = async (credentials) => {
+    const formData = new FormData();
+    formData.append('username', credentials.email);
+    formData.append('password', credentials.password);
+    
+    const response = await apiClient.post('/api/auth/login', formData);
+    return response.data;
+};
+
+export const registerUser = async (userData) => {
+    const response = await apiClient.post('/api/auth/register', userData);
+    return response.data;
+};
+
+export const verifyToken = async (token) => {
+    const response = await apiClient.get('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+};
+
+export const requestPasswordReset = async (email) => {
+    const response = await apiClient.post('/api/auth/password-reset', { email });
+    return response.data;
+};
+```
+
+### Journal Service
+```jsx
+import apiClient from './apiClient';
+
+export const createJournalEntry = async (entryData) => {
+    const response = await apiClient.post('/api/journal/', entryData);
+    return response.data;
+};
+
+export const getJournalEntries = async (limit = 50) => {
+    const response = await apiClient.get(`/api/journal/?limit=${limit}`);
+    return response.data;
+};
+
+export const getJournalEntry = async (entryId) => {
+    const response = await apiClient.get(`/api/journal/${entryId}`);
+    return response.data;
+};
+
+export const updateJournalEntry = async (entryId, entryData) => {
+    const response = await apiClient.put(`/api/journal/${entryId}`, entryData);
+    return response.data;
+};
+
+export const deleteJournalEntry = async (entryId) => {
+    const response = await apiClient.delete(`/api/journal/${entryId}`);
+    return response.data;
+};
+
+export const getJournalAnalytics = async (days = 30) => {
+    const response = await apiClient.get(`/api/journal/analytics?days=${days}`);
+    return response.data;
+};
+```
+
+### Diagnosis Service
+```jsx
+import apiClient from './apiClient';
+
+export const getDiagnosis = async (symptoms, demographics = null, model = 'gpt-3.5-turbo') => {
+    const requestData = {
+        symptoms,
+        demographics,
+        model,
+        include_icd_codes: true
+    };
+    
+    const response = await apiClient.post('/api/diagnose', requestData);
+    return response.data;
+};
+
+export const getHealthCheck = async () => {
+    const response = await apiClient.get('/api/health');
+    return response.data;
+};
+```
+
+## Styling System
+
+### GlobalStyles.css
+```css
+:root {
+    --primary-color: #2c5aa0;
+    --secondary-color: #f8f9fa;
+    --accent-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-color: #dee2e6;
+    --shadow: 0 2px 4px rgba(0,0,0,0.1);
+    --border-radius: 8px;
+    --transition: all 0.3s ease;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background-color: var(--secondary-color);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: var(--transition);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #1e3d72;
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.btn-secondary:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 16px;
+    transition: var(--transition);
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
+}
+
+.error-message {
+    color: var(--danger-color);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.success-message {
+    color: var(--accent-color);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.card {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    margin-bottom: 20px;
+}
+
+.navbar {
+    background: white;
+    box-shadow: var(--shadow);
+    padding: 16px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.navbar .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-brand a {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.nav-links a {
+    color: var(--text-primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: var(--transition);
+}
+
+.nav-links a:hover {
+    color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 0 16px;
+    }
+    
+    .nav-links {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .hero-content {
+        text-align: center;
+    }
+    
+    .entries-grid {
+        grid-template-columns: 1fr;
+    }
+}
+```
+
+## Integration with Backend
+
+### API Configuration
+```jsx
+const API_ENDPOINTS = {
+    AUTH: {
+        LOGIN: '/api/auth/login',
+        REGISTER: '/api/auth/register',
+        VERIFY: '/api/auth/verify',
+        RESET_PASSWORD: '/api/auth/password-reset'
+    },
+    JOURNAL: {
+        CREATE: '/api/journal/',
+        LIST: '/api/journal/',
+        DETAIL: '/api/journal/{id}',
+        ANALYTICS: '/api/journal/analytics'
+    },
+    DIAGNOSIS: {
+        ANALYZE: '/api/diagnose',
+        HEALTH: '/api/health'
+    }
+};
+```
+
+### Environment Configuration
+```bash
+# .env.local
+REACT_APP_API_URL=http://localhost:8000
+REACT_APP_ENVIRONMENT=development
+REACT_APP_VERSION=1.0.0
+```
+
+## Build and Deployment
+
+### Package.json Scripts
+```json
+{
+    "scripts": {
+        "start": "react-scripts start",
+        "build": "react-scripts build",
+        "test": "react-scripts test",
+        "eject": "react-scripts eject",
+        "lint": "eslint src/",
+        "lint:fix": "eslint src/ --fix"
+    }
+}
+```
+
+### Build Configuration
+```jsx
+const buildConfig = {
+    optimization: {
+        splitChunks: {
+            chunks: 'all',
+            cacheGroups: {
+                vendor: {
+                    test: /[\\/]node_modules[\\/]/,
+                    name: 'vendors',
+                    chunks: 'all',
+                }
+            }
+        }
+    }
+};
+```
+
+## Testing Strategy
+
+### Component Testing
+```jsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { AuthProvider } from '../contexts/AuthContext';
+import LoginForm from '../components/auth/LoginForm';
+
+test('renders login form', () => {
+    render(
+        <AuthProvider>
+            <LoginForm />
+        </AuthProvider>
+    );
+    
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
+});
+```
+
+### Service Testing
+```jsx
+import { loginUser } from '../services/authService';
+import apiClient from '../services/apiClient';
+
+jest.mock('../services/apiClient');
+
+test('loginUser calls API with correct credentials', async () => {
+    const mockResponse = { data: { access_token: 'token123', user: { id: 1 } } };
+    apiClient.post.mockResolvedValue(mockResponse);
+    
+    const credentials = { email: 'test@example.com', password: 'password123' };
+    const result = await loginUser(credentials);
+    
+    expect(apiClient.post).toHaveBeenCalledWith('/api/auth/login', expect.any(FormData));
+    expect(result).toEqual(mockResponse.data);
+});
+```
+
+This React frontend provides a comprehensive medical application interface with sophisticated user authentication, journal management, and AI-powered health analysis capabilities, fully integrated with the FastAPI backend services.

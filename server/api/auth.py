@@ -5,15 +5,51 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr, BaseModel
 import logging
 
-from models.mongodb.models import UserCreate, User, Token, UserInDB
-from models.mongodb.auth import (
+from database.models.postgresql.models import User as DBUser
+from server.api.auth_postgres import (
     authenticate_user, 
     create_access_token, 
-    get_current_user,
+    get_current_user_postgres as get_current_user,
     get_password_hash,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    get_user_by_email
 )
-from models.mongodb.database import users_collection
+from database.models.postgresql.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from pydantic import BaseModel
+from datetime import datetime, timedelta
+class UserCreate(BaseModel):
+    email: str
+    full_name: str
+    password: str
+
+class User(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    subscription_tier: str = "basic"
+    created_at: datetime
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class UserInDB(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    hashed_password: str
+    subscription_tier: str = "basic"
+    created_at: datetime
+    is_verified: bool = False
+    verification_token: str = None
+    verification_token_expires: datetime = None
+    failed_login_attempts: int = 0
+    locked_until: datetime = None
+    password_reset_token: str = None
+    password_reset_token_expires: datetime = None
+
 from utils.rate_limiter import auth_rate_limiter
 from utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
 from utils.email_allowlist import is_email_allowed
@@ -23,9 +59,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter)):
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter), db: AsyncSession = Depends(get_db)):
     """Login endpoint to get JWT token"""
-    user = await authenticate_user(form_data.username, form_data.password)
+    user = await authenticate_user(form_data.username, form_data.password, db)
     if user == "locked":
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
@@ -51,10 +87,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     
-    await users_collection.update_one(
-        {"email": user.email},
-        {"$set": {"last_login": datetime.utcnow()}}
-    )
+    query = update(DBUser).where(DBUser.email == user.email).values(last_login=datetime.utcnow())
+    await db.execute(query)
+    await db.commit()
     
     return {"access_token": access_token, "token_type": "bearer"}
 

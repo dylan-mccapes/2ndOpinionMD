@@ -14,7 +14,7 @@ def setup_and_run():
     """Setup database and run the FastAPI application"""
     
     try:
-        from models.postgresql.database import init_db
+        from database.models.postgresql.database import init_db
         asyncio.run(init_db())
         print("Database connection initialized successfully")
     except Exception as e:
@@ -22,7 +22,7 @@ def setup_and_run():
         return
     
     try:
-        from api.app_postgres import app
+        from server.api.app_postgres import app
     except ImportError as e:
         print(f"Error importing FastAPI app: {e}")
         return
@@ -33,7 +33,7 @@ def setup_and_run():
     print(f"🚀 Starting FastAPI application on http://{host}:{port}")
     print(f"📚 API documentation available at: http://{host}:{port}/docs")
     
-    uvicorn.run("api.app_postgres:app", host=host, port=port, reload=True)
+    uvicorn.run("server.api.app_postgres:app", host=host, port=port, reload=True)
 
 if __name__ == "__main__":
     setup_and_run()

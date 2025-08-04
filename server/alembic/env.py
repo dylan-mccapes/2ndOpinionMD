@@ -12,8 +12,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from models.postgresql.database import Base
-from models.postgresql.models import User, JournalEntry, MedicalKnowledge
+from database.models.postgresql.database import Base
+from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
 target_metadata = Base.metadata
 
 
