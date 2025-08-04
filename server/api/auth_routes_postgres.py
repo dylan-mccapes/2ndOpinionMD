@@ -14,7 +14,7 @@ load_dotenv(env_path)
 
 from database.models.postgresql.database import get_db
 from database.models.postgresql.models import User
-from database.models.postgresql.models import UserCreate, User as UserResponse, Token
+from server.api.auth import UserCreate, User as UserResponse, Token
 from server.api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
