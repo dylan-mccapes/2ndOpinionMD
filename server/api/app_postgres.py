@@ -15,8 +15,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from database.models.postgresql.database import init_db, ping_database
 from database.models.postgresql.models import User as UserInDB
-from utils.rate_limiter import general_rate_limiter, get_client_ip
-from utils.encrypted_logging import setup_encrypted_logging
+from server.utils.rate_limiter import general_rate_limiter, get_client_ip
+from server.utils.encrypted_logging import setup_encrypted_logging
 
 from api.journal import router as journal_router
 from api.auth_routes_postgres import router as auth_router

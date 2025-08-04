@@ -4,7 +4,7 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.encrypted_logging import decrypt_log_file
+from server.utils.encrypted_logging import decrypt_log_file
 
 def main():
     parser = argparse.ArgumentParser(description='Decrypt encrypted server log files')

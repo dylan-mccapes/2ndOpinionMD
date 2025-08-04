@@ -14,7 +14,7 @@ load_dotenv(env_path)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-jwt")
 ALGORITHM = "HS256"
-from utils.email.config import send_email
+from server.utils.email.config import send_email
 
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 30
 

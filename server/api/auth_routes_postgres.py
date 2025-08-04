@@ -22,7 +22,7 @@ from api.auth_postgres import (
     get_current_user_postgres,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from utils.email.verification import send_verification_email
+from server.utils.email.verification import send_verification_email
 from pydantic import EmailStr
 
 router = APIRouter()

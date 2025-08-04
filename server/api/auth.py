@@ -50,10 +50,10 @@ class UserInDB(BaseModel):
     password_reset_token: str = None
     password_reset_token_expires: datetime = None
 
-from utils.rate_limiter import auth_rate_limiter
-from utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
-from utils.email_allowlist import is_email_allowed
-from utils.password_validation import validate_password_complexity
+from server.utils.rate_limiter import auth_rate_limiter
+from server.utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
+from server.utils.email_allowlist import is_email_allowed
+from server.utils.password_validation import validate_password_complexity
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

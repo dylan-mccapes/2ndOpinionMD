@@ -2,7 +2,7 @@ import os
 from pydantic import EmailStr
 from typing import List
 from dotenv import load_dotenv
-from utils.email.fastapi_mail_compat import FastMail, MessageSchema, ConnectionConfig
+from server.utils.email.fastapi_mail_compat import FastMail, MessageSchema, ConnectionConfig
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 env_path = os.path.join(project_root, '.env')
