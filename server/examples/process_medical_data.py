@@ -14,7 +14,7 @@ load_dotenv(env_path)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.normalized_data_processor import process_medical_data_file
+from server.utils.normalized_data_processor import process_medical_data_file
 
 def main():
     

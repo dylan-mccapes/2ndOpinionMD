@@ -8,7 +8,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, project_root)
 
 def setup_and_run():
     """Setup database and run the FastAPI application"""

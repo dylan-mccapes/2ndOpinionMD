@@ -14,15 +14,15 @@ load_dotenv(env_path)
 
 from database.models.postgresql.database import get_db
 from database.models.postgresql.models import User
-from database.models.postgresql.models import UserCreate, User as UserResponse, Token
-from api.auth_postgres import (
+from server.api.auth import UserCreate, User as UserResponse, Token
+from server.api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
     create_access_token, 
     get_current_user_postgres,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from utils.email.verification import send_verification_email
+from server.utils.email.verification import send_verification_email
 from pydantic import EmailStr
 
 router = APIRouter()

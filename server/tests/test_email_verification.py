@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from utils.email.verification import send_verification_email, create_verification_token
+from server.utils.email.verification import send_verification_email, create_verification_token
 from fastapi import Request
 
 async def test_email_sending():

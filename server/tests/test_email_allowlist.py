@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from utils.email_allowlist import load_allowed_emails, is_email_allowed, add_email_to_allowlist
+from server.utils.email_allowlist import load_allowed_emails, is_email_allowed, add_email_to_allowlist
 
 def test_load_allowed_emails():
     """Test loading allowed emails from file"""
