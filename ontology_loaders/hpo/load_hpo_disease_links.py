@@ -131,18 +131,28 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
         try:
             print("🔄 Loading disease-phenotype associations...")
             
+            cursor.execute("SELECT hpo_id FROM ontology.hpo_terms LIMIT 10")
+            sample_db_ids = [row[0] for row in cursor.fetchall()]
+            print(f"Sample HPO IDs from hpo_terms table: {sample_db_ids}")
+            
             cursor.execute("SELECT hpo_id FROM ontology.hpo_terms")
             valid_hpo_ids = set(row[0] for row in cursor.fetchall())
             print(f"Found {len(valid_hpo_ids)} valid HPO IDs in hpo_terms table")
             
             insert_data = []
             skipped_count = 0
+            sample_file_ids = []
             
-            for assoc in associations:
+            for i, assoc in enumerate(associations):
                 hpo_id = assoc.get('hpo_id')
+                
+                if i < 10:
+                    sample_file_ids.append(hpo_id)
                 
                 if hpo_id not in valid_hpo_ids:
                     skipped_count += 1
+                    if skipped_count <= 5:
+                        print(f"Skipping HPO ID not in database: {repr(hpo_id)}")
                     continue
                 
                 insert_data.append((
@@ -160,6 +170,7 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
                     assoc.get('biocuration')
                 ))
             
+            print(f"Sample HPO IDs from phenotype.hpoa: {sample_file_ids}")
             print(f"Prepared {len(insert_data)} valid associations, skipped {skipped_count} with invalid HPO IDs")
             
             batch_size = 1000

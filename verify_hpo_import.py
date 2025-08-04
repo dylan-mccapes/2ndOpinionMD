@@ -149,7 +149,8 @@ def verify_hpo_import():
                 
                 print("📋 Sample similarity search results:")
                 for row in cursor.fetchall():
-                    print(f"   {row[0]}: {row[1]} (similarity: {row[2]:.4f})")
+                    similarity_str = f"{row[2]:.4f}" if row[2] is not None else "N/A"
+                    print(f"   {row[0]}: {row[1]} (similarity: {similarity_str})")
                 
                 print("✅ Vector similarity search working")
                 
