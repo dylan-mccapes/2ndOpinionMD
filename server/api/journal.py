@@ -6,10 +6,35 @@ from sqlalchemy import select, and_
 import re
 import asyncio
 
-from database.models.postgresql.models import JournalEntryCreate, JournalEntry, UserInDB, SymptomEntry, EnvironmentalFactor
-from database.models.postgresql.auth import get_current_user
+from database.models.postgresql.models import JournalEntry, User
+from server.api.auth_postgres import get_current_user_postgres as get_current_user
 from database.models.postgresql.database import get_db
-from database.models.postgresql.models import JournalEntry as DBJournalEntry
+from pydantic import BaseModel
+from typing import Optional
+
+class JournalEntryCreate(BaseModel):
+    symptoms: Optional[list] = None
+    environmental_factors: Optional[list] = None
+    stress_level: Optional[int] = None
+    diet_notes: Optional[str] = None
+    sleep_quality: Optional[int] = None
+    notes: Optional[str] = None
+
+class JournalEntryResponse(BaseModel):
+    id: str
+    user_id: str
+    date: datetime
+    symptoms: Optional[list] = None
+    environmental_factors: Optional[list] = None
+    stress_level: Optional[int] = None
+    diet_notes: Optional[str] = None
+    sleep_quality: Optional[int] = None
+    notes: Optional[str] = None
+    analysis: Optional[str] = None
+    pattern_observations: Optional[str] = None
+    ai_analysis: Optional[dict] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 import openai
 import os
 from dotenv import load_dotenv
@@ -52,10 +77,10 @@ Using the 2OPMD Diagnostic Terrain System:
 
 router = APIRouter()
 
-@router.post("/journal", response_model=JournalEntry)
+@router.post("/journal", response_model=JournalEntryResponse)
 async def create_journal_entry(
     entry: JournalEntryCreate,
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     report_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
@@ -117,7 +142,7 @@ async def create_journal_entry(
         print("\n=== ANALYSIS TEXT ===")
         print(ai_analysis['analysis'])
     
-    db_entry = DBJournalEntry(
+    db_entry = JournalEntry(
         user_id=current_user.id,
         date=entry.date,
         symptoms=[symptom.dict() for symptom in entry.symptoms],
@@ -200,9 +225,9 @@ async def create_journal_entry(
 
     return journal_entry
 
-@router.get("/journal", response_model=List[JournalEntry])
+@router.get("/journal", response_model=List[JournalEntryResponse])
 async def get_journal_entries(
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     limit: int = 10,
     skip: int = 0,
     start_date: Optional[datetime] = None,
@@ -210,14 +235,14 @@ async def get_journal_entries(
     db: AsyncSession = Depends(get_db)
 ):
     """Get journal entries for the current user"""
-    query = select(DBJournalEntry).where(DBJournalEntry.user_id == current_user.id)
+    query = select(JournalEntry).where(DBJournalEntry.user_id == current_user.id)
     
     if start_date:
-        query = query.where(DBJournalEntry.date >= start_date)
+        query = query.where(JournalEntry.date >= start_date)
     if end_date:
-        query = query.where(DBJournalEntry.date <= end_date)
+        query = query.where(JournalEntry.date <= end_date)
         
-    query = query.order_by(DBJournalEntry.date.desc()).offset(skip).limit(limit)
+    query = query.order_by(JournalEntry.date.desc()).offset(skip).limit(limit)
     
     result = await db.execute(query)
     db_entries = result.scalars().all()
@@ -243,15 +268,15 @@ async def get_journal_entries(
     
     return entries
 
-@router.get("/journal/{entry_id}", response_model=JournalEntry)
+@router.get("/journal/{entry_id}", response_model=JournalEntryResponse)
 async def get_journal_entry(
     entry_id: str,
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific journal entry"""
-    query = select(DBJournalEntry).where(
-        and_(DBJournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
+    query = select(JournalEntry).where(
+        and_(JournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
     )
     result = await db.execute(query)
     db_entry = result.scalar_one_or_none()
@@ -282,7 +307,7 @@ async def get_journal_entry(
 @router.get("/timeline/{report_id}")
 async def get_timeline_data(
     report_id: str,
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
@@ -298,7 +323,7 @@ async def get_timeline_data(
             )
         
         try:
-            query = select(DBJournalEntry).where(DBJournalEntry.user_id == current_user.id).order_by(DBJournalEntry.date.asc())
+            query = select(JournalEntry).where(DBJournalEntry.user_id == current_user.id).order_by(DBJournalEntry.date.asc())
             result = await db.execute(query)
             db_entries = result.scalars().all()
             
@@ -344,13 +369,13 @@ async def get_timeline_data(
 @router.delete("/journal/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_journal_entry(
     entry_id: str,
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a journal entry"""
     try:
-        query = select(DBJournalEntry).where(
-            and_(DBJournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
+        query = select(JournalEntry).where(
+            and_(JournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
         )
         result = await db.execute(query)
         db_entry = result.scalar_one_or_none()
@@ -379,8 +404,8 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
         
         return [JournalEntry(**entry) for entry in entries]
     
-    from database.models.postgresql.models import JournalEntry as DBJournalEntry
-    query = select(DBJournalEntry).where(DBJournalEntry.user_id == user_id).order_by(DBJournalEntry.date.desc()).limit(limit)
+    from database.models.postgresql.models import JournalEntry as JournalEntry
+    query = select(JournalEntry).where(DBJournalEntry.user_id == user_id).order_by(DBJournalEntry.date.desc()).limit(limit)
     result = await db.execute(query)
     db_entries = result.scalars().all()
     
@@ -503,7 +528,7 @@ ENVIRONMENTAL FACTORS:
 
 async def generate_journal_analysis(
     journal_entry: JournalEntry,
-    user: UserInDB,
+    user: User,
     previous_entries: List[JournalEntry] = [],
     previous_diagnoses: List[Dict[str, Any]] = [],
     symptom_intake_data: Dict[str, Any] = {},

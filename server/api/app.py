@@ -16,8 +16,8 @@ from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQ
 from server.utils.rate_limiter import general_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
 
-from api.auth import router as auth_router
-from api.journal import router as journal_router
+from server.api.auth import router as auth_router
+from server.api.journal import router as journal_router
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')

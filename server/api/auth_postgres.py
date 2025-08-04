@@ -11,7 +11,28 @@ from dotenv import load_dotenv
 
 from database.models.postgresql.database import get_db
 from database.models.postgresql.models import User
-from database.models.postgresql.models import TokenData, UserInDB
+from pydantic import BaseModel
+from typing import Optional
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class UserInDB(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    hashed_password: str
+    birthdate: Optional[str] = None
+    subscription_tier: str = "basic"
+    created_at: str
+    last_login: Optional[str] = None
+    is_verified: bool = False
+    verification_token: Optional[str] = None
+    verification_token_expires: Optional[str] = None
+    failed_login_attempts: int = 0
+    locked_until: Optional[str] = None
+    password_reset_token: Optional[str] = None
+    password_reset_token_expires: Optional[str] = None
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
