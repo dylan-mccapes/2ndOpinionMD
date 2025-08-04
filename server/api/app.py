@@ -11,11 +11,11 @@ import uvicorn
 import sys
 import traceback
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.query_engine import MedicalQueryEngine
-from models.mongodb.database import ping_database
-from models.mongodb.auth import get_current_user
-from models.mongodb.models import UserInDB
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
+from database.models.mongodb.database import ping_database
+from database.models.mongodb.auth import get_current_user
+from database.models.mongodb.models import UserInDB
 from utils.rate_limiter import general_rate_limiter, get_client_ip
 from utils.encrypted_logging import setup_encrypted_logging
 

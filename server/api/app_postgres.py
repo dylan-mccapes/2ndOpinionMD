@@ -11,10 +11,10 @@ import uvicorn
 import sys
 import traceback
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from models.postgresql.database import init_db, ping_database
-from models.postgresql.models import User as UserInDB
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+from database.models.postgresql.database import init_db, ping_database
+from database.models.postgresql.models import User as UserInDB
 from utils.rate_limiter import general_rate_limiter, get_client_ip
 from utils.encrypted_logging import setup_encrypted_logging
 

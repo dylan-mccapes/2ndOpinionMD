@@ -12,9 +12,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-from models.postgresql.database import get_db
-from models.postgresql.models import User
-from models.mongodb.models import UserCreate, User as UserResponse, Token
+from database.models.postgresql.database import get_db
+from database.models.postgresql.models import User
+from database.models.mongodb.models import UserCreate, User as UserResponse, Token
 from api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 

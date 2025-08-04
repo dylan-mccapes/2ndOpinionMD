@@ -6,10 +6,10 @@ from sqlalchemy import select, and_
 import re
 import asyncio
 
-from models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB, SymptomEntry, EnvironmentalFactor
-from models.mongodb.auth import get_current_user
-from models.postgresql.database import get_db
-from models.postgresql.models import JournalEntry as DBJournalEntry
+from database.models.mongodb.models import JournalEntryCreate, JournalEntry, UserInDB, SymptomEntry, EnvironmentalFactor
+from database.models.mongodb.auth import get_current_user
+from database.models.postgresql.database import get_db
+from database.models.postgresql.models import JournalEntry as DBJournalEntry
 import openai
 import os
 from dotenv import load_dotenv
@@ -76,7 +76,7 @@ async def create_journal_entry(
     report = None
     if report_id:
         try:
-            from models.mongodb.database import reports_collection
+            from database.models.mongodb.database import reports_collection
             report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
             if report and "diagnosticResults" in report:
                 previous_diagnoses = report["diagnosticResults"]
@@ -148,7 +148,7 @@ async def create_journal_entry(
     await db.refresh(db_entry)
     
     try:
-        from models.mongodb.database import journal_entries_collection, reports_collection
+        from database.models.mongodb.database import journal_entries_collection, reports_collection
         
         result = await journal_entries_collection.insert_one(journal_entry_dict)
     except ImportError:
@@ -263,7 +263,7 @@ async def get_journal_entries(
         return entries
         
     except Exception as e:
-        from models.mongodb.database import journal_entries_collection
+        from database.models.mongodb.database import journal_entries_collection
         
         query = {"user_id": current_user.id}
 
@@ -311,7 +311,7 @@ async def get_journal_entry(
                 updated_at=db_entry.updated_at
             )
     except Exception as e:
-        from models.mongodb.database import journal_entries_collection
+        from database.models.mongodb.database import journal_entries_collection
         entry = await journal_entries_collection.find_one({"id": entry_id, "user_id": current_user.id})
         if entry:
             return JournalEntry(**entry)
@@ -329,7 +329,7 @@ async def get_timeline_data(
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
     try:
-        from models.mongodb.database import reports_collection, journal_entries_collection
+        from database.models.mongodb.database import reports_collection, journal_entries_collection
         
         # Get the report for initial diagnosis
         report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
@@ -403,7 +403,7 @@ async def delete_journal_entry(
             await db.commit()
             return
     except Exception as e:
-        from models.mongodb.database import journal_entries_collection
+        from database.models.mongodb.database import journal_entries_collection
         result = await journal_entries_collection.delete_one({"id": entry_id, "user_id": current_user.id})
         if result.deleted_count > 0:
             return
@@ -417,14 +417,14 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
     """Get previous journal entries for a user to provide context"""
     
     if not db:
-        from models.mongodb.database import journal_entries_collection
+        from database.models.mongodb.database import journal_entries_collection
         entries = await journal_entries_collection.find(
             {"user_id": user_id}
         ).sort("date", -1).limit(limit).to_list(length=limit)
         
         return [JournalEntry(**entry) for entry in entries]
     
-    from models.postgresql.models import JournalEntry as DBJournalEntry
+    from database.models.postgresql.models import JournalEntry as DBJournalEntry
     query = select(DBJournalEntry).where(DBJournalEntry.user_id == user_id).order_by(DBJournalEntry.date.desc()).limit(limit)
     result = await db.execute(query)
     db_entries = result.scalars().all()

@@ -5,15 +5,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr, BaseModel
 import logging
 
-from models.mongodb.models import UserCreate, User, Token, UserInDB
-from models.mongodb.auth import (
+from database.models.mongodb.models import UserCreate, User, Token, UserInDB
+from database.models.mongodb.auth import (
     authenticate_user, 
     create_access_token, 
     get_current_user,
     get_password_hash,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from models.mongodb.database import users_collection
+from database.models.mongodb.database import users_collection
 from utils.rate_limiter import auth_rate_limiter
 from utils.email.verification import send_verification_email, create_verification_token, verify_token, send_password_reset_email, create_password_reset_token, verify_password_reset_token
 from utils.email_allowlist import is_email_allowed
