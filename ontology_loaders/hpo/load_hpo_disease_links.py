@@ -184,13 +184,11 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
                 start_idx = batch_idx * batch_size
                 end_idx = min(start_idx + batch_size, len(insert_data))
                 batch = insert_data[start_idx:end_idx]
-                
                 insert_query = """
                     INSERT INTO ontology.hpo_disease_links
                     (database_id, disease_name, qualifier, hpo_id, reference, evidence,
                      onset, frequency, sex, modifier, aspect, biocuration)
                     VALUES %s
-                    ON CONFLICT DO NOTHING
                 """
                 
                 execute_values(cursor, insert_query, batch)
