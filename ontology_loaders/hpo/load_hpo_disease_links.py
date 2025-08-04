@@ -102,11 +102,13 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
             
             if not hpo_id.startswith('HP:'):
                 if hpo_id.startswith('HP_'):
-                    hpo_id = hpo_id.replace('HP_', 'HP:')
+                    pass  # Already in correct format
                 elif hpo_id.isdigit():
-                    hpo_id = f"HP:{hpo_id.zfill(7)}"
+                    hpo_id = f"HP_{hpo_id.zfill(7)}"
                 else:
-                    hpo_id = f"HP:{hpo_id}"
+                    hpo_id = f"HP_{hpo_id}"
+            else:
+                hpo_id = hpo_id.replace('HP:', 'HP_')
             
             association['hpo_id'] = hpo_id
             
