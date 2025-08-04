@@ -54,16 +54,19 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
         data_start = 0
         
         for i, line in enumerate(lines):
-            if line.startswith('#') and 'database_id' in line:
-                header_line = line.strip('#').strip()
-                data_start = i + 1
-                break
-            elif not line.startswith('#'):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('#'):
+                if 'database_id' in line and 'hpo_id' in line:
+                    header_line = line.strip('#').strip()
+                continue
+            else:
                 data_start = i
                 break
         
         if header_line:
-            headers = header_line.split('\t')
+            headers = [h.strip() for h in header_line.split('\t')]
             print(f"Found headers: {headers}")
         else:
             headers = [
@@ -75,10 +78,11 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
         print(f"Processing {len(lines) - data_start} data lines...")
         
         for line_num, line in enumerate(lines[data_start:], data_start + 1):
-            if line.startswith('#') or not line.strip():
+            line = line.strip()
+            if not line or line.startswith('#'):
                 continue
             
-            parts = line.strip().split('\t')
+            parts = line.split('\t')
             
             while len(parts) < len(headers):
                 parts.append('')
@@ -107,6 +111,9 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
             association['hpo_id'] = hpo_id
             
             associations.append(association)
+            
+            if len(associations) <= 5:
+                print(f"Sample association {len(associations)}: database_id='{association.get('database_id')}', hpo_id='{association.get('hpo_id')}'")
             
             if line_num % 10000 == 0:
                 print(f"Processed {line_num - data_start} lines...")
