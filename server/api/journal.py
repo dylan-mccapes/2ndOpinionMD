@@ -618,10 +618,10 @@ async def generate_journal_analysis(
 
     if query_engine is None:
         try:
-            from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+            from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
             query_engine = PostgreSQLMedicalQueryEngine()
         except ImportError:
-            from vectordb.query_engine import MedicalQueryEngine
+            from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
             import os
             persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
             query_engine = MedicalQueryEngine(persist_directory)
