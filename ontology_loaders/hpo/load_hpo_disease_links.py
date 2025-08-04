@@ -91,12 +91,19 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
             if not association.get('database_id') or not association.get('hpo_id'):
                 continue
             
-            hpo_id = association['hpo_id']
-            if hpo_id and not hpo_id.startswith('HP:'):
+            hpo_id = association.get('hpo_id', '').strip()
+            
+            if not hpo_id or hpo_id in ['HP:hpo_id', 'hpo_id', 'HP:', '']:
+                continue
+            
+            if not hpo_id.startswith('HP:'):
                 if hpo_id.startswith('HP_'):
                     hpo_id = hpo_id.replace('HP_', 'HP:')
+                elif hpo_id.isdigit():
+                    hpo_id = f"HP:{hpo_id.zfill(7)}"
                 else:
                     hpo_id = f"HP:{hpo_id}"
+            
             association['hpo_id'] = hpo_id
             
             associations.append(association)
@@ -117,13 +124,25 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
         try:
             print("🔄 Loading disease-phenotype associations...")
             
+            cursor.execute("SELECT hpo_id FROM ontology.hpo_terms")
+            valid_hpo_ids = set(row[0] for row in cursor.fetchall())
+            print(f"Found {len(valid_hpo_ids)} valid HPO IDs in hpo_terms table")
+            
             insert_data = []
+            skipped_count = 0
+            
             for assoc in associations:
+                hpo_id = assoc.get('hpo_id')
+                
+                if hpo_id not in valid_hpo_ids:
+                    skipped_count += 1
+                    continue
+                
                 insert_data.append((
                     assoc.get('database_id'),
                     assoc.get('disease_name'),
                     assoc.get('qualifier'),
-                    assoc.get('hpo_id'),
+                    hpo_id,
                     assoc.get('reference'),
                     assoc.get('evidence'),
                     assoc.get('onset'),
@@ -133,6 +152,8 @@ class HPODiseaseLinksLoader(BaseOntologyLoader):
                     assoc.get('aspect'),
                     assoc.get('biocuration')
                 ))
+            
+            print(f"Prepared {len(insert_data)} valid associations, skipped {skipped_count} with invalid HPO IDs")
             
             batch_size = 1000
             total_batches = (len(insert_data) + batch_size - 1) // batch_size
