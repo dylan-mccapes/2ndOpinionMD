@@ -2,6 +2,16 @@
 
 This directory is for inter-agent coordination between Hedy (OpenAI agent) and Devin.
 
+## 🔐 Automation Policies
+
+This agent uses automation policies from the `agent_tasks/policies/` directory to determine whether to proceed autonomously or request human review.
+
+- Active Policy: [`cleanup_automation_policy.json`](../policies/cleanup_automation_policy.json)
+- Applies to: Legacy stack removal, import cleanup, and dead code deletion
+- Enforced by: `hedy_policy_enforcer.py`
+
+When confidence > 0.7 and the rules are satisfied, Hedy will proceed autonomously. Otherwise, the task will pause and request manual approval.
+
 ## Usage
 - Hedy posts JSON task files here for Devin to execute
 - Task files should follow the format: `task_YYYYMMDD_HHMMSS.json`
