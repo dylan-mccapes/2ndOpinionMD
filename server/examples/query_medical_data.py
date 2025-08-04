@@ -22,7 +22,8 @@ def main():
         print("Error: OPENAI_API_KEY environment variable not set")
         return
     
-    engine = MedicalQueryEngine(persist_directory="./chroma_db")
+    from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+    engine = PostgreSQLMedicalQueryEngine()
     
     symptoms = [
         "joint pain",

@@ -1,6 +1,6 @@
 """
 Example script demonstrating how to process medical data JSON files
-and load them into Chroma for the 2ndOpinionMD-MVP project.
+for the 2ndOpinionMD-MVP project.
 """
 
 import os
@@ -15,15 +15,8 @@ load_dotenv(env_path)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.normalized_data_processor import process_medical_data_file
-import chromadb
-from chromadb.utils import embedding_functions
 
 def main():
-    
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        print("Error: OPENAI_API_KEY environment variable not set")
-        return
     
     os.makedirs("examples/data", exist_ok=True)
     
@@ -102,45 +95,13 @@ def main():
     
     print(f"Processed {len(processed_data)} items from the combined examples file")
     
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=openai_api_key,
-        model_name="text-embedding-3-small"
-    )
-    
-    os.makedirs("examples/chroma_db", exist_ok=True)
-    
-    client = chromadb.PersistentClient(path="examples/chroma_db")
-    
-    collection = client.get_or_create_collection(
-        name="medical_data",
-        embedding_function=openai_ef
-    )
-    
-    ids = [item['id'] for item in processed_data]
-    documents = [item['text'] for item in processed_data]
-    metadatas = [item['metadata'] for item in processed_data]
-    
-    collection.add(
-        ids=ids,
-        documents=documents,
-        metadatas=metadatas
-    )
-    
-    print(f"Added {len(processed_data)} items to the Chroma collection")
-    
-    query_text = "What are the symptoms of Myasthenia Gravis?"
-    results = collection.query(
-        query_texts=[query_text],
-        n_results=2
-    )
-    
-    print("\nExample Query Results:")
-    print(f"Query: {query_text}")
-    for i, doc_id in enumerate(results["ids"][0]):
-        print(f"\nResult {i+1} (ID: {doc_id}):")
-        print(results["documents"][0][i])
+    print("\nProcessed data structure:")
+    for item in processed_data:
+        print(f"- Type: {item['type']}, ID: {item['id']}")
+        print(f"  Text preview: {item['text'][:100]}...")
     
     print("\nDone! You can now use the normalized_data_processor.py module to process your medical data.")
+    print("Note: ChromaDB functionality has been removed. Use PostgreSQL + pgvector for vector search.")
 
 if __name__ == "__main__":
     main()

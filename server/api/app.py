@@ -12,10 +12,7 @@ import sys
 import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
-from database.models.mongodb.database import ping_database
-from database.models.mongodb.auth import get_current_user
-from database.models.mongodb.models import UserInDB
+from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from utils.rate_limiter import general_rate_limiter, get_client_ip
 from utils.encrypted_logging import setup_encrypted_logging
 
@@ -46,8 +43,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
-persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-query_engine = MedicalQueryEngine(persist_directory)
+query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
     symptoms: List[str]
@@ -118,7 +114,6 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
-    current_user: UserInDB = Depends(get_current_user),
     _: None = Depends(general_rate_limiter)
 ):
     """
@@ -133,7 +128,7 @@ async def diagnose(
             logger.error(f"Invalid symptoms format: {request.symptoms}")
             raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
         
-        response = query_engine.generate_rag_response(
+        response = await query_engine.generate_rag_response(
             symptoms=request.symptoms, 
             model=request.model,
             demographics=request.demographics
@@ -153,14 +148,11 @@ async def health_check():
     """
     Health check endpoint
     """
-    mongo_status = "ok" if await ping_database() else "error"
-    
     return {
         "status": "ok",
         "services": {
             "api": "ok",
-            "mongodb": mongo_status,
-            "chroma": "ok" if query_engine.collections else "error"
+            "postgresql": "ok"
         }
     }
 

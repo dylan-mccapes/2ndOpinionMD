@@ -3,8 +3,8 @@ import openai
 from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.postgresql.database import async_session
-from models.postgresql.models import MedicalKnowledge
+from database.models.postgresql.database import async_session
+from database.models.postgresql.models import MedicalKnowledge
 from dotenv import load_dotenv
 import logging
 

@@ -552,57 +552,17 @@ def process_medical_data_file(file_path: str) -> List[Dict[str, Any]]:
     
     return processed_data
 
-def create_chroma_collections(processed_data: List[Dict[str, Any]], client, embedding_function):
-    """
-    Create Chroma collections from processed data
-    
-    Args:
-        processed_data: List of processed data entries
-        client: Chroma client
-        embedding_function: Function to generate embeddings
-    """
-    data_by_type = {}
-    for item in processed_data:
-        item_type = item.get('type', 'unknown')
-        if item_type not in data_by_type:
-            data_by_type[item_type] = []
-        data_by_type[item_type].append(item)
-    
-    for data_type, items in data_by_type.items():
-        collection_name = f"{data_type}"
-        
-        try:
-            collection = client.get_collection(name=collection_name, embedding_function=embedding_function)
-            print(f"Collection {collection_name} already exists")
-        except:
-            collection = client.create_collection(name=collection_name, embedding_function=embedding_function)
-            print(f"Created collection {collection_name}")
-        
-        ids = [item['id'] for item in items]
-        documents = [item['text'] for item in items]
-        metadatas = [item['metadata'] for item in items]
-        
-        collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas
-        )
-        
-        print(f"Added {len(items)} items to collection {collection_name}")
 
 if __name__ == "__main__":
     import argparse
-    import chromadb
-    from chromadb.utils import embedding_functions
     from dotenv import load_dotenv
     
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     env_path = os.path.join(project_root, '.env')
     load_dotenv(env_path)
     
-    parser = argparse.ArgumentParser(description="Process medical data and add to Chroma")
+    parser = argparse.ArgumentParser(description="Process medical data for PostgreSQL + pgvector")
     parser.add_argument("file_path", help="Path to the medical data JSON file")
-    parser.add_argument("--persist-dir", default="./chroma_db", help="Directory to persist the Chroma DB")
     
     args = parser.parse_args()
     
@@ -612,13 +572,6 @@ if __name__ == "__main__":
     if not openai_api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
     
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=openai_api_key,
-        model_name="text-embedding-3-small"
-    )
     
-    client = chromadb.PersistentClient(path=args.persist_dir)
-    
-    create_chroma_collections(processed_data, client, openai_ef)
-    
-    print(f"Successfully processed {len(processed_data)} items and added to Chroma")
+    print(f"Successfully processed {len(processed_data)} items")
+    print("Note: ChromaDB functionality removed. Use PostgreSQL + pgvector for vector storage.")
