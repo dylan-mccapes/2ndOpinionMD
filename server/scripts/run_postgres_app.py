@@ -22,7 +22,7 @@ def setup_and_run():
         return
     
     try:
-        from api.app_postgres import app
+        from server.api.app_postgres import app
     except ImportError as e:
         print(f"Error importing FastAPI app: {e}")
         return
@@ -33,7 +33,7 @@ def setup_and_run():
     print(f"🚀 Starting FastAPI application on http://{host}:{port}")
     print(f"📚 API documentation available at: http://{host}:{port}/docs")
     
-    uvicorn.run("api.app_postgres:app", host=host, port=port, reload=True)
+    uvicorn.run("server.api.app_postgres:app", host=host, port=port, reload=True)
 
 if __name__ == "__main__":
     setup_and_run()
