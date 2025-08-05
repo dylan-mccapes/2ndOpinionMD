@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
@@ -27,16 +28,16 @@ from pydantic import EmailStr
 
 router = APIRouter()
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register")
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     query = select(User).where(User.email == user.email)
     result = await db.execute(query)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "message": "Registration request received. Please check your email for verification instructions."}
         )
     
     verification_token = str(uuid.uuid4())
@@ -63,13 +64,9 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db:
         verification_token
     )
     
-    return UserResponse(
-        id=str(db_user.id),
-        email=db_user.email,
-        full_name=db_user.full_name,
-        birthdate=db_user.birthdate,
-        subscription_tier=db_user.subscription_tier,
-        created_at=db_user.created_at
+    return JSONResponse(
+        status_code=201,
+        content={"success": True, "message": "Registration successful. Please check your email for verification instructions."}
     )
 
 @router.post("/token", response_model=Token)
