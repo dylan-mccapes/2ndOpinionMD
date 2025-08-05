@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { downloadJournalTimelinePdf } from '../../utils/pdfGenerator';
 import '../../styles/Journal.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const JournalList = () => {
   const [entries, setEntries] = useState([]);
@@ -53,7 +54,7 @@ const JournalList = () => {
         }
         
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`,
+          getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -97,7 +98,7 @@ const JournalList = () => {
       const token = localStorage.getItem('token');
       
       await axios.delete(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal/${entryId}`,
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal/${entryId}`),
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -178,7 +179,7 @@ const JournalList = () => {
       }
       
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal?limit=1000`,
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal?limit=1000`),
         {
           headers: {
             'Authorization': `Bearer ${token}`

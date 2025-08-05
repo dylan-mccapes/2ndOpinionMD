@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import '../../styles/Journal.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const JournalDetail = () => {
   const [entry, setEntry] = useState(null);
@@ -22,7 +23,7 @@ const JournalDetail = () => {
         }
         
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal/${entryId}`,
+          getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal/${entryId}`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -35,7 +36,7 @@ const JournalDetail = () => {
         if (response.data && response.data.reportId) {
           try {
             const timelineResponse = await axios.get(
-              `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/timeline/${response.data.reportId}`,
+              getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${response.data.reportId}`),
               {
                 headers: {
                   'Authorization': `Bearer ${token}`

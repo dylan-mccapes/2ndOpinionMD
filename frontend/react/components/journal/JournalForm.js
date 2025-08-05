@@ -5,6 +5,7 @@ import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import JournalTimeline from './JournalTimeline';
 import '../../styles/Journal.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const JournalForm = () => {
   const [formData, setFormData] = useState({
@@ -38,7 +39,7 @@ const JournalForm = () => {
         }
         
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/reports/user`,
+          getApiUrl(`${API_ENDPOINTS.REPORTS}/user`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -83,7 +84,7 @@ const JournalForm = () => {
         if (!token) return;
         
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/timeline/${selectedReport.id}`,
+          getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${selectedReport.id}`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -273,7 +274,7 @@ const JournalForm = () => {
       }
       
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`,
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
         journalData,
         {
           headers: {

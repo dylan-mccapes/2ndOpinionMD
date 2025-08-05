@@ -4,6 +4,7 @@ import './App.css';
 import './styles/GlobalStyles.css';
 import './styles/Journal.css';
 import { processJournalEntry } from './utils/openaiService';
+import { getApiUrl, API_ENDPOINTS } from './utils/apiConfig';
 
 import Layout from './components/layout/Layout';
 
@@ -142,7 +143,7 @@ function AppContent() {
         try {
           const token = localStorage.getItem('token');
           const entriesResponse = await fetch(
-            `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal?limit=20`,
+            getApiUrl(`${API_ENDPOINTS.JOURNAL}?limit=20`),
             {
               headers: {
                 'Authorization': `Bearer ${token}`

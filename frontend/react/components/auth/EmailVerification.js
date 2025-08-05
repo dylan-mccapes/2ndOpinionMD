@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const EmailVerification = () => {
   const [searchParams] = useSearchParams();
@@ -21,7 +22,7 @@ const EmailVerification = () => {
 
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/verify-email?token=${token}`
+          getApiUrl(`${API_ENDPOINTS.AUTH}/verify-email?token=${token}`)
         );
         
         setStatus('success');
