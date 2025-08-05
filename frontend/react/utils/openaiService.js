@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
 import { calculateAgeFromBirthdate } from './formatData';
+import { getApiUrl, API_ENDPOINTS } from './apiConfig';
 
 const calculateStaxLevel = (diagnosis) => {
   if (!diagnosis) return 1;
@@ -289,10 +290,10 @@ export const processSymptomInput = async (formData) => {
     updateDebugPanel();
     
     console.log('===== SENDING REQUEST TO API =====');
-    console.log(`Endpoint: ${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`);
+    console.log(`Endpoint: ${getApiUrl(API_ENDPOINTS.DIAGNOSE)}`);
     
     const response = await axiosInstance.post(
-      `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/diagnose`,
+      getApiUrl(API_ENDPOINTS.DIAGNOSE),
       apiData,
       {
         headers: {
@@ -612,10 +613,10 @@ export const processJournalEntry = async (journalText, isTestMode = false, previ
     updateDebugPanel();
     
     console.log('===== SENDING REQUEST TO API =====');
-    console.log(`Endpoint: ${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`);
+    console.log(`Endpoint: ${getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`)}`);
     
     const response = await axiosInstance.post(
-      `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/journal/journal`,
+      getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
       requestData,
       {
         headers: {

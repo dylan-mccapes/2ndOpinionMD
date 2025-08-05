@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -34,7 +35,7 @@ const ResetPassword = () => {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/reset-password/${token}`,
+        getApiUrl(`${API_ENDPOINTS.AUTH}/reset-password/${token}`),
         { new_password: password }
       );
       

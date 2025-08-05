@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 import './Auth.css';
 
 const RegisterForm = () => {
@@ -36,7 +37,7 @@ const RegisterForm = () => {
 
     try {
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/register`,
+        getApiUrl(`${API_ENDPOINTS.AUTH}/register`),
         {
           email: formData.email,
           password: formData.password,

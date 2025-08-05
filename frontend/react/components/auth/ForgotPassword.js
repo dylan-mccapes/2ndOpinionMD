@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ const ForgotPassword = () => {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/forgot-password`,
+        getApiUrl(`${API_ENDPOINTS.AUTH}/forgot-password`),
         { email }
       );
       

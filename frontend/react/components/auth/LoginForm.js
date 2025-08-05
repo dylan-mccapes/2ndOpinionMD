@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
 const LoginForm = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -21,7 +22,7 @@ const LoginForm = ({ onLoginSuccess }) => {
       formData.append('password', password);
 
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/token`,
+        getApiUrl(`${API_ENDPOINTS.AUTH}/token`),
         formData,
         {
           headers: {
@@ -34,7 +35,7 @@ const LoginForm = ({ onLoginSuccess }) => {
         localStorage.setItem('token', response.data.access_token);
         
         const userResponse = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/auth/me`,
+          getApiUrl(`${API_ENDPOINTS.AUTH}/me`),
           {
             headers: {
               'Authorization': `Bearer ${response.data.access_token}`
