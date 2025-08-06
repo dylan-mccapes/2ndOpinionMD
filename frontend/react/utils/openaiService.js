@@ -3,6 +3,19 @@ import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
 import { calculateAgeFromBirthdate } from './formatData';
 import { getApiUrl, API_ENDPOINTS } from './apiConfig';
 
+const mapConfidenceToPercent = (confidenceStr) => {
+  if (typeof confidenceStr === 'number') return confidenceStr;
+  
+  const confidenceMap = {
+    'High': 90,
+    'Moderate': 60,
+    'Low': 30,
+    'Unknown': 0
+  };
+  
+  return confidenceMap[confidenceStr] || 0;
+};
+
 const calculateStaxLevel = (diagnosis) => {
   if (!diagnosis) return 1;
   
@@ -319,8 +332,10 @@ export const processSymptomInput = async (formData) => {
       
       if (response.data && response.data.diagnoses && Array.isArray(response.data.diagnoses)) {
         const transformedData = response.data.diagnoses.map(diagnosis => ({
-          name: diagnosis.name || 'Unknown Condition',
-          confidence: diagnosis.confidence || 0,
+          name: diagnosis.diagnosis || 'Unknown Condition',
+          confidence: mapConfidenceToPercent(diagnosis.confidence_score),
+          explanation: diagnosis.recommendations || '',
+          icd10Code: diagnosis['ICD-10_code'] || '',
           symptoms: diagnosis.explanation ? [diagnosis.explanation] : [],
           redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],
           labSuggestions: Array.isArray(diagnosis.labSuggestions) ? diagnosis.labSuggestions : [],
@@ -334,8 +349,10 @@ export const processSymptomInput = async (formData) => {
         return transformedData;
       } else if (response.data && Array.isArray(response.data)) {
         const transformedData = response.data.map(diagnosis => ({
-          name: diagnosis.name || 'Unknown Condition',
-          confidence: diagnosis.confidence || 0,
+          name: diagnosis.diagnosis || 'Unknown Condition',
+          confidence: mapConfidenceToPercent(diagnosis.confidence_score),
+          explanation: diagnosis.recommendations || '',
+          icd10Code: diagnosis['ICD-10_code'] || '',
           symptoms: diagnosis.explanation ? [diagnosis.explanation] : 
                    (Array.isArray(diagnosis.symptoms) ? diagnosis.symptoms : []),
           redFlags: Array.isArray(diagnosis.redFlags) ? diagnosis.redFlags : [],

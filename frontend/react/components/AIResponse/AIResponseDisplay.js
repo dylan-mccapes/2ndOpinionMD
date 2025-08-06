@@ -88,8 +88,15 @@ const AIResponseDisplay = ({ diagnosticResults }) => {
             <div className="diagnosis-details">
               {diagnosis.explanation && (
                 <div className="detail-section">
-                  <h4>Explanation</h4>
+                  <h4>Recommendations</h4>
                   <p>{diagnosis.explanation}</p>
+                </div>
+              )}
+              
+              {diagnosis.icd10Code && (
+                <div className="detail-section">
+                  <h4>ICD-10 Code</h4>
+                  <p className="icd-code">{diagnosis.icd10Code}</p>
                 </div>
               )}
               
@@ -165,7 +172,7 @@ AIResponseDisplay.propTypes = {
       symptoms: PropTypes.arrayOf(PropTypes.string),
       redFlags: PropTypes.arrayOf(PropTypes.string),
       labSuggestions: PropTypes.arrayOf(PropTypes.string),
-
+      icd10Code: PropTypes.string,
       tags: PropTypes.arrayOf(PropTypes.string),
       status: PropTypes.string,
       explanation: PropTypes.string

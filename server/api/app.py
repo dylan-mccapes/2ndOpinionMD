@@ -136,7 +136,18 @@ async def diagnose(
         
         logger.info(f"Diagnose response: {response}")
         
-        return response
+        if isinstance(response, str):
+            try:
+                response = json.loads(response)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse RAG response: {e}")
+                raise HTTPException(status_code=500, detail="Invalid response format from query engine")
+
+        if not isinstance(response, dict) or "diagnoses" not in response:
+            logger.error(f"Malformed RAG response: {response}")
+            raise HTTPException(status_code=500, detail="Malformed RAG response: missing 'diagnoses' key")
+
+        return DiagnosisResponse(**response)
     except Exception as e:
         logger.error(f"Error generating diagnosis: {str(e)}")
         logger.error(traceback.format_exc())
