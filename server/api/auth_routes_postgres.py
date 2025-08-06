@@ -235,3 +235,14 @@ async def get_current_user_info(current_user: User = Depends(get_current_user_po
         subscription_tier=current_user.subscription_tier,
         created_at=current_user.created_at
     )
+
+@router.get("/users/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user_postgres)):
+    return UserResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        full_name=current_user.full_name,
+        birthdate=current_user.birthdate,
+        subscription_tier=current_user.subscription_tier,
+        created_at=current_user.created_at
+    )

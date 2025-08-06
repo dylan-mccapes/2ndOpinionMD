@@ -24,15 +24,18 @@ class UserInDB(BaseModel):
     hashed_password: str
     birthdate: Optional[str] = None
     subscription_tier: str = "basic"
-    created_at: str
-    last_login: Optional[str] = None
+    created_at: datetime
+    last_login: Optional[datetime] = None
     is_verified: bool = False
     verification_token: Optional[str] = None
-    verification_token_expires: Optional[str] = None
+    verification_token_expires: Optional[datetime] = None
     failed_login_attempts: int = 0
-    locked_until: Optional[str] = None
+    locked_until: Optional[datetime] = None
     password_reset_token: Optional[str] = None
-    password_reset_token_expires: Optional[str] = None
+    password_reset_token_expires: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
