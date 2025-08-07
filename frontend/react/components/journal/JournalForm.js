@@ -274,7 +274,7 @@ const JournalForm = () => {
       }
       
       const response = await axios.post(
-        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
+        getApiUrl(API_ENDPOINTS.JOURNAL),
         journalData,
         {
           headers: {
