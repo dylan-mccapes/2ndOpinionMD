@@ -85,7 +85,7 @@ Using the 2OPMD Diagnostic Terrain System:
 
 router = APIRouter()
 
-@router.post("/journal", response_model=JournalEntryResponse)
+@router.post("/", response_model=JournalEntryResponse)
 async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
