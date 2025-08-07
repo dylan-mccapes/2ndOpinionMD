@@ -9,8 +9,16 @@ import asyncio
 from database.models.postgresql.models import JournalEntry, User
 from server.api.auth_postgres import get_current_user_postgres as get_current_user
 from database.models.postgresql.database import get_db
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+
+class SymptomEntry(BaseModel):
+    symptom: str
+    severity: int = Field(ge=1, le=10)
+
+class EnvironmentalFactor(BaseModel):
+    factor_type: str
+    description: str
 
 class JournalEntryCreate(BaseModel):
     symptoms: Optional[list] = None
@@ -161,68 +169,6 @@ async def create_journal_entry(
     await db.commit()
     await db.refresh(db_entry)
 
-    if report_id and report and "diagnoses" in ai_analysis:
-        updated_diagnoses = []
-
-        existing_diagnoses_map = {}
-        for diagnosis in report["diagnosticResults"]:
-            existing_diagnoses_map[diagnosis["name"]] = diagnosis
-
-        for diagnosis in ai_analysis["diagnoses"]:
-            if diagnosis["status"] == "eliminated":
-                continue
-            elif diagnosis["status"] == "new":
-                if "staxLevel" not in diagnosis:
-                    diagnosis["staxLevel"] = 1
-                if "zone" not in diagnosis:
-                    diagnosis["zone"] = 1
-                if "tags" not in diagnosis:
-                    diagnosis["tags"] = []
-                updated_diagnoses.append(diagnosis)
-            elif diagnosis["name"] in existing_diagnoses_map:
-                existing_diagnosis = existing_diagnoses_map[diagnosis["name"]]
-                updated_diagnoses.append({
-                    **existing_diagnosis,
-                    "confidence": diagnosis["confidence"],
-                    "staxLevel": diagnosis.get("staxLevel", existing_diagnosis.get("staxLevel", 1)),
-                    "zone": diagnosis.get("zone", existing_diagnosis.get("zone", 1)),
-                    "tags": diagnosis.get("tags", existing_diagnosis.get("tags", [])),
-                    "status": diagnosis["status"]
-                })
-
-        for diagnosis in report["diagnosticResults"]:
-            if not any(d["name"] == diagnosis["name"] for d in updated_diagnoses):
-                updated_diagnoses.append(diagnosis)
-
-        await reports_collection.update_one(
-            {"id": report_id},
-            {"$set": {
-                "diagnosticResults": updated_diagnoses,
-                "updatedAt": datetime.now()
-            }}
-        )
-
-        await reports_collection.update_one(
-            {"id": report_id},
-            {"$push": {
-                "journalEntries": {
-                    "entryDate": entry.date,
-                    "content": entry.notes,
-                    "analysis": ai_analysis.get("analysis", ""),
-                    "patternObservations": ai_analysis.get("patternObservations", ""),
-                    "symptoms": ai_analysis.get("symptoms", []),
-                    "environmental-factors": ai_analysis.get("environmental_factors", []),
-                    "life-stressors": ai_analysis.get("life_stressors", []),
-                    "diagnoses": ai_analysis.get("diagnoses", []),
-                    "journalingRecommendation": ai_analysis.get("journalingRecommendation", None)
-                }
-            }}
-        )
-    
-    journal_entry.ai_analysis = ai_analysis
-    journal_entry.analysis = ai_analysis.get("analysis", "")
-    journal_entry.patternObservations = ai_analysis.get("patternObservations", "")
-
     return journal_entry
 
 @router.get("/journal", response_model=List[JournalEntryResponse])
@@ -235,7 +181,7 @@ async def get_journal_entries(
     db: AsyncSession = Depends(get_db)
 ):
     """Get journal entries for the current user"""
-    query = select(JournalEntry).where(DBJournalEntry.user_id == current_user.id)
+    query = select(JournalEntry).where(JournalEntry.user_id == current_user.id)
     
     if start_date:
         query = query.where(JournalEntry.date >= start_date)
@@ -276,7 +222,7 @@ async def get_journal_entry(
 ):
     """Get a specific journal entry"""
     query = select(JournalEntry).where(
-        and_(JournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
+        and_(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id)
     )
     result = await db.execute(query)
     db_entry = result.scalar_one_or_none()
@@ -311,60 +257,38 @@ async def get_timeline_data(
     db: AsyncSession = Depends(get_db)
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
-    try:
-        
-        # Get the report for initial diagnosis
-        report = await reports_collection.find_one({"id": report_id, "userId": current_user.id})
-        
-        if not report:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Report not found"
-            )
-        
-        try:
-            query = select(JournalEntry).where(DBJournalEntry.user_id == current_user.id).order_by(DBJournalEntry.date.asc())
-            result = await db.execute(query)
-            db_entries = result.scalars().all()
-            
-            journal_entries = []
-            for db_entry in db_entries:
-                journal_entries.append({
-                    "id": str(db_entry.id),
-                    "user_id": str(db_entry.user_id),
-                    "date": db_entry.date,
-                    "symptoms": db_entry.symptoms,
-                    "environmental_factors": db_entry.environmental_factors,
-                    "stress_level": db_entry.stress_level,
-                    "diet_notes": db_entry.diet_notes,
-                    "sleep_quality": db_entry.sleep_quality,
-                    "notes": db_entry.notes,
-                    "analysis": db_entry.analysis,
-                    "pattern_observations": db_entry.pattern_observations,
-                    "ai_analysis": db_entry.ai_analysis,
-                    "created_at": db_entry.created_at,
-                    "updated_at": db_entry.updated_at
-                })
-        except Exception:
-            journal_entries = await journal_entries_collection.find(
-                {"reportId": report_id, "user_id": current_user.id}
-            ).sort("date", 1).to_list(length=100)
-        
-        timeline_data = {
-            "initialDiagnosis": {
-                "date": report.get("createdAt", datetime.now()),
-                "diagnoses": report.get("diagnosticResults", [])
-            },
-            "journalEntries": journal_entries
-        }
-        
-        return timeline_data
-        
-    except ImportError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Report not found"
-        )
+    query = select(JournalEntry).where(JournalEntry.user_id == current_user.id).order_by(JournalEntry.date.asc())
+    result = await db.execute(query)
+    db_entries = result.scalars().all()
+    
+    journal_entries = []
+    for db_entry in db_entries:
+        journal_entries.append({
+            "id": str(db_entry.id),
+            "user_id": str(db_entry.user_id),
+            "date": db_entry.date,
+            "symptoms": db_entry.symptoms,
+            "environmental_factors": db_entry.environmental_factors,
+            "stress_level": db_entry.stress_level,
+            "diet_notes": db_entry.diet_notes,
+            "sleep_quality": db_entry.sleep_quality,
+            "notes": db_entry.notes,
+            "analysis": db_entry.analysis,
+            "pattern_observations": db_entry.pattern_observations,
+            "ai_analysis": db_entry.ai_analysis,
+            "created_at": db_entry.created_at,
+            "updated_at": db_entry.updated_at
+        })
+    
+    timeline_data = {
+        "initialDiagnosis": {
+            "date": datetime.now(),
+            "diagnoses": []
+        },
+        "journalEntries": journal_entries
+    }
+    
+    return timeline_data
 
 @router.delete("/journal/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_journal_entry(
@@ -373,21 +297,16 @@ async def delete_journal_entry(
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a journal entry"""
-    try:
-        query = select(JournalEntry).where(
-            and_(JournalEntry.id == entry_id, DBJournalEntry.user_id == current_user.id)
-        )
-        result = await db.execute(query)
-        db_entry = result.scalar_one_or_none()
-        
-        if db_entry:
-            await db.delete(db_entry)
-            await db.commit()
-            return
-    except Exception as e:
-        result = await journal_entries_collection.delete_one({"id": entry_id, "user_id": current_user.id})
-        if result.deleted_count > 0:
-            return
+    query = select(JournalEntry).where(
+        and_(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id)
+    )
+    result = await db.execute(query)
+    db_entry = result.scalar_one_or_none()
+    
+    if db_entry:
+        await db.delete(db_entry)
+        await db.commit()
+        return
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -398,14 +317,10 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
     """Get previous journal entries for a user to provide context"""
     
     if not db:
-        entries = await journal_entries_collection.find(
-            {"user_id": user_id}
-        ).sort("date", -1).limit(limit).to_list(length=limit)
-        
-        return [JournalEntry(**entry) for entry in entries]
+        return []
     
     from database.models.postgresql.models import JournalEntry as JournalEntry
-    query = select(JournalEntry).where(DBJournalEntry.user_id == user_id).order_by(DBJournalEntry.date.desc()).limit(limit)
+    query = select(JournalEntry).where(JournalEntry.user_id == user_id).order_by(JournalEntry.date.desc()).limit(limit)
     result = await db.execute(query)
     db_entries = result.scalars().all()
     
@@ -415,7 +330,7 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
             id=str(db_entry.id),
             user_id=str(db_entry.user_id),
             date=db_entry.date,
-            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
+            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms] if db_entry.symptoms else [],
             environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
             stress_level=db_entry.stress_level,
             diet_notes=db_entry.diet_notes,
@@ -603,7 +518,7 @@ async def generate_journal_analysis(
         except ImportError:
             from nlp_engines.vector_stores.query_engine import MedicalQueryEngine
             import os
-            query_engine = MedicalQueryEngine(persist_directory)
+            query_engine = MedicalQueryEngine("./vector_stores")
 
     query_text = journal_entry.notes if journal_entry.notes else ""
     for symptom in journal_entry.symptoms:
