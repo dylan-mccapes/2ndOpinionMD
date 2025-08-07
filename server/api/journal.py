@@ -186,7 +186,7 @@ async def create_journal_entry(
         updated_at=db_entry.updated_at
     )
 
-@router.get("/journal", response_model=List[JournalEntryResponse])
+@router.get("/", response_model=List[JournalEntryResponse])
 async def get_journal_entries(
     current_user: User = Depends(get_current_user),
     limit: int = 10,
