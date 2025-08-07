@@ -169,7 +169,22 @@ async def create_journal_entry(
     await db.commit()
     await db.refresh(db_entry)
 
-    return journal_entry
+    return JournalEntryResponse(
+        id=str(db_entry.id),
+        user_id=str(db_entry.user_id),
+        date=db_entry.date,
+        symptoms=db_entry.symptoms or [],
+        environmental_factors=db_entry.environmental_factors or [],
+        stress_level=db_entry.stress_level,
+        diet_notes=db_entry.diet_notes,
+        sleep_quality=db_entry.sleep_quality,
+        notes=db_entry.notes,
+        analysis=db_entry.analysis,
+        pattern_observations=db_entry.pattern_observations,
+        ai_analysis=db_entry.ai_analysis,
+        created_at=db_entry.created_at,
+        updated_at=db_entry.updated_at
+    )
 
 @router.get("/journal", response_model=List[JournalEntryResponse])
 async def get_journal_entries(
