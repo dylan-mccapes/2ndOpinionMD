@@ -328,6 +328,28 @@ async def delete_journal_entry(
         detail="Journal entry not found"
     )
 
+@router.get("/journal", include_in_schema=False)
+async def list_entries_legacy(
+    current_user: User = Depends(get_current_user),
+    limit: int = 10,
+    skip: int = 0,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Legacy endpoint for backward compatibility - delegates to main handler"""
+    return await get_journal_entries(current_user, limit, skip, start_date, end_date, db)
+
+@router.post("/journal", include_in_schema=False)
+async def create_entry_legacy(
+    entry: JournalEntryCreate,
+    current_user: User = Depends(get_current_user),
+    report_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Legacy endpoint for backward compatibility - delegates to main handler"""
+    return await create_journal_entry(entry, current_user, report_id, db)
+
 async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncSession = None):
     """Get previous journal entries for a user to provide context"""
     
