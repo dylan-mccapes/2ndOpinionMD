@@ -116,9 +116,7 @@ async def create_journal_entry(
         symptom_intake_data=symptom_intake_data
     )
 
-    journal_entry_dict = journal_entry.dict()
-    journal_entry_dict["ai_analysis"] = ai_analysis
-    
+    final_symptoms = entry.symptoms
     if "symptoms" in ai_analysis and ai_analysis["symptoms"]:
         structured_symptoms = []
         for symptom in ai_analysis["symptoms"]:
@@ -131,9 +129,9 @@ async def create_journal_entry(
                 structured_symptoms.append(symptom)
         
         if structured_symptoms:
-            journal_entry_dict["symptoms"] = structured_symptoms
+            final_symptoms = structured_symptoms
             print(f"\n=== REPLACED RAW SYMPTOMS WITH AI-EXTRACTED ===")
-            print(f"Original symptoms count: {len(journal_entry.symptoms)}")
+            print(f"Original symptoms count: {len(entry.symptoms)}")
             print(f"AI-extracted symptoms count: {len(structured_symptoms)}")
             for i, symptom in enumerate(structured_symptoms):
                 print(f"  {i+1}. {symptom['symptom']} (Severity: {symptom['severity']}/10)")
@@ -154,7 +152,7 @@ async def create_journal_entry(
     db_entry = JournalEntry(
         user_id=current_user.id,
         date=entry.date,
-        symptoms=entry.symptoms,
+        symptoms=final_symptoms,
         environmental_factors=entry.environmental_factors if entry.environmental_factors else [],
         stress_level=entry.stress_level,
         diet_notes=entry.diet_notes,
