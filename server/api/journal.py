@@ -30,22 +30,25 @@ class JournalEntryCreate(BaseModel):
     notes: Optional[str] = None
 
 class JournalEntryResponse(BaseModel):
-    model_config = {"from_attributes": True}
-    
     id: str
-    user_id: str
+    user_id: str = Field(alias="userId")
     date: datetime
     symptoms: Optional[list] = None
-    environmental_factors: Optional[list] = None
-    stress_level: Optional[int] = None
-    diet_notes: Optional[str] = None
-    sleep_quality: Optional[int] = None
+    environmental_factors: Optional[list] = Field(default=None, alias="environmentalFactors")
+    stress_level: Optional[int] = Field(default=None, alias="stressLevel")
+    diet_notes: Optional[str] = Field(default=None, alias="dietNotes")
+    sleep_quality: Optional[int] = Field(default=None, alias="sleepQuality")
     notes: Optional[str] = None
     analysis: Optional[str] = None
-    pattern_observations: Optional[str] = None
-    ai_analysis: Optional[dict] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+    pattern_observations: Optional[str] = Field(default=None, alias="patternObservations")
+    ai_analysis: Optional[dict] = Field(default=None, alias="aiAnalysis")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
+    
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,
+    }
 import openai
 import os
 from dotenv import load_dotenv
@@ -189,26 +192,7 @@ async def get_journal_entries(
     result = await db.execute(query)
     db_entries = result.scalars().all()
     
-    entries = []
-    for db_entry in db_entries:
-        entries.append(JournalEntryResponse(
-            id=str(db_entry.id),
-            user_id=str(db_entry.user_id),
-            date=db_entry.date,
-            symptoms=db_entry.symptoms or [],
-            environmental_factors=db_entry.environmental_factors or [],
-            stress_level=db_entry.stress_level,
-            diet_notes=db_entry.diet_notes,
-            sleep_quality=db_entry.sleep_quality,
-            notes=db_entry.notes,
-            analysis=db_entry.analysis,
-            pattern_observations=db_entry.pattern_observations,
-            ai_analysis=db_entry.ai_analysis,
-            created_at=db_entry.created_at,
-            updated_at=db_entry.updated_at
-        ))
-    
-    return entries
+    return db_entries
 
 @router.get("/journal/{entry_id}", response_model=JournalEntryResponse)
 async def get_journal_entry(
@@ -224,22 +208,7 @@ async def get_journal_entry(
     db_entry = result.scalar_one_or_none()
     
     if db_entry:
-        return JournalEntryResponse(
-            id=str(db_entry.id),
-            user_id=str(db_entry.user_id),
-            date=db_entry.date,
-            symptoms=db_entry.symptoms or [],
-            environmental_factors=db_entry.environmental_factors or [],
-            stress_level=db_entry.stress_level,
-            diet_notes=db_entry.diet_notes,
-            sleep_quality=db_entry.sleep_quality,
-            notes=db_entry.notes,
-            analysis=db_entry.analysis,
-            pattern_observations=db_entry.pattern_observations,
-            ai_analysis=db_entry.ai_analysis,
-            created_at=db_entry.created_at,
-            updated_at=db_entry.updated_at
-        )
+        return db_entry
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -342,25 +311,7 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
     result = await db.execute(query)
     db_entries = result.scalars().all()
     
-    entries = []
-    for db_entry in db_entries:
-        entries.append(JournalEntryResponse(
-            id=str(db_entry.id),
-            user_id=str(db_entry.user_id),
-            date=db_entry.date,
-            symptoms=db_entry.symptoms or [],
-            environmental_factors=db_entry.environmental_factors or [],
-            stress_level=db_entry.stress_level,
-            diet_notes=db_entry.diet_notes,
-            sleep_quality=db_entry.sleep_quality,
-            notes=db_entry.notes,
-            analysis=db_entry.analysis,
-            pattern_observations=db_entry.pattern_observations,
-            ai_analysis=db_entry.ai_analysis,
-            created_at=db_entry.created_at,
-            updated_at=db_entry.updated_at
-        ))
-    return entries
+    return db_entries
 
 def _to_naive_utc(dt):
     """Convert datetime to naive UTC for PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns"""
