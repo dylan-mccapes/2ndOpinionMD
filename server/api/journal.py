@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 import re
@@ -97,7 +97,7 @@ async def create_journal_entry(
 ):
     """Create a new journal entry with AI analysis using the ethos of health model"""
     if not entry.date:
-        entry.date = datetime.now().replace(tzinfo=None)
+        entry.date = _to_naive_utc(datetime.now())
 
     journal_entry = JournalEntry(
         **entry.dict(),
@@ -153,7 +153,7 @@ async def create_journal_entry(
     
     db_entry = JournalEntry(
         user_id=current_user.id,
-        date=entry.date,
+        date=_to_naive_utc(entry.date),
         symptoms=final_symptoms,
         environmental_factors=entry.environmental_factors if entry.environmental_factors else [],
         stress_level=entry.stress_level,
@@ -163,7 +163,7 @@ async def create_journal_entry(
         analysis=None,
         pattern_observations=None,
         ai_analysis=ai_analysis,
-        created_at=datetime.now()
+        created_at=_to_naive_utc(datetime.now())
     )
     
     db.add(db_entry)
@@ -366,6 +366,14 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
             updated_at=db_entry.updated_at
         ))
     return entries
+
+def _to_naive_utc(dt):
+    """Convert datetime to naive UTC for PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt  # already naive; assume UTC semantics
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 def _normalize_list(items, model_cls):
     """Normalize a list of items to ensure they are model instances"""
