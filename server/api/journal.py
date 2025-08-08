@@ -191,18 +191,18 @@ async def get_journal_entries(
     
     entries = []
     for db_entry in db_entries:
-        entries.append(JournalEntry(
+        entries.append(JournalEntryResponse(
             id=str(db_entry.id),
             user_id=str(db_entry.user_id),
             date=db_entry.date,
-            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
-            environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
+            symptoms=db_entry.symptoms or [],
+            environmental_factors=db_entry.environmental_factors or [],
             stress_level=db_entry.stress_level,
             diet_notes=db_entry.diet_notes,
             sleep_quality=db_entry.sleep_quality,
             notes=db_entry.notes,
             analysis=db_entry.analysis,
-            patternObservations=db_entry.pattern_observations,
+            pattern_observations=db_entry.pattern_observations,
             ai_analysis=db_entry.ai_analysis,
             created_at=db_entry.created_at,
             updated_at=db_entry.updated_at
@@ -224,18 +224,18 @@ async def get_journal_entry(
     db_entry = result.scalar_one_or_none()
     
     if db_entry:
-        return JournalEntry(
+        return JournalEntryResponse(
             id=str(db_entry.id),
             user_id=str(db_entry.user_id),
             date=db_entry.date,
-            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms],
-            environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
+            symptoms=db_entry.symptoms or [],
+            environmental_factors=db_entry.environmental_factors or [],
             stress_level=db_entry.stress_level,
             diet_notes=db_entry.diet_notes,
             sleep_quality=db_entry.sleep_quality,
             notes=db_entry.notes,
             analysis=db_entry.analysis,
-            patternObservations=db_entry.pattern_observations,
+            pattern_observations=db_entry.pattern_observations,
             ai_analysis=db_entry.ai_analysis,
             created_at=db_entry.created_at,
             updated_at=db_entry.updated_at
@@ -344,18 +344,18 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
     
     entries = []
     for db_entry in db_entries:
-        entries.append(JournalEntry(
+        entries.append(JournalEntryResponse(
             id=str(db_entry.id),
             user_id=str(db_entry.user_id),
             date=db_entry.date,
-            symptoms=[SymptomEntry(**symptom) for symptom in db_entry.symptoms] if db_entry.symptoms else [],
-            environmental_factors=[EnvironmentalFactor(**factor) for factor in db_entry.environmental_factors] if db_entry.environmental_factors else [],
+            symptoms=db_entry.symptoms or [],
+            environmental_factors=db_entry.environmental_factors or [],
             stress_level=db_entry.stress_level,
             diet_notes=db_entry.diet_notes,
             sleep_quality=db_entry.sleep_quality,
             notes=db_entry.notes,
             analysis=db_entry.analysis,
-            patternObservations=db_entry.pattern_observations,
+            pattern_observations=db_entry.pattern_observations,
             ai_analysis=db_entry.ai_analysis,
             created_at=db_entry.created_at,
             updated_at=db_entry.updated_at
