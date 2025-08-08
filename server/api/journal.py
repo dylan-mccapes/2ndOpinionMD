@@ -96,8 +96,6 @@ async def create_journal_entry(
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new journal entry with AI analysis using the ethos of health model"""
-    if not entry.date:
-        entry.date = _to_naive_utc(datetime.now())
 
     journal_entry = JournalEntry(
         **entry.dict(),
@@ -153,7 +151,6 @@ async def create_journal_entry(
     
     db_entry = JournalEntry(
         user_id=current_user.id,
-        date=_to_naive_utc(entry.date),
         symptoms=final_symptoms,
         environmental_factors=entry.environmental_factors if entry.environmental_factors else [],
         stress_level=entry.stress_level,
@@ -162,8 +159,7 @@ async def create_journal_entry(
         notes=entry.notes,
         analysis=None,
         pattern_observations=None,
-        ai_analysis=ai_analysis,
-        created_at=_to_naive_utc(datetime.now())
+        ai_analysis=ai_analysis
     )
     
     db.add(db_entry)
