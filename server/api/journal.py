@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 import re
 import asyncio
+from uuid import UUID
 
 from database.models.postgresql.models import JournalEntry, User
 from server.api.auth_postgres import get_current_user_postgres as get_current_user
@@ -30,8 +31,8 @@ class JournalEntryCreate(BaseModel):
     notes: Optional[str] = None
 
 class JournalEntryResponse(BaseModel):
-    id: str
-    user_id: str = Field(alias="userId")
+    id: UUID
+    user_id: UUID = Field(alias="userId")
     date: datetime
     symptoms: Optional[list] = None
     environmental_factors: Optional[list] = Field(default=None, alias="environmentalFactors")
