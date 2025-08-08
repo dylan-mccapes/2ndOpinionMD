@@ -97,12 +97,12 @@ async def create_journal_entry(
 ):
     """Create a new journal entry with AI analysis using the ethos of health model"""
     if not entry.date:
-        entry.date = datetime.now()
+        entry.date = datetime.now().replace(tzinfo=None)
 
     journal_entry = JournalEntry(
         **entry.dict(),
         user_id=current_user.id,
-        created_at=datetime.now()
+        created_at=datetime.now().replace(tzinfo=None)
     )
 
     previous_entries = await get_previous_journal_entries(current_user.id)
