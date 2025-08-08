@@ -54,7 +54,7 @@ const JournalList = () => {
         }
         
         const response = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
+          getApiUrl(API_ENDPOINTS.JOURNAL),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -98,7 +98,7 @@ const JournalList = () => {
       const token = localStorage.getItem('token');
       
       await axios.delete(
-        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal/${entryId}`),
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/${entryId}`),
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -179,7 +179,7 @@ const JournalList = () => {
       }
       
       const response = await axios.get(
-        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal?limit=1000`),
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}?limit=1000`),
         {
           headers: {
             'Authorization': `Bearer ${token}`

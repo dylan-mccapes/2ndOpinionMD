@@ -630,10 +630,10 @@ export const processJournalEntry = async (journalText, isTestMode = false, previ
     updateDebugPanel();
     
     console.log('===== SENDING REQUEST TO API =====');
-    console.log(`Endpoint: ${getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`)}`);
+    console.log(`Endpoint: ${getApiUrl(API_ENDPOINTS.JOURNAL)}`);
     
     const response = await axiosInstance.post(
-      getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal`),
+      getApiUrl(API_ENDPOINTS.JOURNAL),
       requestData,
       {
         headers: {
