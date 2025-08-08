@@ -99,8 +99,7 @@ async def create_journal_entry(
 
     journal_entry = JournalEntry(
         **entry.dict(),
-        user_id=current_user.id,
-        created_at=datetime.now().replace(tzinfo=None)
+        user_id=current_user.id
     )
 
     previous_entries = await get_previous_journal_entries(current_user.id)
