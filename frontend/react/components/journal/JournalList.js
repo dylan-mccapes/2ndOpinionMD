@@ -98,7 +98,7 @@ const JournalList = () => {
       const token = localStorage.getItem('token');
       
       await axios.delete(
-        getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal/${entryId}`),
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/${entryId}`),
         {
           headers: {
             'Authorization': `Bearer ${token}`

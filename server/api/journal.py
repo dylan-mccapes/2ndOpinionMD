@@ -154,14 +154,14 @@ async def create_journal_entry(
     db_entry = JournalEntry(
         user_id=current_user.id,
         date=entry.date,
-        symptoms=[symptom.dict() for symptom in entry.symptoms],
-        environmental_factors=[factor.dict() for factor in entry.environmental_factors] if entry.environmental_factors else [],
+        symptoms=entry.symptoms,
+        environmental_factors=entry.environmental_factors if entry.environmental_factors else [],
         stress_level=entry.stress_level,
         diet_notes=entry.diet_notes,
         sleep_quality=entry.sleep_quality,
         notes=entry.notes,
-        analysis=entry.analysis,
-        pattern_observations=entry.patternObservations,
+        analysis=None,
+        pattern_observations=None,
         ai_analysis=ai_analysis,
         created_at=datetime.now()
     )
@@ -382,18 +382,30 @@ async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncS
         ))
     return entries
 
+def _normalize_list(items, model_cls):
+    """Normalize a list of items to ensure they are model instances"""
+    if not items:
+        return []
+    return [
+        item if isinstance(item, model_cls) else model_cls(**item)
+        for item in items
+    ]
+
 async def format_journal_entry_for_prompt(entry: JournalEntry, include_ethos: bool = True):
     """Format a journal entry for inclusion in the prompt with ethos of health model"""
+    normalized_symptoms = _normalize_list(entry.symptoms, SymptomEntry)
+    normalized_env_factors = _normalize_list(entry.environmental_factors, EnvironmentalFactor)
+    
     symptoms_text = "\n".join([
         f"- {symptom.symptom} (Severity: {symptom.severity}/10)"
-        for symptom in entry.symptoms
+        for symptom in normalized_symptoms
     ])
 
     env_factors_text = ""
-    if entry.environmental_factors:
+    if normalized_env_factors:
         env_factors_text = "\n".join([
             f"- {factor.factor_type}: {factor.description}"
-            for factor in entry.environmental_factors
+            for factor in normalized_env_factors
         ])
 
     parsed_sentences = []
@@ -559,7 +571,8 @@ async def generate_journal_analysis(
             query_engine = MedicalQueryEngine("./vector_stores")
 
     query_text = journal_entry.notes if journal_entry.notes else ""
-    for symptom in journal_entry.symptoms:
+    normalized_symptoms = _normalize_list(journal_entry.symptoms, SymptomEntry)
+    for symptom in normalized_symptoms:
         query_text += f" {symptom.symptom}"
 
     all_results = await query_engine.query_all_collections(query_text) if hasattr(query_engine, 'query_all_collections') and asyncio.iscoroutinefunction(query_engine.query_all_collections) else query_engine.query_all_collections(query_text)
