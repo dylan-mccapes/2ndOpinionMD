@@ -21,6 +21,7 @@ class EnvironmentalFactor(BaseModel):
     description: str
 
 class JournalEntryCreate(BaseModel):
+    date: Optional[datetime] = None
     symptoms: Optional[list] = None
     environmental_factors: Optional[list] = None
     stress_level: Optional[int] = None
