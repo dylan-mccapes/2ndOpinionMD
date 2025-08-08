@@ -6,12 +6,11 @@ from sqlalchemy import select, and_
 import re
 import asyncio
 from uuid import UUID
+from pydantic import BaseModel, Field
 
 from database.models.postgresql.models import JournalEntry, User
 from server.api.auth_postgres import get_current_user_postgres as get_current_user
 from database.models.postgresql.database import get_db
-from pydantic import BaseModel, Field
-from typing import Optional
 
 class SymptomEntry(BaseModel):
     symptom: str
