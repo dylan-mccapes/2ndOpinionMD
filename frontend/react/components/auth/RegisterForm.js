@@ -40,7 +40,13 @@ const RegisterForm = () => {
         getApiUrl('/auth/register'),
         {
           email: formData.email,
-          password: formData.password,          full_name: formData.full_name
+          password: formData.password,
+          full_name: formData.full_name
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
         }
       );
 
