@@ -18,7 +18,7 @@ const ForgotPassword = () => {
 
     try {
       await axios.post(
-        getApiUrl(`${API_ENDPOINTS.AUTH}/forgot-password`),
+        getApiUrl('/auth/forgot-password'),
         { email }
       );
       

@@ -22,7 +22,7 @@ const EmailVerification = () => {
 
       try {
         const response = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.AUTH}/verify-email?token=${token}`)
+          getApiUrl(`/auth/verify-email?token=${token}`)
         );
         
         setStatus('success');

@@ -22,7 +22,7 @@ const LoginForm = ({ onLoginSuccess }) => {
       formData.append('password', password);
 
       const response = await axios.post(
-        getApiUrl(`${API_ENDPOINTS.AUTH}/token`),
+        getApiUrl(API_ENDPOINTS.AUTH_TOKEN),
         formData,
         {
           headers: {
@@ -35,7 +35,7 @@ const LoginForm = ({ onLoginSuccess }) => {
         localStorage.setItem('token', response.data.access_token);
         
         const userResponse = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.AUTH}/me`),
+          getApiUrl(API_ENDPOINTS.AUTH_ME),
           {
             headers: {
               'Authorization': `Bearer ${response.data.access_token}`
