@@ -36,7 +36,12 @@ const ResetPassword = () => {
     try {
       await axios.post(
         getApiUrl(`/auth/reset-password/${token}`),
-        { new_password: password }
+        { new_password: password },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
       
       alert('Password reset successfully! You can now log in with your new password.');
