@@ -177,6 +177,10 @@ async def health_check():
             "pgvector": "ok" if query_engine else "error"
         }
     }
+@app.get("/api/meta/ping")
+async def meta_ping():
+    from datetime import datetime, timezone
+    return {"ok": True, "now": datetime.now(timezone.utc).isoformat()}
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))

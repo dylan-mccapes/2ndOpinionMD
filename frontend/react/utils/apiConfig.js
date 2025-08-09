@@ -32,3 +32,16 @@ export function getApiUrl(pathOrKey) {
   const path = ENDPOINTS[pathOrKey] ?? pathOrKey;
   return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 }
+
+export function debugLogApiBaseOnce() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (process.env.NODE_ENV === 'production' && params.get('debug') === '1') {
+      console.info('[Diagnostics] API_BASE:', API_BASE);
+      fetch(getApiUrl('/health'))
+        .then(r => r.json().then(j => ({ status: r.status, body: j })))
+        .then(({ status, body }) => console.info('[Diagnostics] /api/health', status, body))
+        .catch(e => console.info('[Diagnostics] /api/health error', e));
+    }
+  } catch (_) {}
+}
