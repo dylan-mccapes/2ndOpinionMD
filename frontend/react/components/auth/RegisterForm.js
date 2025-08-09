@@ -37,11 +37,10 @@ const RegisterForm = () => {
 
     try {
       const response = await axios.post(
-        getApiUrl(`${API_ENDPOINTS.AUTH}/register`),
+        getApiUrl('/auth/register'),
         {
           email: formData.email,
-          password: formData.password,
-          full_name: formData.full_name
+          password: formData.password,          full_name: formData.full_name
         }
       );
 

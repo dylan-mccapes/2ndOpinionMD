@@ -35,7 +35,7 @@ const ResetPassword = () => {
 
     try {
       await axios.post(
-        getApiUrl(`${API_ENDPOINTS.AUTH}/reset-password/${token}`),
+        getApiUrl(`/auth/reset-password/${token}`),
         { new_password: password }
       );
       

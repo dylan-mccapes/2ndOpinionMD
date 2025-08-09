@@ -23,7 +23,7 @@ const JournalDetail = () => {
         }
         
         const response = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.JOURNAL}/journal/${entryId}`),
+          getApiUrl(`${API_ENDPOINTS.JOURNAL}/${entryId}`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -36,7 +36,7 @@ const JournalDetail = () => {
         if (response.data && response.data.reportId) {
           try {
             const timelineResponse = await axios.get(
-              getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${response.data.reportId}`),
+              getApiUrl(`/journal/timeline/${response.data.reportId}`),
               {
                 headers: {
                   'Authorization': `Bearer ${token}`
