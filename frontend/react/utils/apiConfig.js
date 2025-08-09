@@ -1,7 +1,7 @@
 const ENDPOINTS = {
   AUTH: '/auth',
   AUTH_TOKEN: '/auth/token',
-  AUTH_ME: '/auth/me',
+  AUTH_ME: '/auth/users/me',
   JOURNAL: '/journal',
   DIAGNOSE: '/diagnose',
   REPORTS: '/reports',
