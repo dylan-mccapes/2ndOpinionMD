@@ -39,7 +39,7 @@ const JournalForm = () => {
         }
         
         const response = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.REPORTS}/user`),
+          getApiUrl(`/reports/user`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -84,7 +84,7 @@ const JournalForm = () => {
         if (!token) return;
         
         const response = await axios.get(
-          getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${selectedReport.id}`),
+          getApiUrl(`/journal/timeline/${selectedReport.id}`),
           {
             headers: {
               'Authorization': `Bearer ${token}`
