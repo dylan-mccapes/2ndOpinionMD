@@ -17,16 +17,16 @@ const LoginForm = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('username', email); // FastAPI expects 'username' field
-      formData.append('password', password);
+      const body = new URLSearchParams();
+      body.set('username', email);
+      body.set('password', password);
 
       const response = await axios.post(
         getApiUrl(API_ENDPOINTS.AUTH_TOKEN),
-        formData,
+        body.toString(),
         {
           headers: {
-            'Content-Type': 'multipart/form-data',
+            'Content-Type': 'application/x-www-form-urlencoded',
           },
         }
       );
@@ -53,8 +53,11 @@ const LoginForm = ({ onLoginSuccess }) => {
       }
     } catch (err) {
       console.error('Login error:', err);
-      if (err.response?.status === 423) {
+      const status = err.response?.status;
+      if (status === 423) {
         setError('Account locked due to too many failed login attempts. Please reset your password or wait 15 minutes.');
+      } else if (status === 401) {
+        setError(err.response?.data?.detail || 'Invalid email or password.');
       } else {
         setError(
           err.response?.data?.detail || 
