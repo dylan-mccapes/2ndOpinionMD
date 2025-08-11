@@ -1,0 +1,36 @@
+name: Frontend CI (build + guard)
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/react
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'yarn'
+          cache-dependency-path: frontend/react/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build (CRA)
+        env:
+          # CI builds should rely on same-origin fallback or explicit env set in the Action secrets if needed
+          CI: "true"
+        run: yarn build
+
+      - name: Guard: no localhost/RFC1918 in production bundle
+        run: yarn guard:prod

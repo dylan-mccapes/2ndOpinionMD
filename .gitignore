@@ -137,3 +137,17 @@ dist
 .DS_Store
 *.pyc
 __pycache__/
+# Frontend build output
+build/
+frontend/react/build/
+
+# Python caches / venvs
+**/__pycache__/
+*.pyc
+server/venv/
+server/venv312/
+
+# Secrets
+server/secure/
+server/**/log_encryption.key
+server/~/           # accidental home-tilde paths

@@ -4,7 +4,7 @@ import './App.css';
 import './styles/GlobalStyles.css';
 import './styles/Journal.css';
 import { processJournalEntry } from './utils/openaiService';
-import { getApiUrl, API_ENDPOINTS } from './utils/apiConfig';
+import { getApiUrl, API_ENDPOINTS, debugLogApiBaseOnce } from './utils/apiConfig';
 
 import Layout from './components/layout/Layout';
 
@@ -29,6 +29,7 @@ import JournalList from './components/journal/JournalList';
 import JournalDetail from './components/journal/JournalDetail';
 import JournalEntryForm from './components/journal/JournalEntryForm.jsx';
 import JournalResponse from './components/journal/JournalResponse.jsx';
+import Diagnostics from './components/Diagnostics';
 
 function AppContent() {
   const navigate = useNavigate();
@@ -36,6 +37,13 @@ function AppContent() {
   const [user, setUser] = useState(null);
   const [diagnosticResults, setDiagnosticResults] = useState(null);
   const [journalResponse, setJournalResponse] = useState(null);
+
+  useEffect(() => {
+    debugLogApiBaseOnce();
+  }, []);
+
+  const apiBaseDisplay = getApiUrl('/').replace(/\/$/, '');
+  const sameOriginApi = apiBaseDisplay.startsWith(`${window.location.origin}/api`);
   
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -207,6 +215,11 @@ function AppContent() {
 
   return (
       <div className="App">
+        {process.env.NODE_ENV === 'production' && !sameOriginApi && (
+          <div style={{ background: '#ffefef', color: '#b00020', padding: '8px 12px', fontSize: '14px' }}>
+            API base mismatch: requests will go to {apiBaseDisplay}
+          </div>
+        )}
         <Routes>
           {/* Public routes */}
           <Route path="/splash" element={<SplashPage />} />
@@ -215,6 +228,7 @@ function AppContent() {
           <Route path="/verify-email" element={<EmailVerification />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/diagnostics" element={<Diagnostics />} />
           
           {/* Redirect to splash if not authenticated */}
           <Route path="/" element={
