@@ -17,7 +17,6 @@ import AIResponseDisplay from './components/AIResponse/AIResponseDisplay';
 import HeroSection from './components/HeroSection/HeroSection';
 import DoctorEndorsement from './components/DoctorEndorsement/DoctorEndorsement';
 
-import SplashPage from './components/auth/SplashPage';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import EmailVerification from './components/auth/EmailVerification';
@@ -224,7 +223,6 @@ function AppContent() {
         )}
         <Routes>
           {/* Public routes */}
-          <Route path="/splash" element={<SplashPage />} />
           <Route path="/login" element={<LoginForm onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/register" element={<RegisterForm />} />
           <Route path="/verify-email" element={<EmailVerification />} />
@@ -232,9 +230,9 @@ function AppContent() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/diagnostics" element={<Diagnostics />} />
           
-          {/* Redirect to splash if not authenticated */}
+          {/* Redirect to login if not authenticated */}
           <Route path="/" element={
-            !isAuthenticated ? <Navigate to="/splash" /> : (
+            !isAuthenticated ? <Navigate to="/login" /> : (
               <Layout user={user} onLogout={handleLogout}>
                 <main className="App-main">
                   <div className="dashboard-container">
