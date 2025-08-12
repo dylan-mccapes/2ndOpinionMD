@@ -127,6 +127,7 @@ function AppContent() {
       
       navigate('/report');
     } catch (error) {
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error handling symptom form submission:', error);
       setDiagnosticResults(sampleDiagnosticResults);
       navigate('/report');
@@ -201,8 +202,9 @@ function AppContent() {
         timelineData: timelineData
       });
     } catch (error) {
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error processing journal entry:', error);
-      setJournalResponse({ 
+      setJournalResponse({
         text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later.",
         categories: {
           symptoms: [],

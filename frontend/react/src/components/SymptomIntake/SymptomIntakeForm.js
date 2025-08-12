@@ -39,6 +39,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       
       onSubmit(response);
     } catch (err) {
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
       
