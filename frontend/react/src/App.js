@@ -1,8 +1,18 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import './App.css';
 
 function App() {
-  return <Navigate to="/" replace />;
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>2ndOpinionMD</h1>
+        <p>Welcome to 2ndOpinionMD</p>
+      </header>
+      <main>
+        <p>Loading application...</p>
+      </main>
+    </div>
+  );
 }
 
 export default App;
