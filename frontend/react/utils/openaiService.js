@@ -53,174 +53,10 @@ const calculateZone = (diagnosis) => {
   }
 };
 
-const saveDebugInfo = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error('Error saving debug info to localStorage:', e);
-  }
-};
 
-const getDebugInfo = (key) => {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-  } catch (e) {
-    console.error('Error retrieving debug info from localStorage:', e);
-    return null;
-  }
-};
 
-const clearDebugInfo = (key) => {
-  try {
-    localStorage.removeItem(key);
-  } catch (e) {
-    console.error('Error clearing debug info from localStorage:', e);
-  }
-};
 
-const createPersistentDebugPanel = () => {
-  if (document.getElementById('persistent-debug-panel')) {
-    return;
-  }
-  
-  const panel = document.createElement('div');
-  panel.id = 'persistent-debug-panel';
-  panel.style.position = 'fixed';
-  panel.style.bottom = '10px';
-  panel.style.right = '10px';
-  panel.style.zIndex = '9999';
-  panel.style.backgroundColor = '#f8f9fa';
-  panel.style.border = '1px solid #dee2e6';
-  panel.style.borderRadius = '4px';
-  panel.style.padding = '10px';
-  panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
-  panel.style.maxWidth = '400px';
-  panel.style.maxHeight = '80vh';
-  panel.style.overflow = 'auto';
-  panel.style.display = 'none';
-  
-  const toggleButton = document.createElement('button');
-  toggleButton.textContent = 'Debug Panel';
-  toggleButton.style.position = 'fixed';
-  toggleButton.style.bottom = '10px';
-  toggleButton.style.right = '10px';
-  toggleButton.style.zIndex = '10000';
-  toggleButton.style.padding = '5px 10px';
-  toggleButton.style.backgroundColor = '#007bff';
-  toggleButton.style.color = 'white';
-  toggleButton.style.border = 'none';
-  toggleButton.style.borderRadius = '4px';
-  toggleButton.style.cursor = 'pointer';
-  
-  toggleButton.onclick = () => {
-    if (panel.style.display === 'none') {
-      panel.style.display = 'block';
-      updateDebugPanel();
-    } else {
-      panel.style.display = 'none';
-    }
-  };
-  
-  document.body.appendChild(toggleButton);
-  document.body.appendChild(panel);
-  
-  updateDebugPanel();
-};
 
-const updateDebugPanel = () => {
-  const panel = document.getElementById('persistent-debug-panel');
-  if (!panel) return;
-  
-  panel.innerHTML = '';
-  
-  const title = document.createElement('h3');
-  title.textContent = 'Debug Information';
-  title.style.marginTop = '0';
-  panel.appendChild(title);
-  
-  const clearButton = document.createElement('button');
-  clearButton.textContent = 'Clear All Debug Info';
-  clearButton.style.marginBottom = '10px';
-  clearButton.style.padding = '5px 10px';
-  clearButton.style.backgroundColor = '#dc3545';
-  clearButton.style.color = 'white';
-  clearButton.style.border = 'none';
-  clearButton.style.borderRadius = '4px';
-  clearButton.style.cursor = 'pointer';
-  clearButton.onclick = () => {
-    clearDebugInfo('diagnose_request');
-    clearDebugInfo('diagnose_response');
-    clearDebugInfo('diagnose_error');
-    clearDebugInfo('journal_request');
-    clearDebugInfo('journal_response');
-    clearDebugInfo('journal_error');
-    updateDebugPanel();
-  };
-  panel.appendChild(clearButton);
-  
-  const breakpointToggle = document.createElement('div');
-  breakpointToggle.style.marginBottom = '10px';
-  
-  const breakpointCheckbox = document.createElement('input');
-  breakpointCheckbox.type = 'checkbox';
-  breakpointCheckbox.id = 'debug-breakpoint-toggle';
-  breakpointCheckbox.checked = localStorage.getItem('debug_breakpoints_enabled') === 'true';
-  breakpointCheckbox.onchange = () => {
-    localStorage.setItem('debug_breakpoints_enabled', breakpointCheckbox.checked);
-  };
-  
-  const breakpointLabel = document.createElement('label');
-  breakpointLabel.htmlFor = 'debug-breakpoint-toggle';
-  breakpointLabel.textContent = 'Enable Breakpoints on Errors';
-  breakpointLabel.style.marginLeft = '5px';
-  
-  breakpointToggle.appendChild(breakpointCheckbox);
-  breakpointToggle.appendChild(breakpointLabel);
-  panel.appendChild(breakpointToggle);
-  
-  const sections = [
-    { key: 'diagnose_request', title: 'Diagnose Request' },
-    { key: 'diagnose_response', title: 'Diagnose Response' },
-    { key: 'diagnose_error', title: 'Diagnose Error' },
-    { key: 'journal_request', title: 'Journal Request' },
-    { key: 'journal_response', title: 'Journal Response' },
-    { key: 'journal_error', title: 'Journal Error' }
-  ];
-  
-  sections.forEach(section => {
-    const data = getDebugInfo(section.key);
-    if (data) {
-      const sectionDiv = document.createElement('div');
-      sectionDiv.style.marginBottom = '15px';
-      
-      const sectionTitle = document.createElement('h4');
-      sectionTitle.textContent = section.title;
-      sectionTitle.style.marginBottom = '5px';
-      sectionDiv.appendChild(sectionTitle);
-      
-      const sectionContent = document.createElement('pre');
-      sectionContent.style.whiteSpace = 'pre-wrap';
-      sectionContent.style.backgroundColor = '#f5f5f5';
-      sectionContent.style.padding = '10px';
-      sectionContent.style.borderRadius = '4px';
-      sectionContent.style.fontSize = '12px';
-      sectionContent.style.maxHeight = '200px';
-      sectionContent.style.overflow = 'auto';
-      sectionContent.textContent = JSON.stringify(data, null, 2);
-      sectionDiv.appendChild(sectionContent);
-      
-      panel.appendChild(sectionDiv);
-    }
-  });
-  
-  if (panel.childElementCount <= 3) { // title, clear button, and breakpoint toggle
-    const noData = document.createElement('p');
-    noData.textContent = 'No debug information available.';
-    noData.style.fontStyle = 'italic';
-    panel.appendChild(noData);
-  }
-};
 
 const axiosInstance = axios.create();
 
@@ -228,13 +64,8 @@ axiosInstance.interceptors.response.use(
   response => response,
   error => {
     if (error.response) {
-      console.error(`API Error (${error.response.status}), preventing redirect`);
-      saveDebugInfo('api_error', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data,
-        message: error.message
-      });
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+      isDebug && console.error(`API Error (${error.response.status}), preventing redirect`);
       
       return Promise.reject({
         ...error,
@@ -245,22 +76,12 @@ axiosInstance.interceptors.response.use(
   }
 );
 
-const setBreakpointIfEnabled = () => {
-  try {
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('debug_breakpoints_enabled') === 'true') {
-      console.log('Debug breakpoint triggered - error details logged above');
-    }
-  } catch (e) {
-    console.log('Debug breakpoint check failed:', e.message);
-  }
-};
 
 export const processSymptomInput = async (formData) => {
   try {
-    console.log('===== DIAGNOSE REQUEST DEBUG INFO =====');
-    console.log('Original form data:', formData);
-    
-    createPersistentDebugPanel();
+    const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+    isDebug && console.log('===== DIAGNOSE REQUEST DEBUG INFO =====');
+    isDebug && console.log('Original form data:', formData);
     
     const token = localStorage.getItem('token');
     if (!token) {
@@ -288,22 +109,18 @@ export const processSymptomInput = async (formData) => {
       ethosPrompt: ethosPrompt // Add the ethos prompt to the API data
     };
     
-    console.log('===== DIAGNOSE REQUEST PAYLOAD =====');
-    console.log(JSON.stringify(apiData, null, 2));
+    isDebug && console.log('===== DIAGNOSE REQUEST PAYLOAD =====');
+    isDebug && console.log(JSON.stringify(apiData, null, 2));
     
-    console.log('===== FIELD TYPES =====');
-    console.log('symptoms type:', Array.isArray(apiData.symptoms) ? 'Array' : typeof apiData.symptoms);
-    console.log('demographics type:', typeof apiData.demographics);
-    console.log('model type:', typeof apiData.model);
-    console.log('age type:', typeof apiData.demographics.age);
-    console.log('weight type:', typeof apiData.demographics.weight);
+    isDebug && console.log('===== FIELD TYPES =====');
+    isDebug && console.log('symptoms type:', Array.isArray(apiData.symptoms) ? 'Array' : typeof apiData.symptoms);
+    isDebug && console.log('demographics type:', typeof apiData.demographics);
+    isDebug && console.log('model type:', typeof apiData.model);
+    isDebug && console.log('age type:', typeof apiData.demographics.age);
+    isDebug && console.log('weight type:', typeof apiData.demographics.weight);
     
-    saveDebugInfo('diagnose_request', apiData);
-    
-    updateDebugPanel();
-    
-    console.log('===== SENDING REQUEST TO API =====');
-    console.log(`Endpoint: ${getApiUrl(API_ENDPOINTS.DIAGNOSE)}`);
+    isDebug && console.log('===== SENDING REQUEST TO API =====');
+    isDebug && console.log(`Endpoint: ${getApiUrl(API_ENDPOINTS.DIAGNOSE)}`);
     
     const response = await axiosInstance.post(
       getApiUrl(API_ENDPOINTS.DIAGNOSE),
@@ -316,19 +133,13 @@ export const processSymptomInput = async (formData) => {
       }
     );
     
-    console.log('===== DIAGNOSE RESPONSE =====');
-    console.log(JSON.stringify(response.data, null, 2));
-    
-    saveDebugInfo('diagnose_response', response.data);
-    
-    clearDebugInfo('diagnose_error');
-    
-    updateDebugPanel();
+    isDebug && console.log('===== DIAGNOSE RESPONSE =====');
+    isDebug && console.log(JSON.stringify(response.data, null, 2));
     
     try {
-      console.log('===== RESPONSE DATA STRUCTURE =====');
-      console.log('response.data type:', typeof response.data);
-      console.log('response.data keys:', response.data ? Object.keys(response.data) : 'null/undefined');
+      isDebug && console.log('===== RESPONSE DATA STRUCTURE =====');
+      isDebug && console.log('response.data type:', typeof response.data);
+      isDebug && console.log('response.data keys:', response.data ? Object.keys(response.data) : 'null/undefined');
       
       if (response.data && response.data.diagnoses && Array.isArray(response.data.diagnoses)) {
         const transformedData = response.data.diagnoses.map(diagnosis => ({
@@ -343,8 +154,8 @@ export const processSymptomInput = async (formData) => {
           zone: diagnosis.zone || calculateZone(diagnosis)
         }));
         
-        console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 1) =====');
-        console.log(JSON.stringify(transformedData, null, 2));
+        isDebug && console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 1) =====');
+        isDebug && console.log(JSON.stringify(transformedData, null, 2));
         
         return transformedData;
       } else if (response.data && Array.isArray(response.data)) {
@@ -361,22 +172,22 @@ export const processSymptomInput = async (formData) => {
           zone: diagnosis.zone || calculateZone(diagnosis)
         }));
         
-        console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 2) =====');
-        console.log(JSON.stringify(transformedData, null, 2));
+        isDebug && console.log('===== TRANSFORMED RESPONSE WITH STAX/ZONE (FORMAT 2) =====');
+        isDebug && console.log(JSON.stringify(transformedData, null, 2));
         
         return transformedData;
       } else if (response.data) {
-        console.log('===== UNKNOWN RESPONSE FORMAT =====');
-        console.log(JSON.stringify(response.data, null, 2));
+        isDebug && console.log('===== UNKNOWN RESPONSE FORMAT =====');
+        isDebug && console.log(JSON.stringify(response.data, null, 2));
         
         return response.data;
       }
       
-      console.warn('Empty or invalid response data');
+      isDebug && console.warn('Empty or invalid response data');
       return [];
     } catch (transformError) {
-      console.error('Error transforming diagnoses data:', transformError);
-      console.log('Original response data:', response.data);
+      isDebug && console.error('Error transforming diagnoses data:', transformError);
+      isDebug && console.log('Original response data:', response.data);
       
       if (response.data && response.data.diagnoses) {
         return response.data.diagnoses;
@@ -396,11 +207,10 @@ export const processSymptomInput = async (formData) => {
       return [];
     }
   } catch (error) {
-    console.error('===== DIAGNOSE ERROR =====');
-    console.error('Error Type:', error.name);
-    console.error('Error Message:', error.message);
-    
-    setBreakpointIfEnabled();
+    const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+    isDebug && console.error('===== DIAGNOSE ERROR =====');
+    isDebug && console.error('Error Type:', error.name);
+    isDebug && console.error('Error Message:', error.message);
     
     let errorData = {
       type: 'unknown',
@@ -422,12 +232,8 @@ export const processSymptomInput = async (formData) => {
         message: error.message
       };
       
-      saveDebugInfo('diagnose_error', errorData);
-      
-      updateDebugPanel();
-      
       if (error.preventRedirect) {
-        console.warn(`API Error (${error.response.status}) occurred but redirect prevented`);
+        isDebug && console.warn(`API Error (${error.response.status}) occurred but redirect prevented`);
         return { error: `API Error (${error.response.status})`, details: errorData };
       }
       

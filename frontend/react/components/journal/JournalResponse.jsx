@@ -13,9 +13,10 @@ const JournalResponse = ({ response, timelineData }) => {
     ? new Date(response.timestamp).toLocaleString() 
     : new Date().toLocaleString();
   
-  console.log('Response structure:', JSON.stringify(response, null, 2));
+  const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+  isDebug && console.log('Response structure:', JSON.stringify(response, null, 2));
   
-  console.log('Analysis data extraction - DETAILED:', {
+  isDebug && console.log('Analysis data extraction - DETAILED:', {
     responseType: typeof response,
     analysisType: typeof response.analysis,
     directAnalysis: response.analysis,
@@ -60,7 +61,7 @@ const JournalResponse = ({ response, timelineData }) => {
                    []
   };
   
-  console.log('Final analysisData being passed to JournalAnalysisDisplay:', analysisData);
+  isDebug && console.log('Final analysisData being passed to JournalAnalysisDisplay:', analysisData);
   
   if (process.env.NODE_ENV === 'development') {
     setTimeout(() => {

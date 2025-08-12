@@ -1,18 +1,8 @@
 import React from 'react';
-import './App.css';
+import { Navigate } from 'react-router-dom';
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <h1>2ndOpinionMD</h1>
-        <p>Medical Knowledge Graph - Modular Architecture</p>
-      </header>
-      <main>
-        <p>Frontend successfully restructured to modular architecture.</p>
-      </main>
-    </div>
-  );
+  return <Navigate to="/" replace />;
 }
 
 export default App;

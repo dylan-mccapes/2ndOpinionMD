@@ -23,7 +23,8 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     setError('');
     
     try {
-      console.log('Form data submitted:', data);
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+      isDebug && console.log('Form data submitted:', data);
       const formattedData = formatSymptomData(data);
       
       if (!data.race) {
@@ -38,7 +39,7 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       
       onSubmit(response);
     } catch (err) {
-      console.error('Error processing symptoms:', err);
+      isDebug && console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
       
     } finally {

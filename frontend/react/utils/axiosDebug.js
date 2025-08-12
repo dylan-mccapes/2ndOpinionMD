@@ -8,8 +8,9 @@ axios.interceptors.response.use(
     const method = (cfg.method || 'get').toUpperCase();
     const status = err.response?.status;
     try {
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       // eslint-disable-next-line no-console
-      console.info('[API error]', method, url, status);
+      isDebug && console.info('[API error]', method, url, status);
     } catch (_) {}
     return Promise.reject(err);
   }

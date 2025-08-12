@@ -116,10 +116,11 @@ function AppContent() {
   
   const handleSymptomFormSubmit = (data) => {
     try {
-      console.log('Received diagnostic results:', data);
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+      isDebug && console.log('Received diagnostic results:', data);
       
       if (!data) {
-        console.error('Invalid diagnostic results received:', data);
+        isDebug && console.error('Invalid diagnostic results received:', data);
         throw new Error('Invalid diagnostic results received');
       }
       
@@ -127,7 +128,7 @@ function AppContent() {
       
       navigate('/report');
     } catch (error) {
-      console.error('Error handling symptom form submission:', error);
+      isDebug && console.error('Error handling symptom form submission:', error);
       setDiagnosticResults(sampleDiagnosticResults);
       navigate('/report');
     }
@@ -135,16 +136,17 @@ function AppContent() {
   
   const handleJournalSubmit = async (entry, isTestMode = false) => {
     try {
-      console.log('Submitting journal entry in', isTestMode ? 'test mode' : 'normal mode');
-      console.log('isTestMode parameter value:', isTestMode);
+      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
+      isDebug && console.log('Submitting journal entry in', isTestMode ? 'test mode' : 'normal mode');
+      isDebug && console.log('isTestMode parameter value:', isTestMode);
       
       if (typeof entry !== 'string') {
-        console.error('Invalid entry type:', typeof entry);
+        isDebug && console.error('Invalid entry type:', typeof entry);
         throw new Error('Journal entry must be a string');
       }
       
       const response = await processJournalEntry(entry, isTestMode);
-      console.log('Journal response received:', response);
+      isDebug && console.log('Journal response received:', response);
       
       let previousEntries = [];
       if (!isTestMode && localStorage.getItem('token')) {
@@ -164,7 +166,7 @@ function AppContent() {
             previousEntries = entriesData;
           }
         } catch (err) {
-          console.error('Error fetching previous journal entries:', err);
+          isDebug && console.error('Error fetching previous journal entries:', err);
         }
       }
       
@@ -200,7 +202,7 @@ function AppContent() {
         timelineData: timelineData
       });
     } catch (error) {
-      console.error('Error processing journal entry:', error);
+      isDebug && console.error('Error processing journal entry:', error);
       setJournalResponse({ 
         text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later.",
         categories: {
@@ -442,48 +444,6 @@ function AppContent() {
             </Layout>
           } />
           
-          {/* Test route for journal functionality without authentication */}
-          <Route path="/test/journal" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Journal Test Mode</h1>
-                <p>This page allows testing journal functionality without authentication.</p>
-                <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
-                {journalResponse && <JournalResponse response={journalResponse} timelineData={journalResponse.timelineData} />}
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
-          
-          {/* Test route for journal list functionality without authentication */}
-          <Route path="/test/journal-list" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Journal List Test Mode</h1>
-                <p>This page allows testing journal list and download functionality without authentication.</p>
-                <JournalList />
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
-          
-          {/* Test route for symptom intake functionality without authentication */}
-          <Route path="/test/intake" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Symptom Intake Test Mode</h1>
-                <p>This page allows testing symptom intake functionality without authentication.</p>
-                <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
         </Routes>
       </div>
   );
