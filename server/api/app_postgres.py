@@ -172,6 +172,13 @@ async def health_check():
         }
     }
 
+@app.get("/api/meta/ping")
+async def ping():
+    """
+    Simple ping endpoint
+    """
+    return {"status": "pong"}
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     host = os.getenv("HOST", "0.0.0.0")
