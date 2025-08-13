@@ -19,25 +19,29 @@ from server.utils.encrypted_logging import setup_encrypted_logging
 from server.api.auth import router as auth_router
 from server.api.journal import router as journal_router
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+# Load environment variables
+load_dotenv()
 
-setup_encrypted_logging(
-    log_dir=os.environ.get('LOG_DIR', './logs'),
-    log_level=logging.INFO,
-    console_logging=True
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="2ndOpinionMD API", description="API for 2ndOpinionMD medical diagnosis")
+# Initialize encrypted logging
+setup_encrypted_logging()
 
+app = FastAPI(
+    title="2ndOpinionMD API",
+    description="AI-powered second opinion platform for autoimmune disease diagnosis",
+    version="1.0.0"
+)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["http://localhost:3000", "https://2ndopinionmd.ai"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
@@ -55,60 +59,58 @@ class DiagnosisResponse(BaseModel):
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    """
-    Middleware to block access to sensitive files and paths
-    """
-    path = request.url.path.lower()
+    """Security middleware to block suspicious requests"""
+    path = request.url.path
     
-    blocked_patterns = [
-        "/.env", 
-        "/.git", 
-        "/.config", 
-        "/.aws", 
-        "/.ssh",
-        "/wp-login.php",  # Common WordPress attack vector
-        "/wp-admin",      # Common WordPress attack vector
-        "/admin",         # Common admin panel paths
-        "/phpinfo.php",   # PHP info disclosure
-        "/config.php",    # Common config files
+    # Block access to sensitive files and paths
+    blocked_paths = [
+        "/.env", "/.git", "/.htaccess", "/wp-config.php", "/config.php",
+        "/admin", "/administrator", "/phpmyadmin", "/mysql", "/sql",
+        "/.well-known", "/robots.txt", "/sitemap.xml"
     ]
     
-    for pattern in blocked_patterns:
-        if pattern in path:
-            client_ip = get_client_ip(request)
-            logger.warning(f"Blocked suspicious request: {request.method} {request.url} from {client_ip}")
+    for blocked_path in blocked_paths:
+        if blocked_path in path:
+            logger.warning(f"Blocked access to sensitive path: {path} from {request.client.host}")
             return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content={"detail": "Access denied"}
+                status_code=403,
+                content={"detail": "Access forbidden"}
             )
     
-    return await call_next(request)
+    # Block common scanning patterns
+    user_agent = request.headers.get("user-agent", "").lower()
+    if any(pattern in user_agent for pattern in ["bot", "crawler", "spider", "scanner"]):
+        logger.warning(f"Blocked bot/crawler access: {user_agent} from {request.client.host}")
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Access forbidden"}
+        )
+    
+    response = await call_next(request)
+    return response
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """
-    Middleware to log all requests and handle exceptions
-    """
-    try:
-        logger.info(f"Request: {request.method} {request.url}")
-        
-        response = await call_next(request)
-        
-        logger.info(f"Response: {response.status_code}")
-        
-        return response
-    except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
-        logger.error(traceback.format_exc())
-        
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    """Log all requests for monitoring"""
+    client_ip = get_client_ip(request)
+    logger.info(f"Request: {request.method} {request.url.path} from {client_ip}")
+    
+    response = await call_next(request)
+    
+    logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+    return response
 
 @app.exception_handler(status.HTTP_429_TOO_MANY_REQUESTS)
 async def rate_limit_exception_handler(request: Request, exc: HTTPException):
+    """Handle rate limit exceeded responses"""
+    retry_after = exc.headers.get("Retry-After", "60")
     return JSONResponse(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content={"detail": str(exc.detail)},
-        headers={"Retry-After": request.headers.get("Retry-After", "60")}
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please try again later.",
+            "retry_after": retry_after
+        },
+        headers={"Retry-After": retry_after}
     )
 
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
@@ -120,39 +122,44 @@ async def diagnose(
     Generate a diagnosis based on symptoms and optional demographics
     """
     try:
-        logger.info(f"Diagnose request: symptoms={request.symptoms}")
-        logger.info(f"Diagnose request: demographics={request.demographics}")
-        logger.info(f"Diagnose request: model={request.model}")
+        # Log the request
+        logger.info(f"Diagnosis request received with {len(request.symptoms)} symptoms")
         
-        if not request.symptoms or not isinstance(request.symptoms, list):
-            logger.error(f"Invalid symptoms format: {request.symptoms}")
-            raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
+        # Query the medical database
+        query_text = " ".join(request.symptoms)
+        if request.demographics:
+            query_text += f" {json.dumps(request.demographics)}"
         
-        response = await query_engine.generate_rag_response(
-            symptoms=request.symptoms, 
-            model=request.model,
-            demographics=request.demographics
-        )
+        # Get results from the query engine
+        results = await query_engine.query_all_collections(query_text)
         
-        logger.info(f"Diagnose response: {response}")
+        # Process and format the results
+        diagnoses = []
+        if results:
+            for collection_name, collection_results in results.items():
+                for result in collection_results[:5]:  # Limit to top 5 results per collection
+                    diagnoses.append({
+                        "name": result.get("name", "Unknown Condition"),
+                        "confidence": result.get("confidence", 50),
+                        "description": result.get("text", ""),
+                        "source": collection_name,
+                        "recommendations": result.get("recommendations", []),
+                        "red_flags": result.get("red_flags", [])
+                    })
         
-        if isinstance(response, str):
-            try:
-                response = json.loads(response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse RAG response: {e}")
-                raise HTTPException(status_code=500, detail="Invalid response format from query engine")
-
-        if not isinstance(response, dict) or "diagnoses" not in response:
-            logger.error(f"Malformed RAG response: {response}")
-            raise HTTPException(status_code=500, detail="Malformed RAG response: missing 'diagnoses' key")
-
-        return DiagnosisResponse(**response)
+        # Sort by confidence
+        diagnoses.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        logger.info(f"Generated {len(diagnoses)} diagnoses")
+        return DiagnosisResponse(diagnoses=diagnoses)
+        
     except Exception as e:
-        logger.error(f"Error generating diagnosis: {str(e)}")
+        logger.error(f"Error in diagnosis endpoint: {str(e)}")
         logger.error(traceback.format_exc())
-        
-        raise HTTPException(status_code=500, detail=f"Error generating diagnosis: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during diagnosis generation"
+        )
 
 @app.get("/api/health")
 async def health_check():
@@ -168,4 +175,4 @@ async def health_check():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=3001)

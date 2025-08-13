@@ -34,7 +34,7 @@ nvm use 18
 ```
 
 You can also create a .nvmrc file in the root with:
-```zsh
+```bash
 echo "18" > .nvmrc
 ```
 
@@ -42,12 +42,12 @@ echo "18" > .nvmrc
 After cloning this repo, install dependencies:
 
 **Frontend:**
-```zsh
+```bash
 yarn install
 ```
 
 **Backend:**
-```zsh
+```bash
 cd server
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -58,12 +58,12 @@ pip install -r requirements.txt
 To start the development server:
 
 **Frontend:**
-```zsh
+```bash
 yarn dev
 ```
 
 **Backend:**
-```zsh
+```bash
 cd server
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 uvicorn api.app:app --reload --port 3001
@@ -105,7 +105,7 @@ CHROMA_PERSIST_DIR=./chroma_db
 
 ### 🧹 Formatting & Linting
 To auto-format the codebase:
-```zsh
+```bash
 yarn format
 ```
 This ensures consistent code style for all components and pages.
