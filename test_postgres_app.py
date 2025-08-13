@@ -6,9 +6,9 @@ import os
 server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server')
 sys.path.insert(0, server_dir)
 
-from models.postgresql.database import ping_database
-from models.postgresql.models import MedicalKnowledge
-from models.postgresql.database import async_session
+from database.models.postgresql.database import ping_database
+from database.models.postgresql.models import MedicalKnowledge
+from database.models.postgresql.database import async_session
 from sqlalchemy import func
 
 async def test_database_connection():

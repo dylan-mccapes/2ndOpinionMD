@@ -1,7 +1,7 @@
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
-from models.postgresql.database import async_session, init_db
-from models.postgresql.models import User, JournalEntry
+from database.models.postgresql.database import async_session, init_db
+from database.models.postgresql.models import User, JournalEntry
 import os
 from dotenv import load_dotenv
 from datetime import datetime

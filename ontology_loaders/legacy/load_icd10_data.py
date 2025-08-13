@@ -14,8 +14,8 @@ server_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(server_dir)
 sys.path.insert(0, parent_dir)
 
-from models.postgresql.database import async_session, init_db
-from models.postgresql.models import MedicalKnowledge
+from database.models.postgresql.database import async_session, init_db
+from database.models.postgresql.models import MedicalKnowledge
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def get_embedding(text: str):
