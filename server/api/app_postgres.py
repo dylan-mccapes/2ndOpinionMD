@@ -116,7 +116,12 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.warning(f"Database initialization failed: {e}")
+        logger.info("Continuing without database initialization...")
 
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(

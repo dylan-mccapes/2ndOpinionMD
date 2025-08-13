@@ -38,7 +38,7 @@ def setup_and_run():
     print(f"🚀 Starting FastAPI application on http://{host}:{port}")
     print(f"📚 API documentation available at: http://{host}:{port}/docs")
     
-    uvicorn.run(app, host=host, port=port, reload=True)
+    uvicorn.run(app, host=host, port=port, reload=False)
 
 if __name__ == "__main__":
     setup_and_run()
