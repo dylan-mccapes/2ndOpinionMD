@@ -6,6 +6,7 @@ import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS, RACE_OPTIONS } from '../../util
 import { formatSymptomData } from '../../utils/formatData';
 import { processSymptomInput } from '../../utils/openaiService';
 import { MISDIAGNOSIS_PATTERNS } from '../../utils/ethosOfHealth';
+import { isDebug } from '../../utils/debug';
 import './SymptomIntakeForm.css';
 
 const SymptomIntakeForm = ({ onSubmit }) => {
@@ -23,7 +24,6 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     setError('');
     
     try {
-      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.log('Form data submitted:', data);
       const formattedData = formatSymptomData(data);
       
@@ -39,7 +39,6 @@ const SymptomIntakeForm = ({ onSubmit }) => {
       
       onSubmit(response);
     } catch (err) {
-      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error processing symptoms:', err);
       setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
       

@@ -2,6 +2,14 @@ import axios from 'axios';
 import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
 import { calculateAgeFromBirthdate } from './formatData';
 import { getApiUrl, API_ENDPOINTS } from './apiConfig';
+import {
+  isDebug,
+  saveDebugInfo,
+  updateDebugPanel,
+  clearDebugInfo,
+  createPersistentDebugPanel,
+  setBreakpointIfEnabled,
+} from './debug';
 
 const mapConfidenceToPercent = (confidenceStr) => {
   if (typeof confidenceStr === 'number') return confidenceStr;
@@ -348,7 +356,6 @@ const prepareJournalData = (journalText, previousDiagnoses = [], symptomIntakeDa
 };
 
 export const processJournalEntry = async (journalText, isTestMode = false, previousDiagnoses = []) => {
-  const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
   try {
     isDebug && console.log('===== JOURNAL REQUEST DEBUG INFO =====');
     isDebug && console.log('Journal text:', journalText);

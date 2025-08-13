@@ -5,6 +5,7 @@ import './styles/GlobalStyles.css';
 import './styles/Journal.css';
 import { processJournalEntry } from './utils/openaiService';
 import { getApiUrl, API_ENDPOINTS, debugLogApiBaseOnce } from './utils/apiConfig';
+import { isDebug } from './utils/debug';
 
 import Layout from './components/layout/Layout';
 
@@ -127,7 +128,6 @@ function AppContent() {
       
       navigate('/report');
     } catch (error) {
-      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error handling symptom form submission:', error);
       setDiagnosticResults(sampleDiagnosticResults);
       navigate('/report');
@@ -136,7 +136,6 @@ function AppContent() {
   
   const handleJournalSubmit = async (entry, isTestMode = false) => {
     try {
-      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.log('Submitting journal entry in', isTestMode ? 'test mode' : 'normal mode');
       isDebug && console.log('isTestMode parameter value:', isTestMode);
       
@@ -202,7 +201,6 @@ function AppContent() {
         timelineData: timelineData
       });
     } catch (error) {
-      const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
       isDebug && console.error('Error processing journal entry:', error);
       setJournalResponse({
         text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later.",
