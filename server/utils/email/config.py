@@ -1,12 +1,11 @@
 import os
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from pydantic import EmailStr
 from typing import List
 from dotenv import load_dotenv
-from server.utils.email.fastapi_mail_compat import FastMail, MessageSchema, ConnectionConfig
+from utils.email.pydantic_compat import Secret  # Add compatibility layer
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+load_dotenv()
 
 conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME", ""),

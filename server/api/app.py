@@ -11,17 +11,18 @@ import uvicorn
 import sys
 import traceback
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from server.utils.rate_limiter import general_rate_limiter, get_client_ip
-from server.utils.encrypted_logging import setup_encrypted_logging
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vectordb.query_engine import MedicalQueryEngine
+from models.mongodb.database import ping_database
+from models.mongodb.auth import get_current_user
+from models.mongodb.models import UserInDB
+from utils.rate_limiter import general_rate_limiter, get_client_ip
+from utils.encrypted_logging import setup_encrypted_logging
 
-from server.api.auth import router as auth_router
-from server.api.journal import router as journal_router
+from api.auth import router as auth_router
+from api.journal import router as journal_router
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+load_dotenv()
 
 setup_encrypted_logging(
     log_dir=os.environ.get('LOG_DIR', './logs'),
@@ -29,6 +30,8 @@ setup_encrypted_logging(
     console_logging=True
 )
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 app = FastAPI(title="2ndOpinionMD API", description="API for 2ndOpinionMD medical diagnosis")
 
@@ -43,7 +46,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
-query_engine = PostgreSQLMedicalQueryEngine()
+persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+query_engine = MedicalQueryEngine(persist_directory)
 
 class SymptomRequest(BaseModel):
     symptoms: List[str]
@@ -114,6 +118,7 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
+    current_user: UserInDB = Depends(get_current_user),
     _: None = Depends(general_rate_limiter)
 ):
     """
@@ -128,7 +133,7 @@ async def diagnose(
             logger.error(f"Invalid symptoms format: {request.symptoms}")
             raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
         
-        response = await query_engine.generate_rag_response(
+        response = query_engine.generate_rag_response(
             symptoms=request.symptoms, 
             model=request.model,
             demographics=request.demographics
@@ -136,18 +141,7 @@ async def diagnose(
         
         logger.info(f"Diagnose response: {response}")
         
-        if isinstance(response, str):
-            try:
-                response = json.loads(response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse RAG response: {e}")
-                raise HTTPException(status_code=500, detail="Invalid response format from query engine")
-
-        if not isinstance(response, dict) or "diagnoses" not in response:
-            logger.error(f"Malformed RAG response: {response}")
-            raise HTTPException(status_code=500, detail="Malformed RAG response: missing 'diagnoses' key")
-
-        return DiagnosisResponse(**response)
+        return response
     except Exception as e:
         logger.error(f"Error generating diagnosis: {str(e)}")
         logger.error(traceback.format_exc())
@@ -159,11 +153,14 @@ async def health_check():
     """
     Health check endpoint
     """
+    mongo_status = "ok" if await ping_database() else "error"
+    
     return {
         "status": "ok",
         "services": {
             "api": "ok",
-            "postgresql": "ok"
+            "mongodb": mongo_status,
+            "chroma": "ok" if query_engine.collections else "error"
         }
     }
 
