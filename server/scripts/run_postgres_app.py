@@ -19,7 +19,7 @@ def setup_and_run():
         print("Database connection initialized successfully")
     except Exception as e:
         print(f"Error initializing database: {e}")
-        return
+        print("Continuing to start server without database connection...")
     
     try:
         from server.api.app_postgres import app
