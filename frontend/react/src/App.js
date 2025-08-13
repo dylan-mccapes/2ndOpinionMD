@@ -5,7 +5,10 @@ import './styles/GlobalStyles.css';
 import './styles/Journal.css';
 import { processJournalEntry } from './utils/openaiService';
 import { getApiUrl, API_ENDPOINTS, debugLogApiBaseOnce } from './utils/apiConfig';
+<<<<<<< HEAD
 import { isDebug } from './utils/debug';
+=======
+>>>>>>> 4b27f054 (WIP: local changes before merge)
 
 import Layout from './components/layout/Layout';
 
@@ -202,6 +205,7 @@ function AppContent() {
       });
     } catch (error) {
       isDebug && console.error('Error processing journal entry:', error);
+
       setJournalResponse({
         text: "I'm sorry, I couldn't process your journal entry at this time. Please try again later.",
         categories: {
