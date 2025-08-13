@@ -1,15 +1,15 @@
 import os
-import openai
+from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.postgresql.database import async_session
-from models.postgresql.models import MedicalKnowledge
+from database.models.postgresql.database import async_session
+from database.models.postgresql.models import MedicalKnowledge
 from dotenv import load_dotenv
 import logging
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 logger = logging.getLogger(__name__)
 
 class PostgreSQLMedicalQueryEngine:
@@ -18,11 +18,11 @@ class PostgreSQLMedicalQueryEngine:
 
     async def get_embedding(self, text: str):
         try:
-            response = await openai.Embedding.acreate(
+            response = client.embeddings.create(
                 model="text-embedding-3-small",
                 input=text
             )
-            return response['data'][0]['embedding']
+            return response.data[0].embedding
         except Exception as e:
             logger.warning(f"OpenAI API call failed: {e}. Using dummy embedding for testing.")
             import numpy as np
@@ -135,7 +135,7 @@ class PostgreSQLMedicalQueryEngine:
         Format as JSON with diagnoses, confidence scores, ICD-10 codes, and recommendations.
         """
         
-        response = await openai.ChatCompletion.acreate(
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a medical AI assistant specializing in ICD-10 diagnostic coding."},
@@ -144,4 +144,4 @@ class PostgreSQLMedicalQueryEngine:
             temperature=0.3
         )
         
-        return response.choices[0].message['content']
+        return response.choices[0].message.content

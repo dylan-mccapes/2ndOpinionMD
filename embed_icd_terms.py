@@ -4,7 +4,7 @@ Generate real OpenAI embeddings for ICD terms
 Replaces mock embeddings with production-grade text-embedding-3-small vectors
 """
 
-import openai
+from openai import OpenAI
 import psycopg2
 import numpy as np
 import os
@@ -19,7 +19,7 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def get_db_connection():
     """Create database connection"""
@@ -40,11 +40,11 @@ def embed_texts(texts, max_retries=3):
     """Generate embeddings with retry logic"""
     for attempt in range(max_retries):
         try:
-            response = openai.Embedding.create(
+            response = client.embeddings.create(
                 model="text-embedding-3-small",
                 input=texts
             )
-            return [r['embedding'] for r in response['data']]
+            return [r.embedding for r in response.data]
         except Exception as e:
             print(f"OpenAI API error (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
@@ -74,7 +74,7 @@ def embed_icd_terms():
     """Generate OpenAI embeddings for all ICD terms"""
     use_mock = False
     
-    if not openai.api_key:
+    if not client.api_key:
         print("❌ Error: OPENAI_API_KEY not found in environment variables")
         print("Please set your OpenAI API key in the .env file")
         print("🔄 Continuing with demonstration mode using improved mock embeddings...")
@@ -82,7 +82,7 @@ def embed_icd_terms():
     else:
         print("🔑 Testing OpenAI API key...")
         try:
-            test_response = openai.Embedding.create(
+            test_response = client.embeddings.create(
                 model="text-embedding-3-small",
                 input=["test"]
             )

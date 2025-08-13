@@ -3,18 +3,14 @@ asyncpg==0.29.0
 sqlalchemy==2.0.25
 alembic==1.13.1
 pgvector==0.2.4
+psycopg2-binary==2.9.9
 
 # Database - MongoDB (from feature branch)
 pymongo==4.6.1
 motor==3.3.2
 
-# AI/ML and Vector Database
-chromadb==0.4.22
-langchain==0.1.4
-langchain-openai==0.0.5
-
 # Core dependencies
-openai==0.28.1
+openai>=1.10,<2.0
 python-dotenv==1.0.0
 fastapi==0.109.2
 uvicorn==0.27.1

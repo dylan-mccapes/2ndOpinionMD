@@ -25,7 +25,7 @@ python -c "
 import asyncio
 import sys
 sys.path.append('.')
-from models.postgresql.database import async_session
+from database.models.postgresql.database import async_session
 from sqlalchemy import text
 
 async def check_data():

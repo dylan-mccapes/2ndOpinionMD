@@ -11,18 +11,18 @@ import uvicorn
 import sys
 import traceback
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from models.postgresql.database import init_db, ping_database
-from models.postgresql.models import User as UserInDB
-from utils.rate_limiter import general_rate_limiter, get_client_ip
-from utils.encrypted_logging import setup_encrypted_logging
-
-from api.journal import router as journal_router
-from api.auth_routes_postgres import router as auth_router
-from api.auth_postgres import get_current_user_postgres
-
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+from server.vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
+from database.models.postgresql.database import init_db, ping_database
+from database.models.postgresql.models import User as UserInDB
+from server.utils.rate_limiter import general_rate_limiter, get_client_ip
+from server.utils.encrypted_logging import setup_encrypted_logging
+
+from server.api.journal import router as journal_router
+from server.api.auth_routes_postgres import router as auth_router
+from server.api.auth_postgres import get_current_user_postgres
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
@@ -116,7 +116,12 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.warning(f"Database initialization failed: {e}")
+        logger.info("Continuing without database initialization...")
 
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
@@ -166,6 +171,13 @@ async def health_check():
             "pgvector": "ok" if query_engine else "error"
         }
     }
+
+@app.get("/api/meta/ping")
+async def ping():
+    """
+    Simple ping endpoint
+    """
+    return {"status": "pong"}
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
