@@ -25,14 +25,14 @@ class UserResponse(BaseModel):
     birthdate: str
     subscription_tier: str
     created_at: datetime
-from api.auth_postgres import (
+from server.api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
     create_access_token, 
     get_current_user_postgres,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from utils.email.verification import send_verification_email
+from server.utils.email.verification import send_verification_email
 from pydantic import EmailStr
 
 router = APIRouter()
