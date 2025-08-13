@@ -5,7 +5,7 @@ Loads ICD-11 data from TSV format into unified ontology.icd table
 """
 
 import asyncio
-import openai
+from openai import OpenAI
 import psycopg2
 import csv
 import sys
@@ -18,7 +18,7 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def get_embedding(text: str):
     """Generate mock embedding for testing (following existing pattern)"""

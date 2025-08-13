@@ -6,7 +6,7 @@ Loads HPO terms from hp.json into ontology.hpo_terms table with embeddings
 
 import json
 import psycopg2
-import openai
+from openai import OpenAI
 import numpy as np
 import os
 import sys
@@ -23,7 +23,7 @@ load_dotenv(env_path)
 sys.path.append(str(project_root))
 from ontology_loaders.base_loader import BaseOntologyLoader
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class HPOTermsLoader(BaseOntologyLoader):
     """Loader for HPO terms from hp.json"""
@@ -62,11 +62,11 @@ class HPOTermsLoader(BaseOntologyLoader):
         
         for attempt in range(max_retries):
             try:
-                response = openai.Embedding.create(
+                response = client.embeddings.create(
                     model="text-embedding-3-small",
                     input=texts
                 )
-                return [r['embedding'] for r in response['data']]
+                return [r.embedding for r in response.data]
             except Exception as e:
                 print(f"OpenAI API error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
@@ -169,7 +169,7 @@ class HPOTermsLoader(BaseOntologyLoader):
     
     async def load_data(self, file_path: str) -> int:
         """Load HPO terms data"""
-        if not openai.api_key:
+        if not client.api_key:
             print("⚠️ Warning: OPENAI_API_KEY not found, using mock embeddings")
             self.use_mock_embeddings = True
         
