@@ -22,6 +22,11 @@ def setup_and_run():
         print("Continuing to start server without database connection...")
     
     try:
+        import sys
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        
         from server.api.app_postgres import app
     except ImportError as e:
         print(f"Error importing FastAPI app: {e}")
@@ -33,7 +38,7 @@ def setup_and_run():
     print(f"🚀 Starting FastAPI application on http://{host}:{port}")
     print(f"📚 API documentation available at: http://{host}:{port}/docs")
     
-    uvicorn.run("server.api.app_postgres:app", host=host, port=port, reload=True)
+    uvicorn.run(app, host=host, port=port, reload=True)
 
 if __name__ == "__main__":
     setup_and_run()
