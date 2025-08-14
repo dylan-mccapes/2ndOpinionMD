@@ -48,3 +48,18 @@ phenotype.hpo*
 # ---------- Misc ----------
 server/package.json
 server/package-lock.json
+# Python
+**/__pycache__/
+*.pyc
+venv*/
+# Node
+node_modules/
+frontend/react/node_modules/
+server/node_modules/
+# Builds & logs
+build/
+dist/
+server/logs/
+*.log
+# macOS
+.DS_Store
