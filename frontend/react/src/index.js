@@ -1,18 +1,17 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import './utils/axiosDebug';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 
 window.addEventListener('error', (event) => {
-  const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
-  isDebug && console.error('Global error caught:', event.error);
+  console.error('Global error caught:', event.error);
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  const isDebug = process.env.NODE_ENV !== 'production' || /[?&]debug=1\b/.test(window.location.search);
-  isDebug && console.error('Unhandled Promise Rejection:', event.reason);
+  console.error('Unhandled Promise Rejection:', event.reason);
 });
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

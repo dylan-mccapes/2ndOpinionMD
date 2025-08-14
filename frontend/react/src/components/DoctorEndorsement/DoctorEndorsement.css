@@ -1,0 +1,126 @@
+.doctor-endorsement-section {
+  padding: var(--spacing-section) 24px;
+  background-color: var(--color-bg);
+  position: relative;
+}
+
+.doctor-endorsement-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.doctor-endorsement-section h2 {
+  font-size: var(--font-size-3xl);
+  color: var(--color-text-primary);
+  margin-bottom: 16px;
+}
+
+.section-subtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  max-width: 600px;
+  margin: 0 auto 48px;
+}
+
+.doctor-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 32px;
+}
+
+.doctor-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: var(--spacing-card);
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  gap: 24px;
+  text-align: left;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.doctor-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.doctor-image {
+  flex: 0 0 100px;
+}
+
+.doctor-image img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 3px solid var(--color-primary);
+}
+
+.doctor-content {
+  flex: 1;
+}
+
+.doctor-content h3 {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.doctor-credentials {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+.doctor-content blockquote {
+  font-style: italic;
+  color: var(--color-text-primary);
+  margin: 0;
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+/* Tablet styles */
+@media (max-width: 768px) {
+  .doctor-endorsement-section {
+    padding: 60px 20px;
+  }
+  
+  .doctor-card {
+    padding: 20px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  
+  .doctor-image {
+    margin-bottom: 16px;
+  }
+}
+
+/* Mobile styles (≤375px) */
+@media (max-width: 375px) {
+  .doctor-endorsement-section {
+    padding: var(--spacing-section-mobile) 16px;
+  }
+  
+  .doctor-endorsement-section h2 {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .section-subtitle {
+    font-size: var(--font-size-md);
+  }
+  
+  .doctor-cards {
+    gap: 24px;
+  }
+  
+  .doctor-card {
+    padding: var(--spacing-card-mobile);
+  }
+}

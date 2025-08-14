@@ -1,0 +1,290 @@
+.symptom-intake-container {
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.info-button {
+  background-color: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.info-button:hover {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.ethos-info-box {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.ethos-info-box h3 {
+  color: var(--color-primary);
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.ethos-info-box ul {
+  padding-left: 20px;
+}
+
+.ethos-info-box li {
+  margin-bottom: 8px;
+}
+
+.close-info-button {
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+.close-info-button:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.ethos-label {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  font-weight: normal;
+  margin-left: 5px;
+}
+
+.ethos-evaluation-info {
+  background-color: #f0f7ff;
+  border: 1px solid #cce5ff;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+}
+
+.ethos-evaluation-info h3 {
+  color: var(--color-primary);
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+}
+
+.ethos-evaluation-info p {
+  margin-bottom: 10px;
+  color: #495057;
+}
+
+.ethos-evaluation-info ul {
+  padding-left: 20px;
+  margin-bottom: 10px;
+}
+
+.ethos-evaluation-info li {
+  margin-bottom: 6px;
+  color: #495057;
+}
+
+.stax-badge, .zone-badge {
+  display: inline-block;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.stax-badge {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.stax-1 { background-color: #bbdefb; color: #0d47a1; }
+.stax-2 { background-color: #90caf9; color: #0d47a1; }
+.stax-3 { background-color: #64b5f6; color: #0d47a1; }
+.stax-4 { background-color: #42a5f5; color: #0d47a1; }
+
+.zone-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.zone-1 { background-color: #c8e6c9; color: #1b5e20; }
+.zone-2 { background-color: #a5d6a7; color: #1b5e20; }
+.zone-3 { background-color: #fff9c4; color: #f57f17; }
+.zone-4 { background-color: #ffcc80; color: #e65100; }
+.zone-5 { background-color: #ffab91; color: #bf360c; }
+
+.symptom-form {
+  background-color: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.form-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.form-section h3 {
+  margin-bottom: 1rem;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+}
+
+.form-group {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+input, textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 16px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+input {
+  height: 38px;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.input-error, .select-error {
+  border-color: var(--color-error) !important;
+}
+
+.error-message {
+  color: var(--color-error);
+  font-size: 14px;
+  margin-top: 4px;
+  display: block;
+}
+
+.submit-btn {
+  padding: 10px 20px;
+  font-size: 16px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.json-output {
+  margin-top: 24px;
+  background-color: var(--color-bg-light);
+  padding: 16px;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.json-output pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .symptom-intake-container {
+    padding: 20px 16px;
+  }
+  
+  .form-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+  }
+  
+  .form-section h3 {
+    font-size: 1rem;
+  }
+  
+  .form-group {
+    width: 100%;
+  }
+  
+  input, select, textarea {
+    font-size: var(--font-size-md);
+    padding: 12px;
+  }
+  
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: var(--font-size-md);
+  }
+}
+
+@media (max-width: 414px) {
+  .symptom-intake-container {
+    padding: 16px 12px;
+  }
+  
+  input, select, textarea {
+    font-size: var(--font-size-sm);
+    padding: 10px;
+  }
+  
+  .submit-btn {
+    padding: 12px;
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 375px) {
+  .symptom-intake-container {
+    padding: 12px 8px;
+  }
+  
+  .form-header {
+    margin-bottom: 24px;
+  }
+  
+  label {
+    font-size: var(--font-size-sm);
+    margin-bottom: 6px;
+  }
+  
+  input, select, textarea {
+    padding: 8px;
+    font-size: var(--font-size-xs);
+  }
+  
+  .submit-btn {
+    padding: 12px;
+    font-size: var(--font-size-sm);
+  }
+}
