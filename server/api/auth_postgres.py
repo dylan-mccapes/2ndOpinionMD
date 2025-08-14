@@ -9,7 +9,7 @@ from sqlalchemy import select
 import os
 from dotenv import load_dotenv
 
-from database.models.postgresql.database import get_db
+from server.db.session import get_session
 from database.models.postgresql.models import User
 from pydantic import BaseModel
 from typing import Optional
@@ -119,7 +119,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user_postgres(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user_postgres(
+    token: str = Depends(oauth2_scheme), 
+    session: AsyncSession = Depends(get_session)
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -134,7 +137,7 @@ async def get_current_user_postgres(token: str = Depends(oauth2_scheme), db: Asy
     except JWTError:
         raise credentials_exception
     
-    user = await get_user_by_email(email=token_data.email, db=db)
+    user = await get_user_by_email(email=token_data.email, db=session)
     if user is None:
         raise credentials_exception
     

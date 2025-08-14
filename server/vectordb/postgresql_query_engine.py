@@ -1,9 +1,8 @@
 import os
 from openai import OpenAI
 from typing import List, Dict, Any, Optional
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models.postgresql.database import async_session
+from sqlalchemy import text
 from database.models.postgresql.models import MedicalKnowledge
 from dotenv import load_dotenv
 import logging
@@ -28,57 +27,56 @@ class PostgreSQLMedicalQueryEngine:
             import numpy as np
             return np.random.random(1536).tolist()
 
-    async def query_medical_knowledge(self, query: str, content_types: Optional[List[str]] = None, top_k: int = 5):
+    async def query_medical_knowledge(self, query: str, session: AsyncSession, content_types: Optional[List[str]] = None, top_k: int = 5):
         query_embedding = await self.get_embedding(query)
         
-        async with async_session() as session:
-            if isinstance(query_embedding, list):
-                embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-            else:
-                embedding_str = str(query_embedding)
-            
-            limit = top_k * 3 if content_types else top_k
-            
-            sql = f"""
+        if isinstance(query_embedding, list):
+            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+        else:
+            embedding_str = str(query_embedding)
+        
+        limit = top_k * 3 if content_types else top_k
+        
+        sql = text("""
             SELECT id, content_type, title, content, icd10_code, meta_data,
-                   embedding <-> '{embedding_str}'::vector as distance
+                   embedding <-> CAST(:emb AS vector) AS distance
             FROM medical_knowledge
-            ORDER BY embedding <-> '{embedding_str}'::vector 
-            LIMIT {limit}
-            """
-            
-            result = await session.execute(text(sql))
-            rows = result.fetchall()
-            
-            formatted_results = []
-            for row in rows:
-                if content_types and row.content_type not in content_types:
-                    continue
-                    
-                similarity = 1 - min(row.distance, 1.0)
-                confidence = int(similarity * 100)
+            ORDER BY embedding <-> CAST(:emb AS vector)
+            LIMIT :limit
+        """)
+        
+        result = await session.execute(sql, {"emb": embedding_str, "limit": limit})
+        rows = result.fetchall()
+        
+        formatted_results = []
+        for row in rows:
+            if content_types and row.content_type not in content_types:
+                continue
                 
-                formatted_results.append({
-                    "id": str(row.id),
-                    "confidence": confidence,
-                    "text": row.content,
-                    "content_type": row.content_type,
-                    "title": row.title,
-                    "icd10_code": row.icd10_code,
-                    "metadata": row.meta_data
-                })
-                
-                if len(formatted_results) >= top_k:
-                    break
+            similarity = 1 - min(row.distance, 1.0)
+            confidence = int(similarity * 100)
             
-            return formatted_results
+            formatted_results.append({
+                "id": str(row.id),
+                "confidence": confidence,
+                "text": row.content,
+                "content_type": row.content_type,
+                "title": row.title,
+                "icd10_code": row.icd10_code,
+                "metadata": row.meta_data
+            })
+            
+            if len(formatted_results) >= top_k:
+                break
+        
+        return formatted_results
 
-    async def query_all_collections(self, query_text: str, top_k: int = 3):
+    async def query_all_collections(self, query_text: str, session: AsyncSession, top_k: int = 3):
         """Query all collections and return results grouped by content type"""
         if not query_text or query_text.strip() == "":
             return {}
             
-        results = await self.query_medical_knowledge(query_text, top_k=top_k*3)
+        results = await self.query_medical_knowledge(query_text, session, top_k=top_k*3)
         
         grouped_results = {}
         for result in results:
@@ -92,16 +90,16 @@ class PostgreSQLMedicalQueryEngine:
         
         return grouped_results
 
-    async def generate_rag_response(self, symptoms: List[str], model: str = "gpt-3.5-turbo", demographics: Optional[Dict[str, Any]] = None):
+    async def generate_rag_response(self, symptoms: List[str], session: AsyncSession, model: str = "gpt-3.5-turbo", demographics: Optional[Dict[str, Any]] = None):
         query_text = f"Patient symptoms: {', '.join(symptoms)}"
         
         if demographics:
             demo_text = ", ".join([f"{k}: {v}" for k, v in demographics.items()])
             query_text += f"\nPatient demographics: {demo_text}"
         
-        disease_results = await self.query_medical_knowledge(query_text, ["icd10_condition", "disease"], 3)
-        case_results = await self.query_medical_knowledge(query_text, ["case"], 3)
-        drug_results = await self.query_medical_knowledge(query_text, ["icd10_drug"], 3)
+        disease_results = await self.query_medical_knowledge(query_text, session, ["icd10_condition", "disease"], 3)
+        case_results = await self.query_medical_knowledge(query_text, session, ["case"], 3)
+        drug_results = await self.query_medical_knowledge(query_text, session, ["icd10_drug"], 3)
         
         context = ""
         if disease_results:

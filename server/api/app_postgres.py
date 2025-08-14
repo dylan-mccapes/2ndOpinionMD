@@ -19,6 +19,8 @@ from database.models.postgresql.database import init_db, ping_database
 from database.models.postgresql.models import User as UserInDB
 from server.utils.rate_limiter import general_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
+from sqlalchemy.ext.asyncio import AsyncSession
+from server.db.session import get_session
 
 from server.api.journal import router as journal_router
 from server.api.auth_routes_postgres import router as auth_router
@@ -92,19 +94,19 @@ async def log_requests(request: Request, call_next):
     """
     Middleware to log all requests and handle exceptions
     """
+    import time
+    start = time.perf_counter()
     try:
-        logger.info(f"Request: {request.method} {request.url}")
-        
         response = await call_next(request)
-        
-        logger.info(f"Response: {response.status_code}")
-        
         return response
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
-        logger.error(traceback.format_exc())
-        
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.exception("Unhandled error")
+        raise
+    finally:
+        dur_ms = (time.perf_counter() - start) * 1000
+        logger.info("Request: %s %s -> %sms", request.method, request.url.path, f"{dur_ms:.2f}")
 
 @app.exception_handler(status.HTTP_429_TOO_MANY_REQUESTS)
 async def rate_limit_exception_handler(request: Request, exc: HTTPException):
@@ -127,6 +129,7 @@ async def startup_event():
 async def diagnose(
     request: SymptomRequest = Body(...),
     current_user: UserInDB = Depends(get_current_user_postgres),
+    session: AsyncSession = Depends(get_session),
     _: None = Depends(general_rate_limiter)
 ):
     """
@@ -143,6 +146,7 @@ async def diagnose(
         
         response = await query_engine.generate_rag_response(
             symptoms=request.symptoms, 
+            session=session,
             model=request.model,
             demographics=request.demographics
         )
