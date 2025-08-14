@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from database.models.postgresql.models import JournalEntry, User
 from server.api.auth_postgres import get_current_user_postgres as get_current_user
-from database.models.postgresql.database import get_db
+from server.db.session import get_session
 
 class SymptomEntry(BaseModel):
     symptom: str
@@ -96,7 +96,7 @@ async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
     report_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Create a new journal entry with AI analysis using the ethos of health model"""
 
@@ -177,7 +177,7 @@ async def get_journal_entries(
     skip: int = 0,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Get journal entries for the current user"""
     query = select(JournalEntry).where(JournalEntry.user_id == current_user.id)
@@ -198,7 +198,7 @@ async def get_journal_entries(
 async def get_journal_entry(
     entry_id: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Get a specific journal entry"""
     query = select(JournalEntry).where(
@@ -219,7 +219,7 @@ async def get_journal_entry(
 async def get_timeline_data(
     report_id: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
     query = select(JournalEntry).where(JournalEntry.user_id == current_user.id).order_by(JournalEntry.date.asc())
@@ -259,7 +259,7 @@ async def get_timeline_data(
 async def delete_journal_entry(
     entry_id: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Delete a journal entry"""
     query = select(JournalEntry).where(
@@ -285,7 +285,7 @@ async def list_entries_legacy(
     skip: int = 0,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Legacy endpoint for backward compatibility - delegates to main handler"""
     return await get_journal_entries(current_user, limit, skip, start_date, end_date, db)
@@ -295,7 +295,7 @@ async def create_entry_legacy(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
     report_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """Legacy endpoint for backward compatibility - delegates to main handler"""
     return await create_journal_entry(entry, current_user, report_id, db)

@@ -12,7 +12,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
-from database.models.postgresql.database import get_db
+from server.db.session import get_session
 from database.models.postgresql.models import User
 from server.api.auth import UserCreate, Token
 from pydantic import BaseModel
@@ -38,9 +38,9 @@ from pydantic import EmailStr
 router = APIRouter()
 
 @router.post("/register", response_model=UserResponse)
-async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     query = select(User).where(User.email == user.email)
-    result = await db.execute(query)
+    result = await session.execute(query)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
@@ -62,9 +62,9 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db:
         verification_token_expires=verification_token_expires
     )
     
-    db.add(db_user)
-    await db.commit()
-    await db.refresh(db_user)
+    session.add(db_user)
+    await session.commit()
+    await session.refresh(db_user)
     
     background_tasks.add_task(
         send_verification_email,
@@ -83,8 +83,8 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, db:
     )
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    user = await authenticate_user(form_data.username, form_data.password, db)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
+    user = await authenticate_user(form_data.username, form_data.password, session)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -107,8 +107,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/token/mobile", response_model=Token)
-async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    user = await authenticate_user(form_data.username, form_data.password, db)
+async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
+    user = await authenticate_user(form_data.username, form_data.password, session)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -131,9 +131,9 @@ async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = D
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/verify-email")
-async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
     query = select(User).where(User.verification_token == token)
-    result = await db.execute(query)
+    result = await session.execute(query)
     user = result.scalar_one_or_none()
     
     if not user:
@@ -152,14 +152,14 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     user.verification_token = None
     user.verification_token_expires = None
     
-    await db.commit()
+    await session.commit()
     
     return {"message": "Email verified successfully"}
 
 @router.post("/forgot-password")
-async def forgot_password(email: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def forgot_password(email: str, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     query = select(User).where(User.email == email)
-    result = await db.execute(query)
+    result = await session.execute(query)
     user = result.scalar_one_or_none()
     
     if not user:
@@ -171,15 +171,15 @@ async def forgot_password(email: str, background_tasks: BackgroundTasks, db: Asy
     user.password_reset_token = reset_token
     user.password_reset_token_expires = reset_token_expires
     
-    await db.commit()
+    await session.commit()
     
     
     return {"message": "If your email is registered, you will receive a password reset link"}
 
 @router.post("/reset-password/{token}")
-async def reset_password(token: str, new_password: str, db: AsyncSession = Depends(get_db)):
+async def reset_password(token: str, new_password: str, session: AsyncSession = Depends(get_session)):
     query = select(User).where(User.password_reset_token == token)
-    result = await db.execute(query)
+    result = await session.execute(query)
     user = result.scalar_one_or_none()
     
     if not user:
@@ -198,15 +198,15 @@ async def reset_password(token: str, new_password: str, db: AsyncSession = Depen
     user.password_reset_token = None
     user.password_reset_token_expires = None
     
-    await db.commit()
+    await session.commit()
     
     return {"message": "Password reset successfully"}
 
 @router.post("/resend-verification")
-async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     """Resend verification email"""
     query = select(User).where(User.email == email)
-    result = await db.execute(query)
+    result = await session.execute(query)
     user = result.scalar_one_or_none()
     
     if not user:
@@ -227,7 +227,7 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
     user.verification_token = verification_token
     user.verification_token_expires = verification_token_expires
     
-    await db.commit()
+    await session.commit()
     
     background_tasks.add_task(
         send_verification_email,

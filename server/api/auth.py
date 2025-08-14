@@ -14,7 +14,7 @@ from server.api.auth_postgres import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_user_by_email
 )
-from database.models.postgresql.database import get_db
+from server.db.session import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
@@ -59,9 +59,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter), db: AsyncSession = Depends(get_db)):
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), _: None = Depends(auth_rate_limiter), session: AsyncSession = Depends(get_session)):
     """Login endpoint to get JWT token"""
-    user = await authenticate_user(form_data.username, form_data.password, db)
+    user = await authenticate_user(form_data.username, form_data.password, session)
     if user == "locked":
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
@@ -88,8 +88,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     
     query = update(DBUser).where(DBUser.email == user.email).values(last_login=datetime.utcnow())
-    await db.execute(query)
-    await db.commit()
+    await session.execute(query)
+    await session.commit()
     
     return {"access_token": access_token, "token_type": "bearer"}
 
