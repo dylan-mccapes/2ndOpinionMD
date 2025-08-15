@@ -3,7 +3,7 @@ from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models.postgresql.database import async_session
+from server.db.session import SessionLocal
 from database.models.postgresql.models import MedicalKnowledge
 from dotenv import load_dotenv
 import logging
@@ -33,7 +33,7 @@ class PostgreSQLMedicalQueryEngine:
     async def query_medical_knowledge(self, query: str, content_types: Optional[List[str]] = None, top_k: int = 5):
         query_embedding = await self.get_embedding(query)
         
-        async with async_session() as session:
+        async with SessionLocal() as session:
             if isinstance(query_embedding, list):
                 embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             else:

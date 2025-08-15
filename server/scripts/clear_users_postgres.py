@@ -10,14 +10,14 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from database.models.postgresql.database import async_session
+from server.db.session import SessionLocal
 from database.models.postgresql.models import User, JournalEntry
 from sqlalchemy import delete
 
 async def clear_users_table():
     """Clear all users from the PostgreSQL users table."""
     try:
-        async with async_session() as session:
+        async with SessionLocal() as session:
             journal_result = await session.execute(delete(JournalEntry))
             journal_count = journal_result.rowcount
             

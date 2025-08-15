@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append('/home/ubuntu/repos/2ndOpinionMD-MVP/server')
 
-from database.models.postgresql.database import async_session, ping_database
+from server.db.session import SessionLocal
 from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
 from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from sqlalchemy import select, func
@@ -17,7 +17,13 @@ from datetime import datetime
 async def test_database_connection():
     """Test basic database connectivity"""
     print("Testing database connection...")
-    connected = await ping_database()
+    try:
+        async with SessionLocal() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        connected = True
+    except Exception:
+        connected = False
     if connected:
         print("✅ Database connection successful")
         return True
@@ -29,7 +35,7 @@ async def test_medical_knowledge():
     """Test medical knowledge data and vector search"""
     print("\nTesting medical knowledge data...")
     
-    async with async_session() as session:
+    async with SessionLocal() as session:
         result = await session.execute(select(func.count(MedicalKnowledge.id)))
         total = result.scalar()
         print(f"✅ Found {total} medical knowledge entries")
@@ -51,7 +57,7 @@ async def test_user_operations():
     test_user_id = uuid.uuid4()
     test_email = f"test_{int(datetime.now().timestamp())}@example.com"
     
-    async with async_session() as session:
+    async with SessionLocal() as session:
         test_user = User(
             id=test_user_id,
             email=test_email,
@@ -85,7 +91,7 @@ async def test_journal_operations():
     test_user_id = uuid.uuid4()
     test_email = f"journal_test_{int(datetime.now().timestamp())}@example.com"
     
-    async with async_session() as session:
+    async with SessionLocal() as session:
         test_user = User(
             id=test_user_id,
             email=test_email,

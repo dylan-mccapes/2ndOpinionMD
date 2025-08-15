@@ -14,7 +14,7 @@ server_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(server_dir)
 sys.path.insert(0, parent_dir)
 
-from database.models.postgresql.database import async_session, init_db
+from server.db.session import SessionLocal
 from database.models.postgresql.models import MedicalKnowledge
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -110,7 +110,6 @@ async def process_icd10_addenda(txt_file_path: str):
     return medical_entries
 
 async def load_icd10_data():
-    await init_db()
     
     print(f"DEBUG: ICD10_MAIN_CODES_FILE env var: {os.getenv('ICD10_MAIN_CODES_FILE')}")
     print(f"DEBUG: ICD10_ADDENDA_FILE env var: {os.getenv('ICD10_ADDENDA_FILE')}")
@@ -167,7 +166,7 @@ async def load_icd10_data():
     batch_size = 500
     for i in range(0, len(all_entries), batch_size):
         batch = all_entries[i:i+batch_size]
-        async with async_session() as session:
+        async with SessionLocal() as session:
             for entry in batch:
                 medical_knowledge = MedicalKnowledge(**entry)
                 session.add(medical_knowledge)
