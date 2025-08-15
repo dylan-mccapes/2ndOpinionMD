@@ -151,7 +151,11 @@ async def get_current_user_postgres(
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified",
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"}
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     
