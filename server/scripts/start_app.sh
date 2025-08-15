@@ -25,11 +25,11 @@ python -c "
 import asyncio
 import sys
 sys.path.append('.')
-from database.models.postgresql.database import async_session
+from server.db.session import SessionLocal
 from sqlalchemy import text
 
 async def check_data():
-    async with async_session() as session:
+    async with SessionLocal() as session:
         result = await session.execute(text('SELECT COUNT(*) FROM medical_knowledge'))
         count = result.scalar()
         if count == 0:

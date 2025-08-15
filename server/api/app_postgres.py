@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,7 +15,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from server.vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from database.models.postgresql.database import init_db, ping_database
+from server.db.session import SessionLocal
 from database.models.postgresql.models import User as UserInDB
 from server.utils.rate_limiter import general_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
@@ -52,7 +52,7 @@ query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
     symptoms: List[str]
-    demographics: Dict[str, Any] = None
+    demographics: Optional[Dict[str, Any]] = None
     model: str = "gpt-3.5-turbo"
 
 class DiagnosisResponse(BaseModel):
@@ -119,7 +119,9 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 @app.on_event("startup")
 async def startup_event():
     try:
-        await init_db()
+        async with SessionLocal() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}")
@@ -165,7 +167,13 @@ async def health_check():
     """
     Health check endpoint
     """
-    postgres_status = "ok" if await ping_database() else "error"
+    try:
+        async with SessionLocal() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        postgres_status = "ok"
+    except Exception:
+        postgres_status = "error"
     
     return {
         "status": "ok",
