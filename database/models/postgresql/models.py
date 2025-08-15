@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Date, Integer, Boolean, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from pgvector.sqlalchemy import Vector
@@ -11,16 +11,16 @@ class User(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, index=True, nullable=False)
-    full_name = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
-    birthdate = Column(DateTime, nullable=True)
-    subscription_tier = Column(String, default="basic")
+    birthdate = Column(Date, nullable=True)
+    subscription_tier = Column(String, nullable=False, server_default="free")
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
-    is_verified = Column(Boolean, default=False)
+    is_verified = Column(Boolean, nullable=False, server_default="false")
     verification_token = Column(String, nullable=True)
     verification_token_expires = Column(DateTime, nullable=True)
-    failed_login_attempts = Column(Integer, default=0)
+    failed_login_attempts = Column(Integer, nullable=False, server_default="0")
     locked_until = Column(DateTime, nullable=True)
     password_reset_token = Column(String, nullable=True)
     password_reset_token_expires = Column(DateTime, nullable=True)

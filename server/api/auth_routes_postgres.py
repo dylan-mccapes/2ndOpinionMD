@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
@@ -21,8 +21,8 @@ from datetime import datetime
 class UserResponse(BaseModel):
     id: str
     email: str
-    full_name: str
-    birthdate: str
+    full_name: Optional[str] = None
+    birthdate: Optional[date] = None
     subscription_tier: str
     created_at: datetime
 from server.api.auth_postgres import (
@@ -55,9 +55,9 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     hashed_password = get_password_hash(user.password)
     db_user = User(
         email=user.email,
-        full_name=user.full_name,
+        full_name=getattr(user, "full_name", None),
         hashed_password=hashed_password,
-        birthdate=user.birthdate,
+        birthdate=getattr(user, "birthdate", None),
         verification_token=verification_token,
         verification_token_expires=verification_token_expires
     )
@@ -69,7 +69,7 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     background_tasks.add_task(
         send_verification_email,
         user.email,
-        user.full_name,
+        getattr(user, "full_name", "User"),
         verification_token
     )
     
@@ -232,7 +232,7 @@ async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks
     background_tasks.add_task(
         send_verification_email,
         email,
-        user.full_name,
+        user.full_name or "User",
         verification_token
     )
     

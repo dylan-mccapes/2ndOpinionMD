@@ -12,6 +12,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from database.models.postgresql.database import Base
 from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
 target_metadata = Base.metadata
