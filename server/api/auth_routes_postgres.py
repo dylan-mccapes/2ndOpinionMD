@@ -29,6 +29,15 @@ class UserResponse(BaseModel):
     birthdate: Optional[date] = None
     subscription_tier: str
     created_at: datetime
+
+class EmailVerificationInfo(BaseModel):
+    queued: bool
+    dev_mode: bool
+    note: str
+
+class RegistrationResponse(BaseModel):
+    user: UserResponse
+    email_verification: EmailVerificationInfo
 from server.api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
@@ -40,7 +49,7 @@ from server.utils.email.verification import send_verification_email, create_veri
 
 router = APIRouter()
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=RegistrationResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     query = select(User).where(User.email == user.email)
     result = await session.execute(query)
@@ -76,20 +85,21 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
         verification_token
     )
     
-    return {
-        "user": {
-            "id": str(db_user.id),
-            "email": db_user.email,
-            "full_name": db_user.full_name,
-            "subscription_tier": db_user.subscription_tier,
-            "created_at": db_user.created_at.isoformat()
-        },
-        "email_verification": {
-            "queued": True,
-            "dev_mode": (os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")),
-            "note": "Check your inbox for a verification link. If you don't see it, use 'Resend verification'."
-        }
-    }
+    return RegistrationResponse(
+        user=UserResponse(
+            id=str(db_user.id),
+            email=db_user.email,
+            full_name=db_user.full_name,
+            birthdate=db_user.birthdate,
+            subscription_tier=db_user.subscription_tier,
+            created_at=db_user.created_at,
+        ),
+        email_verification=EmailVerificationInfo(
+            queued=True,
+            dev_mode=(os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")),
+            note="Check your inbox for a verification link. If you don't see it, use 'Resend verification'.",
+        )
+    )
 
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
