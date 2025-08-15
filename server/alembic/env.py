@@ -9,11 +9,24 @@ from alembic import context
 
 config = context.config
 
+import os
+from dotenv import load_dotenv
+
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(project_root, '.env')
+load_dotenv(env_path)
+
+database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://2ndopinionmd@localhost:5432/2ndopinionmd")
+if database_url and "+asyncpg" in database_url:
+    database_url = database_url.replace("+asyncpg", "+psycopg2")
+
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from database.models.postgresql.database import Base
-from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
+from database.models.postgresql.models import Base, User, JournalEntry, MedicalKnowledge
 target_metadata = Base.metadata
 
 

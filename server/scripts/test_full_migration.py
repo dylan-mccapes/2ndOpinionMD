@@ -13,7 +13,7 @@ load_dotenv(env_path)
 
 sys.path.append('/home/ubuntu/repos/2ndOpinionMD-MVP/server')
 
-from database.models.postgresql.database import async_session, ping_database
+from server.db.session import SessionLocal
 from database.models.postgresql.models import User, JournalEntry, MedicalKnowledge
 from nlp_engines.vector_stores.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from sqlalchemy import select, func
@@ -26,14 +26,20 @@ async def test_complete_workflow():
     print("🧪 Testing Complete PostgreSQL Migration Workflow\n")
     
     print("1. Testing database connection...")
-    connected = await ping_database()
+    try:
+        async with SessionLocal() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        connected = True
+    except Exception:
+        connected = False
     if not connected:
         print("❌ Database connection failed")
         return False
     print("✅ Database connected successfully")
     
     print("\n2. Testing medical knowledge and vector search...")
-    async with async_session() as session:
+    async with SessionLocal() as session:
         result = await session.execute(select(func.count(MedicalKnowledge.id)))
         total = result.scalar()
         print(f"✅ Found {total} medical knowledge entries")
@@ -60,7 +66,7 @@ async def test_complete_workflow():
     test_user_id = uuid.uuid4()
     test_email = f"workflow_test_{int(datetime.now().timestamp())}@example.com"
     
-    async with async_session() as session:
+    async with SessionLocal() as session:
         test_user = User(
             id=test_user_id,
             email=test_email,

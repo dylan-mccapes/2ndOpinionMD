@@ -13,13 +13,21 @@ sys.path.insert(0, project_root)
 def setup_and_run():
     """Setup database and run the FastAPI application"""
     
+    async def test_db():
+        try:
+            from server.db.session import SessionLocal
+            async with SessionLocal() as session:
+                from sqlalchemy import text
+                await session.execute(text("SELECT 1"))
+            print("Database connection initialized successfully")
+        except Exception as e:
+            print(f"Error initializing database: {e}")
+            print("Continuing to start server without database connection...")
+    
     try:
-        from database.models.postgresql.database import init_db
-        asyncio.run(init_db())
-        print("Database connection initialized successfully")
+        asyncio.run(test_db())
     except Exception as e:
-        print(f"Error initializing database: {e}")
-        print("Continuing to start server without database connection...")
+        print(f"Error testing database: {e}")
     
     try:
         import sys

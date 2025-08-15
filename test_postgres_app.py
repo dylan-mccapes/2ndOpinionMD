@@ -6,20 +6,25 @@ import os
 server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server')
 sys.path.insert(0, server_dir)
 
-from database.models.postgresql.database import ping_database
+from server.db.session import SessionLocal
 from database.models.postgresql.models import MedicalKnowledge
-from database.models.postgresql.database import async_session
 from sqlalchemy import func
 
 async def test_database_connection():
     print("Testing PostgreSQL database connection...")
-    connected = await ping_database()
+    try:
+        async with SessionLocal() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        connected = True
+    except Exception:
+        connected = False
     print(f"✅ Database connected: {connected}")
     return connected
 
 async def test_icd10_data():
     print("Testing ICD-10 data count...")
-    async with async_session() as session:
+    async with SessionLocal() as session:
         result = await session.execute(func.count(MedicalKnowledge.id))
         count = result.scalar()
     print(f"✅ ICD-10 entries loaded: {count}")
