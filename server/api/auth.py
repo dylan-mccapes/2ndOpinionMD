@@ -18,16 +18,21 @@ from server.db.session import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
+from typing import Optional
+from datetime import date
 from datetime import datetime, timedelta
 class UserCreate(BaseModel):
     email: str
-    full_name: str
     password: str
+    full_name: Optional[str] = None
+    birthdate: Optional[date] = None
 
 class User(BaseModel):
     id: str
     email: str
-    full_name: str
+    full_name: Optional[str] = None
+    birthdate: Optional[date] = None
+    subscription_tier: str
     subscription_tier: str = "basic"
     created_at: datetime
 
