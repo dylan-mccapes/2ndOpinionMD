@@ -5,6 +5,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import EmailStr, BaseModel
 import logging
 
+from server.api.auth import UserCreate, Token, User
+
 from database.models.postgresql.models import User as DBUser
 from server.api.auth_postgres import (
     authenticate_user, 
@@ -22,23 +24,6 @@ from typing import Optional
 from datetime import date
 from datetime import datetime, timedelta
 
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    full_name: Optional[str] = None
-    birthdate: Optional[date] = None
-
-class User(BaseModel):
-    id: str
-    email: str
-    full_name: Optional[str] = None
-    birthdate: Optional[date] = None
-    subscription_tier: str = "basic"
-    created_at: datetime
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
 
 class UserInDB(BaseModel):
     id: str

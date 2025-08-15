@@ -17,19 +17,8 @@ logger = logging.getLogger(__name__)
 
 from server.db.session import get_session
 from database.models.postgresql.models import User
+from server.api.auth import UserCreate, Token, User as UserSchema
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from datetime import date
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: Optional[str] = None
-    birthdate: Optional[date] = None
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
 from datetime import datetime
 
 class UserResponse(BaseModel):
@@ -101,7 +90,7 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     background_tasks.add_task(
         send_verification_email,
         user.email,
-        full_name or "User",
+        payload.get("full_name") or "User",
         verification_token
     )
     

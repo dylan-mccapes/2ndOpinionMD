@@ -1,7 +1,22 @@
 
-from fastapi import HTTPException, status
+from datetime import datetime, date
+from typing import Optional
+from pydantic import BaseModel, EmailStr
 
-raise HTTPException(
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-    detail="MongoDB implementation deprecated. Use server.api.auth_routes_postgres for PostgreSQL auth."
-)
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+    birthdate: Optional[date] = None
+
+class User(BaseModel):
+    id: str
+    email: EmailStr
+    full_name: Optional[str] = None
+    birthdate: Optional[date] = None
+    subscription_tier: str = "basic"
+    created_at: datetime
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
