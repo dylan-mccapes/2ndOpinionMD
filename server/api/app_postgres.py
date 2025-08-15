@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,12 +11,13 @@ from dotenv import load_dotenv
 import uvicorn
 import sys
 import traceback
+from sqlalchemy import text
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
 from server.vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from server.db.session import SessionLocal
+from server.db.session import SessionLocal, engine
 from database.models.postgresql.models import User as UserInDB
 from server.utils.rate_limiter import general_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
@@ -35,7 +37,26 @@ setup_encrypted_logging(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="2ndOpinionMD API", description="API for 2ndOpinionMD medical diagnosis")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("DB warmup OK")
+    except Exception:
+        logger.exception("DB warmup failed")
+    yield
+    try:
+        await engine.dispose()
+        logger.info("DB engine disposed")
+    except Exception:
+        logger.exception("DB dispose failed")
+
+app = FastAPI(
+    title="2ndOpinionMD API", 
+    description="API for 2ndOpinionMD medical diagnosis",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -116,16 +137,6 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
         headers={"Retry-After": request.headers.get("Retry-After", "60")}
     )
 
-@app.on_event("startup")
-async def startup_event():
-    try:
-        async with SessionLocal() as session:
-            from sqlalchemy import text
-            await session.execute(text("SELECT 1"))
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.warning(f"Database initialization failed: {e}")
-        logger.info("Continuing without database initialization...")
 
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
@@ -169,10 +180,10 @@ async def health_check():
     """
     try:
         async with SessionLocal() as session:
-            from sqlalchemy import text
             await session.execute(text("SELECT 1"))
         postgres_status = "ok"
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Health check DB connection failed: {e}")
         postgres_status = "error"
     
     return {
