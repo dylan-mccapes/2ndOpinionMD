@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
@@ -22,7 +22,7 @@ const JournalDetail = () => {
           return;
         }
         
-        const response = await axios.get(
+        const response = await apiFetch(
           getApiUrl(`${API_ENDPOINTS.JOURNAL}/${entryId}`),
           {
             headers: {
@@ -31,12 +31,12 @@ const JournalDetail = () => {
           }
         );
         
-        setEntry(response.data);
+        setEntry(response);
         
-        if (response.data && response.data.reportId) {
+        if (response && response.reportId) {
           try {
-            const timelineResponse = await axios.get(
-              getApiUrl(`/journal/timeline/${response.data.reportId}`),
+            const timelineResponse = await apiFetch(
+              getApiUrl(`/journal/timeline/${response.reportId}`),
               {
                 headers: {
                   'Authorization': `Bearer ${token}`
@@ -44,13 +44,13 @@ const JournalDetail = () => {
               }
             );
             
-            if (timelineResponse.data) {
+            if (timelineResponse) {
               setTimelineData({
                 initialDiagnosis: {
-                  date: response.data.createdAt,
-                  diagnoses: response.data.previousDiagnoses || []
+                  date: response.createdAt,
+                  diagnoses: response.previousDiagnoses || []
                 },
-                journalEntries: timelineResponse.data.journalEntries || []
+                journalEntries: timelineResponse.journalEntries || []
               });
             }
           } catch (timelineErr) {
@@ -59,7 +59,7 @@ const JournalDetail = () => {
         }
       } catch (err) {
         console.error('Error fetching journal entry:', err);
-        setError('Unable to load journal entry. Please try again later.');
+        setError(err.message || 'Unable to load journal entry. Please try again later.');
       } finally {
         setIsLoading(false);
       }
