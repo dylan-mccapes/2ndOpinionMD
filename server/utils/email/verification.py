@@ -1,11 +1,14 @@
 import os
+import smtplib
+import ssl
+import logging
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from jose import jwt
 from pathlib import Path
 from pydantic import EmailStr
-
-import os
+from email.message import EmailMessage
 from dotenv import load_dotenv
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -17,17 +20,42 @@ ALGORITHM = "HS256"
 from server.utils.email.config import send_email
 
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 30
+logger = logging.getLogger(__name__)
+
+def build_verification_link(token: str) -> str:
+    """Build verification link using FRONTEND_ORIGIN environment variable"""
+    origin = os.getenv("FRONTEND_ORIGIN") or os.getenv("FRONTEND_URL") or "https://2ndopinionmd.ai"
+    return f"{origin}/verify-email?token={token}"
 
 async def send_verification_email(email: EmailStr, name: str, token: str):
     """
     Send a verification email with a token link
     """
-    domain = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    verification_url = f"{domain}/verify-email?token={token}"
+    dev_mode = os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")
+    verification_url = build_verification_link(token)
     
-    template_path = Path(__file__).parent.parent.parent / "templates" / "verification.html"
-    with open(template_path, "r") as f:
-        html_content = f.read()
+    if dev_mode:
+        logger.warning("[DEV-MODE] Verification email not sent. Link: %s", verification_url)
+        return
+    
+    email_provider = os.getenv("EMAIL_PROVIDER", "fastmail").lower()
+    
+    if email_provider == "smtp":
+        await _send_smtp_verification_email(email, name, verification_url)
+    else:
+        await _send_fastmail_verification_email(email, name, verification_url)
+
+async def _send_fastmail_verification_email(email: EmailStr, name: str, verification_url: str):
+    """Send verification email using FastMail (existing implementation)"""
+    tpl_candidates = [
+        Path(__file__).parent / "templates" / "verification.html",             # server/utils/email/templates
+        Path(__file__).resolve().parents[2] / "templates" / "verification.html" # server/templates
+    ]
+    template_path = next((p for p in tpl_candidates if p.exists()), None)
+    if not template_path:
+        html_content = f"<p>Hi {name or 'there'},</p><p>Verify your email: <a href='{verification_url}'>link</a></p>"
+    else:
+        html_content = template_path.read_text()
     
     html_content = html_content.replace("{{ name }}", name)
     html_content = html_content.replace("{{ verification_url }}", verification_url)
@@ -50,6 +78,40 @@ async def send_verification_email(email: EmailStr, name: str, token: str):
         body=text_content,
         html_body=html_content
     )
+
+async def _send_smtp_verification_email(email: EmailStr, name: str, verification_url: str):
+    """Send verification email using SMTP"""
+    host = os.getenv("SMTP_HOST")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER")
+    pwd = os.getenv("SMTP_PASS")
+    use_tls = os.getenv("SMTP_TLS", "1") in ("1", "true", "True", "yes")
+    from_addr = os.getenv("EMAIL_FROM", "no-reply@2ndopinionmd.ai")
+    
+    if not (host and user and pwd):
+        logger.error("SMTP not configured; logging link instead")
+        logger.warning("Verification link for %s: %s", email, verification_url)
+        return
+    
+    def _send_sync():
+        msg = EmailMessage()
+        msg["Subject"] = "Verify your 2ndOpinionMD account"
+        msg["From"] = from_addr
+        msg["To"] = email
+        msg.set_content(f"Hi {name or 'there'},\n\nVerify your email:\n{verification_url}\n")
+        
+        if use_tls:
+            with smtplib.SMTP(host, port) as s:
+                s.starttls(context=ssl.create_default_context())
+                s.login(user, pwd)
+                s.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port) as s:
+                s.login(user, pwd)
+                s.send_message(msg)
+    
+    await asyncio.to_thread(_send_sync)
+    logger.info("Sent verification email to %s", email)
 
 def create_verification_token(data: Dict) -> str:
     """

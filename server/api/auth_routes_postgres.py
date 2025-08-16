@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 
 from server.db.session import get_session
 from database.models.postgresql.models import User
-from server.api.auth import UserCreate, Token, User as UserSchema
+from server.api.auth import UserCreate, Token
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from sqlalchemy import select, update
+
+class ResendRequest(BaseModel):
+    email: EmailStr
 
 class UserResponse(BaseModel):
     id: str
@@ -28,6 +32,15 @@ class UserResponse(BaseModel):
     birthdate: Optional[date] = None
     subscription_tier: str
     created_at: datetime
+
+class EmailVerificationInfo(BaseModel):
+    queued: bool
+    dev_mode: bool
+    note: str
+
+class RegistrationResponse(BaseModel):
+    user: UserResponse
+    email_verification: EmailVerificationInfo
 from server.api.auth_postgres import (
     get_password_hash, 
     authenticate_user, 
@@ -35,11 +48,11 @@ from server.api.auth_postgres import (
     get_current_user_postgres,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from server.utils.email.verification import send_verification_email
+from server.utils.email.verification import send_verification_email, create_verification_token
 
 router = APIRouter()
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=RegistrationResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     logger.info("Using UserCreate from %s", UserCreate.__module__)
     query = select(User).where(User.email == user.email)
@@ -94,13 +107,20 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
         verification_token
     )
     
-    return UserResponse(
-        id=str(db_user.id),
-        email=db_user.email,
-        full_name=db_user.full_name,
-        birthdate=db_user.birthdate,
-        subscription_tier=db_user.subscription_tier,
-        created_at=db_user.created_at
+    return RegistrationResponse(
+        user=UserResponse(
+            id=str(db_user.id),
+            email=db_user.email,
+            full_name=db_user.full_name,
+            birthdate=db_user.birthdate,
+            subscription_tier=db_user.subscription_tier,
+            created_at=db_user.created_at,
+        ),
+        email_verification=EmailVerificationInfo(
+            queued=True,
+            dev_mode=(os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")),
+            note="Check your inbox for a verification link. If you don't see it, use 'Resend verification'.",
+        )
     )
 
 @router.post("/token", response_model=Token)
@@ -109,14 +129,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail={"code": "bad_credentials", "message": "Incorrect email or password"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified. Please check your email for verification link.",
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"}
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -133,14 +157,18 @@ async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = D
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail={"code": "bad_credentials", "message": "Incorrect email or password"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified. Please check your email for verification link.",
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"}
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -224,40 +252,32 @@ async def reset_password(token: str, new_password: str, session: AsyncSession = 
     return {"message": "Password reset successfully"}
 
 @router.post("/resend-verification")
-async def resend_verification(email: EmailStr, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+async def resend_verification(payload: ResendRequest, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     """Resend verification email"""
-    query = select(User).where(User.email == email)
-    result = await session.execute(query)
+    result = await session.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
     
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        return {"detail": "If an account with that email exists, a verification link has been sent"}
     
     if user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified"
+            detail={"code": "already_verified", "message": "Email already verified"}
         )
     
-    verification_token = str(uuid.uuid4())
-    verification_token_expires = datetime.utcnow() + timedelta(hours=24)
+    verification_token = create_verification_token({"sub": user.email})
+    token_expires = datetime.utcnow() + timedelta(minutes=30)
     
-    user.verification_token = verification_token
-    user.verification_token_expires = verification_token_expires
-    
+    await session.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(verification_token=verification_token, verification_token_expires=token_expires)
+    )
     await session.commit()
     
-    background_tasks.add_task(
-        send_verification_email,
-        email,
-        user.full_name or "User",
-        verification_token
-    )
-    
-    return {"message": "Verification email sent"}
+    background_tasks.add_task(send_verification_email, user.email, user.full_name or "User", verification_token)
+    return {"detail": "Verification email sent if the account exists"}
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user_postgres)):
