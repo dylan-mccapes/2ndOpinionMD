@@ -141,9 +141,29 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
-    current_user: UserInDB = Depends(get_current_user_postgres),
     session: AsyncSession = Depends(get_session),
     _: None = Depends(general_rate_limiter)
+):
+    """
+    Generate a diagnosis based on symptoms and optional demographics
+    """
+    return await _diagnose_handler(request, session)
+
+@app.post("/api/diagnosis", response_model=DiagnosisResponse, include_in_schema=False)
+async def diagnose_alias(
+    request: SymptomRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(general_rate_limiter)
+):
+    """
+    Deprecated alias for /api/diagnose
+    """
+    logger.warning("Deprecated path hit: /api/diagnosis (use /api/diagnose)")
+    return await _diagnose_handler(request, session)
+
+async def _diagnose_handler(
+    request: SymptomRequest,
+    session: AsyncSession
 ):
     """
     Generate a diagnosis based on symptoms and optional demographics
@@ -155,7 +175,10 @@ async def diagnose(
         
         if not request.symptoms or not isinstance(request.symptoms, list):
             logger.error(f"Invalid symptoms format: {request.symptoms}")
-            raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
+            raise HTTPException(
+                status_code=400, 
+                detail={"code": "invalid_symptoms", "message": "Invalid symptoms format. Please provide a list of symptom strings."}
+            )
         
         response = await query_engine.generate_rag_response(
             symptoms=request.symptoms, 
@@ -167,11 +190,16 @@ async def diagnose(
         logger.info(f"Diagnose response: {response}")
         
         return response
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating diagnosis: {str(e)}")
         logger.error(traceback.format_exc())
         
-        raise HTTPException(status_code=500, detail=f"Error generating diagnosis: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail={"code": "diagnosis_error", "message": f"Error generating diagnosis: {str(e)}"}
+        )
 
 @app.get("/api/health")
 async def health_check():
