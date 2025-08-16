@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import './Auth.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -17,23 +17,19 @@ const ForgotPassword = () => {
     setIsLoading(true);
 
     try {
-      await axios.post(
+      await apiFetch(
         getApiUrl('/auth/forgot-password'),
-        { email },
         {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
         }
       );
       
       setMessage('If an account with that email exists, a password reset link has been sent.');
     } catch (err) {
       console.error('Forgot password error:', err);
-      setError(
-        err.response?.data?.detail || 
-        'Unable to send reset email. Please try again.'
-      );
+      setError(err.message || 'Unable to send reset email. Please try again.');
     } finally {
       setIsLoading(false);
     }

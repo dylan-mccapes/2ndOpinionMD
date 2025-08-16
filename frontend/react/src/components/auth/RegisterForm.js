@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 import './Auth.css';
 
@@ -36,21 +36,20 @@ const RegisterForm = () => {
     setIsLoading(true);
 
     try {
-      const response = await axios.post(
+      const response = await apiFetch(
         getApiUrl('/auth/register'),
         {
-          email: formData.email,
-          password: formData.password,
-          full_name: formData.full_name
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            full_name: formData.full_name
+          })
         }
       );
 
-      if (response.data) {
+      if (response) {
         navigate('/login', { 
           state: { 
             message: 'Registration successful! Please log in with your new account.' 
@@ -59,14 +58,7 @@ const RegisterForm = () => {
       }
     } catch (err) {
       console.error('Registration error:', err);
-      if (err.response?.data?.detail?.errors) {
-        setError(err.response.data.detail.errors.join(', '));
-      } else {
-        setError(
-          err.response?.data?.detail || 
-          'Unable to register. Please try again with a different email.'
-        );
-      }
+      setError(err.message || 'Unable to register. Please try again with a different email.');
     } finally {
       setIsLoading(false);
     }
