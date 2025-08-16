@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiClient';
 import { downloadJournalTimelinePdf } from '../../utils/pdfGenerator';
+import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -280,14 +281,39 @@ const JournalList = () => {
                 </ul>
               </div>
               
-              {entry.ai_analysis && (
-                <div className="entry-analysis-preview">
-                  {entry.ai_analysis.patternObservations && (
-                    <p><strong>Pattern Observations:</strong> {entry.ai_analysis.patternObservations.substring(0, 80)}...</p>
-                  )}
-                  <p>{entry.ai_analysis.analysis ? entry.ai_analysis.analysis.substring(0, 100) + '...' : 'No analysis available.'}</p>
-                </div>
-              )}
+              {entry.ai_analysis && (() => {
+                const analysis = parseJournalAnalysis(entry.ai_analysis);
+                if (!analysis) return null;
+                
+                return (
+                  <div className="entry-analysis-preview">
+                    {/* Show top diagnosis with confidence */}
+                    {analysis.diagnoses && analysis.diagnoses.length > 0 && (
+                      <div className="top-diagnosis">
+                        <strong>Top Diagnosis:</strong> {analysis.diagnoses[0].name}
+                        {analysis.diagnoses[0].confidence && (
+                          <span className="confidence"> ({analysis.diagnoses[0].confidence}%)</span>
+                        )}
+                        {/* Show first 2-3 tags */}
+                        {analysis.diagnoses[0].tags && analysis.diagnoses[0].tags.length > 0 && (
+                          <div className="preview-tags">
+                            {analysis.diagnoses[0].tags.slice(0, 3).map((tag, i) => (
+                              <span key={i} className="preview-tag">{tag}</span>
+                            ))}
+                            {analysis.diagnoses[0].tags.length > 3 && (
+                              <span className="more-tags">+{analysis.diagnoses[0].tags.length - 3} more</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Fallback to analysis text if no diagnoses */}
+                    {(!analysis.diagnoses || analysis.diagnoses.length === 0) && analysis.analysis && (
+                      <p>{analysis.analysis.substring(0, 100)}...</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

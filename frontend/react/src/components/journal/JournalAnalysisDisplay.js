@@ -1,10 +1,17 @@
 import React from 'react';
 import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import { formatAutoimmuneDxTag, formatDxType } from '../../utils/formatData';
+import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
 import '../../styles/Journal.css';
 
 const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
-  if (!analysis) return null;
+  const parsedAnalysis = parseJournalAnalysis(analysis);
+  if (!parsedAnalysis) return (
+    <div className="journal-analysis">
+      <h3>AI Analysis</h3>
+      <p>AI analysis not available for this entry.</p>
+    </div>
+  );
   
 
   
@@ -25,48 +32,43 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
       <h3>AI Analysis</h3>
       
       {/* Analysis section */}
-      <div className="analysis-results">
-        <h4>Analysis Results:</h4>
-        <p>{analysis.analysis || "No analysis available."}</p>
-        <div className="debug-info">
-          <button 
-            onClick={() => {
-              const debugDiv = document.getElementById('journal-debug-info');
-              if (debugDiv) {
-                debugDiv.style.display = debugDiv.style.display === 'none' ? 'block' : 'none';
-              }
-            }}
-            style={{
-              fontSize: '10px',
-              padding: '2px 5px',
-              marginTop: '5px',
-              backgroundColor: '#f0f0f0',
-              border: '1px solid #ccc',
-              borderRadius: '3px',
-              cursor: 'pointer',
-              display: process.env.NODE_ENV === 'development' ? 'block' : 'none'
-            }}
-          >
-            Toggle Debug Info
-          </button>
-          <pre style={{ display: 'none' }}>{JSON.stringify(analysis, null, 2)}</pre>
+      {parsedAnalysis.analysis && (
+        <div className="analysis-results">
+          <h4>AI Analysis</h4>
+          <p>{parsedAnalysis.analysis}</p>
         </div>
-      </div>
+      )}
+
+      {/* Detected Symptoms section */}
+      {parsedAnalysis.symptoms && parsedAnalysis.symptoms.length > 0 && (
+        <div className="detected-symptoms-section">
+          <h4>Detected Symptoms</h4>
+          <ul className="symptoms-list">
+            {parsedAnalysis.symptoms.map((symptom, index) => (
+              <li key={index} className="symptom-item">
+                {typeof symptom === 'string' ? symptom : symptom.name || symptom}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       
-      {/* Diagnoses section with updated confidence scores */}
-      {analysis.diagnoses && analysis.diagnoses.length > 0 && (
+      {/* Suggested Diagnoses section */}
+      {parsedAnalysis.diagnoses && parsedAnalysis.diagnoses.length > 0 && (
         <div className="diagnoses-list">
-          <h4>Updated Diagnoses:</h4>
-          {analysis.diagnoses.map((diagnosis, index) => (
+          <h4>Suggested Diagnoses</h4>
+          {parsedAnalysis.diagnoses.map((diagnosis, index) => (
             <div key={index} className="diagnosis-card">
               <div className="diagnosis-header">
                 <h3>{diagnosis.name}</h3>
                 <div className="diagnosis-badges">
-                  <div className="confidence-badge" style={{ 
-                    backgroundColor: getConfidenceColor(diagnosis.confidence)
-                  }}>
-                    {diagnosis.confidence}% confidence
-                  </div>
+                  {diagnosis.confidence && (
+                    <div className="confidence-badge" style={{ 
+                      backgroundColor: getConfidenceColor(diagnosis.confidence)
+                    }}>
+                      {diagnosis.confidence}% confidence
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -74,7 +76,8 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
                 <div className={`diagnosis-status ${diagnosis.status}`}>
                   {diagnosis.status === 'new' ? 'New Diagnosis' : 
                    diagnosis.status === 'confirmed' ? 'Confirmed' : 
-                   diagnosis.status === 'eliminated' ? 'Eliminated' : ''}
+                   diagnosis.status === 'eliminated' ? 'Eliminated' : 
+                   diagnosis.status}
                 </div>
               )}
               
@@ -85,30 +88,56 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
                   ))}
                 </div>
               )}
-              
-
             </div>
           ))}
         </div>
       )}
       
-      {/* Pattern Observations section */}
-      {analysis.patternObservations && (
-        <div className="pattern-observations-section">
-          <h4>Pattern Observations</h4>
-          <p>{analysis.patternObservations}</p>
+      {/* Follow-up Questions section */}
+      {parsedAnalysis.followUpQuestions && parsedAnalysis.followUpQuestions.length > 0 && (
+        <div className="follow-up-questions-section">
+          <h4>Follow-up Questions</h4>
+          <ul className="questions-list">
+            {parsedAnalysis.followUpQuestions.map((question, index) => (
+              <li key={index}>{question}</li>
+            ))}
+          </ul>
         </div>
       )}
-      
+
       {/* Tracking Suggestions section */}
-      {analysis.trackingSuggestions && analysis.trackingSuggestions.length > 0 && (
+      {parsedAnalysis.trackingSuggestions && parsedAnalysis.trackingSuggestions.length > 0 && (
         <div className="tracking-suggestions-section">
           <h4>Tracking Suggestions</h4>
-          <ul>
-            {analysis.trackingSuggestions.map((suggestion, index) => (
+          <ul className="suggestions-list">
+            {parsedAnalysis.trackingSuggestions.map((suggestion, index) => (
               <li key={index}>{suggestion}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Journaling Recommendation section */}
+      {parsedAnalysis.journalingRecommendation && (parsedAnalysis.journalingRecommendation.promptType || parsedAnalysis.journalingRecommendation.suggestedPrompt) && (
+        <div className="journaling-recommendation-section">
+          <h4>Journaling Recommendation</h4>
+          {parsedAnalysis.journalingRecommendation.promptType && (
+            <p><strong>Prompt Type:</strong> {parsedAnalysis.journalingRecommendation.promptType}</p>
+          )}
+          {parsedAnalysis.journalingRecommendation.suggestedPrompt && (
+            <div className="suggested-prompt">
+              <strong>Suggested Prompt:</strong>
+              <p>{parsedAnalysis.journalingRecommendation.suggestedPrompt}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pattern Observations section */}
+      {parsedAnalysis.patternObservations && (
+        <div className="pattern-observations-section">
+          <h4>Pattern Observations</h4>
+          <p>{parsedAnalysis.patternObservations}</p>
         </div>
       )}
       
@@ -329,11 +358,10 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
           </div>
         </div>
         
-        {/* Journal Entry Analysis */}
-        <div className="analysis-section">
-          <h5>Journal Entry Analysis:</h5>
-          <div className="analysis-text">
-            <p>{analysis.analysis || "No analysis available."}</p>
+        {/* Debug Info section */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="analysis-section">
+            <h5>Debug Information:</h5>
             <div className="debug-info">
               <button 
                 onClick={() => {
@@ -349,16 +377,17 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
                   backgroundColor: '#f0f0f0',
                   border: '1px solid #ccc',
                   borderRadius: '3px',
-                  cursor: 'pointer',
-                  display: process.env.NODE_ENV === 'development' ? 'block' : 'none'
+                  cursor: 'pointer'
                 }}
               >
                 Toggle Debug Info
               </button>
-              <pre style={{ display: 'none' }}>{JSON.stringify(analysis, null, 2)}</pre>
+              <pre id="journal-debug-info" style={{ display: 'none', fontSize: '10px', backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '4px', overflow: 'auto' }}>
+                {JSON.stringify(parsedAnalysis, null, 2)}
+              </pre>
             </div>
           </div>
-        </div>
+        )}
       </div>
       
       {/* PDF Download Button */}
