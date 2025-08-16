@@ -98,7 +98,7 @@ const JournalList = () => {
       const token = localStorage.getItem('token');
       
       await apiFetch(
-        getApiUrl(`/journal/${entryId}`),
+        getApiUrl(`${API_ENDPOINTS.JOURNAL}/${entryId}`),
         {
           method: 'DELETE',
           headers: {

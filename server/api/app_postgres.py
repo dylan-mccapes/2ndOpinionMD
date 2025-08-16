@@ -27,6 +27,7 @@ from server.db.session import get_session
 from server.api.journal import router as journal_router
 from server.api.auth_routes_postgres import router as auth_router
 from server.api.auth_postgres import get_current_user_postgres
+from server.api.schemas import DiagnoseResponse
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
@@ -138,7 +139,7 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-@app.post("/api/diagnose", response_model=DiagnosisResponse)
+@app.post("/api/diagnose", response_model=DiagnoseResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
     session: AsyncSession = Depends(get_session),
@@ -217,10 +218,31 @@ async def _diagnose_handler(
             demographics=request.demographics
         )
         
+        if isinstance(response, str):
+            try:
+                response_data = json.loads(response)
+            except json.JSONDecodeError:
+                response_data = {
+                    "diagnoses": [{
+                        "diagnosis": response,
+                        "confidence_score": None,
+                        "icd_10_code": None,
+                        "recommendations": None
+                    }]
+                }
+        else:
+            response_data = response
+            
+        if "diagnoses" not in response_data:
+            response_data = {"diagnoses": []}
+            
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.info(f"Diagnose response generated successfully in {duration_ms:.2f}ms")
         
-        return response
+        validated_response = DiagnoseResponse.model_validate(response_data)
+        logger.info(f"Validated response: {validated_response.model_dump()}")
+        
+        return validated_response.model_dump(by_alias=False)
     except HTTPException as e:
         duration_ms = (time.perf_counter() - start_time) * 1000
         error_code = e.detail.get("code", "unknown") if isinstance(e.detail, dict) else "http_error"
