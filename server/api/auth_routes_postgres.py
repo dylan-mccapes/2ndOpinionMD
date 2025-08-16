@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, date
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -279,13 +279,19 @@ async def resend_verification(payload: ResendRequest, background_tasks: Backgrou
     background_tasks.add_task(send_verification_email, user.email, user.full_name or "User", verification_token)
     return {"detail": "Verification email sent if the account exists"}
 
+@router.get("/users/me", response_model=UserResponse, include_in_schema=False)
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user_postgres)):
+async def get_current_user_info(
+    request: Request,
+    current_user: User = Depends(get_current_user_postgres)
+):
+    if request.url.path.endswith("/users/me"):
+        logger.warning("Deprecated path /api/auth/users/me used")
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
         full_name=current_user.full_name,
         birthdate=current_user.birthdate,
         subscription_tier=current_user.subscription_tier,
-        created_at=current_user.created_at
+        created_at=current_user.created_at,
     )
