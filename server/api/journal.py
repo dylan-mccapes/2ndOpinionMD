@@ -92,6 +92,7 @@ Using the 2OPMD Diagnostic Terrain System:
 router = APIRouter()
 
 @router.post("/", response_model=JournalEntryResponse)
+@router.post("", response_model=JournalEntryResponse, include_in_schema=False)
 async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
@@ -171,6 +172,7 @@ async def create_journal_entry(
     return db_entry
 
 @router.get("/", response_model=List[JournalEntryResponse])
+@router.get("", response_model=List[JournalEntryResponse], include_in_schema=False)
 async def get_journal_entries(
     current_user: User = Depends(get_current_user),
     limit: int = 10,
