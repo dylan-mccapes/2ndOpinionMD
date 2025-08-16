@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from pydantic import EmailStr
 from typing import List
@@ -6,6 +7,7 @@ from dotenv import load_dotenv
 from server.utils.email.pydantic_compat import Secret  # Add compatibility layer
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME", ""),
@@ -20,16 +22,30 @@ conf = ConnectionConfig(
     TEMPLATE_FOLDER=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"),
 )
 
-async def send_email(subject: str, recipients: List[EmailStr], body: str, html_body: str = None):
+async def send_email(
+    subject: str,
+    recipients: List[EmailStr],
+    *,
+    html_body: str | None = None,
+    text_body: str | None = None,
+    body: str = None  # Keep for backward compatibility
+) -> None:
     """
     Send an email with the configured mail settings
     """
+    email_body = html_body if html_body else (text_body or body or "")
+    subtype = "html" if html_body else "plain"
+
     message = MessageSchema(
         subject=subject,
         recipients=recipients,
-        body=body,
-        html=html_body or body,
+        body=email_body,
+        subtype=subtype,  # REQUIRED on pydantic v2 / fastapi-mail
     )
     
-    fm = FastMail(conf)
-    await fm.send_message(message)
+    try:
+        fm = FastMail(conf)
+        await fm.send_message(message)
+        logger.info("Email enqueued to %s with subtype=%s", recipients, subtype)
+    except Exception:
+        logger.exception("Email send failed for %s", recipients)
