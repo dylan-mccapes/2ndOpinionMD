@@ -84,7 +84,7 @@ const JournalForm = () => {
         if (!token) return;
         
         const response = await apiFetch(
-          getApiUrl(`/journal/timeline/${selectedReport.id}`),
+          getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${selectedReport.id}`),
           {
             headers: {
               'Authorization': `Bearer ${token}`

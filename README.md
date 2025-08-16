@@ -118,6 +118,38 @@ This ensures consistent code style for all components and pages.
 We are not using a test suite at MVP stage.
 ✅ If the app builds and runs (yarn dev), treat it as a successful pass.
 
+### 🔧 Dev Testing - Journal API
+
+Manual testing commands for journal endpoints:
+
+```bash
+# 1) Login and get token
+export TOKEN=$(curl -s -X POST http://127.0.0.1:8000/api/auth/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'username=you@example.com&password=yourpassword' | jq -r .access_token)
+
+# 2) List entries (both paths should return 200, no 307 redirects)
+curl -i -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/journal
+curl -i -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/journal/
+
+# 3) Create entry (should return 201)
+curl -i -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"symptoms":[{"symptom":"headache","severity":5}],"notes":"Test entry"}' \
+  http://127.0.0.1:8000/api/journal
+
+# 4) Read entry (replace {id} with actual entry ID)
+curl -i -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/journal/{id}
+
+# 5) Delete entry (replace {id} with actual entry ID)
+curl -i -X DELETE -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/journal/{id}
+```
+
+**Expected Results:**
+- No 307 redirects on any endpoint
+- All endpoints return 401 without Bearer token
+- POST returns 201 Created
+- No `/api/journal/journal` routes in logs
+
 ## 📋 Features
 
 ### 🔒 Authentication

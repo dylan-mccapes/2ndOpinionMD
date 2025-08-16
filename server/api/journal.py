@@ -89,10 +89,10 @@ Using the 2OPMD Diagnostic Terrain System:
 - Consider misdiagnosis patterns and tags
 """
 
-router = APIRouter()
+router = APIRouter(tags=["journal"])
 
-@router.post("/", response_model=JournalEntryResponse)
-@router.post("", response_model=JournalEntryResponse, include_in_schema=False)
+@router.post("/", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
@@ -280,49 +280,6 @@ async def delete_journal_entry(
         detail="Journal entry not found"
     )
 
-@router.get("/journal", include_in_schema=False)
-async def list_entries_legacy(
-    current_user: User = Depends(get_current_user),
-    limit: int = 10,
-    skip: int = 0,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    session: AsyncSession = Depends(get_session)
-):
-    """Legacy endpoint for backward compatibility - delegates to main handler"""
-    return await get_journal_entries(current_user, limit, skip, start_date, end_date, session)
-
-@router.get("/journal/", include_in_schema=False)
-async def list_entries_legacy_slash(
-    current_user: User = Depends(get_current_user),
-    limit: int = 10,
-    skip: int = 0,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    session: AsyncSession = Depends(get_session)
-):
-    """Legacy endpoint for backward compatibility with trailing slash"""
-    return await get_journal_entries(current_user, limit, skip, start_date, end_date, session)
-
-@router.post("/journal", include_in_schema=False)
-async def create_entry_legacy(
-    entry: JournalEntryCreate,
-    current_user: User = Depends(get_current_user),
-    report_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_session)
-):
-    """Legacy endpoint for backward compatibility - delegates to main handler"""
-    return await create_journal_entry(entry, current_user, report_id, session)
-
-@router.post("/journal/", include_in_schema=False)
-async def create_entry_legacy_slash(
-    entry: JournalEntryCreate,
-    current_user: User = Depends(get_current_user),
-    report_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_session)
-):
-    """Legacy endpoint for backward compatibility with trailing slash"""
-    return await create_journal_entry(entry, current_user, report_id, session)
 
 async def get_previous_journal_entries(user_id: str, limit: int = 20, session: AsyncSession = None):
     """Get previous journal entries for a user to provide context"""
