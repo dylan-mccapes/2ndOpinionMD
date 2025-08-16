@@ -5,7 +5,7 @@ import JournalAnalysisDisplay from './JournalAnalysisDisplay';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
-const JournalDetail = () => {
+const JournalDetail = ({ testMode = false }) => {
   const [entry, setEntry] = useState(null);
   const [timelineData, setTimelineData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -16,6 +16,82 @@ const JournalDetail = () => {
   useEffect(() => {
     const fetchEntry = async () => {
       try {
+        if (testMode) {
+          const mockEntry = {
+            id: 1,
+            date: new Date().toISOString(),
+            entry_text: 'Today I experienced joint pain in my hands and wrists. The stiffness was particularly bad this morning and lasted about an hour. I also felt quite fatigued throughout the day.',
+            symptoms: [
+              { symptom: 'Joint pain in hands', severity: 7 },
+              { symptom: 'Morning stiffness', severity: 6 },
+              { symptom: 'Fatigue', severity: 8 },
+              { symptom: 'Wrist pain', severity: 6 }
+            ],
+            environmental_factors: [
+              { factor_type: 'Weather', description: 'Cold and humid conditions' },
+              { factor_type: 'Stress', description: 'Work deadline pressure' }
+            ],
+            stress_level: 7,
+            sleep_quality: 6,
+            diet_notes: 'Had more inflammatory foods this week, including processed snacks and less vegetables.',
+            notes: 'Symptoms seem to be getting worse over the past few days. Need to track more carefully.',
+            ai_analysis: {
+              analysis: 'Based on your symptoms, there appears to be an inflammatory pattern consistent with autoimmune conditions. The combination of joint pain, morning stiffness, and fatigue suggests possible rheumatoid arthritis or similar inflammatory arthritis. The morning stiffness lasting over an hour is particularly significant as it indicates inflammatory rather than mechanical joint problems.',
+              symptoms: ['feeling tired', 'joint pain in hands', 'morning stiffness', 'wrist pain'],
+              environmental_factors: ['cold weather', 'humidity', 'work stress'],
+              life_stressors: ['work deadlines', 'sleep disruption from pain'],
+              diagnoses: [
+                { 
+                  name: 'Chronic Fatigue Syndrome', 
+                  confidence: 60, 
+                  status: 'new', 
+                  staxLevel: 2, 
+                  zone: 3, 
+                  tags: ['#SuspectedDx_ChronicFatigueSyndrome', '#EarlyZoneShift', '#FatiguePattern'] 
+                },
+                { 
+                  name: 'Rheumatoid Arthritis', 
+                  confidence: 75, 
+                  status: 'new', 
+                  staxLevel: 2, 
+                  zone: 3, 
+                  tags: ['#SuspectedDx_RheumatoidArthritis', '#InflammatoryPattern', '#MorningStiffness'] 
+                },
+                { 
+                  name: 'Fibromyalgia', 
+                  confidence: 45, 
+                  status: 'eliminated', 
+                  staxLevel: 1, 
+                  zone: 2, 
+                  tags: ['#RuledOut_Fibromyalgia', '#LackOfTenderPoints'] 
+                }
+              ],
+              followUpQuestions: [
+                'How long does your morning stiffness typically last?', 
+                'Have you noticed any swelling in your joints?',
+                'Do you have any family history of autoimmune conditions?',
+                'Have you experienced any skin rashes or sun sensitivity?'
+              ],
+              trackingSuggestions: [
+                'Track morning stiffness duration daily', 
+                'Monitor joint swelling patterns', 
+                'Note weather correlation with symptoms',
+                'Record sleep quality and its impact on symptoms',
+                'Track response to anti-inflammatory medications'
+              ],
+              journalingRecommendation: { 
+                promptType: 'Clinical', 
+                suggestedPrompt: 'Describe your joint symptoms in detail, including which joints are affected, when symptoms are worst, and any factors that make them better or worse. Pay special attention to morning stiffness duration and any swelling you notice.' 
+              },
+              patternObservations: 'Symptoms appear to worsen in cold, humid weather and during periods of high stress. Morning stiffness lasting more than 30 minutes is particularly concerning and suggests inflammatory arthritis. The combination of fatigue and joint symptoms in a symmetric pattern is consistent with systemic autoimmune conditions.',
+              timestamp: new Date().toISOString()
+            }
+          };
+          setEntry(mockEntry);
+          setIsLoading(false);
+          return;
+        }
+
         const token = localStorage.getItem('token');
         if (!token) {
           navigate('/login');
@@ -66,7 +142,7 @@ const JournalDetail = () => {
     };
     
     fetchEntry();
-  }, [entryId, navigate]);
+  }, [entryId, navigate, testMode]);
   
   const formatDate = (dateString) => {
     const date = new Date(dateString);

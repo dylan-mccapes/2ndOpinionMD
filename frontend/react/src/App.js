@@ -498,6 +498,20 @@ function AppContent() {
               </main>
             </Layout>
           } />
+          
+          {/* Test route for journal detail functionality without authentication */}
+          <Route path="/test/journal-detail" element={
+            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+              <main className="App-main">
+                <h1>Journal Detail Test Mode</h1>
+                <p>This page allows testing journal detail and AI analysis rendering without authentication.</p>
+                <JournalDetail testMode={true} />
+                <div className="home-button-container">
+                  <Link to="/test/journal-list" className="btn btn-secondary home-button">Back to Journal List</Link>
+                </div>
+              </main>
+            </Layout>
+          } />
         </Routes>
       </div>
   );
