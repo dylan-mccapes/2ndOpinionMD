@@ -29,12 +29,17 @@ class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
+      const errorMsg = typeof this.state.error === 'string'
+        ? this.state.error
+        : this.state.error?.message
+        ?? (() => { try { return JSON.stringify(this.state.error); } catch { return 'Something went wrong'; } })();
+
       return (
         <div className="error-boundary">
           <h2>Something went wrong</h2>
           <details>
             <summary>View Error Details</summary>
-            <p>{this.state.error && this.state.error.toString()}</p>
+            <p>{errorMsg}</p>
             <p>Component Stack:</p>
             <pre>{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
           </details>
