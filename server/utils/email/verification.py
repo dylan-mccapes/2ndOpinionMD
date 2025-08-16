@@ -75,8 +75,8 @@ async def _send_fastmail_verification_email(email: EmailStr, name: str, verifica
     await send_email(
         subject="Verify Your Email - 2ndOpinionMD",
         recipients=[email],
-        body=text_content,
-        html_body=html_content
+        html_body=html_content,
+        text_body=text_content
     )
 
 async def _send_smtp_verification_email(email: EmailStr, name: str, verification_url: str):
@@ -194,6 +194,6 @@ async def send_password_reset_email(email: EmailStr, name: str, token: str):
     await send_email(
         subject="Reset Your Password - 2ndOpinionMD",
         recipients=[email],
-        body=text_content,
-        html_body=html_content
+        html_body=html_content,
+        text_body=text_content
     )
