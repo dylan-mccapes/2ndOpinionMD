@@ -6,11 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 import os
+import logging
 from dotenv import load_dotenv
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
+
+logger = logging.getLogger(__name__)
 
 from server.db.session import get_session
 from database.models.postgresql.models import User
@@ -51,6 +54,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=RegistrationResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+    logger.info("Using UserCreate from %s", UserCreate.__module__)
     query = select(User).where(User.email == user.email)
     result = await session.execute(query)
     existing_user = result.scalar_one_or_none()
@@ -65,23 +69,41 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     verification_token_expires = datetime.utcnow() + timedelta(hours=24)
     
     hashed_password = get_password_hash(user.password)
+    
+    try:
+        payload = user.dict(exclude_unset=True)        # Pydantic v1
+    except AttributeError:
+        payload = user.model_dump(exclude_unset=True)  # Pydantic v2
+    
+    full_name = payload.get("full_name")
+    birthdate = payload.get("birthdate")
+    
     db_user = User(
         email=user.email,
-        full_name=getattr(user, "full_name", None),
+        full_name=full_name,
         hashed_password=hashed_password,
-        birthdate=getattr(user, "birthdate", None),
+        birthdate=birthdate,
         verification_token=verification_token,
         verification_token_expires=verification_token_expires
     )
     
     session.add(db_user)
-    await session.commit()
-    await session.refresh(db_user)
+    try:
+        await session.commit()
+        await session.refresh(db_user)
+    except Exception as e:
+        await session.rollback()
+        if "unique constraint" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered"
+            )
+        raise
     
     background_tasks.add_task(
         send_verification_email,
         user.email,
-        getattr(user, "full_name", "User"),
+        payload.get("full_name") or "User",
         verification_token
     )
     
