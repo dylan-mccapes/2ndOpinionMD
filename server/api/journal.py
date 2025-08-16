@@ -92,6 +92,7 @@ Using the 2OPMD Diagnostic Terrain System:
 router = APIRouter()
 
 @router.post("/", response_model=JournalEntryResponse)
+@router.post("", response_model=JournalEntryResponse, include_in_schema=False)
 async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
@@ -133,7 +134,7 @@ async def create_journal_entry(
         if structured_symptoms:
             final_symptoms = structured_symptoms
             print(f"\n=== REPLACED RAW SYMPTOMS WITH AI-EXTRACTED ===")
-            print(f"Original symptoms count: {len(entry.symptoms)}")
+            print(f"Original symptoms count: {len(entry.symptoms) if entry.symptoms else 0}")
             print(f"AI-extracted symptoms count: {len(structured_symptoms)}")
             for i, symptom in enumerate(structured_symptoms):
                 print(f"  {i+1}. {symptom['symptom']} (Severity: {symptom['severity']}/10)")
@@ -164,13 +165,14 @@ async def create_journal_entry(
         ai_analysis=ai_analysis
     )
     
-    db.add(db_entry)
-    await db.commit()
-    await db.refresh(db_entry)
+    session.add(db_entry)
+    await session.commit()
+    await session.refresh(db_entry)
 
     return db_entry
 
 @router.get("/", response_model=List[JournalEntryResponse])
+@router.get("", response_model=List[JournalEntryResponse], include_in_schema=False)
 async def get_journal_entries(
     current_user: User = Depends(get_current_user),
     limit: int = 10,
@@ -189,12 +191,12 @@ async def get_journal_entries(
         
     query = query.order_by(JournalEntry.date.desc()).offset(skip).limit(limit)
     
-    result = await db.execute(query)
+    result = await session.execute(query)
     db_entries = result.scalars().all()
     
     return db_entries
 
-@router.get("/journal/{entry_id}", response_model=JournalEntryResponse)
+@router.get("/{entry_id}", response_model=JournalEntryResponse)
 async def get_journal_entry(
     entry_id: str,
     current_user: User = Depends(get_current_user),
@@ -204,7 +206,7 @@ async def get_journal_entry(
     query = select(JournalEntry).where(
         and_(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id)
     )
-    result = await db.execute(query)
+    result = await session.execute(query)
     db_entry = result.scalar_one_or_none()
     
     if db_entry:
@@ -223,7 +225,7 @@ async def get_timeline_data(
 ):
     """Get timeline data for a specific report including initial diagnosis and all journal entries"""
     query = select(JournalEntry).where(JournalEntry.user_id == current_user.id).order_by(JournalEntry.date.asc())
-    result = await db.execute(query)
+    result = await session.execute(query)
     db_entries = result.scalars().all()
     
     journal_entries = []
@@ -255,7 +257,7 @@ async def get_timeline_data(
     
     return timeline_data
 
-@router.delete("/journal/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_journal_entry(
     entry_id: str,
     current_user: User = Depends(get_current_user),
@@ -265,12 +267,12 @@ async def delete_journal_entry(
     query = select(JournalEntry).where(
         and_(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id)
     )
-    result = await db.execute(query)
+    result = await session.execute(query)
     db_entry = result.scalar_one_or_none()
     
     if db_entry:
-        await db.delete(db_entry)
-        await db.commit()
+        await session.delete(db_entry)
+        await session.commit()
         return
 
     raise HTTPException(
@@ -288,7 +290,19 @@ async def list_entries_legacy(
     session: AsyncSession = Depends(get_session)
 ):
     """Legacy endpoint for backward compatibility - delegates to main handler"""
-    return await get_journal_entries(current_user, limit, skip, start_date, end_date, db)
+    return await get_journal_entries(current_user, limit, skip, start_date, end_date, session)
+
+@router.get("/journal/", include_in_schema=False)
+async def list_entries_legacy_slash(
+    current_user: User = Depends(get_current_user),
+    limit: int = 10,
+    skip: int = 0,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    session: AsyncSession = Depends(get_session)
+):
+    """Legacy endpoint for backward compatibility with trailing slash"""
+    return await get_journal_entries(current_user, limit, skip, start_date, end_date, session)
 
 @router.post("/journal", include_in_schema=False)
 async def create_entry_legacy(
@@ -298,17 +312,27 @@ async def create_entry_legacy(
     session: AsyncSession = Depends(get_session)
 ):
     """Legacy endpoint for backward compatibility - delegates to main handler"""
-    return await create_journal_entry(entry, current_user, report_id, db)
+    return await create_journal_entry(entry, current_user, report_id, session)
 
-async def get_previous_journal_entries(user_id: str, limit: int = 20, db: AsyncSession = None):
+@router.post("/journal/", include_in_schema=False)
+async def create_entry_legacy_slash(
+    entry: JournalEntryCreate,
+    current_user: User = Depends(get_current_user),
+    report_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_session)
+):
+    """Legacy endpoint for backward compatibility with trailing slash"""
+    return await create_journal_entry(entry, current_user, report_id, session)
+
+async def get_previous_journal_entries(user_id: str, limit: int = 20, session: AsyncSession = None):
     """Get previous journal entries for a user to provide context"""
     
-    if not db:
+    if not session:
         return []
     
     from database.models.postgresql.models import JournalEntry as JournalEntry
     query = select(JournalEntry).where(JournalEntry.user_id == user_id).order_by(JournalEntry.date.desc()).limit(limit)
-    result = await db.execute(query)
+    result = await session.execute(query)
     db_entries = result.scalars().all()
     
     return db_entries
@@ -514,28 +538,37 @@ async def generate_journal_analysis(
     for symptom in normalized_symptoms:
         query_text += f" {symptom.symptom}"
 
-    all_results = await query_engine.query_all_collections(query_text) if hasattr(query_engine, 'query_all_collections') and asyncio.iscoroutinefunction(query_engine.query_all_collections) else query_engine.query_all_collections(query_text)
+    if hasattr(query_engine, 'query_all_collections'):
+        if asyncio.iscoroutinefunction(query_engine.query_all_collections):
+            all_results = await query_engine.query_all_collections(query_text)
+        else:
+            all_results = query_engine.query_all_collections(query_text)
+    else:
+        all_results = None
 
     rag_context = ""
-    if all_results:
+    if all_results and isinstance(all_results, dict):
         rag_context = "RELEVANT MEDICAL INFORMATION FROM DATABASE:\n\n"
 
-        if "disease" in all_results:
+        if "disease" in all_results and isinstance(all_results["disease"], list):
             rag_context += "Potential Related Conditions:\n"
             for result in all_results["disease"][:3]:  # Limit to top 3 results
-                rag_context += f"- {result['text']}\n"
+                if isinstance(result, dict) and "text" in result:
+                    rag_context += f"- {result['text']}\n"
             rag_context += "\n"
 
-        if "autoimmune" in all_results:
+        if "autoimmune" in all_results and isinstance(all_results["autoimmune"], list):
             rag_context += "Autoimmune Information:\n"
             for result in all_results["autoimmune"][:3]:  # Limit to top 3 results
-                rag_context += f"- {result['text']}\n"
+                if isinstance(result, dict) and "text" in result:
+                    rag_context += f"- {result['text']}\n"
             rag_context += "\n"
 
-        if "case" in all_results:
+        if "case" in all_results and isinstance(all_results["case"], list):
             rag_context += "Similar Case Studies:\n"
             for result in all_results["case"][:3]:  # Limit to top 3 results
-                rag_context += f"- {result['text']}\n"
+                if isinstance(result, dict) and "text" in result:
+                    rag_context += f"- {result['text']}\n"
             rag_context += "\n"
 
     prompt = f"""
