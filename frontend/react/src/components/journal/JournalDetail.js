@@ -36,7 +36,7 @@ const JournalDetail = () => {
         if (response && response.reportId) {
           try {
             const timelineResponse = await apiFetch(
-              getApiUrl(`/journal/timeline/${response.reportId}`),
+              getApiUrl(`${API_ENDPOINTS.JOURNAL}/timeline/${response.reportId}`),
               {
                 headers: {
                   'Authorization': `Bearer ${token}`
