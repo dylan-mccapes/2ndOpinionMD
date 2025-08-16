@@ -59,18 +59,22 @@ To start the development server:
 
 **Frontend:**
 ```bash
-yarn dev
+cd frontend/react
+yarn start
 ```
 
 **Backend:**
 ```bash
 cd server
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-uvicorn api.app:app --reload --port 3001
+python -m uvicorn api.app_postgres:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Then open your browser to:
 👉 http://localhost:3000
+
+**Development Proxy Configuration:**
+The React development server (port 3000) includes a proxy configuration in `package.json` that forwards `/api/*` requests to the backend server (port 8000). This proxy is **development-only** and has no effect in production builds.
 
 ### 🔑 Environment Configuration
 Create a `.env` file in the root directory with the following variables:
@@ -219,8 +223,18 @@ The API implements rate limiting to protect against brute force attacks and abus
 
 - Authentication endpoints: 5 requests per minute per IP address
 - General API endpoints: 60 requests per minute per IP address
+- **Diagnose endpoint (`/api/diagnose`)**: 10 requests per minute per IP address (public access)
 
 When rate limits are exceeded, the API returns a 429 Too Many Requests response with a Retry-After header indicating when the client should try again.
+
+### Public Endpoints
+
+The `/api/diagnose` endpoint is publicly accessible without authentication to allow guest users to submit symptoms for analysis. This endpoint includes:
+
+- Enhanced payload validation (max 50 symptoms, 500 characters each)
+- Strict rate limiting (10 requests/minute per IP)
+- Request duration logging and structured error responses
+- Deprecated alias at `/api/diagnosis` (logs deprecation warnings)
 
 ### Email Verification
 

@@ -3,8 +3,9 @@ import { useForm, Controller } from 'react-hook-form';
 import Select from 'react-select';
 import PropTypes from 'prop-types';
 import { SYMPTOMS, PRIOR_DIAGNOSES, SEX_OPTIONS, RACE_OPTIONS } from '../../utils/constants';
-import { formatSymptomData } from '../../utils/formatData';
-import { processSymptomInput } from '../../utils/openaiService';
+import { formatSymptomData, calculateAgeFromBirthdate } from '../../utils/formatData';
+import { apiFetch } from '../../utils/apiClient';
+import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 import { MISDIAGNOSIS_PATTERNS } from '../../utils/ethosOfHealth';
 import './SymptomIntakeForm.css';
 
@@ -18,29 +19,48 @@ const SymptomIntakeForm = ({ onSubmit }) => {
     setShowEthosInfo(!showEthosInfo);
   };
 
+  const submitDiagnoseRequest = async (formData) => {
+    const age = formData.birthdate ? calculateAgeFromBirthdate(formData.birthdate) : 0;
+    
+    const payload = {
+      symptoms: Array.isArray(formData.symptoms) 
+        ? formData.symptoms.map(s => s.label || s) 
+        : [formData.symptoms],
+      demographics: {
+        age: age,
+        birthdate: formData.birthdate,
+        gender: formData.sex?.value,
+        race: formData.race?.value || "Not specified",
+        height: formData.height || "Not specified",
+        weight: parseInt(formData.weight) || 0,
+        occupation: formData.occupation || "Not specified"
+      },
+      model: "gpt-3.5-turbo"
+    };
+    
+    return await apiFetch(getApiUrl(API_ENDPOINTS.DIAGNOSE), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  };
+
   const processForm = async (data) => {
     setIsLoading(true);
     setError('');
     
     try {
       console.log('Form data submitted:', data);
-      const formattedData = formatSymptomData(data);
       
       if (!data.race) {
         data.race = { value: 'prefer_not_to_say', label: 'Prefer not to say' };
       }
       
-      const response = await processSymptomInput(data);
-      
-      if (response && response.error) {
-        throw new Error(response.error);
-      }
-      
+      const response = await submitDiagnoseRequest(data);
       onSubmit(response);
     } catch (err) {
       console.error('Error processing symptoms:', err);
-      setError(err.response?.data?.detail || 'Failed to process symptoms. Please try again.');
-      
+      setError(err.message || 'Failed to process symptoms. Please try again.');
     } finally {
       setIsLoading(false);
     }

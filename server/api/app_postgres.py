@@ -19,7 +19,7 @@ sys.path.insert(0, project_root)
 from server.vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
 from server.db.session import SessionLocal, engine
 from database.models.postgresql.models import User as UserInDB
-from server.utils.rate_limiter import general_rate_limiter, get_client_ip
+from server.utils.rate_limiter import general_rate_limiter, diagnose_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from server.db.session import get_session
@@ -141,21 +141,74 @@ async def rate_limit_exception_handler(request: Request, exc: HTTPException):
 @app.post("/api/diagnose", response_model=DiagnosisResponse)
 async def diagnose(
     request: SymptomRequest = Body(...),
-    current_user: UserInDB = Depends(get_current_user_postgres),
     session: AsyncSession = Depends(get_session),
-    _: None = Depends(general_rate_limiter)
+    _: None = Depends(diagnose_rate_limiter)
 ):
     """
     Generate a diagnosis based on symptoms and optional demographics
     """
+    return await _diagnose_handler(request, session)
+
+@app.post("/api/diagnosis", response_model=DiagnosisResponse, include_in_schema=False)
+async def diagnose_alias(
+    request: SymptomRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(diagnose_rate_limiter)
+):
+    """
+    Deprecated alias for /api/diagnose
+    """
+    logger.warning("Deprecated path hit: /api/diagnosis (use /api/diagnose)")
+    return await _diagnose_handler(request, session)
+
+async def _diagnose_handler(
+    request: SymptomRequest,
+    session: AsyncSession
+):
+    """
+    Generate a diagnosis based on symptoms and optional demographics
+    """
+    import time
+    start_time = time.perf_counter()
+    
     try:
-        logger.info(f"Diagnose request: symptoms={request.symptoms}")
-        logger.info(f"Diagnose request: demographics={request.demographics}")
+        logger.info(f"Diagnose request: symptoms={len(request.symptoms) if request.symptoms else 0} symptoms")
+        logger.info(f"Diagnose request: demographics={bool(request.demographics)}")
         logger.info(f"Diagnose request: model={request.model}")
         
         if not request.symptoms or not isinstance(request.symptoms, list):
-            logger.error(f"Invalid symptoms format: {request.symptoms}")
-            raise HTTPException(status_code=400, detail="Invalid symptoms format. Please provide a list of symptom strings.")
+            logger.error(f"Invalid symptoms format: {type(request.symptoms)}")
+            raise HTTPException(
+                status_code=400, 
+                detail={"code": "invalid_symptoms", "message": "Invalid symptoms format. Please provide a list of symptom strings."}
+            )
+        
+        if len(request.symptoms) > 50:
+            logger.error(f"Too many symptoms: {len(request.symptoms)}")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "too_many_symptoms", "message": "Maximum 50 symptoms allowed per request."}
+            )
+        
+        for i, symptom in enumerate(request.symptoms):
+            if not isinstance(symptom, str):
+                logger.error(f"Invalid symptom type at index {i}: {type(symptom)}")
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "invalid_symptom_type", "message": "All symptoms must be strings."}
+                )
+            if len(symptom) > 500:
+                logger.error(f"Symptom too long at index {i}: {len(symptom)} chars")
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "symptom_too_long", "message": "Each symptom must be 500 characters or less."}
+                )
+            if len(symptom.strip()) == 0:
+                logger.error(f"Empty symptom at index {i}")
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "empty_symptom", "message": "Symptoms cannot be empty."}
+                )
         
         response = await query_engine.generate_rag_response(
             symptoms=request.symptoms, 
@@ -164,14 +217,24 @@ async def diagnose(
             demographics=request.demographics
         )
         
-        logger.info(f"Diagnose response: {response}")
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"Diagnose response generated successfully in {duration_ms:.2f}ms")
         
         return response
+    except HTTPException as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        error_code = e.detail.get("code", "unknown") if isinstance(e.detail, dict) else "http_error"
+        logger.error(f"Diagnose request failed with {e.status_code} ({error_code}) in {duration_ms:.2f}ms")
+        raise
     except Exception as e:
-        logger.error(f"Error generating diagnosis: {str(e)}")
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"Error generating diagnosis in {duration_ms:.2f}ms: {str(e)}")
         logger.error(traceback.format_exc())
         
-        raise HTTPException(status_code=500, detail=f"Error generating diagnosis: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail={"code": "diagnosis_error", "message": f"Error generating diagnosis: {str(e)}"}
+        )
 
 @app.get("/api/health")
 async def health_check():

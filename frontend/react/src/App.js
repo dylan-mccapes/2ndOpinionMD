@@ -230,6 +230,20 @@ function AppContent() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/diagnostics" element={<Diagnostics />} />
           
+          {/* Public diagnose route */}
+          <Route path="/diagnose" element={
+            <Layout user={{full_name: 'Guest User'}} onLogout={() => {}}>
+              <main className="App-main">
+                <h1>Symptom Analysis</h1>
+                <p>Enter your symptoms for an AI-powered analysis</p>
+                <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
+                <div className="home-button-container">
+                  <Link to="/splash" className="btn btn-secondary home-button">Return to Home</Link>
+                </div>
+              </main>
+            </Layout>
+          } />
+          
           {/* Redirect to splash if not authenticated */}
           <Route path="/" element={
             !isAuthenticated ? <Navigate to="/splash" /> : (

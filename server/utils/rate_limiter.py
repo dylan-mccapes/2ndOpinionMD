@@ -75,3 +75,4 @@ def create_rate_limiter(limit: int, window: int = 60, limit_id: str = "default")
 
 auth_rate_limiter = create_rate_limiter(limit=5, window=60, limit_id="auth")
 general_rate_limiter = create_rate_limiter(limit=60, window=60, limit_id="general")
+diagnose_rate_limiter = create_rate_limiter(limit=10, window=60, limit_id="diagnose")
