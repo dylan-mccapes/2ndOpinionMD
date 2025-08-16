@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import './Auth.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -21,7 +21,7 @@ const EmailVerification = () => {
       }
 
       try {
-        const response = await axios.get(
+        const response = await apiFetch(
           getApiUrl(`/auth/verify-email?token=${token}`)
         );
         
@@ -36,8 +36,7 @@ const EmailVerification = () => {
         console.error('Verification error:', err);
         setStatus('error');
         setMessage(
-          err.response?.data?.detail || 
-          'Verification failed. The link may be invalid or expired.'
+          err.message || 'Verification failed. The link may be invalid or expired.'
         );
       }
     };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import { downloadJournalTimelinePdf } from '../../utils/pdfGenerator';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
@@ -53,7 +53,7 @@ const JournalList = () => {
           return;
         }
         
-        const response = await axios.get(
+        const response = await apiFetch(
           getApiUrl(API_ENDPOINTS.JOURNAL),
           {
             headers: {
@@ -62,7 +62,7 @@ const JournalList = () => {
           }
         );
         
-        setEntries(response.data);
+        setEntries(response);
       } catch (err) {
         console.error('Error fetching journal entries:', err);
         setError('Unable to load journal entries. Please try again later.');
@@ -97,9 +97,10 @@ const JournalList = () => {
     try {
       const token = localStorage.getItem('token');
       
-      await axios.delete(
+      await apiFetch(
         getApiUrl(`/journal/${entryId}`),
         {
+          method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -178,7 +179,7 @@ const JournalList = () => {
         return;
       }
       
-      const response = await axios.get(
+      const response = await apiFetch(
         getApiUrl(`${API_ENDPOINTS.JOURNAL}?limit=1000`),
         {
           headers: {
@@ -187,7 +188,7 @@ const JournalList = () => {
         }
       );
       
-      await downloadJournalTimelinePdf(response.data, `journal-timeline-${Date.now()}.pdf`);
+      await downloadJournalTimelinePdf(response, `journal-timeline-${Date.now()}.pdf`);
     } catch (err) {
       console.error('Error downloading journal report:', err);
       setError('Unable to download journal report. Please try again.');

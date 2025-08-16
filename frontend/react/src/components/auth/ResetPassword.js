@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import './Auth.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -34,13 +34,12 @@ const ResetPassword = () => {
     }
 
     try {
-      await axios.post(
+      await apiFetch(
         getApiUrl(`/auth/reset-password/${token}`),
-        { new_password: password },
         {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_password: password })
         }
       );
       
@@ -48,14 +47,7 @@ const ResetPassword = () => {
       navigate('/login');
     } catch (err) {
       console.error('Reset password error:', err);
-      if (err.response?.data?.detail?.errors) {
-        setError(err.response.data.detail.errors.join(', '));
-      } else {
-        setError(
-          err.response?.data?.detail || 
-          'Unable to reset password. The link may be invalid or expired.'
-        );
-      }
+      setError(err.message || 'Unable to reset password. The link may be invalid or expired.');
     } finally {
       setIsLoading(false);
     }

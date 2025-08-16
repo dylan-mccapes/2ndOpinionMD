@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiFetch } from '../../utils/apiClient';
 import { useNavigate } from 'react-router-dom';
 import { downloadTimelinePdf } from '../../utils/pdfGenerator';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
@@ -38,7 +38,7 @@ const JournalForm = () => {
           return;
         }
         
-        const response = await axios.get(
+        const response = await apiFetch(
           getApiUrl(`/reports/user`),
           {
             headers: {
@@ -47,9 +47,9 @@ const JournalForm = () => {
           }
         );
         
-        if (response.data && response.data.length > 0) {
-          setReports(response.data);
-          const mostRecentReport = response.data.sort((a, b) => 
+        if (response && response.length > 0) {
+          setReports(response);
+          const mostRecentReport = response.sort((a, b) => 
             new Date(b.createdAt) - new Date(a.createdAt)
           )[0];
           setSelectedReport(mostRecentReport);
@@ -66,7 +66,7 @@ const JournalForm = () => {
         }
       } catch (err) {
         console.error('Error fetching reports:', err);
-        setError('Unable to fetch your reports. Please try again.');
+        setError(err.message || 'Unable to fetch your reports. Please try again.');
       } finally {
         setReportsLoading(false);
       }
@@ -83,7 +83,7 @@ const JournalForm = () => {
         const token = localStorage.getItem('token');
         if (!token) return;
         
-        const response = await axios.get(
+        const response = await apiFetch(
           getApiUrl(`/journal/timeline/${selectedReport.id}`),
           {
             headers: {
@@ -92,13 +92,13 @@ const JournalForm = () => {
           }
         );
         
-        if (response.data) {
+        if (response) {
           setTimelineData({
             initialDiagnosis: {
               date: selectedReport.createdAt,
               diagnoses: selectedReport.diagnosticResults || []
             },
-            journalEntries: response.data.journalEntries || []
+            journalEntries: response.journalEntries || []
           });
         }
       } catch (err) {
@@ -273,22 +273,23 @@ const JournalForm = () => {
         return;
       }
       
-      const response = await axios.post(
+      const response = await apiFetch(
         getApiUrl(API_ENDPOINTS.JOURNAL),
-        journalData,
         {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify(journalData)
         }
       );
       
-      if (response.data) {
-        const aiAnalysis = response.data.ai_analysis || {};
+      if (response) {
+        const aiAnalysis = response.ai_analysis || {};
         
-        if (response.data.diagnoses) {
-          const updatedDiagnoses = response.data.diagnoses.map(diagnosis => ({
+        if (response.diagnoses) {
+          const updatedDiagnoses = response.diagnoses.map(diagnosis => ({
             ...diagnosis,
             statusText: diagnosis.status === 'new' ? ' (NEW)' : 
                         diagnosis.status === 'confirmed' ? ' (CONFIRMED)' : 
@@ -308,13 +309,13 @@ const JournalForm = () => {
         navigate('/journal', { 
           state: { 
             message: 'Journal entry created successfully!',
-            entryId: response.data.id,
+            entryId: response.id,
             analysis: {
-              analysis: response.data.ai_analysis?.analysis || "Your journal entry has been analyzed.",
-              symptoms: response.data.ai_analysis?.symptoms || [],
-              environmental_factors: response.data.ai_analysis?.environmental_factors || [],
-              life_stressors: response.data.ai_analysis?.life_stressors || [],
-              diagnoses: response.data.ai_analysis?.diagnoses || []
+              analysis: response.ai_analysis?.analysis || "Your journal entry has been analyzed.",
+              symptoms: response.ai_analysis?.symptoms || [],
+              environmental_factors: response.ai_analysis?.environmental_factors || [],
+              life_stressors: response.ai_analysis?.life_stressors || [],
+              diagnoses: response.ai_analysis?.diagnoses || []
             },
             timelineData: timelineData
           } 
@@ -322,10 +323,7 @@ const JournalForm = () => {
       }
     } catch (err) {
       console.error('Error creating journal entry:', err);
-      setError(
-        err.response?.data?.detail || 
-        'Unable to create journal entry. Please try again.'
-      );
+      setError(err.message || 'Unable to create journal entry. Please try again.');
     } finally {
       setIsLoading(false);
     }
