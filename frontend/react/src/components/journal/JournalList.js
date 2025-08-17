@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiClient';
 import { downloadJournalTimelinePdf } from '../../utils/pdfGenerator';
+import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -29,8 +30,17 @@ const JournalList = () => {
                 { symptom: 'Fatigue', severity: 8 }
               ],
               ai_analysis: {
-                analysis: 'Based on your symptoms, there appears to be an inflammatory pattern consistent with autoimmune conditions.',
-                patternObservations: 'Symptoms appear to worsen in cold, humid weather and during periods of high stress.'
+                analysis: 'Based on your symptoms, there appears to be an inflammatory pattern consistent with autoimmune conditions. The combination of joint pain, morning stiffness, and fatigue suggests possible rheumatoid arthritis or similar inflammatory arthritis.',
+                symptoms: ['feeling tired', 'joint pain in hands', 'morning stiffness'],
+                diagnoses: [
+                  { name: 'Chronic Fatigue Syndrome', confidence: 60, status: 'new', staxLevel: 2, zone: 3, tags: ['#SuspectedDx_ChronicFatigueSyndrome', '#EarlyZoneShift'] },
+                  { name: 'Rheumatoid Arthritis', confidence: 75, status: 'new', staxLevel: 2, zone: 3, tags: ['#SuspectedDx_RheumatoidArthritis', '#InflammatoryPattern'] }
+                ],
+                followUpQuestions: ['How long does your morning stiffness typically last?', 'Have you noticed any swelling in your joints?'],
+                trackingSuggestions: ['Track morning stiffness duration daily', 'Monitor joint swelling patterns', 'Note weather correlation with symptoms'],
+                journalingRecommendation: { promptType: 'Clinical', suggestedPrompt: 'Describe your joint symptoms in detail, including which joints are affected and when symptoms are worst.' },
+                patternObservations: 'Symptoms appear to worsen in cold, humid weather and during periods of high stress. Morning stiffness lasting more than 30 minutes is particularly concerning.',
+                timestamp: new Date().toISOString()
               }
             },
             {
@@ -43,8 +53,17 @@ const JournalList = () => {
                 { symptom: 'Low energy', severity: 7 }
               ],
               ai_analysis: {
-                analysis: 'Continued inflammatory symptoms with cognitive involvement.',
-                patternObservations: 'Symptoms show consistency over time with some variation in severity.'
+                analysis: 'Continued inflammatory symptoms with cognitive involvement. The presence of brain fog alongside joint symptoms strengthens the autoimmune hypothesis.',
+                symptoms: ['brain fog', 'joint pain in knees', 'low energy'],
+                diagnoses: [
+                  { name: 'Migraine', confidence: 50, status: 'new', staxLevel: 2, zone: 3, tags: ['#SuspectedDx_Migraine', '#CognitiveSymptoms'] },
+                  { name: 'Systemic Lupus Erythematosus', confidence: 65, status: 'ongoing', staxLevel: 3, zone: 4, tags: ['#SuspectedDx_Lupus', '#MultiSystemInvolvement'] }
+                ],
+                followUpQuestions: ['How often do you experience brain fog?', 'Do you have any skin rashes or sun sensitivity?'],
+                trackingSuggestions: ['Monitor cognitive symptoms daily', 'Track energy levels throughout the day', 'Note any skin changes'],
+                journalingRecommendation: { promptType: 'Symptom Tracking', suggestedPrompt: 'Focus on describing your cognitive symptoms and how they impact your daily activities.' },
+                patternObservations: 'Symptoms show consistency over time with some variation in severity. Cognitive symptoms are becoming more prominent.',
+                timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
               }
             }
           ];
@@ -280,14 +299,39 @@ const JournalList = () => {
                 </ul>
               </div>
               
-              {entry.ai_analysis && (
-                <div className="entry-analysis-preview">
-                  {entry.ai_analysis.patternObservations && (
-                    <p><strong>Pattern Observations:</strong> {entry.ai_analysis.patternObservations.substring(0, 80)}...</p>
-                  )}
-                  <p>{entry.ai_analysis.analysis ? entry.ai_analysis.analysis.substring(0, 100) + '...' : 'No analysis available.'}</p>
-                </div>
-              )}
+              {entry.ai_analysis && (() => {
+                const analysis = parseJournalAnalysis(entry.ai_analysis);
+                if (!analysis) return null;
+                
+                return (
+                  <div className="entry-analysis-preview">
+                    {/* Show top diagnosis with confidence */}
+                    {analysis.diagnoses && analysis.diagnoses.length > 0 && (
+                      <div className="top-diagnosis">
+                        <strong>Top Diagnosis:</strong> {analysis.diagnoses[0].name}
+                        {analysis.diagnoses[0].confidence && (
+                          <span className="confidence"> ({analysis.diagnoses[0].confidence}%)</span>
+                        )}
+                        {/* Show first 2-3 tags */}
+                        {analysis.diagnoses[0].tags && analysis.diagnoses[0].tags.length > 0 && (
+                          <div className="preview-tags">
+                            {analysis.diagnoses[0].tags.slice(0, 3).map((tag, i) => (
+                              <span key={i} className="preview-tag">{tag}</span>
+                            ))}
+                            {analysis.diagnoses[0].tags.length > 3 && (
+                              <span className="more-tags">+{analysis.diagnoses[0].tags.length - 3} more</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Fallback to analysis text if no diagnoses */}
+                    {(!analysis.diagnoses || analysis.diagnoses.length === 0) && analysis.analysis && (
+                      <p>{analysis.analysis.substring(0, 100)}...</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

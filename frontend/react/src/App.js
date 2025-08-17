@@ -456,48 +456,63 @@ function AppContent() {
             </Layout>
           } />
           
-          {/* Test route for journal functionality without authentication */}
-          <Route path="/test/journal" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Journal Test Mode</h1>
-                <p>This page allows testing journal functionality without authentication.</p>
-                <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
-                {journalResponse && <JournalResponse response={journalResponse} timelineData={journalResponse.timelineData} />}
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
+          {/* Test routes - only available in development */}
+          {process.env.NODE_ENV !== 'production' && (
+            <>
+              <Route path="/test/journal" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>Journal Test Mode</h1>
+                    <p>This page allows testing journal functionality without authentication.</p>
+                    <JournalEntryForm onSubmit={(entry) => handleJournalSubmit(entry, true)} />
+                    {journalResponse && <JournalResponse response={journalResponse} timelineData={journalResponse.timelineData} />}
+                    <div className="home-button-container">
+                      <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
+              
+              <Route path="/test/journal-list" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>Journal List Test Mode</h1>
+                    <p>This page allows testing journal list and download functionality without authentication.</p>
+                    <JournalList />
+                    <div className="home-button-container">
+                      <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
           
-          {/* Test route for journal list functionality without authentication */}
-          <Route path="/test/journal-list" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Journal List Test Mode</h1>
-                <p>This page allows testing journal list and download functionality without authentication.</p>
-                <JournalList />
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
-          
-          {/* Test route for symptom intake functionality without authentication */}
-          <Route path="/test/intake" element={
-            <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
-              <main className="App-main">
-                <h1>Symptom Intake Test Mode</h1>
-                <p>This page allows testing symptom intake functionality without authentication.</p>
-                <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
-                <div className="home-button-container">
-                  <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
-                </div>
-              </main>
-            </Layout>
-          } />
+              <Route path="/test/intake" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>Symptom Intake Test Mode</h1>
+                    <p>This page allows testing symptom intake functionality without authentication.</p>
+                    <SymptomIntakeForm onSubmit={handleSymptomFormSubmit} />
+                    <div className="home-button-container">
+                      <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
+              
+              <Route path="/test/journal-detail" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>Journal Detail Test Mode</h1>
+                    <p>This page allows testing journal detail and AI analysis rendering without authentication.</p>
+                    <JournalDetail testMode={true} />
+                    <div className="home-button-container">
+                      <Link to="/test/journal-list" className="btn btn-secondary home-button">Back to Journal List</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
+            </>
+          )}
         </Routes>
       </div>
   );
