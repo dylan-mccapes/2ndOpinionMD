@@ -1,4 +1,3 @@
-// Robust normalizeStringList: strings | numbers | booleans | JSON strings | objects ({symptom,severity}, {label}, etc.)
 export function normalizeStringList(value) {
   if (!value) return [];
   if (typeof value === 'string') {
