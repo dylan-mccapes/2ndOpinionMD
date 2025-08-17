@@ -275,7 +275,7 @@ const JournalList = () => {
                 <h4>Symptoms:</h4>
                 <ul className="symptom-list">
                   {(() => {
-                    const normalized = normalizeStringList(entry.symptoms);
+                    const normalized = normalizeStringList(entry.ai_analysis?.symptoms ?? entry.symptoms);
                     return normalized.slice(0, 3).map((symptom, index) => (
                       <li key={index} className="symptom-tag low-severity">
                         {symptom}
