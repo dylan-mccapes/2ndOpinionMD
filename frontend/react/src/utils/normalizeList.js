@@ -1,9 +1,10 @@
+// Robust normalizeStringList: strings | numbers | booleans | JSON strings | objects ({symptom,severity}, {label}, etc.)
 export function normalizeStringList(value) {
   if (!value) return [];
   if (typeof value === 'string') {
     const s = value.trim();
     if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
-      try { return normalizeStringList(JSON.parse(s)); } catch { /* fall through */ }
+      try { return normalizeStringList(JSON.parse(s)); } catch {}
     }
     return s ? [s] : [];
   }
@@ -21,7 +22,7 @@ export function normalizeStringList(value) {
       }
       if ('value' in item) return String(item.value);
       if ('label' in item) return String(item.label);
-      if ('name' in item)  return String(item.name);
+      if ('name'  in item) return String(item.name);
       try { return JSON.stringify(item); } catch { return '[object]'; }
     }
     return String(item);
