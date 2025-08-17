@@ -1,71 +1,82 @@
 import React from 'react';
 import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
-import { normalizeStringList } from '../../utils/normalizeList';
+import DiagnosisTable from './DiagnosisTable';
+import DebugBlock from '../common/DebugBlock';
 import '../../styles/Journal.css';
+import './JournalAnalysisDisplay.css';
 
-const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
+const JournalAnalysisDisplay = ({ analysis, rawAnalysis }) => {
+  if (!analysis) return null;
   const parsed = parseJournalAnalysis(analysis);
+  if (!parsed) return null;
 
-  if (!parsed) {
-    return (
-      <div className="journal-analysis">
-        <h3>AI Analysis</h3>
-        <p>AI analysis not available for this entry.</p>
-      </div>
-    );
-  }
+  const ts = parsed.timestamp ? new Date(parsed.timestamp) : null;
+  const tsText = ts ? ts.toLocaleString(undefined, {
+    year:'numeric', month:'short', day:'numeric',
+    hour:'numeric', minute:'2-digit', second:'2-digit'
+  }) : null;
 
   return (
-    <div className="journal-analysis">
-      <h3>AI Analysis</h3>
+    <div className="ai-analysis">
+      <header className="ai-analysis-header">
+        <h3>AI Analysis</h3>
+        {tsText && <div className="timestamp">{tsText}</div>}
+      </header>
 
-      {/* Summary paragraph */}
       {parsed.analysis && (
-        <div className="analysis-results">
+        <section className="summary">
+          <h4>Summary</h4>
           <p>{parsed.analysis}</p>
-        </div>
+        </section>
       )}
 
-      {/* Detected symptoms */}
-      {!!parsed.symptoms?.length && (
-        <section className="detected-symptoms-section">
+      {parsed.symptoms?.length > 0 && (
+        <section className="detected-symptoms">
           <h4>Detected Symptoms</h4>
-          <ul className="symptoms-list">
-            {parsed.symptoms.map((symptom, i) => {
-              const label = typeof symptom === 'string'
-                ? symptom
-                : (symptom?.name ?? symptom?.symptom ?? '');
-              return label ? <li key={i} className="symptom-item">{label}</li> : null;
-            })}
-          </ul>
+          <div className="pill-row">
+            {parsed.symptoms.map((s, i) => <span key={i} className="symptom-tag">{s}</span>)}
+          </div>
         </section>
       )}
 
-      {/* Suggested diagnoses */}
-      {!!parsed.diagnoses?.length && (
-        <section className="diagnoses-section">
-          <h4>Suggested Diagnoses</h4>
-          <ul className="diagnosis-list">
-            {parsed.diagnoses.map((d, i) => (
-              <li key={i}>
-                <strong>{d.name}</strong>
-                {d.confidence != null ? ` (${d.confidence}%)` : ''}
-                {!!d.tags?.length && (
-                  <span className="tags">
-                    {d.tags.slice(0, 3).map((t, j) => (
-                      <span key={j} className="tag">{t}</span>
-                    ))}
-                    {d.tags.length > 3 && <span className="tag">+{d.tags.length - 3}</span>}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+      {parsed.environmental_factors?.length > 0 && (
+        <section className="env-factors">
+          <h4>Environmental Factors</h4>
+          <div className="pill-row">
+            {parsed.environmental_factors.map((s, i) => <span key={i} className="symptom-tag">{s}</span>)}
+          </div>
         </section>
       )}
 
-      {/* Follow-up questions */}
-      {!!parsed.followUpQuestions?.length && (
+      {parsed.life_stressors?.length > 0 && (
+        <section className="life-stressors">
+          <h4>Life Stressors</h4>
+          <div className="pill-row">
+            {parsed.life_stressors.map((s, i) => <span key={i} className="symptom-tag">{s}</span>)}
+          </div>
+        </section>
+      )}
+
+      <DiagnosisTable diagnoses={parsed.diagnoses} />
+
+      {parsed.journalingRecommendation?.suggestedPrompt && (
+        <section className="journaling-rec">
+          <h4>Journaling Recommendation</h4>
+          <div className="rec-row">
+            {parsed.journalingRecommendation.promptType && (
+              <span className="badge">{parsed.journalingRecommendation.promptType}</span>
+            )}
+            <span className="suggested-prompt">{parsed.journalingRecommendation.suggestedPrompt}</span>
+            <button
+              type="button"
+              className="copy-btn"
+              onClick={() => navigator.clipboard.writeText(parsed.journalingRecommendation.suggestedPrompt)}
+            >Copy</button>
+          </div>
+        </section>
+      )}
+
+      {parsed.followUpQuestions?.length > 0 && (
         <section className="follow-up-questions-section">
           <h4>Follow-up Questions</h4>
           <ul className="questions-list">
@@ -74,8 +85,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         </section>
       )}
 
-      {/* Tracking suggestions */}
-      {!!parsed.trackingSuggestions?.length && (
+      {parsed.trackingSuggestions?.length > 0 && (
         <section className="tracking-suggestions-section">
           <h4>Tracking Suggestions</h4>
           <ul className="suggestions-list">
@@ -84,25 +94,18 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         </section>
       )}
 
-      {/* Journaling recommendation */}
-      {(parsed.journalingRecommendation?.promptType || parsed.journalingRecommendation?.suggestedPrompt) && (
-        <section className="journaling-recommendation-section">
-          <h4>Journaling Recommendation</h4>
-          {parsed.journalingRecommendation?.promptType && (
-            <p><strong>Prompt Type:</strong> {parsed.journalingRecommendation.promptType}</p>
-          )}
-          {parsed.journalingRecommendation?.suggestedPrompt && (
-            <p>{parsed.journalingRecommendation.suggestedPrompt}</p>
-          )}
-        </section>
-      )}
-
-      {/* Pattern observations */}
       {parsed.patternObservations && (
-        <section className="pattern-observations-section">
+        <section className="pattern-observations">
           <h4>Pattern Observations</h4>
           <p>{parsed.patternObservations}</p>
         </section>
+      )}
+
+      {process.env.NODE_ENV !== 'production' && (
+        <div className="debug-stack">
+          <DebugBlock title="Raw JSON (from OpenAI)" payload={rawAnalysis} filename="openai_raw.json" />
+          <DebugBlock title="Parsed JSON" payload={parsed} filename="analysis_parsed.json" />
+        </div>
       )}
     </div>
   );
