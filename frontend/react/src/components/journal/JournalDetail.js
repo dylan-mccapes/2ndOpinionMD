@@ -276,7 +276,7 @@ const JournalDetail = ({ testMode = false }) => {
           <section className="detail-section ai-analysis">
             <JournalAnalysisDisplay 
               analysis={entry.ai_analysis} 
-              timelineData={timelineData} 
+              rawAnalysis={entry.ai_analysis}
             />
           </section>
         )}
