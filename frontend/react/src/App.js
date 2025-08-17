@@ -29,7 +29,10 @@ import JournalList from './components/journal/JournalList';
 import JournalDetail from './components/journal/JournalDetail';
 import JournalEntryForm from './components/journal/JournalEntryForm.jsx';
 import JournalResponse from './components/journal/JournalResponse.jsx';
+import JournalAnalysisDisplay from './components/journal/JournalAnalysisDisplay';
 import Diagnostics from './components/Diagnostics';
+
+import { sampleAnalysisData, sampleAnalysisDataComplex } from './utils/sampleAnalysisData';
 
 function AppContent() {
   const navigate = useNavigate();
@@ -507,6 +510,38 @@ function AppContent() {
                     <JournalDetail testMode={true} />
                     <div className="home-button-container">
                       <Link to="/test/journal-list" className="btn btn-secondary home-button">Back to Journal List</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
+              
+              <Route path="/journal-analysis" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>AI Analysis Demo - Simple</h1>
+                    <p>This page demonstrates the comprehensive AI analysis display with basic symptoms.</p>
+                    <JournalAnalysisDisplay 
+                      analysis={sampleAnalysisData} 
+                      rawAnalysis={sampleAnalysisData}
+                    />
+                    <div className="home-button-container">
+                      <Link to="/" className="btn btn-secondary home-button">Return to Home</Link>
+                    </div>
+                  </main>
+                </Layout>
+              } />
+              
+              <Route path="/journal-analysis-complex" element={
+                <Layout user={{full_name: 'Test User'}} onLogout={() => {}}>
+                  <main className="App-main">
+                    <h1>AI Analysis Demo - Complex</h1>
+                    <p>This page demonstrates the comprehensive AI analysis display with environmental factors and life stressors.</p>
+                    <JournalAnalysisDisplay 
+                      analysis={sampleAnalysisDataComplex} 
+                      rawAnalysis={sampleAnalysisDataComplex}
+                    />
+                    <div className="home-button-container">
+                      <Link to="/journal-analysis" className="btn btn-secondary home-button">View Simple Analysis</Link>
                     </div>
                   </main>
                 </Layout>
