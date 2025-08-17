@@ -1,5 +1,6 @@
 import React from 'react';
 import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
+import { normalizeStringList } from '../../utils/normalizeList';
 import '../../styles/Journal.css';
 
 const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
@@ -68,7 +69,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <section className="follow-up-questions-section">
           <h4>Follow-up Questions</h4>
           <ul className="questions-list">
-            {parsed.followUpQuestions.map((q, i) => <li key={i}>{q}</li>)}
+            {normalizeStringList(parsed.followUpQuestions).map((q, i) => <li key={i}>{q}</li>)}
           </ul>
         </section>
       )}
@@ -78,7 +79,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <section className="tracking-suggestions-section">
           <h4>Tracking Suggestions</h4>
           <ul className="suggestions-list">
-            {parsed.trackingSuggestions.map((s, i) => <li key={i}>{s}</li>)}
+            {normalizeStringList(parsed.trackingSuggestions).map((s, i) => <li key={i}>{s}</li>)}
           </ul>
         </section>
       )}

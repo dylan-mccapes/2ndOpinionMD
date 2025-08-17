@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiClient';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
+import { normalizeStringList } from '../../utils/normalizeList';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -200,24 +201,11 @@ const JournalDetail = ({ testMode = false }) => {
         <section className="detail-section">
           <h3>Symptoms</h3>
           <div className="symptom-tags">
-            {entry.symptoms.map((symptom, index) => {
-              if (typeof symptom === 'string') {
-                return (
-                  <div key={index} className="symptom-tag low-severity">
-                    {symptom}
-                  </div>
-                );
-              } else if (symptom && typeof symptom === 'object') {
-                const symptomText = symptom.symptom || '';
-                const severity = symptom.severity || 5;
-                return (
-                  <div key={index} className={`symptom-tag ${getSeverityColor(severity)}`}>
-                    {symptomText} ({severity}/10)
-                  </div>
-                );
-              }
-              return null;
-            })}
+            {normalizeStringList(entry.symptoms).map((symptom, index) => (
+              <div key={index} className="symptom-tag low-severity">
+                {symptom}
+              </div>
+            ))}
           </div>
         </section>
         

@@ -1,3 +1,5 @@
+import { normalizeStringList } from './normalizeList';
+
 export function parseJournalAnalysis(raw) {
   if (!raw) return null;
 
@@ -59,22 +61,22 @@ function normalize(data) {
         status: d?.status ?? null,
         staxLevel: d?.staxLevel ?? null,
         zone: d?.zone ?? null,
-        tags: Array.isArray(d?.tags) ? d.tags : []
+        tags: normalizeStringList(d?.tags)
       }))
     : [];
 
   return {
     analysis,
     symptoms: normSymptoms,
-    environmental_factors: Array.isArray(environmental_factors) ? environmental_factors : [],
-    life_stressors: Array.isArray(life_stressors) ? life_stressors : [],
+    environmental_factors: normalizeStringList(environmental_factors),
+    life_stressors: normalizeStringList(life_stressors),
     diagnoses: normDiagnoses,
     journalingRecommendation: {
       promptType: journalingRecommendation?.promptType ?? null,
       suggestedPrompt: journalingRecommendation?.suggestedPrompt ?? null
     },
-    followUpQuestions: Array.isArray(followUpQuestions) ? followUpQuestions : [],
-    trackingSuggestions: Array.isArray(trackingSuggestions) ? trackingSuggestions : [],
+    followUpQuestions: normalizeStringList(followUpQuestions),
+    trackingSuggestions: normalizeStringList(trackingSuggestions),
     patternObservations: patternObservations || "",
     timestamp
   };

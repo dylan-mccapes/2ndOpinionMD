@@ -2,6 +2,7 @@ import axios from 'axios';
 import { generateEthosPrompt, ZONES, STAX_LEVELS } from './ethosOfHealth';
 import { calculateAgeFromBirthdate } from './formatData';
 import { getApiUrl, API_ENDPOINTS } from './apiConfig';
+import { normalizeStringList } from './normalizeList';
 
 const mapConfidenceToPercent = (confidenceStr) => {
   if (typeof confidenceStr === 'number') return confidenceStr;
@@ -738,13 +739,13 @@ export const processJournalEntry = async (journalText, isTestMode = false, previ
         analysis: analysis.analysis || "",
         timestamp: analysis.timestamp || new Date().toISOString(),
         categories: {
-          symptoms: analysis.symptoms || [],
-          environmental_factors: analysis.environmental_factors || [],
-          life_stressors: analysis.life_stressors || []
+          symptoms: normalizeStringList(analysis.symptoms),
+          environmental_factors: normalizeStringList(analysis.environmental_factors),
+          life_stressors: normalizeStringList(analysis.life_stressors)
         },
         diagnoses: analysis.diagnoses || [],
         patternObservations: analysis.patternObservations || "",
-        trackingSuggestions: analysis.trackingSuggestions || [],
+        trackingSuggestions: normalizeStringList(analysis.trackingSuggestions),
         journalingRecommendation: analysis.journalingRecommendation || null
       };
     }
