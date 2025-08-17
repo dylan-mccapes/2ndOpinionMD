@@ -274,16 +274,18 @@ const JournalList = () => {
               <div className="entry-symptoms">
                 <h4>Symptoms:</h4>
                 <ul className="symptom-list">
-                  {normalizeStringList(entry.symptoms).slice(0, 3).map((symptom, index) => (
-                    <li key={index} className="symptom-tag low-severity">
-                      {symptom}
-                    </li>
-                  ))}
-                  {entry.symptoms.length > 3 && (
-                    <li className="more-symptoms">
-                      +{entry.symptoms.length - 3} more
-                    </li>
-                  )}
+                  {(() => {
+                    const normalized = normalizeStringList(entry.symptoms);
+                    return normalized.slice(0, 3).map((symptom, index) => (
+                      <li key={index} className="symptom-tag low-severity">
+                        {symptom}
+                      </li>
+                    )).concat(
+                      normalized.length > 3
+                        ? [<li key="more" className="more-symptoms">+{normalized.length - 3} more</li>]
+                        : []
+                    );
+                  })()}
                 </ul>
               </div>
               
