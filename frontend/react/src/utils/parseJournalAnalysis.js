@@ -43,13 +43,7 @@ function normalize(data) {
     timestamp = null
   } = data;
 
-  const normSymptoms = Array.isArray(symptoms)
-    ? symptoms.map(s => {
-        if (typeof s === "string") return s;
-        if (s && typeof s === "object") return s.name ?? s.symptom ?? "";
-        return "";
-      }).filter(Boolean)
-    : [];
+  const normSymptoms = normalizeStringList(symptoms);
 
   const normDiagnoses = Array.isArray(diagnoses)
     ? diagnoses.map(d => ({
