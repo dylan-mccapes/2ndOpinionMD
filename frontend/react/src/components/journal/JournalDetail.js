@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiClient';
 import JournalAnalysisDisplay from './JournalAnalysisDisplay';
+import { normalizeStringList } from '../../utils/normalizeList';
 import '../../styles/Journal.css';
 import { getApiUrl, API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -200,24 +201,24 @@ const JournalDetail = ({ testMode = false }) => {
         <section className="detail-section">
           <h3>Symptoms</h3>
           <div className="symptom-tags">
-            {entry.symptoms.map((symptom, index) => {
-              if (typeof symptom === 'string') {
+            {(() => {
+              const raw = Array.isArray(entry?.symptoms) ? entry.symptoms : [];
+              const normalized = normalizeStringList(entry?.symptoms);
+              const getSevByIndex = (i) => {
+                const s = raw[i];
+                const sev = (s && typeof s === 'object') ? (s.severity ?? s.Severity) : null;
+                return (typeof sev === 'number') ? sev : null;
+              };
+              return normalized.map((text, i) => {
+                const sev = getSevByIndex(i);
+                const cls = sev != null ? getSeverityColor(sev) : 'low-severity';
                 return (
-                  <div key={index} className="symptom-tag low-severity">
-                    {symptom}
+                  <div key={`sym-${i}`} className={`symptom-tag ${cls}`}>
+                    {text}
                   </div>
                 );
-              } else if (symptom && typeof symptom === 'object') {
-                const symptomText = symptom.symptom || '';
-                const severity = symptom.severity || 5;
-                return (
-                  <div key={index} className={`symptom-tag ${getSeverityColor(severity)}`}>
-                    {symptomText} ({severity}/10)
-                  </div>
-                );
-              }
-              return null;
-            })}
+              });
+            })()}
           </div>
         </section>
         

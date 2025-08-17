@@ -1,5 +1,6 @@
 import React from 'react';
 import { parseJournalAnalysis } from '../../utils/parseJournalAnalysis';
+import { normalizeStringList } from '../../utils/normalizeList';
 import '../../styles/Journal.css';
 
 const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
