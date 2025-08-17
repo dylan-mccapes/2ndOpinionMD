@@ -69,7 +69,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <section className="follow-up-questions-section">
           <h4>Follow-up Questions</h4>
           <ul className="questions-list">
-            {normalizeStringList(parsed.followUpQuestions).map((q, i) => <li key={i}>{q}</li>)}
+            {parsed.followUpQuestions.map((q, i) => <li key={i}>{q}</li>)}
           </ul>
         </section>
       )}
@@ -79,7 +79,7 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <section className="tracking-suggestions-section">
           <h4>Tracking Suggestions</h4>
           <ul className="suggestions-list">
-            {normalizeStringList(parsed.trackingSuggestions).map((s, i) => <li key={i}>{s}</li>)}
+            {parsed.trackingSuggestions.map((s, i) => <li key={i}>{s}</li>)}
           </ul>
         </section>
       )}

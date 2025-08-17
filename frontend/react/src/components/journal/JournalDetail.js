@@ -201,11 +201,24 @@ const JournalDetail = ({ testMode = false }) => {
         <section className="detail-section">
           <h3>Symptoms</h3>
           <div className="symptom-tags">
-            {normalizeStringList(entry.symptoms).map((symptom, index) => (
-              <div key={index} className="symptom-tag low-severity">
-                {symptom}
-              </div>
-            ))}
+            {(() => {
+              const raw = Array.isArray(entry?.symptoms) ? entry.symptoms : [];
+              const normalized = normalizeStringList(entry?.symptoms);
+              const getSevByIndex = (i) => {
+                const s = raw[i];
+                const sev = (s && typeof s === 'object') ? (s.severity ?? s.Severity) : null;
+                return (typeof sev === 'number') ? sev : null;
+              };
+              return normalized.map((text, i) => {
+                const sev = getSevByIndex(i);
+                const cls = sev != null ? getSeverityColor(sev) : 'low-severity';
+                return (
+                  <div key={`sym-${i}`} className={`symptom-tag ${cls}`}>
+                    {text}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </section>
         
