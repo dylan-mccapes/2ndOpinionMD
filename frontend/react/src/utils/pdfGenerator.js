@@ -170,7 +170,13 @@ export const generatePdfReport = async (diagnosticResults) => {
 };
 
 const formatSymptomName = (symptom) => {
-  return symptom
+  const symptomStr = typeof symptom === 'string' 
+    ? symptom 
+    : (symptom?.symptom ?? symptom?.name ?? '');
+  
+  if (!symptomStr) return '';
+  
+  return symptomStr
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
@@ -364,8 +370,13 @@ export const generateTimelinePdf = async (timelineData) => {
           
           pdf.setFont('helvetica', 'normal');
           analysis.symptoms.forEach(symptom => {
-            pdf.text(`• ${symptom}`, margin + 15, yPosition);
-            yPosition += 4;
+            const symptomText = typeof symptom === 'string' 
+              ? symptom 
+              : (symptom?.symptom ?? symptom?.name ?? '');
+            if (symptomText) {
+              pdf.text(`• ${symptomText}`, margin + 15, yPosition);
+              yPosition += 4;
+            }
           });
         }
         
