@@ -1,14 +1,23 @@
 export function parseJournalAnalysis(raw) {
   if (!raw) return null;
 
-  let data = raw;
+  if (typeof raw === "object") {
+    return normalize(raw);
+  }
+
   if (typeof raw === "string") {
-    try { 
-      data = JSON.parse(raw); 
-    } catch { 
-      return null;
+    try {
+      const obj = JSON.parse(raw);
+      return normalize(obj);
+    } catch {
+      return normalize({ analysis: raw });
     }
   }
+
+  return null;
+}
+
+function normalize(data) {
   if (!data || typeof data !== "object") return null;
 
   const {
@@ -24,14 +33,19 @@ export function parseJournalAnalysis(raw) {
     timestamp = null
   } = data;
 
-  const normDiagnoses = Array.isArray(diagnoses) ? diagnoses.map(d => ({
-    name: d?.name ?? "",
-    confidence: typeof d?.confidence === "number" ? d.confidence : (Number(d?.confidence) || null),
-    status: d?.status ?? null,
-    staxLevel: d?.staxLevel ?? null,
-    zone: d?.zone ?? null,
-    tags: Array.isArray(d?.tags) ? d.tags : []
-  })) : [];
+  const normDiagnoses = Array.isArray(diagnoses)
+    ? diagnoses.map(d => ({
+        name: d?.name ?? "",
+        confidence:
+          typeof d?.confidence === "number"
+            ? d.confidence
+            : (Number(d?.confidence) || null),
+        status: d?.status ?? null,
+        staxLevel: d?.staxLevel ?? null,
+        zone: d?.zone ?? null,
+        tags: Array.isArray(d?.tags) ? d.tags : []
+      }))
+    : [];
 
   return {
     analysis,
