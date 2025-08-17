@@ -30,11 +30,12 @@ const JournalAnalysisDisplay = ({ analysis, timelineData }) => {
         <section className="detected-symptoms-section">
           <h4>Detected Symptoms</h4>
           <ul className="symptoms-list">
-            {parsed.symptoms.map((symptom, i) => (
-              <li key={i} className="symptom-item">
-                {typeof symptom === 'string' ? symptom : symptom?.name || symptom}
-              </li>
-            ))}
+            {parsed.symptoms.map((symptom, i) => {
+              const label = typeof symptom === 'string'
+                ? symptom
+                : (symptom?.name ?? symptom?.symptom ?? '');
+              return label ? <li key={i} className="symptom-item">{label}</li> : null;
+            })}
           </ul>
         </section>
       )}

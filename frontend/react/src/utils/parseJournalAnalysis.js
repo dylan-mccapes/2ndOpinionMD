@@ -1,20 +1,28 @@
 export function parseJournalAnalysis(raw) {
   if (!raw) return null;
 
-  if (typeof raw === "object") {
-    return normalize(raw);
-  }
-
+  let data = raw;
   if (typeof raw === "string") {
-    try {
-      const obj = JSON.parse(raw);
-      return normalize(obj);
+    try { 
+      data = JSON.parse(raw); 
     } catch {
-      return normalize({ analysis: raw });
+      return {
+        analysis: raw,
+        symptoms: [],
+        environmental_factors: [],
+        life_stressors: [],
+        diagnoses: [],
+        journalingRecommendation: { promptType: null, suggestedPrompt: null },
+        followUpQuestions: [],
+        trackingSuggestions: [],
+        patternObservations: "",
+        timestamp: null
+      };
     }
   }
+  if (!data || typeof data !== "object") return null;
 
-  return null;
+  return normalize(data);
 }
 
 function normalize(data) {
@@ -33,6 +41,14 @@ function normalize(data) {
     timestamp = null
   } = data;
 
+  const normSymptoms = Array.isArray(symptoms)
+    ? symptoms.map(s => {
+        if (typeof s === "string") return s;
+        if (s && typeof s === "object") return s.name ?? s.symptom ?? "";
+        return "";
+      }).filter(Boolean)
+    : [];
+
   const normDiagnoses = Array.isArray(diagnoses)
     ? diagnoses.map(d => ({
         name: d?.name ?? "",
@@ -49,7 +65,7 @@ function normalize(data) {
 
   return {
     analysis,
-    symptoms: Array.isArray(symptoms) ? symptoms : [],
+    symptoms: normSymptoms,
     environmental_factors: Array.isArray(environmental_factors) ? environmental_factors : [],
     life_stressors: Array.isArray(life_stressors) ? life_stressors : [],
     diagnoses: normDiagnoses,
