@@ -70,6 +70,9 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
+from server.api.loinc_routes import router as loinc_router
+app.include_router(loinc_router)
+
 query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
