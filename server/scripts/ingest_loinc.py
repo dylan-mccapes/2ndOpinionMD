@@ -22,6 +22,29 @@ import psycopg2
 from psycopg2.extras import execute_values
 from dotenv import load_dotenv
 
+def _row_pick(d: dict, candidates):
+    """Pick first non-empty field from candidates (case-insensitive match)."""
+    if not d:
+        return ''
+    # normalize keys for robust access
+    lower = {k.lower(): v for k, v in d.items()}
+    for c in candidates:
+        v = lower.get(c.lower())
+        if v is not None and str(v).strip() != '':
+            return str(v).strip()
+    return ''
+
+def _batch_insert(cur, table, cols, rows, page=2000):
+    """Insert rows in batches using psycopg2.extras.execute_values."""
+    from psycopg2.extras import execute_values
+    for i in range(0, len(rows), page):
+        execute_values(
+            cur,
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s",
+            rows[i:i+page]
+        )
+
+
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
@@ -195,9 +218,23 @@ def load_loinc_terms(cur, csv_path: str, src_version: str, dry_run: bool = False
     print("Loading LOINC terms...")
     start_time = time.time()
     
-    cur.execute("CREATE TEMP TABLE t_loinc_terms (LIKE ontology.loinc_terms INCLUDING ALL)")
-    cur.execute("ALTER TABLE t_loinc_terms DROP COLUMN IF EXISTS src_version")
-    cur.execute("ALTER TABLE t_loinc_terms DROP COLUMN IF EXISTS ingested_at")
+    cur.execute("""CREATE TEMP TABLE t_loinc_terms (
+  loinc_num TEXT,
+  component TEXT,
+  property TEXT,
+  time_aspct TEXT,
+  system TEXT,
+  scale_typ TEXT,
+  method_typ TEXT,
+  class TEXT,
+  classtype TEXT,
+  long_common_name TEXT,
+  shortname TEXT,
+  external_copyright_notice TEXT,
+  status TEXT,
+  version_first_released TEXT,
+  version_last_changed TEXT
+)""")
     
     columns = [
         "loinc_num", "component", "property", "time_aspct", "system", "scale_typ", 
@@ -240,96 +277,254 @@ def load_loinc_terms(cur, csv_path: str, src_version: str, dry_run: bool = False
     print(f"Loaded {temp_count} LOINC terms in {duration:.2f}s")
 
 def load_loinc_panels(cur, csv_path: str, dry_run: bool = False):
-    """Load LOINC panels with upsert logic"""
+    """Load LOINC panels with upsert logic (robust to wide CSVs)."""
     print("Loading LOINC panels...")
+    import csv, time
     start_time = time.time()
-    
-    cur.execute("CREATE TEMP TABLE t_panels (LIKE ontology.loinc_panels INCLUDING ALL)")
-    
-    columns = ["parent_loinc", "child_loinc", "sequence", "display_text", "observation_required"]
-    copy_csv_to_temp_table(cur, "t_panels", columns, csv_path)
-    
+
+    # Stage table with TEXT columns only
+    cur.execute("""CREATE TEMP TABLE t_panels (
+      parent_loinc TEXT,
+      child_loinc TEXT,
+      sequence TEXT,
+      display_text TEXT,
+      observation_required TEXT
+    )""")
+
+    # Read only the columns we need using DictReader
+    needed = ["parent_loinc","child_loinc","sequence","display_text","observation_required"]
+    parent_keys = ["ParentLoinc","Parent LOINC","PARENTLOINC","PanelLoinc","Panel LOINC","ParentLOINCNumber","ParentID"]
+    child_keys  = ["Loinc","LOINC","ChildLoinc","Child LOINC","ChildLOINCNumber"]
+    seq_keys    = ["Sequence","SEQUENCE","ChildSequence","ItemSequenceNumber","Item Sequence"]
+    disp_keys   = ["DisplayNameForForm","Display Name For Form","FORMDISPNM","FORMDISP","DisplayName"]
+    req_keys    = ["ObservationRequiredInPanel","Required","OBSERVATIONREQUIREDINPANEL","Observation Required In Panel","REQUIRED"]
+
+    rows = []
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            parent = _row_pick(row, parent_keys)
+            child  = _row_pick(row, child_keys)
+            if not child:
+                continue
+            seq    = _row_pick(row, seq_keys)
+            disp   = _row_pick(row, disp_keys)
+            req    = _row_pick(row, req_keys)
+            rows.append((parent, child, seq, disp, req))
+
+    if rows:
+        _batch_insert(cur, "t_panels", needed, rows)
+
+    # Clean and upsert
     cur.execute("DELETE FROM t_panels WHERE child_loinc IS NULL OR child_loinc = ''")
-    
     cur.execute("SELECT COUNT(*) FROM t_panels")
     temp_count = cur.fetchone()[0]
-    
+
     cur.execute("""
+        WITH ranked AS (
+          SELECT
+            parent_loinc,
+            child_loinc,
+            sequence,
+            display_text,
+            observation_required,
+            ROW_NUMBER() OVER (
+              PARTITION BY parent_loinc, child_loinc
+              ORDER BY NULLIF(sequence,'')::INT NULLS LAST, display_text NULLS LAST
+            ) AS rn
+          FROM t_panels
+        )
         INSERT INTO ontology.loinc_panels AS dst
-        (parent_loinc, child_loinc, sequence, display_text, observation_required)
-        SELECT parent_loinc, child_loinc, NULLIF(sequence, '')::INT, display_text, observation_required
-        FROM t_panels
+          (parent_loinc, child_loinc, sequence, display_text, observation_required)
+        SELECT
+          parent_loinc,
+          child_loinc,
+          NULLIF(sequence, '')::INT,
+          display_text,
+          observation_required
+        FROM ranked
+        WHERE rn = 1
         ON CONFLICT (parent_loinc, child_loinc) DO UPDATE SET
           sequence=EXCLUDED.sequence,
           display_text=EXCLUDED.display_text,
           observation_required=EXCLUDED.observation_required;
     """)
-    
+
     duration = time.time() - start_time
     print(f"Loaded {temp_count} LOINC panels in {duration:.2f}s")
 
+
 def load_answer_lists(cur, csv_path: str, dry_run: bool = False):
-    """Load LOINC answer lists with upsert logic"""
+    """Load LOINC answer lists (robust to column variations)."""
     print("Loading LOINC answer lists...")
+    import csv, time
     start_time = time.time()
-    
-    cur.execute("CREATE TEMP TABLE t_answer_list (LIKE ontology.loinc_answer_list INCLUDING ALL)")
-    
-    columns = ["answer_list_id", "answer_list_name", "answer_list_oid", "ext_defined_yn"]
-    copy_csv_to_temp_table(cur, "t_answer_list", columns, csv_path)
-    
+
+    cur.execute("""CREATE TEMP TABLE t_answer_list (
+      answer_list_id TEXT,
+      answer_list_name TEXT,
+      answer_list_oid TEXT,
+      ext_defined_yn TEXT
+    )""")
+
+    id_keys   = ["AnswerListId","AnswerListID","LISTID","ListId"]
+    name_keys = ["AnswerListName","Answer List Name","LISTNAME","ListName"]
+    oid_keys  = ["AnswerListOid","AnswerListOID","LISTOID","ListOID"]
+    ext_keys  = ["ExtDefinedYn","ExtDefinedYN","ExternallyDefined","Externally Defined","ExtDefined"]
+
+    rows=[]
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rid  = _row_pick(row, id_keys)
+            if not rid:  # require id
+                continue
+            rnm  = _row_pick(row, name_keys)
+            roid = _row_pick(row, oid_keys)
+            ext  = _row_pick(row, ext_keys)
+            rows.append((rid, rnm, roid, ext))
+
+    if rows:
+        _batch_insert(cur, "t_answer_list", ["answer_list_id","answer_list_name","answer_list_oid","ext_defined_yn"], rows)
+
     cur.execute("SELECT COUNT(*) FROM t_answer_list")
     temp_count = cur.fetchone()[0]
-    
+
     cur.execute("""
-        INSERT INTO ontology.loinc_answer_list AS dst
-        SELECT * FROM t_answer_list
-        ON CONFLICT (answer_list_id) DO UPDATE SET
-          answer_list_name=EXCLUDED.answer_list_name,
-          answer_list_oid=EXCLUDED.answer_list_oid,
-          ext_defined_yn=EXCLUDED.ext_defined_yn;
-    """)
-    
+WITH ranked AS (
+  SELECT
+    answer_list_id,
+    answer_list_name,
+    answer_list_oid,
+    ext_defined_yn,
+    ROW_NUMBER() OVER (
+      PARTITION BY answer_list_id
+      ORDER BY answer_list_name NULLS LAST, answer_list_oid NULLS LAST
+    ) AS rn
+  FROM t_answer_list
+  WHERE answer_list_id IS NOT NULL AND answer_list_id <> ''
+)
+INSERT INTO ontology.loinc_answer_list AS dst
+  (answer_list_id, answer_list_name, answer_list_oid, ext_defined_yn)
+SELECT
+  answer_list_id, answer_list_name, answer_list_oid, ext_defined_yn
+FROM ranked
+WHERE rn = 1
+ON CONFLICT (answer_list_id) DO UPDATE SET
+  answer_list_name=EXCLUDED.answer_list_name,
+  answer_list_oid=EXCLUDED.answer_list_oid,
+  ext_defined_yn=EXCLUDED.ext_defined_yn;
+""")
+
     duration = time.time() - start_time
     print(f"Loaded {temp_count} LOINC answer lists in {duration:.2f}s")
 
+
 def load_answer_links(cur, csv_path: str, dry_run: bool = False):
-    """Load LOINC answer links with upsert logic"""
+    """Load LOINC answer links (robust to column variations)."""
     print("Loading LOINC answer links...")
+    import csv, time
     start_time = time.time()
-    
-    cur.execute("CREATE TEMP TABLE t_answer_link (LIKE ontology.loinc_answer_link INCLUDING ALL)")
-    
-    columns = ["loinc_num", "answer_list_id", "link_type", "applicable_context"]
-    copy_csv_to_temp_table(cur, "t_answer_link", columns, csv_path)
-    
+
+    cur.execute("""CREATE TEMP TABLE t_answer_link (
+      loinc_num TEXT,
+      answer_list_id TEXT,
+      link_type TEXT,
+      applicable_context TEXT
+    )""")
+
+    loinc_keys = ["Loinc","LOINC","LoincNumber","LoincNum","LOINC_NUM"]
+    id_keys    = ["AnswerListId","AnswerListID","LISTID","ListId"]
+    type_keys  = ["LinkType","LINKTYPE","Type"]
+    ctx_keys   = ["ApplicableContext","APPLICABLECONTEXT","Context"]
+
+    rows=[]
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            loinc = _row_pick(row, loinc_keys)
+            aid   = _row_pick(row, id_keys)
+            if not loinc or not aid:
+                continue
+            ltype = _row_pick(row, type_keys)
+            ctx   = _row_pick(row, ctx_keys)
+            rows.append((loinc, aid, ltype, ctx))
+
+    if rows:
+        _batch_insert(cur, "t_answer_link", ["loinc_num","answer_list_id","link_type","applicable_context"], rows)
+
     cur.execute("SELECT COUNT(*) FROM t_answer_link")
     temp_count = cur.fetchone()[0]
-    
+
     cur.execute("""
-        INSERT INTO ontology.loinc_answer_link AS dst
-        SELECT * FROM t_answer_link
-        ON CONFLICT (loinc_num, answer_list_id) DO UPDATE SET
-          link_type=EXCLUDED.link_type,
-          applicable_context=EXCLUDED.applicable_context;
-    """)
-    
+WITH ranked AS (
+  SELECT
+    loinc_num,
+    answer_list_id,
+    link_type,
+    applicable_context,
+    ROW_NUMBER() OVER (
+      PARTITION BY loinc_num, answer_list_id
+      ORDER BY link_type NULLS LAST, applicable_context NULLS LAST
+    ) AS rn
+  FROM t_answer_link
+  WHERE loinc_num IS NOT NULL AND loinc_num <> ''
+    AND answer_list_id IS NOT NULL AND answer_list_id <> ''
+)
+INSERT INTO ontology.loinc_answer_link AS dst
+  (loinc_num, answer_list_id, link_type, applicable_context)
+SELECT
+  loinc_num, answer_list_id, link_type, applicable_context
+FROM ranked
+WHERE rn = 1
+ON CONFLICT (loinc_num, answer_list_id) DO UPDATE SET
+  link_type=EXCLUDED.link_type,
+  applicable_context=EXCLUDED.applicable_context;
+""")
+
     duration = time.time() - start_time
     print(f"Loaded {temp_count} LOINC answer links in {duration:.2f}s")
 
+
 def load_parts(cur, csv_path: str, dry_run: bool = False):
-    """Load LOINC parts with upsert logic"""
+    """Load LOINC parts (robust to column variations)."""
     print("Loading LOINC parts...")
+    import csv, time
     start_time = time.time()
-    
-    cur.execute("CREATE TEMP TABLE t_parts (LIKE ontology.loinc_parts INCLUDING ALL)")
-    
-    columns = ["part_number", "part_type_name", "part_name", "part_display_name", "status"]
-    copy_csv_to_temp_table(cur, "t_parts", columns, csv_path)
-    
+
+    cur.execute("""CREATE TEMP TABLE t_parts (
+      part_number TEXT,
+      part_type_name TEXT,
+      part_name TEXT,
+      part_display_name TEXT,
+      status TEXT
+    )""")
+
+    num_keys   = ["PartNumber","PARTNUMBER","Part Num","PartNum"]
+    type_keys  = ["PartTypeName","PartType","PARTTYPENAME"]
+    name_keys  = ["PartName","PARTNAME","Name"]
+    disp_keys  = ["PartDisplayName","Part Display Name","PARTDISPLAYNAME","DisplayName"]
+    stat_keys  = ["Status","STATUS"]
+
+    rows=[]
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pn   = _row_pick(row, num_keys)
+            if not pn:
+                continue
+            ptyp = _row_pick(row, type_keys)
+            pnam = _row_pick(row, name_keys)
+            pdis = _row_pick(row, disp_keys)
+            stat = _row_pick(row, stat_keys)
+            rows.append((pn, ptyp, pnam, pdis, stat))
+
+    if rows:
+        _batch_insert(cur, "t_parts", ["part_number","part_type_name","part_name","part_display_name","status"], rows)
+
     cur.execute("SELECT COUNT(*) FROM t_parts")
     temp_count = cur.fetchone()[0]
-    
+
     cur.execute("""
         INSERT INTO ontology.loinc_parts AS dst
         SELECT * FROM t_parts
@@ -339,33 +534,81 @@ def load_parts(cur, csv_path: str, dry_run: bool = False):
           part_display_name=EXCLUDED.part_display_name,
           status=EXCLUDED.status;
     """)
-    
+
     duration = time.time() - start_time
     print(f"Loaded {temp_count} LOINC parts in {duration:.2f}s")
 
+
 def load_part_links(cur, csv_path: str, dry_run: bool = False):
-    """Load LOINC part links with upsert logic"""
+    """Load LOINC part links (robust to column variations)."""
     print("Loading LOINC part links...")
+    import csv, time
     start_time = time.time()
-    
-    cur.execute("CREATE TEMP TABLE t_part_link (LIKE ontology.loinc_part_link INCLUDING ALL)")
-    
-    columns = ["loinc_num", "part_number", "part_name", "part_code_system", "part_type_name"]
-    copy_csv_to_temp_table(cur, "t_part_link", columns, csv_path)
-    
+
+    cur.execute("""CREATE TEMP TABLE t_part_link (
+      loinc_num TEXT,
+      part_number TEXT,
+      part_name TEXT,
+      part_code_system TEXT,
+      part_type_name TEXT
+    )""")
+
+    loinc_keys = ["LoincNumber","LOINC_NUM","LOINC","Loinc"]
+    num_keys   = ["PartNumber","PARTNUMBER","PartNumber (PartNumber)"]
+    name_keys  = ["PartName","PARTNAME"]
+    code_keys  = ["PartCodeSystem","PartCodeSys","CODE_SYSTEM","Part Code System"]
+    type_keys  = ["PartTypeName","PartType","PARTTYPENAME"]
+
+    rows=[]
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            loinc = _row_pick(row, loinc_keys)
+            pn    = _row_pick(row, num_keys)
+            if not loinc or not pn:
+                continue
+            nam   = _row_pick(row, name_keys)
+            code  = _row_pick(row, code_keys)
+            typ   = _row_pick(row, type_keys)
+            rows.append((loinc, pn, nam, code, typ))
+
+    if rows:
+        _batch_insert(cur, "t_part_link", ["loinc_num","part_number","part_name","part_code_system","part_type_name"], rows)
+
     cur.execute("SELECT COUNT(*) FROM t_part_link")
     temp_count = cur.fetchone()[0]
-    
+
     cur.execute("""
-        INSERT INTO ontology.loinc_part_link AS dst
-        SELECT * FROM t_part_link
-        ON CONFLICT (loinc_num, part_number, part_type_name) DO UPDATE SET
-          part_name=EXCLUDED.part_name,
-          part_code_system=EXCLUDED.part_code_system;
-    """)
-    
+WITH ranked AS (
+  SELECT
+    loinc_num,
+    part_number,
+    part_name,
+    part_code_system,
+    part_type_name,
+    ROW_NUMBER() OVER (
+      PARTITION BY loinc_num, part_number, part_type_name
+      ORDER BY part_name NULLS LAST, part_code_system NULLS LAST
+    ) AS rn
+  FROM t_part_link
+  WHERE loinc_num IS NOT NULL AND loinc_num <> ''
+    AND part_number IS NOT NULL AND part_number <> ''
+    AND part_type_name IS NOT NULL AND part_type_name <> ''
+)
+INSERT INTO ontology.loinc_part_link AS dst
+  (loinc_num, part_number, part_name, part_code_system, part_type_name)
+SELECT
+  loinc_num, part_number, part_name, part_code_system, part_type_name
+FROM ranked
+WHERE rn = 1
+ON CONFLICT (loinc_num, part_number, part_type_name) DO UPDATE SET
+  part_name=EXCLUDED.part_name,
+  part_code_system=EXCLUDED.part_code_system;
+""")
+
     duration = time.time() - start_time
     print(f"Loaded {temp_count} LOINC part links in {duration:.2f}s")
+
 
 def run_smoke_tests(cur):
     """Run smoke tests to verify data integrity"""
