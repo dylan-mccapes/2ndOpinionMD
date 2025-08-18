@@ -6,7 +6,7 @@ FRONTEND_DEPLOY_PATH := /opt/homebrew/var/www/2ndopinionmd
 RELEASES_DIR := /opt/homebrew/var/www/2ndopinionmd_releases
 HOST := 2ndopinionmd.ai
 
-.PHONY: ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean
+.PHONY: ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean loinc-import
 
 ship: fe-build deploy-fe nginx-reload ## Build FE, deploy, reload nginx
 
@@ -48,4 +48,10 @@ clean: fe-clean
 fe-clean:
 	@echo ">>> Cleaning frontend build artifacts"
 	rm -rf $(FRONTEND_DIR)/build
+
+loinc-import: ## Import LOINC data from hosted ZIP URL
+	@echo ">>> LOINC import"
+	@. server/venv312/bin/activate && \
+	python server/scripts/ingest_loinc.py --zip-url $(ZIP_URL)
+# Usage: make loinc-import ZIP_URL=https://2ndopinionmd.ai/private/loinc-34efcd3d8beb/loinc.zip
 
