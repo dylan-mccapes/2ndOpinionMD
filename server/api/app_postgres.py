@@ -17,12 +17,11 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from server.vectordb.postgresql_query_engine import PostgreSQLMedicalQueryEngine
-from server.db.session import SessionLocal, engine
+from server.db.session import get_session, init_session_factory
 from database.models.postgresql.models import User as UserInDB
 from server.utils.rate_limiter import general_rate_limiter, diagnose_rate_limiter, get_client_ip
 from server.utils.encrypted_logging import setup_encrypted_logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from server.db.session import get_session
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from server.api.journal import router as journal_router
 from server.api.auth_routes_postgres import router as auth_router
@@ -40,18 +39,25 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from server.db.session import DATABASE_URL
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_pre_ping=False,
+        pool_recycle=1800,
+    )
+    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    app.state.engine = engine
+    app.state.session_maker = session_maker
+    init_session_factory(engine)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        logger.info("DB warmup OK")
-    except Exception:
-        logger.exception("DB warmup failed")
-    yield
-    try:
+        logger.info("Database connection initialized successfully")
+        yield
+    finally:
         await engine.dispose()
         logger.info("DB engine disposed")
-    except Exception:
-        logger.exception("DB dispose failed")
 
 app = FastAPI(
     title="2ndOpinionMD API", 
@@ -265,13 +271,12 @@ async def _diagnose_handler(
         )
 
 @app.get("/api/health")
-async def health_check():
+async def health_check(session: AsyncSession = Depends(get_session)):
     """
     Health check endpoint
     """
     try:
-        async with SessionLocal() as session:
-            await session.execute(text("SELECT 1"))
+        await session.execute(text("SELECT 1"))
         postgres_status = "ok"
     except Exception as e:
         logger.warning(f"Health check DB connection failed: {e}")
