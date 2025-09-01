@@ -74,3 +74,26 @@ rxnorm-trgm-index: ## Ensure pg_trgm index on rxnorm_conso.str
 	@echo ">>> Ensuring RxNorm trigram index"
 	@psql $(DATABASE_URL) -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
 
+# --- Backend control ---
+be-stop: ## Stop backend server
+	@pkill -f "uvicorn.*server.api.app_postgres:app" || true
+
+be-start: ## Start backend server
+	@mkdir -p /tmp
+	@. server/venv312/bin/activate && nohup python server/scripts/run_postgres_app.py > /tmp/uvicorn.out 2>&1 & \
+	echo ">>> uvicorn started. Tail logs with: make be-logs"
+
+be-restart: be-stop be-start ## Restart backend server
+	@sleep 1
+	@echo ">>> uvicorn restarted. Tail logs with: make be-logs"
+
+be-logs: ## Tail backend logs
+	@echo ">>> Tailing /tmp/uvicorn.out (Ctrl+C to stop)"
+	@tail -n 200 -f /tmp/uvicorn.out
+
+api-health: ## Test API health endpoint
+	@curl -s http://localhost:8000/api/health | jq .
+
+api-openapi: ## List API endpoints from OpenAPI spec
+	@curl -s http://localhost:8000/api/openapi.json | jq '.paths | keys[]' | sed 's/^/  /'
+
