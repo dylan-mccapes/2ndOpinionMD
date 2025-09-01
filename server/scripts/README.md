@@ -92,3 +92,96 @@ psql -d 2ndopinionmd -c "SELECT loinc_num,long_common_name,system,scale_typ FROM
 - **Smoke Tests**: Verifies critical data like glucose code 2345-7
 - **Progress Logging**: Shows timing and row counts for each table
 - **Error Handling**: Comprehensive error messages and cleanup
+
+# RxNorm Data Ingestion
+
+This directory also contains scripts for ingesting RxNorm (RxNorm Full Monthly) data into the PostgreSQL database.
+
+## RxNorm Usage
+
+### Ingest RxNorm Data
+
+Using hosted ZIP URL (recommended):
+```bash
+source server/venv312/bin/activate
+python server/scripts/ingest_rxnorm.py --zip-url https://2ndopinionmd.ai/private/rxnorm-token/rxnorm.zip
+```
+
+Using local ZIP file:
+```bash
+source server/venv312/bin/activate
+python server/scripts/ingest_rxnorm.py --zip /path/to/RxNorm_full_current.zip
+```
+
+### Makefile Targets
+
+```bash
+# Import RxNorm data
+make rxnorm-import ZIP_URL=https://2ndopinionmd.ai/private/rxnorm-token/rxnorm.zip
+
+# Ensure trigram index for fast search
+make rxnorm-trgm-index
+```
+
+### RxNorm Options
+
+- `--zip PATH`: Path to local RxNorm ZIP file
+- `--zip-url URL`: URL to download RxNorm ZIP file
+- `--schema SCHEMA`: Database schema (default: ontology)
+- `--dry-run`: Run without committing changes
+
+## RxNorm API Usage
+
+After ingesting data, you can search RxNorm terms via the API:
+
+```bash
+# Search for drugs by name
+curl -s "http://localhost:8000/api/rxnorm/search?q=ibuprofen&limit=5" | jq
+curl -s "http://localhost:8000/api/rxnorm/search?q=acetaminophen&tty=SCD,SBD&limit=10" | jq
+
+# Get drug details by RXCUI
+curl -s "http://localhost:8000/api/rxnorm/drug/5640" | jq   # if 5640 exists
+
+# Look up by NDC (11-digit or hyphenated format)
+curl -s "http://localhost:8000/api/rxnorm/ndc/00093015001" | jq
+curl -s "http://localhost:8000/api/rxnorm/ndc/0009-3015-01" | jq
+
+# Using Makefile helpers
+make api-rxnorm-search Q=ibuprofen LIMIT=5
+make api-rxnorm-search Q=acetaminophen TTY=SCD,SBD LIMIT=10
+make api-rxnorm-drug RXCUI=5640
+make api-rxnorm-ndc NDC=00093015001
+```
+
+## RxNorm Database Schema
+
+The script creates the following tables in the `ontology` schema:
+
+- `rxnorm_conso`: Core concept names and TTY codes (PK: rxaui)
+- `rxnorm_rel`: Relationships between concepts (PK: rui)  
+- `rxnorm_sat`: Attributes including NDCs (PK: atui)
+- `rxnorm_ndc`: Derived NDC mapping table with normalized 11-digit NDCs
+
+## RxNorm Verification
+
+Check data was loaded correctly:
+
+```bash
+# Verify table counts
+psql -d 2ndopinionmd -c "SELECT count(*) FROM ontology.rxnorm_conso;"
+
+# Verify ibuprofen exists (smoke test)
+psql -d 2ndopinionmd -c "SELECT rxcui,str,tty FROM ontology.rxnorm_conso WHERE LOWER(str) LIKE '%ibuprofen%' LIMIT 5;"
+
+# Verify NDC mappings
+psql -d 2ndopinionmd -c "SELECT count(*) FROM ontology.rxnorm_ndc;"
+```
+
+## RxNorm Features
+
+- **RRF Format Support**: Handles pipe-delimited RRF files with trailing pipes
+- **NDC Normalization**: Converts NDCs to 11-digit format (5-4-2 segments)
+- **Fast Text Search**: Uses pg_trgm GIN indexes for drug name search
+- **Idempotent Loading**: Safe to run multiple times with upserts
+- **Smoke Tests**: Verifies ibuprofen/acetaminophen presence
+- **Bulk Loading**: Uses PostgreSQL COPY for fast RRF data loading

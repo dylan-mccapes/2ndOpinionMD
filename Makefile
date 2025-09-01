@@ -55,3 +55,22 @@ loinc-import: ## Import LOINC data from hosted ZIP URL
 	python server/scripts/ingest_loinc.py --zip-url $(ZIP_URL)
 # Usage: make loinc-import ZIP_URL=https://2ndopinionmd.ai/private/loinc-34efcd3d8beb/loinc.zip
 
+rxnorm-import: ## Import RxNorm data from hosted ZIP URL
+	@echo ">>> RxNorm import"
+	@. server/venv312/bin/activate && \
+	python server/scripts/ingest_rxnorm.py --zip-url $(ZIP_URL)
+# Usage: make rxnorm-import ZIP_URL=https://2ndopinionmd.ai/private/rxnorm-token/rxnorm.zip
+
+api-rxnorm-search: ## Test RxNorm search API
+	@curl -s "http://localhost:8000/api/rxnorm/search?q=$(Q)&tty=$(TTY)&limit=$(LIMIT)" | jq .
+
+api-rxnorm-drug: ## Test RxNorm drug lookup API
+	@curl -s "http://localhost:8000/api/rxnorm/drug/$(RXCUI)" | jq .
+
+api-rxnorm-ndc: ## Test RxNorm NDC lookup API
+	@curl -s "http://localhost:8000/api/rxnorm/ndc/$(NDC)" | jq .
+
+rxnorm-trgm-index: ## Ensure pg_trgm index on rxnorm_conso.str
+	@echo ">>> Ensuring RxNorm trigram index"
+	@psql $(DATABASE_URL) -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
+
