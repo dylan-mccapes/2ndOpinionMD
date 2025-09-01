@@ -183,8 +183,31 @@ def find_rrf_path(extract_dir: str, filename: str) -> str:
     raise FileNotFoundError(f"Could not find {filename} in extracted ZIP")
 
 def normalize_ndc(raw_ndc: str) -> str:
-    """Normalize NDC to 11-digit format"""
+    """
+    Normalize NDC to 11-digit format following 5-4-2 segment structure.
+    
+    NDC format is typically: LLLLL-PPPP-SS where:
+    - LLLLL: 5-digit labeler code
+    - PPPP: 4-digit product code  
+    - SS: 2-digit package code
+    
+    Examples:
+    - "0009-3015-01" -> "00093015001"
+    - "9-3015-1" -> "00093015001"
+    """
+    if '-' in raw_ndc or ' ' in raw_ndc:
+        segments = re.split(r'[-\s]', raw_ndc.strip())
+        if len(segments) == 3:
+            all_digits = ''.join(segments)
+            return all_digits.zfill(11)
+    
     digits_only = re.sub(r'[^0-9]', '', raw_ndc)
+    
+    if len(digits_only) == 10:
+        digits_only = '0' + digits_only
+    
+    if len(digits_only) == 11:
+        return digits_only
     
     if len(digits_only) < 11:
         digits_only = digits_only.zfill(11)
