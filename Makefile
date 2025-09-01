@@ -51,14 +51,12 @@ fe-clean:
 
 loinc-import: ## Import LOINC data from hosted ZIP URL
 	@echo ">>> LOINC import"
-	@. server/venv312/bin/activate && \
-	python server/scripts/ingest_loinc.py --zip-url $(ZIP_URL)
+	@python server/scripts/ingest_loinc.py --zip-url $(ZIP_URL)
 # Usage: make loinc-import ZIP_URL=https://2ndopinionmd.ai/private/loinc-34efcd3d8beb/loinc.zip
 
 rxnorm-import: ## Import RxNorm data from hosted ZIP URL
 	@echo ">>> RxNorm import"
-	@. server/venv312/bin/activate && \
-	python server/scripts/ingest_rxnorm.py --zip-url $(ZIP_URL)
+	@python server/scripts/ingest_rxnorm.py --zip-url $(ZIP_URL)
 # Usage: make rxnorm-import ZIP_URL=https://2ndopinionmd.ai/private/rxnorm-token/rxnorm.zip
 
 api-rxnorm-search: ## Test RxNorm search API
@@ -72,7 +70,7 @@ api-rxnorm-ndc: ## Test RxNorm NDC lookup API
 
 rxnorm-trgm-index: ## Ensure pg_trgm index on rxnorm_conso.str
 	@echo ">>> Ensuring RxNorm trigram index"
-	@psql $(DATABASE_URL) -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
+	@sudo -u postgres psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
 
 # --- Backend control ---
 be-stop: ## Stop backend server
@@ -80,7 +78,7 @@ be-stop: ## Stop backend server
 
 be-start: ## Start backend server
 	@mkdir -p /tmp
-	@. server/venv312/bin/activate && nohup python server/scripts/run_postgres_app.py > /tmp/uvicorn.out 2>&1 & \
+	@nohup python server/scripts/run_postgres_app.py > /tmp/uvicorn.out 2>&1 & \
 	echo ">>> uvicorn started. Tail logs with: make be-logs"
 
 be-restart: be-stop be-start ## Restart backend server
@@ -96,4 +94,36 @@ api-health: ## Test API health endpoint
 
 api-openapi: ## List API endpoints from OpenAPI spec
 	@curl -s http://localhost:8000/api/openapi.json | jq '.paths | keys[]' | sed 's/^/  /'
+
+api-loinc-search: ## Test LOINC search API
+	@curl -s "http://localhost:8000/api/loinc/search?q=$(Q)&limit=$(LIMIT)" | jq .
+
+api-loinc-concept: ## Test LOINC concept lookup API
+	@curl -s "http://localhost:8000/api/loinc/concept/$(LOINC_NUM)" | jq .
+
+# SNOMED CT targets
+snomed-audit: ## Audit existing SNOMED schema
+	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema='ontology' AND (table_name ILIKE 'snomed%' OR table_name IN ('concepts', 'descriptions', 'relationships', 'refset_members')) ORDER BY 1,2;"
+
+snomed-preview: ## Preview SNOMED import (dry run)
+	@python server/scripts/ingest_snomed.py --root-dir data/SnomedCT_ManagedServiceUS_PRODUCTION_US1000124_20250901T120000Z --dry-run
+
+snomed-import: ## Import SNOMED data from RF2 files
+	@python server/scripts/ingest_snomed.py --root-dir data/SnomedCT_ManagedServiceUS_PRODUCTION_US1000124_20250901T120000Z
+
+snomed-trgm-index: ## Ensure pg_trgm index on descriptions.term
+	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS desc_term_trgm ON ontology.descriptions USING gin (term gin_trgm_ops);"
+
+api-snomed-search: ## Test SNOMED search API
+	@curl -s "http://localhost:8000/api/snomed/search?q=diabetes&limit=5" | jq .
+
+api-snomed-concept: ## Test SNOMED concept lookup API
+	@curl -s "http://localhost:8000/api/snomed/concept/$(CID)" | jq .
+
+api-snomed-map: ## Test SNOMED ICD-10-CM mapping API
+	@curl -s "http://localhost:8000/api/snomed/map/icd10cm/$(CID)" | jq .
+
+api-snomed-stats: ## Test SNOMED statistics API
+	@curl -s "http://localhost:8000/api/snomed/stats" | jq .
 
