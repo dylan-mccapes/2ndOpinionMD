@@ -73,6 +73,9 @@ app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 from server.api.loinc_routes import router as loinc_router
 app.include_router(loinc_router)
 
+from server.api.rxnorm_routes import router as rxnorm_router
+app.include_router(rxnorm_router)
+
 query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
