@@ -224,17 +224,35 @@ async def get_rxnorm_ndc(
         ndc_norm = normalize_ndc(ndc)
         
         sql = """
+        WITH label AS (
+          SELECT
+            rxcui,
+            str,
+            tty,
+            ROW_NUMBER() OVER (
+              PARTITION BY rxcui
+              ORDER BY
+                (ispref = 'Y') DESC,
+                CASE
+                  WHEN tty IN ('SBD','SCD','BN','IN','PIN') THEN 0  -- prefer branded/semantic clinical/ingredients
+                  ELSE 1
+                END,
+                str
+            ) AS rn
+          FROM ontology.rxnorm_conso
+        )
         SELECT 
           n.ndc_norm,
           n.ndc_raw,
           n.rxcui,
-          c.str,
-          c.tty,
+          l.str,
+          l.tty,
           n.sab
         FROM ontology.rxnorm_ndc n
-        LEFT JOIN ontology.rxnorm_conso c ON n.rxcui = c.rxcui AND c.ispref = 'Y'
+        LEFT JOIN label l
+          ON n.rxcui = l.rxcui AND l.rn = 1
         WHERE n.ndc_norm = :ndc_norm
-        ORDER BY c.str
+        ORDER BY COALESCE(l.str, n.rxcui::text)  -- stable ordering even if no label
         """
         
         result = await session.execute(text(sql), {"ndc_norm": ndc_norm})

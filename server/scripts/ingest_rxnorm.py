@@ -174,13 +174,27 @@ def unzip_file(zip_path: str) -> tuple[str, str]:
     return extract_dir, zip_md5
 
 def find_rrf_path(extract_dir: str, filename: str) -> str:
-    """Find RRF file path (case-insensitive search)"""
-    for root, dirs, files in os.walk(extract_dir):
-        for file in files:
-            if file.lower() == filename.lower():
-                return os.path.join(root, file)
-    
-    raise FileNotFoundError(f"Could not find {filename} in extracted ZIP")
+    """
+    Find an RRF file by name, preferring the FULL dataset over the 'prescribe' subset.
+    If both exist, choose a non-'prescribe' path. If only 'prescribe' exists, use it.
+    """
+    matches = []
+    for root, _, files in os.walk(extract_dir):
+        for f in files:
+            if f.lower() == filename.lower():
+                matches.append(os.path.join(root, f))
+
+    if not matches:
+        raise FileNotFoundError(f"Could not find {filename} in extracted ZIP")
+
+    non_prescribe = [p for p in matches if 'prescribe' not in p.lower()]
+    if non_prescribe:
+        chosen = sorted(non_prescribe, key=len)[0]
+    else:
+        chosen = sorted(matches, key=len)[0]
+        print(f"WARNING: Using 'prescribe' subset for {filename}: {chosen}")
+
+    return chosen
 
 def normalize_ndc(raw_ndc: str) -> str:
     """
@@ -301,10 +315,11 @@ def load_rxnorm_conso(cur, rrf_path: str, dry_run: bool = False):
     print(f"Loaded {temp_count} RxNorm CONSO records in {duration:.2f}s")
 
 def load_rxnorm_rel(cur, rrf_path: str, dry_run: bool = False):
-    """Load RxNorm REL with upsert logic"""
+    """Load RxNorm REL with upsert logic (fills missing RUI and dedupes)"""
     print("Loading RxNorm REL...")
     start_time = time.time()
-    
+
+    # Stage
     cur.execute("""CREATE TEMP TABLE t_rxnorm_rel (
       rxcui1 TEXT,
       rxaui1 TEXT,
@@ -324,29 +339,53 @@ def load_rxnorm_rel(cur, rrf_path: str, dry_run: bool = False):
       cvf TEXT,
       extra TEXT
     )""")
-    
+
     columns = [
         "rxcui1", "rxaui1", "stype1", "rel", "rxcui2", "rxaui2", "stype2",
         "rela", "rui", "srui", "sab", "sl", "rg", "dir", "suppress", "cvf", "extra"
     ]
     copy_rrf_to_temp_table(cur, "t_rxnorm_rel", columns, rrf_path)
-    
+
+    # Counts
     cur.execute("SELECT COUNT(*) FROM t_rxnorm_rel")
     temp_count = cur.fetchone()[0]
-    
+
+    cur.execute("SELECT COUNT(*) FROM t_rxnorm_rel WHERE rui IS NULL OR rui = ''")
+    missing = cur.fetchone()[0]
+    if missing:
+        print(f"RXNREL: {missing:,} rows missing RUI — generating surrogate keys")
+
+    # Fill missing RUI with deterministic hash and dedupe on the filled key
     cur.execute("""
-        WITH ranked AS (
-          SELECT rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela, rui,
-                 srui, sab, sl, rg, dir, suppress, cvf,
-                 ROW_NUMBER() OVER (PARTITION BY rui ORDER BY 1) as rn
+        WITH base AS (
+          SELECT
+            rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela,
+            NULLIF(rui,'') AS rui,
+            srui, sab, sl, rg, dir, suppress, cvf
           FROM t_rxnorm_rel
+        ),
+        shaped AS (
+          SELECT
+            rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela,
+            COALESCE(rui, md5(
+              COALESCE(rxcui1,'')||'|'||COALESCE(rxaui1,'')||'|'||COALESCE(stype1,'')||'|'||
+              COALESCE(rel,'')||'|'||COALESCE(rxcui2,'')||'|'||COALESCE(rxaui2,'')||'|'||
+              COALESCE(stype2,'')||'|'||COALESCE(rela,'')||'|'||COALESCE(sab,'')
+            )) AS rui_filled,
+            srui, sab, sl, rg, dir, suppress, cvf
+          FROM base
+        ),
+        dedup AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (PARTITION BY rui_filled ORDER BY 1) AS rn
+          FROM shaped
         )
         INSERT INTO ontology.rxnorm_rel AS dst
-        (rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela, rui,
-         srui, sab, sl, rg, dir, suppress, cvf)
-        SELECT rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela, rui,
-               srui, sab, sl, rg, dir, suppress, cvf
-        FROM ranked
+        (rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela, rui, srui, sab, sl, rg, dir, suppress, cvf)
+        SELECT
+          rxcui1, rxaui1, stype1, rel, rxcui2, rxaui2, stype2, rela,
+          rui_filled, srui, sab, sl, rg, dir, suppress, cvf
+        FROM dedup
         WHERE rn = 1
         ON CONFLICT (rui) DO UPDATE SET
           rxcui1=EXCLUDED.rxcui1,
@@ -365,15 +404,30 @@ def load_rxnorm_rel(cur, rrf_path: str, dry_run: bool = False):
           suppress=EXCLUDED.suppress,
           cvf=EXCLUDED.cvf;
     """)
-    
+
+    # Distinct count after filling/dedup (optional)
+    cur.execute("""
+        WITH shaped AS (
+          SELECT COALESCE(NULLIF(rui,''), md5(
+            COALESCE(rxcui1,'')||'|'||COALESCE(rxaui1,'')||'|'||COALESCE(stype1,'')||'|'||
+            COALESCE(rel,'')||'|'||COALESCE(rxcui2,'')||'|'||COALESCE(rxaui2,'')||'|'||
+            COALESCE(stype2,'')||'|'||COALESCE(rela,'')||'|'||COALESCE(sab,'')
+          )) AS rui_filled
+          FROM t_rxnorm_rel
+        )
+        SELECT COUNT(DISTINCT rui_filled) FROM shaped
+    """)
+    distinct_count = cur.fetchone()[0]
+
     duration = time.time() - start_time
-    print(f"Loaded {temp_count} RxNorm REL records in {duration:.2f}s")
+    print(f"Loaded {temp_count:,} RXNREL rows ({distinct_count:,} distinct keys) in {duration:.2f}s")
 
 def load_rxnorm_sat(cur, rrf_path: str, dry_run: bool = False):
-    """Load RxNorm SAT with upsert logic"""
+    """Load RxNorm SAT with upsert logic (fills missing ATUI + dedupes)"""
     print("Loading RxNorm SAT...")
     start_time = time.time()
-    
+
+    # Stage raw SAT with an extra sink column
     cur.execute("""CREATE TEMP TABLE t_rxnorm_sat (
       rxcui TEXT,
       lui TEXT,
@@ -390,29 +444,54 @@ def load_rxnorm_sat(cur, rrf_path: str, dry_run: bool = False):
       cvf TEXT,
       extra TEXT
     )""")
-    
+
     columns = [
-        "rxcui", "lui", "sui", "rxaui", "stype", "code", "atui", "satui",
-        "atn", "sab", "atv", "suppress", "cvf", "extra"
+        "rxcui", "lui", "sui", "rxaui", "stype", "code",
+        "atui", "satui", "atn", "sab", "atv", "suppress", "cvf", "extra"
     ]
     copy_rrf_to_temp_table(cur, "t_rxnorm_sat", columns, rrf_path)
-    
+
+    # Counts for logging
     cur.execute("SELECT COUNT(*) FROM t_rxnorm_sat")
     temp_count = cur.fetchone()[0]
-    
+
+    cur.execute("SELECT COUNT(*) FROM t_rxnorm_sat WHERE atui IS NULL OR atui = ''")
+    missing = cur.fetchone()[0]
+    if missing:
+        print(f"RXNSAT: {missing:,} rows missing ATUI — generating surrogate keys")
+
+    # Fill missing ATUI with deterministic hash, then dedupe
+    # Hash over stable identifying fields (order matters but is deterministic)
     cur.execute("""
-        WITH ranked AS (
-          SELECT rxcui, lui, sui, rxaui, stype, code, atui, satui, atn, sab, atv,
-                 suppress, cvf,
-                 ROW_NUMBER() OVER (PARTITION BY atui ORDER BY 1) as rn
+        WITH base AS (
+          SELECT
+            rxcui, lui, sui, rxaui, stype, code,
+            NULLIF(atui,'') AS atui,
+            satui, atn, sab, atv, suppress, cvf
           FROM t_rxnorm_sat
+        ),
+        shaped AS (
+          SELECT
+            rxcui, lui, sui, rxaui, stype, code,
+            COALESCE(atui, md5(
+              COALESCE(rxcui,'')||'|'||COALESCE(rxaui,'')||'|'||COALESCE(stype,'')||'|'||
+              COALESCE(code,'')||'|'||COALESCE(atn,'')||'|'||COALESCE(sab,'')||'|'||
+              COALESCE(atv,'')
+            )) AS atui_filled,
+            satui, atn, sab, atv, suppress, cvf
+          FROM base
+        ),
+        dedup AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (PARTITION BY atui_filled ORDER BY 1) AS rn
+          FROM shaped
         )
         INSERT INTO ontology.rxnorm_sat AS dst
-        (rxcui, lui, sui, rxaui, stype, code, atui, satui, atn, sab, atv,
-         suppress, cvf)
-        SELECT rxcui, lui, sui, rxaui, stype, code, atui, satui, atn, sab, atv,
-               suppress, cvf
-        FROM ranked
+        (rxcui, lui, sui, rxaui, stype, code, atui, satui, atn, sab, atv, suppress, cvf)
+        SELECT
+          rxcui, lui, sui, rxaui, stype, code,
+          atui_filled, satui, atn, sab, atv, suppress, cvf
+        FROM dedup
         WHERE rn = 1
         ON CONFLICT (atui) DO UPDATE SET
           rxcui=EXCLUDED.rxcui,
@@ -428,50 +507,83 @@ def load_rxnorm_sat(cur, rrf_path: str, dry_run: bool = False):
           suppress=EXCLUDED.suppress,
           cvf=EXCLUDED.cvf;
     """)
-    
+
+    # Optional: how many distinct atui after filling?
+    cur.execute("""
+        WITH shaped AS (
+          SELECT COALESCE(NULLIF(atui,''), md5(
+            COALESCE(rxcui,'')||'|'||COALESCE(rxaui,'')||'|'||COALESCE(stype,'')||'|'||
+            COALESCE(code,'')||'|'||COALESCE(atn,'')||'|'||COALESCE(sab,'')||'|'||
+            COALESCE(atv,'')
+          )) AS atui_filled
+          FROM t_rxnorm_sat
+        )
+        SELECT COUNT(DISTINCT atui_filled) FROM shaped
+    """)
+    distinct_count = cur.fetchone()[0]
+
     duration = time.time() - start_time
-    print(f"Loaded {temp_count} RxNorm SAT records in {duration:.2f}s")
+    print(f"Loaded {temp_count:,} RXNSAT rows ({distinct_count:,} distinct keys) in {duration:.2f}s")
 
 def build_ndc_map(cur, dry_run: bool = False):
-    """Build NDC mapping table from SAT where ATN='NDC'"""
+    """Build NDC mapping table from SAT where ATN='NDC' (deduped per ndc_norm,rxcui)"""
     print("Building NDC mapping table...")
     start_time = time.time()
-    
+
     cur.execute("""
         WITH ndc_data AS (
           SELECT DISTINCT
             rxcui,
             atui,
             sab,
-            atv as ndc_raw
+            atv AS ndc_raw
           FROM ontology.rxnorm_sat
-          WHERE atn = 'NDC' AND atv IS NOT NULL AND atv != ''
+          WHERE atn = 'NDC' AND atv IS NOT NULL AND atv <> ''
         ),
-        normalized_ndc AS (
-          SELECT 
+        normalized AS (
+          SELECT
             rxcui,
             atui,
             sab,
             ndc_raw,
-            LPAD(REGEXP_REPLACE(ndc_raw, '[^0-9]', '', 'g'), 11, '0') as ndc_norm
+            LPAD(REGEXP_REPLACE(ndc_raw, '[^0-9]', '', 'g'), 11, '0') AS ndc_norm
           FROM ndc_data
-          WHERE LENGTH(REGEXP_REPLACE(ndc_raw, '[^0-9]', '', 'g')) > 0
+        ),
+        filtered AS (
+          SELECT *
+          FROM normalized
+          WHERE ndc_norm ~ '^[0-9]{11}$'
+        ),
+        ranked AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY ndc_norm, rxcui
+              ORDER BY
+                CASE sab
+                  WHEN 'RXNORM' THEN 1
+                  WHEN 'MTHSPL' THEN 2
+                  ELSE 3
+                END,
+                atui
+            ) AS rn
+          FROM filtered
         )
         INSERT INTO ontology.rxnorm_ndc (ndc_norm, ndc_raw, rxcui, atui, sab)
         SELECT ndc_norm, ndc_raw, rxcui, atui, sab
-        FROM normalized_ndc
-        WHERE LENGTH(ndc_norm) = 11
+        FROM ranked
+        WHERE rn = 1
         ON CONFLICT (ndc_norm, rxcui) DO UPDATE SET
-          ndc_raw=EXCLUDED.ndc_raw,
-          atui=EXCLUDED.atui,
-          sab=EXCLUDED.sab;
+          ndc_raw = EXCLUDED.ndc_raw,
+          atui    = EXCLUDED.atui,
+          sab     = EXCLUDED.sab;
     """)
-    
+
     cur.execute("SELECT COUNT(*) FROM ontology.rxnorm_ndc")
     ndc_count = cur.fetchone()[0]
-    
+
     duration = time.time() - start_time
-    print(f"Built NDC mapping table with {ndc_count} entries in {duration:.2f}s")
+    print(f"Built NDC mapping table with {ndc_count:,} entries in {duration:.2f}s")
 
 def run_smoke_tests(cur):
     """Run smoke tests to verify data integrity"""
@@ -547,6 +659,10 @@ def main():
             'rel': find_rrf_path(extract_dir, "RXNREL.RRF"),
             'sat': find_rrf_path(extract_dir, "RXNSAT.RRF")
         }
+        print("Found RRF files:")
+        for name, path in rrf_files.items():
+            tag = "full" if "prescribe" not in path.lower() else "prescribe"
+            print(f"  {name}: {path} [{tag}]")
         
         print(f"Found RRF files:")
         for name, path in rrf_files.items():
