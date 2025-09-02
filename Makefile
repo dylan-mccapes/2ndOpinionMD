@@ -91,6 +91,12 @@ be-restart: be-stop be-start ## Restart backend server
 	@sleep 1
 	@echo ">>> uvicorn restarted. Tail logs with: make be-logs"
 
+be-hard-restart:
+	@pkill -9 -f "uvicorn.*server.api.app_postgres:app" || true
+	@find server -name "__pycache__" -type d -exec rm -rf {} +
+	@find server -name "*.pyc" -delete
+	@$(MAKE) be-start
+
 be-logs: ## Tail backend logs
 	@echo ">>> Tailing /tmp/uvicorn.out (Ctrl+C to stop)"
 	@tail -n 200 -f /tmp/uvicorn.out
