@@ -70,7 +70,7 @@ api-rxnorm-ndc: ## Test RxNorm NDC lookup API
 
 rxnorm-trgm-index: ## Ensure pg_trgm index on rxnorm_conso.str
 	@echo ">>> Ensuring RxNorm trigram index"
-	@sudo -u postgres psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
 
 # --- Backend control ---
 be-stop: ## Stop backend server
@@ -103,7 +103,7 @@ api-loinc-concept: ## Test LOINC concept lookup API
 
 # SNOMED CT targets
 snomed-audit: ## Audit existing SNOMED schema
-	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema='ontology' AND (table_name ILIKE 'snomed%' OR table_name IN ('concepts', 'descriptions', 'relationships', 'refset_members')) ORDER BY 1,2;"
+	@psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema='ontology' AND (table_name ILIKE 'snomed%' OR table_name IN ('concepts', 'descriptions', 'relationships', 'refset_members')) ORDER BY 1,2;"
 
 snomed-preview: ## Preview SNOMED import (dry run)
 	@python server/scripts/ingest_snomed.py --root-dir data/SnomedCT_ManagedServiceUS_PRODUCTION_US1000124_20250901T120000Z --dry-run
@@ -112,8 +112,8 @@ snomed-import: ## Import SNOMED data from RF2 files
 	@python server/scripts/ingest_snomed.py --root-dir data/SnomedCT_ManagedServiceUS_PRODUCTION_US1000124_20250901T120000Z
 
 snomed-trgm-index: ## Ensure pg_trgm index on descriptions.term
-	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-	@sudo -u postgres psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS desc_term_trgm ON ontology.descriptions USING gin (term gin_trgm_ops);"
+	@psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@psql -d 2ndopinionmd -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS desc_term_trgm ON ontology.descriptions USING gin (term gin_trgm_ops);"
 
 api-snomed-search: ## Test SNOMED search API
 	@curl -s "http://localhost:8000/api/snomed/search?q=diabetes&limit=5" | jq .
