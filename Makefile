@@ -72,6 +72,12 @@ rxnorm-trgm-index: ## Ensure pg_trgm index on rxnorm_conso.str
 	@echo ">>> Ensuring RxNorm trigram index"
 	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_str_gin_idx ON ontology.rxnorm_conso USING gin (str gin_trgm_ops);"
 
+rxnorm-indexes: ## Ensure all RxNorm indexes exist
+	@echo ">>> Ensuring RxNorm indexes"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_ndc_norm_idx ON ontology.rxnorm_ndc (ndc_norm);"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_ndc_rxcui_idx ON ontology.rxnorm_ndc (rxcui);"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_label_pick_idx ON ontology.rxnorm_conso (rxcui, sab, ispref, tty, str);"
+
 # --- Backend control ---
 be-stop: ## Stop backend server
 	@pkill -f "uvicorn.*server.api.app_postgres:app" || true

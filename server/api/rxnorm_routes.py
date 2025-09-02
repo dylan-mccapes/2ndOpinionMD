@@ -112,21 +112,35 @@ async def get_rxnorm_drug(
     """
     try:
         concept_sql = """
-        WITH preferred AS (
-          SELECT str, tty
-          FROM ontology.rxnorm_conso
-          WHERE rxcui = :rxcui AND ispref = 'Y'
-          LIMIT 1
-        ),
-        synonyms AS (
+        WITH synonyms AS (
           SELECT tty, str,
                  ROW_NUMBER() OVER (PARTITION BY tty ORDER BY str) as rn
           FROM ontology.rxnorm_conso
           WHERE rxcui = :rxcui AND ispref != 'Y'
         )
         SELECT 
-          (SELECT str FROM preferred) as preferred_name,
-          (SELECT tty FROM preferred) as preferred_tty,
+          (
+            SELECT c1.str
+            FROM ontology.rxnorm_conso c1
+            WHERE c1.rxcui = :rxcui
+            ORDER BY
+              (c1.sab = 'RXNORM') DESC,
+              (c1.ispref = 'Y') DESC,
+              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+              c1.str
+            LIMIT 1
+          ) AS preferred_name,
+          (
+            SELECT c1.tty
+            FROM ontology.rxnorm_conso c1
+            WHERE c1.rxcui = :rxcui
+            ORDER BY
+              (c1.sab = 'RXNORM') DESC,
+              (c1.ispref = 'Y') DESC,
+              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+              c1.str
+            LIMIT 1
+          ) AS preferred_tty,
           COALESCE(
             json_object_agg(
               tty, 
@@ -224,35 +238,49 @@ async def get_rxnorm_ndc(
         ndc_norm = normalize_ndc(ndc)
         
         sql = """
-        WITH label AS (
-          SELECT
-            rxcui,
-            str,
-            tty,
-            ROW_NUMBER() OVER (
-              PARTITION BY rxcui
-              ORDER BY
-                (ispref = 'Y') DESC,
-                CASE
-                  WHEN tty IN ('SBD','SCD','BN','IN','PIN') THEN 0  -- prefer branded/semantic clinical/ingredients
-                  ELSE 1
-                END,
-                str
-            ) AS rn
-          FROM ontology.rxnorm_conso
-        )
         SELECT 
           n.ndc_norm,
           n.ndc_raw,
           n.rxcui,
-          l.str,
-          l.tty,
+          (
+            SELECT c1.str
+            FROM ontology.rxnorm_conso c1
+            WHERE c1.rxcui = n.rxcui
+            ORDER BY
+              (c1.sab = 'RXNORM') DESC,
+              (c1.ispref = 'Y') DESC,
+              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+              c1.str
+            LIMIT 1
+          ) AS str,
+          (
+            SELECT c1.tty
+            FROM ontology.rxnorm_conso c1
+            WHERE c1.rxcui = n.rxcui
+            ORDER BY
+              (c1.sab = 'RXNORM') DESC,
+              (c1.ispref = 'Y') DESC,
+              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+              c1.str
+            LIMIT 1
+          ) AS tty,
           n.sab
         FROM ontology.rxnorm_ndc n
-        LEFT JOIN label l
-          ON n.rxcui = l.rxcui AND l.rn = 1
         WHERE n.ndc_norm = :ndc_norm
-        ORDER BY COALESCE(l.str, n.rxcui::text)  -- stable ordering even if no label
+        ORDER BY COALESCE(
+          (
+            SELECT c1.str
+            FROM ontology.rxnorm_conso c1
+            WHERE c1.rxcui = n.rxcui
+            ORDER BY
+              (c1.sab = 'RXNORM') DESC,
+              (c1.ispref = 'Y') DESC,
+              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+              c1.str
+            LIMIT 1
+          ),
+          n.rxcui::text
+        )
         """
         
         result = await session.execute(text(sql), {"ndc_norm": ndc_norm})
