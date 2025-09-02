@@ -77,7 +77,9 @@ app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
 from server.api.loinc_routes import router as loinc_router
+from server.api.snomed_routes import router as snomed_router
 app.include_router(loinc_router)
+app.include_router(snomed_router)
 
 from server.api.rxnorm_routes import router as rxnorm_router
 app.include_router(rxnorm_router)
