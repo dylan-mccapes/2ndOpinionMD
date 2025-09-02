@@ -112,45 +112,44 @@ async def get_rxnorm_drug(
     """
     try:
         concept_sql = """
-        WITH synonyms AS (
-          SELECT tty, str,
-                 ROW_NUMBER() OVER (PARTITION BY tty ORDER BY str) as rn
+        WITH preferred_pick AS (
+          SELECT
+            c1.str,
+            c1.tty
+          FROM ontology.rxnorm_conso c1
+          WHERE c1.rxcui = :rxcui
+          ORDER BY
+            (c1.sab = 'RXNORM') DESC,
+            (c1.ispref = 'Y') DESC,
+            CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
+            c1.str
+          LIMIT 1
+        ),
+        synonyms AS (
+          SELECT
+            tty,
+            str,
+            ROW_NUMBER() OVER (PARTITION BY tty ORDER BY str) AS rn
           FROM ontology.rxnorm_conso
-          WHERE rxcui = :rxcui AND ispref != 'Y'
+          WHERE rxcui = :rxcui AND (ispref IS DISTINCT FROM 'Y')
+        ),
+        synonyms_limited AS (
+          SELECT tty, str
+          FROM synonyms
+          WHERE rn <= 3
+        ),
+        synonyms_grouped AS (
+          SELECT tty, json_agg(str ORDER BY str) AS syns
+          FROM synonyms_limited
+          GROUP BY tty
         )
-        SELECT 
-          (
-            SELECT c1.str
-            FROM ontology.rxnorm_conso c1
-            WHERE c1.rxcui = :rxcui
-            ORDER BY
-              (c1.sab = 'RXNORM') DESC,
-              (c1.ispref = 'Y') DESC,
-              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
-              c1.str
-            LIMIT 1
-          ) AS preferred_name,
-          (
-            SELECT c1.tty
-            FROM ontology.rxnorm_conso c1
-            WHERE c1.rxcui = :rxcui
-            ORDER BY
-              (c1.sab = 'RXNORM') DESC,
-              (c1.ispref = 'Y') DESC,
-              CASE WHEN c1.tty IN ('SBD','SCD','BN','IN','PIN') THEN 0 ELSE 1 END,
-              c1.str
-            LIMIT 1
-          ) AS preferred_tty,
-          COALESCE(
-            json_object_agg(
-              tty, 
-              json_agg(str ORDER BY str) 
-              FILTER (WHERE rn <= 3)
-            ) FILTER (WHERE tty IS NOT NULL),
-            '{}'::json
-          ) as synonyms_by_tty
-        FROM synonyms
+        SELECT
+          (SELECT str FROM preferred_pick) AS preferred_name,
+          (SELECT tty FROM preferred_pick) AS preferred_tty,
+          COALESCE((SELECT json_object_agg(tty, syns) FROM synonyms_grouped), '{}'::json) AS synonyms_by_tty
         """
+
+
         
         concept_result = await session.execute(text(concept_sql), {"rxcui": rxcui})
         concept_row = concept_result.mappings().first()
@@ -282,6 +281,7 @@ async def get_rxnorm_ndc(
           n.rxcui::text
         )
         """
+
         
         result = await session.execute(text(sql), {"ndc_norm": ndc_norm})
         rows = result.mappings().all()
