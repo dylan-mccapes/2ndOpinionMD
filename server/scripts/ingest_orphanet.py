@@ -1,36 +1,53 @@
 #!/usr/bin/env python3
-"""
-Orphanet Data Ingestion Script
-
-Loads Orphanet data from ZIP file or directory into PostgreSQL ontology schema.
-Supports auto-detection of XML files and idempotent upserts.
-"""
-
-import argparse
-import os
-import sys
-import zipfile
-import tempfile
-import io
-import re
+import argparse, os, sys, zipfile, tempfile, io, re
 import xml.etree.ElementTree as ET
-import psycopg2
-import time
-import hashlib
+import psycopg2, time, hashlib
 from psycopg2.extras import execute_values
-from dotenv import load_dotenv
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+DDL = open(os.path.join(os.path.dirname(__file__), "ddl_orphanet.sql")).read()
 
 def get_db_url():
-    """Get database URL from environment variables."""
     url = os.getenv("DATABASE_URL") or "postgresql:///2ndopinionmd"
     return url.replace("+asyncpg", "")
 
+def normalize_frequency(freq_text):
+    """Normalize Orphanet frequency to canonical strings."""
+    if not freq_text:
+        return None
+    
+    freq_lower = freq_text.lower().strip()
+    
+    freq_map = {
+        'obligate': 'Obligate (100%)',
+        '100%': 'Obligate (100%)',
+        'very frequent': 'Very frequent (80–99%)',
+        'frequent': 'Frequent (30–79%)',
+        'occasional': 'Occasional (5–29%)',
+        'very rare': 'Very rare (<5%)',
+        'excluded': 'Excluded (0%)',
+        'rare': 'Very rare (<5%)',
+    }
+    
+    if '%' in freq_text:
+        if '100' in freq_text:
+            return 'Obligate (100%)'
+        elif any(x in freq_text for x in ['80', '90', '99']):
+            return 'Very frequent (80–99%)'
+        elif any(x in freq_text for x in ['30', '40', '50', '60', '70']):
+            return 'Frequent (30–79%)'
+        elif any(x in freq_text for x in ['5', '10', '20', '29']):
+            return 'Occasional (5–29%)'
+        elif any(x in freq_text for x in ['0', '<5']):
+            return 'Very rare (<5%)'
+    
+    for key, value in freq_map.items():
+        if key in freq_lower:
+            return value
+    
+    return freq_text
+
 def find_xmls(root_dir):
-    """Auto-detect the three key Orphadata XMLs by root element."""
+    """Auto-detect relevant XMLs inside the ZIP/dir."""
     paths = {}
     for dirpath, _, files in os.walk(root_dir):
         for f in files:
@@ -38,166 +55,192 @@ def find_xmls(root_dir):
                 p = os.path.join(dirpath, f)
                 try:
                     with open(p, "rb") as fh:
-                        head = fh.read(2048)
+                        head = fh.read(4096).decode('utf-8', errors='ignore')
                     
-                    t = ET.parse(p)
-                    root = t.getroot().tag.lower()
-                    if "disorderlist" in root:
+                    head_lower = head.lower()
+                    if "disorderlist" in head_lower:
                         paths["product1"] = p
-                    elif "genedisorderassociationlist" in root:
-                        paths["product6"] = p
-                    elif "hpodisordersetstatuslist" in root:
+                    elif "genedisorderassociationlist" in head_lower:
+                        paths["product6"] = p  
+                    elif "hpodisordersetstatuslist" in head_lower:
                         paths["product4"] = p
                 except Exception:
                     pass
     return paths
 
 def unzip_to_temp(zip_path):
-    """Extract ZIP file to temporary directory."""
+    """Extract ZIP to temporary directory."""
     tmp = tempfile.mkdtemp(prefix="orphadata_")
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(tmp)
     return tmp
 
 def parse_product1(p):
-    """Parse product1 XML (disease list) for diseases, synonyms, and external refs."""
+    """Parse disease list XML (product1)."""
     diseases, synonyms, xrefs = [], [], []
     
     for event, elem in ET.iterparse(p, events=("end",)):
         if elem.tag.endswith("Disorder"):
             oc_elem = elem.find(".//{*}OrphaCode")
-            name_elem = elem.find(".//{*}Name")
-            dtyp_elem = elem.find(".//{*}DisorderType/{*}Name")
-            defn_elem = elem.find(".//{*}Definition")
+            if oc_elem is None:
+                elem.clear()
+                continue
+                
+            oc_num = int(oc_elem.text)
+            oc_code = f"ORPHA:{oc_num}"
             
-            if oc_elem is not None and name_elem is not None:
-                oc = int(oc_elem.text)
-                name = name_elem.text
-                dtyp = dtyp_elem.text if dtyp_elem is not None else None
-                defn = defn_elem.text if defn_elem is not None else None
-                
-                diseases.append((oc, name, dtyp, defn, None, None))
-                
-                for s in elem.findall(".//{*}SynonymList/{*}Synonym"):
-                    syn_elem = s.find(".//{*}Synonym")
-                    if syn_elem is not None:
-                        lang = s.get("{http://www.w3.org/XML/1998/namespace}lang")
-                        synonyms.append((oc, syn_elem.text, lang))
-                
-                for xr in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
-                    src_elem = xr.find(".//{*}Source")
-                    ref_elem = xr.find(".//{*}Reference")
-                    if src_elem is not None and ref_elem is not None:
-                        xrefs.append((oc, src_elem.text, ref_elem.text))
+            name = elem.findtext(".//{*}Name") or ""
+            dtyp = elem.findtext(".//{*}DisorderType/{*}Name")
+            defn = elem.findtext(".//{*}Definition")
+            status = elem.findtext(".//{*}DisorderStatus/{*}Name")
+            expert_link = elem.findtext(".//{*}ExpertLink")
+            
+            diseases.append((oc_code, oc_num, name, dtyp, defn, status, expert_link))
+            
+            for s in elem.findall(".//{*}SynonymList/{*}Synonym"):
+                syn_text = s.findtext(".//{*}Synonym")
+                lang = s.get("{http://www.w3.org/XML/1998/namespace}lang")
+                scope = s.findtext(".//{*}SynonymType/{*}Name")
+                if syn_text:
+                    synonyms.append((oc_code, syn_text, lang, scope))
+            
+            for xr in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
+                src = xr.findtext(".//{*}Source")
+                ref = xr.findtext(".//{*}Reference")
+                url = xr.findtext(".//{*}URL")
+                if src and ref:
+                    xrefs.append((oc_code, src, ref, url))
             
             elem.clear()
     
     return diseases, synonyms, xrefs
 
 def parse_product6(p):
-    """Parse product6 XML (gene-disease associations)."""
+    """Parse gene-disease associations XML (product6)."""
     links = []
     
     for event, elem in ET.iterparse(p, events=("end",)):
         if elem.tag.endswith("GeneDisorderAssociation"):
             oc_elem = elem.find(".//{*}Disorder/{*}OrphaCode")
-            gs_elem = elem.find(".//{*}Gene/{*}Symbol")
-            
-            entrez_elem = None
-            ensg_elem = None
-            for xr in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
-                src_elem = xr.find(".//{*}Source")
-                ref_elem = xr.find(".//{*}Reference")
-                if src_elem is not None and ref_elem is not None:
-                    if src_elem.text == "EntrezGene":
-                        entrez_elem = ref_elem
-                    elif src_elem.text == "Ensembl":
-                        ensg_elem = ref_elem
-            
-            assoc_elem = elem.find(".//{*}GeneDisorderAssociationType/{*}Name")
-            inherit_elem = elem.find(".//{*}DisorderAssociationType/{*}Name")
-            ev_elem = elem.find(".//{*}SourceOfValidation")
-            
-            if oc_elem is not None:
-                oc = int(oc_elem.text)
-                gs = gs_elem.text if gs_elem is not None else None
-                entrez = entrez_elem.text if entrez_elem is not None else None
-                ensg = ensg_elem.text if ensg_elem is not None else None
-                assoc = assoc_elem.text if assoc_elem is not None else None
-                inherit = inherit_elem.text if inherit_elem is not None else None
-                ev = ev_elem.text if ev_elem is not None else None
+            if oc_elem is None:
+                elem.clear()
+                continue
                 
-                links.append((oc, gs, entrez, ensg, assoc, inherit, ev))
+            oc_code = f"ORPHA:{oc_elem.text}"
             
+            gs = elem.findtext(".//{*}Gene/{*}Symbol")
+            if not gs:
+                elem.clear()
+                continue
+                
+            gs = gs.upper()  # Normalize gene symbols to uppercase
+            
+            entrez = None
+            ensembl = None
+            for ref in elem.findall(".//{*}Gene/{*}ExternalReferenceList/{*}ExternalReference"):
+                src = ref.findtext(".//{*}Source")
+                ref_id = ref.findtext(".//{*}Reference")
+                if src == "EntrezGene":
+                    entrez = ref_id
+                elif src == "Ensembl":
+                    ensembl = ref_id
+            
+            assoc_type = elem.findtext(".//{*}GeneDisorderAssociationType/{*}Name")
+            inheritance = elem.findtext(".//{*}DisorderGeneAssociationType/{*}Name")
+            evidence = elem.findtext(".//{*}SourceOfValidation")
+            
+            links.append((oc_code, gs, entrez, ensembl, assoc_type, inheritance, evidence))
             elem.clear()
     
     return links
 
 def parse_product4(p):
-    """Parse product4 XML (phenotype-disease associations)."""
+    """Parse HPO-disease associations XML (product4)."""
     phenos = []
     
     for event, elem in ET.iterparse(p, events=("end",)):
         if elem.tag.endswith("HPODisorderAssociation"):
             oc_elem = elem.find(".//{*}Disorder/{*}OrphaCode")
-            hpo_id_elem = elem.find(".//{*}HPO/{*}HPOId")
-            hpo_label_elem = elem.find(".//{*}HPO/{*}HPOTerm")
-            freq_elem = elem.find(".//{*}HPOFrequency/{*}Name")
-            diag_elem = elem.find(".//{*}DiagnosticCriteria")
-            neg_elem = elem.find(".//{*}HPOOccurrence")
-            
-            if oc_elem is not None and hpo_id_elem is not None:
-                oc = int(oc_elem.text)
-                hpo_id = hpo_id_elem.text
-                hpo_label = hpo_label_elem.text if hpo_label_elem is not None else None
-                freq = freq_elem.text if freq_elem is not None else None
-                diagnostic = (diag_elem.text.lower() == "true") if diag_elem is not None else False
-                negated = (neg_elem.text.lower() == "excluded") if neg_elem is not None else False
+            if oc_elem is None:
+                elem.clear()
+                continue
                 
-                phenos.append((oc, hpo_id, hpo_label, freq, diagnostic, negated))
+            oc_code = f"ORPHA:{oc_elem.text}"
             
+            hpo_id = elem.findtext(".//{*}HPO/{*}HPOId")
+            hpo_label = elem.findtext(".//{*}HPO/{*}HPOTerm")
+            
+            if not hpo_id:
+                elem.clear()
+                continue
+            
+            freq_raw = elem.findtext(".//{*}HPOFrequency/{*}Name")
+            freq = normalize_frequency(freq_raw)
+            
+            diag_text = elem.findtext(".//{*}DiagnosticCriteria")
+            diagnostic = str(diag_text).lower() == "true" if diag_text else False
+            
+            occur_text = elem.findtext(".//{*}HPOOccurrence")
+            negated = str(occur_text).lower() == "excluded" if occur_text else False
+            
+            phenos.append((oc_code, hpo_id, hpo_label, freq, diagnostic, negated))
             elem.clear()
     
     return phenos
 
-def copy(cur, table, cols, rows):
-    """Insert rows using execute_values with ON CONFLICT DO NOTHING."""
+def copy_with_dedup(cur, table, cols, rows):
+    """Copy rows with deduplication using staging table."""
     if not rows:
         return 0
     
-    execute_values(cur,
-        f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s "
-        f"ON CONFLICT DO NOTHING", rows, page_size=5000)
+    staging_table = f"{table}_staging"
+    col_defs = ", ".join([f"{col} TEXT" for col in cols])
+    cur.execute(f"CREATE TEMP TABLE {staging_table} ({col_defs})")
+    
+    execute_values(cur, 
+        f"INSERT INTO {staging_table} ({', '.join(cols)}) VALUES %s",
+        rows, page_size=5000)
+    
+    cur.execute(f"""
+        INSERT INTO {table} ({', '.join(cols)})
+        SELECT DISTINCT * FROM {staging_table}
+        ON CONFLICT DO NOTHING
+    """)
+    
     return len(rows)
 
 def upsert_core(cur, diseases, synonyms, xrefs, genes, phenos):
-    """Upsert all data with proper conflict handling."""
-    execute_values(cur, """
-        INSERT INTO ontology.orphanet_diseases
-            (orpha_code, name, disorder_type, definition, prevalence_note, inheritance_note)
-        VALUES %s
-        ON CONFLICT (orpha_code) DO UPDATE SET
-            name=EXCLUDED.name,
-            disorder_type=EXCLUDED.disorder_type,
-            definition=EXCLUDED.definition,
-            ingested_at=now()
-    """, diseases, page_size=5000)
-
-    copy(cur, "ontology.orphanet_synonyms",
-         ["orpha_code","synonym","lang"], synonyms)
-    copy(cur, "ontology.orphanet_external_refs",
-         ["orpha_code","source","ref"], xrefs)
-    copy(cur, "ontology.orphanet_gene_links",
-         ["orpha_code","gene_symbol","entrez_id","ensembl_id","association","inheritance","evidence"], genes)
-    copy(cur, "ontology.orphanet_phenotype_links",
-         ["orpha_code","hpo_id","hpo_label","frequency","diagnostic","negated"], phenos)
+    """Upsert all data with proper ordering and conflict handling."""
+    
+    if diseases:
+        execute_values(cur, """
+            INSERT INTO ontology.orphanet_diseases
+                (orpha_code, orpha_num, name, disorder_type, definition, status, expert_link)
+            VALUES %s
+            ON CONFLICT (orpha_code) DO UPDATE SET
+                name=EXCLUDED.name,
+                disorder_type=EXCLUDED.disorder_type,
+                definition=EXCLUDED.definition,
+                status=EXCLUDED.status,
+                expert_link=EXCLUDED.expert_link,
+                updated_at=NOW()
+        """, diseases, page_size=5000)
+    
+    copy_with_dedup(cur, "ontology.orphanet_synonyms",
+                   ["orpha_code","synonym","lang","scope"], synonyms)
+    copy_with_dedup(cur, "ontology.orphanet_external_refs", 
+                   ["orpha_code","source","ref","url"], xrefs)
+    copy_with_dedup(cur, "ontology.orphanet_gene_links",
+                   ["orpha_code","gene_symbol","entrez_id","ensembl_id","association_type","inheritance","evidence"], genes)
+    copy_with_dedup(cur, "ontology.orphanet_phenotype_links",
+                   ["orpha_code","hpo_id","hpo_label","frequency","diagnostic","negated"], phenos)
 
 def main():
-    """Main entry point."""
-    ap = argparse.ArgumentParser(description="Ingest Orphanet data into PostgreSQL")
+    ap = argparse.ArgumentParser(description="Import Orphanet data into PostgreSQL")
     ap.add_argument("--zip", help="Path to Orphadata ZIP file")
     ap.add_argument("--dir", help="Directory with Orphadata XMLs")
-    ap.add_argument("--dry-run", action="store_true", help="Parse files but don't write to database")
+    ap.add_argument("--dry-run", action="store_true", help="Parse only, don't write to DB")
+    ap.add_argument("--schema", default="ontology", help="Database schema (default: ontology)")
     args = ap.parse_args()
 
     if not args.zip and not args.dir:
@@ -208,18 +251,21 @@ def main():
         print(f"Extracting {args.zip}...")
         workdir = unzip_to_temp(args.zip)
 
-    print(f"Scanning {workdir} for XML files...")
     xmls = find_xmls(workdir)
-    
     required = {"product1", "product6", "product4"}
     found = set(xmls.keys())
+    
     if not required <= found:
         missing = required - found
-        print(f"Could not auto-detect required XMLs: {missing}")
+        print(f"❌ Could not auto-detect required XMLs: {missing}")
         print(f"Found: {found}")
         sys.exit(2)
 
-    print("Parsing XML files...")
+    print(f"✅ Found XMLs: {found}")
+    for key, path in xmls.items():
+        print(f"  {key}: {os.path.basename(path)}")
+
+    print("Parsing XMLs...")
     t0 = time.time()
     
     diseases, synonyms, xrefs = parse_product1(xmls["product1"])
@@ -227,17 +273,16 @@ def main():
     phenos = parse_product4(xmls["product4"])
     
     parse_time = time.time() - t0
-    print(f"Parsed: diseases={len(diseases)} synonyms={len(synonyms)} "
-          f"xrefs={len(xrefs)} genes={len(genes)} phenos={len(phenos)} "
-          f"in {parse_time:.1f}s")
+    print(f"✅ Parsed in {parse_time:.1f}s:")
+    print(f"  diseases: {len(diseases):,}")
+    print(f"  synonyms: {len(synonyms):,}")
+    print(f"  external_refs: {len(xrefs):,}")
+    print(f"  gene_links: {len(genes):,}")
+    print(f"  phenotype_links: {len(phenos):,}")
 
     if args.dry_run:
-        print("DRY RUN: no database writes.")
+        print("🔍 DRY RUN: No database writes performed.")
         return
-
-    ddl_path = os.path.join(os.path.dirname(__file__), "ddl_orphanet.sql")
-    with open(ddl_path) as f:
-        ddl = f.read()
 
     print("Connecting to database...")
     db = psycopg2.connect(get_db_url())
@@ -245,8 +290,8 @@ def main():
     
     try:
         with db.cursor() as cur:
-            print("Creating schema and tables...")
-            cur.execute(ddl)
+            print("Creating schema...")
+            cur.execute(DDL)
             
             print("Upserting data...")
             upsert_core(cur, diseases, synonyms, xrefs, genes, phenos)
@@ -254,19 +299,9 @@ def main():
         db.commit()
         print("✅ Successfully committed all data.")
         
-        with db.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM ontology.orphanet_diseases")
-            disease_count = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM ontology.orphanet_gene_links")
-            gene_count = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM ontology.orphanet_phenotype_links")
-            pheno_count = cur.fetchone()[0]
-            
-        print(f"Final counts: diseases={disease_count:,} genes={gene_count:,} phenotypes={pheno_count:,}")
-        
     except Exception as e:
         db.rollback()
-        print(f"❌ Error: {e}")
+        print(f"❌ Database error: {e}")
         sys.exit(1)
     finally:
         db.close()

@@ -21,16 +21,16 @@ async def search_orphanet(
     try:
         sql = """
         WITH hits AS (
-          SELECT orpha_code, name, 1 AS rnk 
+          SELECT DISTINCT orpha_code, name, disorder_type, 1 AS rnk 
           FROM ontology.orphanet_diseases 
           WHERE name ILIKE :q
           UNION ALL
-          SELECT s.orpha_code, d.name, 2 AS rnk
+          SELECT DISTINCT s.orpha_code, d.name, d.disorder_type, 2 AS rnk
           FROM ontology.orphanet_synonyms s
           JOIN ontology.orphanet_diseases d USING (orpha_code)
           WHERE s.synonym ILIKE :q
         )
-        SELECT orpha_code, name
+        SELECT orpha_code, name, disorder_type
         FROM hits
         ORDER BY rnk, name
         LIMIT :limit
@@ -50,7 +50,7 @@ async def search_orphanet(
 
 @router.get("/disease/{orpha_code}")
 async def get_disease(
-    orpha_code: int,
+    orpha_code: str,
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -60,8 +60,14 @@ async def get_disease(
     associated genes, and phenotypes.
     """
     try:
+        if not orpha_code.startswith("ORPHA:"):
+            if orpha_code.isdigit():
+                orpha_code = f"ORPHA:{orpha_code}"
+            else:
+                raise HTTPException(400, f"Invalid ORPHA code format: {orpha_code}")
+        
         dsql = """
-        SELECT orpha_code, name, disorder_type, definition, ingested_at
+        SELECT orpha_code, orpha_num, name, disorder_type, definition, status, expert_link, updated_at
         FROM ontology.orphanet_diseases 
         WHERE orpha_code = :oc
         """
@@ -71,7 +77,7 @@ async def get_disease(
             raise HTTPException(404, f"Orphanet disease {orpha_code} not found")
 
         ssql = """
-        SELECT synonym, lang 
+        SELECT synonym, lang, scope
         FROM ontology.orphanet_synonyms 
         WHERE orpha_code = :oc 
         ORDER BY synonym 
@@ -80,7 +86,7 @@ async def get_disease(
         syns = (await session.execute(text(ssql), {"oc": orpha_code})).mappings().all()
 
         xsql = """
-        SELECT source, ref 
+        SELECT source, ref, url
         FROM ontology.orphanet_external_refs 
         WHERE orpha_code = :oc 
         ORDER BY source, ref 
@@ -89,7 +95,7 @@ async def get_disease(
         xrefs = (await session.execute(text(xsql), {"oc": orpha_code})).mappings().all()
 
         gsql = """
-        SELECT gene_symbol, entrez_id, ensembl_id, association, inheritance, evidence
+        SELECT gene_symbol, entrez_id, ensembl_id, association_type, inheritance, evidence
         FROM ontology.orphanet_gene_links
         WHERE orpha_code = :oc
         ORDER BY gene_symbol NULLS LAST
@@ -108,14 +114,21 @@ async def get_disease(
 
         return {
             "orpha_code": drow.orpha_code,
+            "orpha_num": drow.orpha_num,
             "name": drow.name,
             "disorder_type": drow.disorder_type,
             "definition": drow.definition,
-            "ingested_at": drow.ingested_at,
-            "synonyms": [dict(s) for s in syns],
-            "external_refs": [dict(x) for x in xrefs],
-            "genes": [dict(g) for g in genes],
-            "phenotypes": [dict(p) for p in phenos],
+            "status": drow.status,
+            "expert_link": drow.expert_link,
+            "updated_at": drow.updated_at,
+            "synonyms": [{"term": s.synonym, "lang": s.lang, "scope": s.scope} for s in syns],
+            "external_refs": [{"source": x.source, "ref": x.ref, "url": x.url} for x in xrefs],
+            "genes": [{"gene_symbol": g.gene_symbol, "association_type": g.association_type, 
+                      "entrez_id": g.entrez_id, "ensembl_id": g.ensembl_id, 
+                      "inheritance": g.inheritance, "evidence": g.evidence} for g in genes],
+            "phenotypes": [{"hpo_id": p.hpo_id, "hpo_label": p.hpo_label, 
+                           "frequency": p.frequency, "diagnostic": p.diagnostic, 
+                           "negated": p.negated} for p in phenos],
         }
         
     except HTTPException:
