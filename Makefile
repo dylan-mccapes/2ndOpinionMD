@@ -139,3 +139,21 @@ api-snomed-map: ## Test SNOMED ICD-10-CM mapping API
 api-snomed-stats: ## Test SNOMED statistics API
 	@curl -s "http://localhost:8000/api/snomed/stats" | jq .
 
+# --- Orphanet ---
+orphanet-import: ## Import Orphanet from local ZIP: make orphanet-import ZIP=data/orphadata.zip
+	@echo ">>> Orphanet import"
+	@python server/scripts/ingest_orphanet.py --zip $(ZIP)
+
+orphanet-import-dir: ## Import Orphanet from directory: make orphanet-import-dir DIR=data/Orphadata
+	@echo ">>> Orphanet import (dir)"
+	@python server/scripts/ingest_orphanet.py --dir $(DIR)
+
+api-orphanet-search: ## Test Orphanet search API
+	@curl -s "http://localhost:8000/api/orphanet/search?q=$(Q)&limit=$(LIMIT)" | jq .
+
+api-orphanet-disease: ## Test Orphanet disease lookup API
+	@curl -s "http://localhost:8000/api/orphanet/disease/$(ORPHA)" | jq .
+
+api-orphanet-stats: ## Test Orphanet statistics API
+	@curl -s "http://localhost:8000/api/orphanet/stats" | jq .
+
