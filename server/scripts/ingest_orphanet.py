@@ -157,79 +157,101 @@ def parse_product1(p):
     return diseases, synonyms, xrefs
 
 
-def parse_product6(p):
+def parse_product6(p: str):
     """Parse product6 (Gene–Disease associations) with robust tag handling."""
     links = []
     for _, elem in ET.iterparse(p, events=("end",)):
-        if elem.tag.endswith("GeneDisorderAssociation"):
-            oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
-            if not oc_txt:
-                elem.clear(); continue
-            orpha_code = f"ORPHA:{int(oc_txt)}"
+        if not elem.tag.endswith("GeneDisorderAssociation"):
+            continue
 
-            gene_symbol = (
-                elem.findtext(".//{*}Gene/{*}Symbol")
-                or elem.findtext(".//{*}Gene/{*}Name")
-                or ""
-            ).upper().strip()
-            if not gene_symbol:
-                elem.clear(); continue
+        oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
+        if not oc_txt:
+            elem.clear(); continue
+        orpha_code = f"ORPHA:{int(oc_txt)}"
 
-            entrez = None
-            ensembl = None
+        gene_symbol = (
+            elem.findtext(".//{*}Gene/{*}Symbol")
+            or elem.findtext(".//{*}Gene/{*}Name")
+            or ""
+        ).strip().upper()
+        if not gene_symbol:
+            elem.clear(); continue
 
-            for xr in elem.findall(".//{*}Gene//{*}ExternalReferenceList/{*}ExternalReference"):
-                src = (xr.findtext(".//{*}Source") or "").strip()
-                ref = (xr.findtext(".//{*}Reference") or "").strip()
-                if src == "EntrezGene" and ref: entrez = ref
-                if src == "Ensembl" and ref: ensembl = ref
+        entrez = None
+        ensembl = None
 
-            if not (entrez or ensembl):
-                for xr in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
-                    src = (xr.findtext(".//{*}Source") or "").strip()
-                    ref = (xr.findtext(".//{*}Reference") or "").strip()
-                    if src == "EntrezGene" and ref: entrez = ref
-                    if src == "Ensembl" and ref: ensembl = ref
+        for ref in elem.findall(".//{*}Gene/{*}ExternalReferenceList/{*}ExternalReference"):
+            src = (ref.findtext(".//{*}Source") or "").strip()
+            rid = (ref.findtext(".//{*}Reference") or "").strip()
+            if src == "EntrezGene" and rid: entrez = rid
+            if src == "Ensembl"   and rid: ensembl = rid
 
-            assoc_type = elem.findtext(".//{*}GeneDisorderAssociationType/{*}Name")
-            inheritance = (
-                elem.findtext(".//{*}DisorderGeneAssociationType/{*}Name")
-                or elem.findtext(".//{*}DisorderAssociationType/{*}Name")
-            )
-            evidence = elem.findtext(".//{*}SourceOfValidation")
+        if not (entrez or ensembl):
+            for ref in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
+                src = (ref.findtext(".//{*}Source") or "").strip()
+                rid = (ref.findtext(".//{*}Reference") or "").strip()
+                if src == "EntrezGene" and rid: entrez = rid
+                if src == "Ensembl"   and rid: ensembl = rid
 
-            links.append((orpha_code, gene_symbol, entrez, ensembl, assoc_type, inheritance, evidence))
-            elem.clear()
+        assoc_type = (
+            elem.findtext(".//{*}GeneDisorderAssociationType/{*}Name")
+            or elem.findtext(".//{*}GeneDisorderAssociationType")
+            or ""
+        ).strip()
+
+        inheritance = (
+            elem.findtext(".//{*}DisorderGeneAssociationType/{*}Name")
+            or elem.findtext(".//{*}DisorderAssociationType/{*}Name")
+            or elem.findtext(".//{*}DisorderGeneAssociationType")
+            or elem.findtext(".//{*}DisorderAssociationType")
+            or ""
+        ).strip()
+
+        evidence = (
+            elem.findtext(".//{*}SourceOfValidation")
+            or ""
+        ).strip()
+
+        links.append((orpha_code, gene_symbol, entrez, ensembl, assoc_type, inheritance, evidence))
+        elem.clear()
     return links
 
-def parse_product4(p):
+def parse_product4(p: str):
     """Parse product4 (HPO–Disease associations) with tag/frequency normalization."""
     phenos = []
     for _, elem in ET.iterparse(p, events=("end",)):
-        if elem.tag.endswith("HPODisorderAssociation"):
-            oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
-            hpo_id = (
-                elem.findtext(".//{*}HPO/{*}HPOId")
-                or elem.findtext(".//{*}HPO/{*}Id")
-                or elem.findtext(".//{*}HPO/{*}id")
-            )
-            if not oc_txt or not hpo_id:
-                elem.clear(); continue
+        if not elem.tag.endswith("HPODisorderAssociation"):
+            continue
 
-            orpha_code = f"ORPHA:{int(oc_txt)}"
-            hpo_label = elem.findtext(".//{*}HPO/{*}HPOTerm") or elem.findtext(".//{*}HPO/{*}Name")
+        oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
+        hpo_id = (
+            elem.findtext(".//{*}HPO/{*}HPOId")
+            or elem.findtext(".//{*}HPO/{*}Id")
+            or elem.findtext(".//{*}HPO/{*}id")
+        )
+        if not oc_txt or not hpo_id:
+            elem.clear(); continue
 
-            freq_raw = elem.findtext(".//{*}HPOFrequency/{*}Name") or elem.findtext(".//{*}HPOFrequency")
-            freq = normalize_frequency(freq_raw)
+        orpha_code = f"ORPHA:{int(oc_txt)}"
+        hpo_label = (
+            elem.findtext(".//{*}HPO/{*}HPOTerm")
+            or elem.findtext(".//{*}HPO/{*}Name")
+        )
 
-            diag_text = elem.findtext(".//{*}DiagnosticCriteria")
-            diagnostic = (str(diag_text).lower() == "true") if diag_text else False
+        freq_raw = (
+            elem.findtext(".//{*}HPOFrequency/{*}Name")
+            or elem.findtext(".//{*}HPOFrequency")
+        )
+        frequency = normalize_frequency(freq_raw)
 
-            occ_text = elem.findtext(".//{*}HPOOccurrence")
-            negated = (str(occ_text).lower() == "excluded") if occ_text else False
+        diag_text = elem.findtext(".//{*}DiagnosticCriteria")
+        diagnostic = (str(diag_text).lower() == "true") if diag_text else False
 
-            phenos.append((orpha_code, hpo_id, hpo_label, freq, diagnostic, negated))
-            elem.clear()
+        occ_text = elem.findtext(".//{*}HPOOccurrence")
+        negated = (str(occ_text).lower() == "excluded") if occ_text else False
+
+        phenos.append((orpha_code, hpo_id, hpo_label, frequency, diagnostic, negated))
+        elem.clear()
     return phenos
 
 def copy_with_dedup(cur, table, cols, rows):
