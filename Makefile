@@ -148,7 +148,7 @@ orphanet-indexes: ## Ensure Orphanet search indexes
 	@psql -d 2ndopinionmd -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_dis_name_trgm ON ontology.orphanet_diseases USING gin (name gin_trgm_ops);"
 	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_syn_syn_trgm  ON ontology.orphanet_synonyms USING gin (synonym gin_trgm_ops);"
-	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_gene_symbol_idx ON ontology.orphanet_gene_links (gene_symbol);"
+	@psql -d 2ndopinionmd -f server/scripts/add_orphanet_indexes.sql
 
 api-orphanet-search: ## Test Orphanet search
 	@curl -s "http://localhost:8000/api/orphanet/search?q=$(Q)&limit=$(LIMIT)" | jq .
@@ -158,4 +158,17 @@ api-orphanet-disease: ## Test Orphanet detail
 
 api-orphanet-stats: ## Test Orphanet statistics API
 	@curl -s "http://localhost:8000/api/orphanet/stats" | jq .
+
+# --- HPO ---
+hpo-import: ## Import HPO terms (hp.json)
+	@python ontology_loaders/hpo/load_hpo_terms.py data/hpo/hp.json
+
+hpo-links-import: ## Import HPO disease links if separate
+	@python ontology_loaders/hpo/load_hpo_disease_links.py data/hpo/phenotype.hpoa
+
+api-hpo-search: ## Test HPO search
+	@curl -s "http://localhost:8000/api/hpo/search?q=$(Q)&limit=$(LIMIT)" | jq .
+
+api-hpo-term: ## Test HPO term
+	@curl -s "http://localhost:8000/api/hpo/term/$(HPO)" | jq .
 

@@ -87,6 +87,9 @@ app.include_router(rxnorm_router)
 from server.api.orphanet_routes import router as orphanet_router
 app.include_router(orphanet_router)
 
+from server.api.hpo_routes import router as hpo_router
+app.include_router(hpo_router)
+
 query_engine = PostgreSQLMedicalQueryEngine()
 
 class SymptomRequest(BaseModel):
