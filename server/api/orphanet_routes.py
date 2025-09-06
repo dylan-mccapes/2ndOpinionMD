@@ -104,10 +104,16 @@ async def get_disease(
         genes = (await session.execute(text(gsql), {"oc": orpha_code})).mappings().all()
 
         psql = """
-        SELECT hpo_id, hpo_label, frequency, diagnostic, negated
-        FROM ontology.orphanet_phenotype_links
-        WHERE orpha_code = :oc
-        ORDER BY hpo_label NULLS LAST
+        SELECT 
+          p.hpo_id,
+          COALESCE(h.name, p.hpo_label) AS hpo_label,
+          p.frequency,
+          p.diagnostic,
+          p.negated
+        FROM ontology.orphanet_phenotype_links p
+        LEFT JOIN ontology.hpo_terms h ON h.hpo_id = p.hpo_id
+        WHERE p.orpha_code = :oc
+        ORDER BY h.name NULLS LAST, p.hpo_id
         LIMIT 200
         """
         phenos = (await session.execute(text(psql), {"oc": orpha_code})).mappings().all()
