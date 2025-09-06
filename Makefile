@@ -139,3 +139,23 @@ api-snomed-map: ## Test SNOMED ICD-10-CM mapping API
 api-snomed-stats: ## Test SNOMED statistics API
 	@curl -s "http://localhost:8000/api/snomed/stats" | jq .
 
+# --- Orphanet ---
+orphanet-import: ## Import Orphanet from ZIP or DIR: make orphanet-import ZIP=... | DIR=...
+	@. server/venv312/bin/activate && \
+	python server/scripts/ingest_orphanet.py $(if $(ZIP),--zip $(ZIP),) $(if $(DIR),--dir $(DIR),)
+
+orphanet-indexes: ## Ensure Orphanet search indexes
+	@psql -d 2ndopinionmd -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_dis_name_trgm ON ontology.orphanet_diseases USING gin (name gin_trgm_ops);"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_syn_syn_trgm  ON ontology.orphanet_synonyms USING gin (synonym gin_trgm_ops);"
+	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS orphanet_gene_symbol_idx ON ontology.orphanet_gene_links (gene_symbol);"
+
+api-orphanet-search: ## Test Orphanet search
+	@curl -s "http://localhost:8000/api/orphanet/search?q=$(Q)&limit=$(LIMIT)" | jq .
+
+api-orphanet-disease: ## Test Orphanet detail
+	@curl -s "http://localhost:8000/api/orphanet/disease/$(ORPHA)" | jq .
+
+api-orphanet-stats: ## Test Orphanet statistics API
+	@curl -s "http://localhost:8000/api/orphanet/stats" | jq .
+
