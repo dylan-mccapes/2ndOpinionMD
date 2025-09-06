@@ -46,51 +46,61 @@ def normalize_frequency(freq_text):
     
     return freq_text
 
-def find_xmls(root_dir: str):
-    """Auto-detect Orphadata XMLs (product1, product4, product6) robustly.
-
-    Strategy:
-      1) Filename heuristics (en_product1.xml, en_product4.xml, en_product6.xml)
-      2) Structural sniff with iterparse(start): stop as soon as we see a sentinel tag
+def find_xmls(root_dir: str) -> dict[str, str]:
     """
-    paths = {}
+    Auto-detect Orphadata XMLs. We sniff file *names* and *contents*,
+    and fall back to parsing the root tag if needed.
+    Returns dict with keys: product1, product6, product4
+    """
+    import xml.etree.ElementTree as ET
+    hits: dict[str, str] = {}
+    want = {"product1", "product6", "product4"}
+
+    def which_product(fname: str, head: str) -> str | None:
+        lfn = fname.lower()
+        lhead = head.lower()
+        if "product1" in lfn or ("disorder" in lfn and "list" in lfn):
+            return "product1"
+        if "product6" in lfn or "genedisorder" in lfn or "gene" in lfn:
+            return "product6"
+        if "product4" in lfn or "hpo" in lfn:
+            return "product4"
+        if "disorderlist" in lhead:
+            return "product1"
+        if "genedisorderassociation" in lhead:
+            return "product6"
+        if "hpodisordersetstatus" in lhead or "hpodisorderassociation" in lhead:
+            return "product4"
+        return None
+
     for dirpath, _, files in os.walk(root_dir):
-        for f in files:
-            if not f.lower().endswith(".xml"):
+        for fname in files:
+            if not fname.lower().endswith(".xml"):
                 continue
-            p = os.path.join(dirpath, f)
-            label = None
-
-            # Heuristic by filename first
-            fl = f.lower()
-            if "product1" in fl:
-                label = "product1"
-            elif "product4" in fl or "hpo" in fl:
-                label = "product4"
-            elif "product6" in fl or "gene" in fl:
-                label = "product6"
-
-            if not label:
-                # Structural sniff — stop early on first identifying tag
-                try:
-                    for event, elem in ET.iterparse(p, events=("start",)):
-                        tag = elem.tag.lower()
-                        if tag.endswith("disorderlist") or tag.endswith("disorder"):
-                            label = "product1"
-                            break
-                        if tag.endswith("genedisorderassociationlist") or tag.endswith("genedisorderassociation"):
-                            label = "product6"
-                            break
-                        if tag.endswith("hpodisordersetstatuslist") or tag.endswith("hpodisorderassociation"):
-                            label = "product4"
-                            break
-                except Exception:
-                    pass
-
-            if label and label not in paths:
-                paths[label] = p
-
-    return paths
+            p = os.path.join(dirpath, fname)
+            try:
+                with open(p, "rb") as fh:
+                    head = fh.read(131072).decode("utf-8", errors="ignore")  # 128KB sniff
+                k = which_product(fname, head)
+                if not k:
+                    try:
+                        root = ET.parse(p).getroot()
+                        tag = root.tag.lower()
+                        if "disorderlist" in tag:
+                            k = "product1"
+                        elif "genedisorderassociationlist" in tag:
+                            k = "product6"
+                        elif "hpodisordersetstatus" in tag or "hpodisorderassociation" in tag:
+                            k = "product4"
+                    except Exception:
+                        k = None
+                if k and k not in hits:
+                    hits[k] = p
+                    if hits.keys() >= want:
+                        return hits
+            except Exception:
+                continue
+    return hits
 
 def unzip_to_temp(zip_path):
     """Extract ZIP to temporary directory."""
@@ -312,33 +322,48 @@ def main():
     ap = argparse.ArgumentParser(description="Import Orphanet (Orphadata) XMLs into PostgreSQL")
     ap.add_argument("--zip", help="Path to Orphadata ZIP file (containing en_product1/4/6.xml)")
     ap.add_argument("--dir", help="Directory containing Orphadata XMLs (en_product1/4/6.xml)")
+    ap.add_argument("--p1", help="Path to product1 XML (diseases)")
+    ap.add_argument("--p4", help="Path to product4 XML (HPO links)")
+    ap.add_argument("--p6", help="Path to product6 XML (gene links)")
     ap.add_argument("--dry-run", action="store_true", help="Parse only, do not write to database")
     args = ap.parse_args()
 
-    if not args.zip and not args.dir:
-        ap.error("Provide --zip or --dir")
+    if not args.zip and not args.dir and not (args.p1 and args.p4 and args.p6):
+        ap.error("Provide --zip or --dir, or specify all three XMLs with --p1/--p4/--p6")
 
     # 1) Resolve working directory
     if args.zip:
         print(f"Extracting {args.zip}...")
         workdir = unzip_to_temp(args.zip)
-    else:
+    elif args.dir:
         workdir = args.dir
+    else:
+        workdir = ""
 
-    # 2) Detect XMLs
-    print(f"Scanning {workdir} for XML files...")
-    xmls = find_xmls(workdir)
+    # 2) Merge overrides + autodetect XMLs
+    xmls = {}
+    if args.p1: xmls["product1"] = args.p1
+    if args.p4: xmls["product4"] = args.p4
+    if args.p6: xmls["product6"] = args.p6
+
+    if set(xmls.keys()) != {"product1", "product4", "product6"}:
+        print(f"Scanning {workdir} for XML files...")
+        auto = find_xmls(workdir)
+        for k, v in auto.items():
+            xmls.setdefault(k, v)
+
     required = {"product1", "product6", "product4"}
     found = set(xmls.keys())
-    if not required.issubset(found):
+    if not required <= found:
         missing = required - found
         print(f"❌ Could not auto-detect required XMLs: {missing}")
         print(f"Found: {found}")
+        print("Tip: pass explicit paths with --p1/--p4/--p6")
         sys.exit(2)
 
-    print(f"✅ Found XMLs: {found}")
-    for key in ("product1", "product6", "product4"):
-        print(f"  {key}: {os.path.basename(xmls[key])}")
+    print(f"✅ Found XMLs: {set(xmls.keys())}")
+    for k in ("product1","product6","product4"):
+        print(f"  {k}: {os.path.basename(xmls[k])}")
 
     # 3) Parse XMLs
     print("Parsing XMLs...")
