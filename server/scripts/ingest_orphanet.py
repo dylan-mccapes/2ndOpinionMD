@@ -158,100 +158,111 @@ def parse_product1(p):
 
 
 def parse_product6(p: str):
-    """Parse product6 (Gene–Disease associations) with robust tag handling."""
-    links = []
-    for _, elem in ET.iterparse(p, events=("end",)):
-        if not elem.tag.endswith("GeneDisorderAssociation"):
-            continue
+    """Parse product6 (Gene–Disease associations) by walking each <Disorder> and
+    using its OrphaCode for all nested associations."""
+    import xml.etree.ElementTree as ET
 
-        oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
-        if not oc_txt:
-            elem.clear(); continue
+    links = []
+    root = ET.parse(p).getroot()
+
+    # Iterate each Disorder and collect its associations
+    for disorder in root.findall('.//{*}Disorder'):
+        oc_txt = disorder.findtext('./{*}OrphaCode') or disorder.findtext('./{*}OrphaNumber')
+        if not (oc_txt and oc_txt.strip().isdigit()):
+            continue
         orpha_code = f"ORPHA:{int(oc_txt)}"
 
-        gene_symbol = (
-            elem.findtext(".//{*}Gene/{*}Symbol")
-            or elem.findtext(".//{*}Gene/{*}Name")
-            or ""
-        ).strip().upper()
-        if not gene_symbol:
-            elem.clear(); continue
+        assocs = disorder.findall('.//{*}DisorderGeneAssociation') + \
+                 disorder.findall('.//{*}GeneDisorderAssociation')
 
-        entrez = None
-        ensembl = None
+        for assoc in assocs:
+            gene_symbol = (
+                assoc.findtext('.//{*}Gene/{*}Symbol') or
+                assoc.findtext('.//{*}Gene/{*}Name') or ''
+            ).strip().upper()
+            if not gene_symbol:
+                continue
 
-        for ref in elem.findall(".//{*}Gene/{*}ExternalReferenceList/{*}ExternalReference"):
-            src = (ref.findtext(".//{*}Source") or "").strip()
-            rid = (ref.findtext(".//{*}Reference") or "").strip()
-            if src == "EntrezGene" and rid: entrez = rid
-            if src == "Ensembl"   and rid: ensembl = rid
+            # Prefer gene-level external refs; fallback to association-level
+            entrez = None
+            ensembl = None
+            for ref in assoc.findall('.//{*}Gene/{*}ExternalReferenceList/{*}ExternalReference'):
+                src = (ref.findtext('.//{*}Source') or '').strip()
+                rid = (ref.findtext('.//{*}Reference') or '').strip()
+                if src == 'EntrezGene' and rid:
+                    entrez = rid
+                elif src == 'Ensembl' and rid:
+                    ensembl = rid
+            if not (entrez or ensembl):
+                for ref in assoc.findall('.//{*}ExternalReferenceList/{*}ExternalReference'):
+                    src = (ref.findtext('.//{*}Source') or '').strip()
+                    rid = (ref.findtext('.//{*}Reference') or '').strip()
+                    if src == 'EntrezGene' and rid:
+                        entrez = rid
+                    elif src == 'Ensembl' and rid:
+                        ensembl = rid
 
-        if not (entrez or ensembl):
-            for ref in elem.findall(".//{*}ExternalReferenceList/{*}ExternalReference"):
-                src = (ref.findtext(".//{*}Source") or "").strip()
-                rid = (ref.findtext(".//{*}Reference") or "").strip()
-                if src == "EntrezGene" and rid: entrez = rid
-                if src == "Ensembl"   and rid: ensembl = rid
+            assoc_type = (
+                assoc.findtext('.//{*}GeneDisorderAssociationType/{*}Name') or
+                assoc.findtext('.//{*}GeneDisorderAssociationType') or ''
+            ).strip()
+            inheritance = (
+                assoc.findtext('.//{*}DisorderGeneAssociationType/{*}Name') or
+                assoc.findtext('.//{*}DisorderAssociationType/{*}Name') or
+                assoc.findtext('.//{*}DisorderGeneAssociationType') or
+                assoc.findtext('.//{*}DisorderAssociationType') or ''
+            ).strip()
+            evidence = (assoc.findtext('.//{*}SourceOfValidation') or '').strip()
 
-        assoc_type = (
-            elem.findtext(".//{*}GeneDisorderAssociationType/{*}Name")
-            or elem.findtext(".//{*}GeneDisorderAssociationType")
-            or ""
-        ).strip()
+            links.append((orpha_code, gene_symbol, entrez, ensembl, assoc_type, inheritance, evidence))
 
-        inheritance = (
-            elem.findtext(".//{*}DisorderGeneAssociationType/{*}Name")
-            or elem.findtext(".//{*}DisorderAssociationType/{*}Name")
-            or elem.findtext(".//{*}DisorderGeneAssociationType")
-            or elem.findtext(".//{*}DisorderAssociationType")
-            or ""
-        ).strip()
-
-        evidence = (
-            elem.findtext(".//{*}SourceOfValidation")
-            or ""
-        ).strip()
-
-        links.append((orpha_code, gene_symbol, entrez, ensembl, assoc_type, inheritance, evidence))
-        elem.clear()
     return links
 
 def parse_product4(p: str):
-    """Parse product4 (HPO–Disease associations) with tag/frequency normalization."""
+    """Parse product4 (HPO–Disease associations) by walking each <Disorder> and
+    using its OrphaCode for all nested phenotype associations."""
+    import xml.etree.ElementTree as ET
+
     phenos = []
-    for _, elem in ET.iterparse(p, events=("end",)):
-        if not elem.tag.endswith("HPODisorderAssociation"):
+    root = ET.parse(p).getroot()
+
+    for disorder in root.findall('.//{*}Disorder'):
+        oc_txt = disorder.findtext('./{*}OrphaCode') or disorder.findtext('./{*}OrphaNumber')
+        if not (oc_txt and oc_txt.strip().isdigit()):
             continue
-
-        oc_txt = elem.findtext(".//{*}Disorder/{*}OrphaCode")
-        hpo_id = (
-            elem.findtext(".//{*}HPO/{*}HPOId")
-            or elem.findtext(".//{*}HPO/{*}Id")
-            or elem.findtext(".//{*}HPO/{*}id")
-        )
-        if not oc_txt or not hpo_id:
-            elem.clear(); continue
-
         orpha_code = f"ORPHA:{int(oc_txt)}"
-        hpo_label = (
-            elem.findtext(".//{*}HPO/{*}HPOTerm")
-            or elem.findtext(".//{*}HPO/{*}Name")
-        )
 
-        freq_raw = (
-            elem.findtext(".//{*}HPOFrequency/{*}Name")
-            or elem.findtext(".//{*}HPOFrequency")
-        )
-        frequency = normalize_frequency(freq_raw)
+        assocs = disorder.findall('.//{*}HPODisorderAssociation') + \
+                 disorder.findall('.//{*}HPODisorderSetStatus')
 
-        diag_text = elem.findtext(".//{*}DiagnosticCriteria")
-        diagnostic = (str(diag_text).lower() == "true") if diag_text else False
+        for assoc in assocs:
+            hpo_id = (
+                assoc.findtext('.//{*}HPO/{*}HPOId') or
+                assoc.findtext('.//{*}HPO/{*}Id') or
+                assoc.findtext('.//{*}HPO/{*}id')
+            )
+            if not hpo_id:
+                continue
 
-        occ_text = elem.findtext(".//{*}HPOOccurrence")
-        negated = (str(occ_text).lower() == "excluded") if occ_text else False
+            hpo_label = (
+                assoc.findtext('.//{*}HPO/{*}HPOTerm') or
+                assoc.findtext('.//{*}HPO/{*}Name')
+            )
 
-        phenos.append((orpha_code, hpo_id, hpo_label, frequency, diagnostic, negated))
-        elem.clear()
+            freq_raw = (
+                assoc.findtext('.//{*}HPOFrequency/{*}Name') or
+                assoc.findtext('.//{*}HPOFrequency')
+            )
+            frequency = normalize_frequency(freq_raw)
+
+            diag_text = assoc.findtext('.//{*}DiagnosticCriteria')
+            diagnostic = (str(diag_text).lower() == 'true') if diag_text else False
+
+            occ_text = assoc.findtext('.//{*}HPOOccurrence')
+            negated = (str(occ_text).lower() == 'excluded') if occ_text else False
+
+            phenos.append((orpha_code, hpo_id, hpo_label, frequency, diagnostic, negated))
+
     return phenos
 
 def copy_with_dedup(cur, table, cols, rows):
@@ -393,6 +404,8 @@ def main():
     diseases, synonyms, xrefs = parse_product1(xmls["product1"])
     genes = parse_product6(xmls["product6"])
     phenos = parse_product4(xmls["product4"])
+    known_orphas = {d[0] for d in diseases}  # d[0] is "ORPHA:####"
+    genes = [g for g in genes if g[0] in known_orphas]
     parse_time = time.time() - t0
 
     print(f"✅ Parsed in {parse_time:.1f}s:")
