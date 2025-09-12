@@ -78,6 +78,85 @@ rxnorm-indexes: ## Ensure all RxNorm indexes exist
 	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_ndc_rxcui_idx ON ontology.rxnorm_ndc (rxcui);"
 	@psql -d 2ndopinionmd -c "CREATE INDEX IF NOT EXISTS rxnorm_conso_label_pick_idx ON ontology.rxnorm_conso (rxcui, sab, ispref, tty, str);"
 
+# --- CHV (Consumer Health Vocabulary) ---
+chv-setup:
+	@psql -d 2ndopinionmd -f database/schemas/setup_chv_synonyms.sql
+
+chv-import: chv-setup ## Import CHV terms into ontology.synonyms
+	@python server/scripts/ingest_chv.py $(FILE)
+
+chv-dry-run: ## Parse-only CHV to see counts
+	@python server/scripts/ingest_chv.py --file $(FILE) --dry-run
+
+chv-search: ## Grep-like CHV search
+	@psql -d 2ndopinionmd -c "SELECT term, cui \
+	FROM ontology.synonyms \
+	WHERE source='CHV' AND term ILIKE '%$${Q}%' \
+	ORDER BY term \
+	LIMIT $${LIMIT:-20};"
+
+chv-fuzzy: ## Fuzzy CHV search with trigram
+	@psql -d 2ndopinionmd -c "SET pg_trgm.similarity_threshold = 0.3; \
+	SELECT term, cui, similarity(term, '$$Q') AS sim \
+	FROM ontology.synonyms \
+	WHERE source='CHV' AND term % '$$Q' \
+	ORDER BY sim DESC \
+	LIMIT $${LIMIT:-20};"
+# ---- MIMIC (schemas) ----
+mimic-schemas:
+	@psql -d 2ndopinionmd -f server/scripts/setup_mimic_schemas.sql
+
+# ---- MIMIC-IV structured ----
+mimiciv-dry-run: ## Sample load first 1000 rows per file (patients/admissions/diagnoses/labs)
+	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --sample 1000 --replace
+
+mimiciv-import: ## Full load MIMIC-IV (patients, admissions, diagnoses_icd, labevents). Add 'ICU=1' to include icustays.
+	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --modules "patients,admissions,diagnoses_icd,labevents$(if $(ICU),,)" --replace
+
+mimiciv-indexes: ## Rebuild basic indexes (safe to run repeatedly)
+	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --modules "" 1>/dev/null
+
+mimiciv-stats:
+	@psql -d 2ndopinionmd -c "SELECT 'patients' src, COUNT(*) FROM ehr.mimiciv_patients UNION ALL \
+	                           SELECT 'admissions', COUNT(*) FROM ehr.mimiciv_admissions UNION ALL \
+	                           SELECT 'diagnoses', COUNT(*) FROM ehr.mimiciv_diagnoses_icd UNION ALL \
+	                           SELECT 'labevents', COUNT(*) FROM ehr.mimiciv_labevents;"
+
+# --- MIMIC-III (v1.4) ---
+MIMIC3_DIR ?= data/MIMIC-III
+
+mimic3-setup:
+	@psql -d 2ndopinionmd -f server/scripts/setup_mimic3_schemas.sql
+
+mimic3-dry-run: ## Validate files + ensure schema (no data load)
+	@python server/scripts/ingest_mimic3.py --dir "$(MIMIC3_DIR)" --dry-run
+
+mimic3-import: ## Load core structured tables
+	@python server/scripts/ingest_mimic3.py --dir "$(MIMIC3_DIR)"
+
+mimic3-stats:
+	@psql -d 2ndopinionmd -c "SELECT 'patients' tbl, count(*) FROM ehr_mimic3.patients UNION ALL \
+	                           SELECT 'admissions', count(*) FROM ehr_mimic3.admissions UNION ALL \
+	                           SELECT 'icustays', count(*) FROM ehr_mimic3.icustays UNION ALL \
+	                           SELECT 'diagnoses_icd', count(*) FROM ehr_mimic3.diagnoses_icd UNION ALL \
+	                           SELECT 'procedures_icd', count(*) FROM ehr_mimic3.procedures_icd UNION ALL \
+	                           SELECT 'labevents', count(*) FROM ehr_mimic3.labevents \
+	                          " | column -t
+
+mimic3-sanity: ## A couple of quick checks
+	@psql -d 2ndopinionmd -c "SELECT hadm_id, count(*) labs FROM ehr_mimic3.labevents GROUP BY hadm_id ORDER BY labs DESC NULLS LAST LIMIT 5;"
+	@psql -d 2ndopinionmd -c "SELECT d.icd9_code, di.long_title, count(*) n FROM ehr_mimic3.diagnoses_icd d LEFT JOIN ehr_mimic3.d_icd_diagnoses di USING(icd9_code) GROUP BY 1,2 ORDER BY n DESC LIMIT 10;"
+
+# ---- MIMIC-IV Notes ----
+mimiciv-notes-dry-run:
+	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --notes --sample 1000 --replace
+
+mimiciv-notes-import:
+	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --notes --replace
+
+mimiciv-notes-stats:
+	@psql -d 2ndopinionmd -c "SELECT COUNT(*) FROM text.mimiciv_notes;"
+
 # --- Backend control ---
 be-stop: ## Stop backend server
 	@pkill -f "uvicorn.*server.api.app_postgres:app" || true
