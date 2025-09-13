@@ -1,4 +1,4 @@
-# 2ndOpinionMD – minimal local Makefile (frontend only)
+# 2ndOpinionMD ??? minimal local Makefile (frontend only)
 # Build from frontend/react and deploy to local nginx docroot
 
 FRONTEND_DIR := frontend/react
@@ -103,30 +103,26 @@ chv-fuzzy: ## Fuzzy CHV search with trigram
 	ORDER BY sim DESC \
 	LIMIT $${LIMIT:-20};"
 # ---- MIMIC (schemas) ----
-mimic-schemas:
-	@psql -d 2ndopinionmd -f server/scripts/setup_mimic_schemas.sql
+# at top (or wherever you keep DB vars)
+DB_NAME ?= 2ndopinionmd
 
-# ---- MIMIC-IV structured ----
-mimiciv-dry-run: ## Sample load first 1000 rows per file (patients/admissions/diagnoses/labs)
-	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --sample 1000 --replace
+mimic3-schema:
+        @psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/ehr_mimic3.sql
 
-mimiciv-import: ## Full load MIMIC-IV (patients, admissions, diagnoses_icd, labevents). Add 'ICU=1' to include icustays.
-	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --modules "patients,admissions,diagnoses_icd,labevents$(if $(ICU),,)" --replace
+mimic4-schema:
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/ehr_mimic4.sql
 
-mimiciv-indexes: ## Rebuild basic indexes (safe to run repeatedly)
-	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --modules "" 1>/dev/null
+# MIMIC-IV (v2.2) import
+MIMIC4_DIR ?= data/mimic-iv-2.2
 
-mimiciv-stats:
-	@psql -d 2ndopinionmd -c "SELECT 'patients' src, COUNT(*) FROM ehr.mimiciv_patients UNION ALL \
-	                           SELECT 'admissions', COUNT(*) FROM ehr.mimiciv_admissions UNION ALL \
-	                           SELECT 'diagnoses', COUNT(*) FROM ehr.mimiciv_diagnoses_icd UNION ALL \
-	                           SELECT 'labevents', COUNT(*) FROM ehr.mimiciv_labevents;"
+mimic4-dry-run:
+	@python server/scripts/ingest_mimic4.py --dir $(MIMIC4_DIR) --dry-run
+
+mimic4-import:
+	@python server/scripts/ingest_mimic4.py --dir $(MIMIC4_DIR)
 
 # --- MIMIC-III (v1.4) ---
 MIMIC3_DIR ?= data/MIMIC-III
-
-mimic3-setup:
-	@psql -d 2ndopinionmd -f server/scripts/setup_mimic3_schemas.sql
 
 mimic3-dry-run: ## Validate files + ensure schema (no data load)
 	@python server/scripts/ingest_mimic3.py --dir "$(MIMIC3_DIR)" --dry-run
@@ -156,6 +152,12 @@ mimiciv-notes-import:
 
 mimiciv-notes-stats:
 	@psql -d 2ndopinionmd -c "SELECT COUNT(*) FROM text.mimiciv_notes;"
+
+n2c2-t3-sample-schema:
+\tpsql -d 2ndopinionmd -c "\\i database/schemas/text_n2c2_ap_pairs.sql"
+
+n2c2-t3-sample-import:
+\tpython server/scripts/ingest_n2c2_t3_sample.py --base data/n2c2/track3-sample
 
 # --- Backend control ---
 be-stop: ## Stop backend server

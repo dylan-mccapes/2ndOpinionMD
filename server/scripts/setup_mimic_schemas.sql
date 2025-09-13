@@ -1,0 +1,4 @@
+-- Schemas (idempotent)
+CREATE SCHEMA IF NOT EXISTS ehr;
+CREATE SCHEMA IF NOT EXISTS text;
+
