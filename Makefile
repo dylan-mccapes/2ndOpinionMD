@@ -222,7 +222,20 @@ mimiciv-note-stats:
 n2c2-t3-sample-schema:
 	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "\i database/schemas/text_n2c2_track3.sql"
 
-n2c2-t3-sample-import: n2c2-t3-sample-schema
+n2c2-t3-sample-reset:
+	@psql -d $(DB_NAME) -c "DELETE FROM text.n2c2_notes WHERE track='2022-T3' AND filename IN ('n2c2_sample_raw.csv','n2c2_sample.csv');"
+
+n2c2-t3-backfill:
+	@psql -d $(DB_NAME) -c "UPDATE text.n2c2_notes n SET note_text = m.text FROM text.mimic3_notes m WHERE n.track='2022-T3' AND n.external_id = m.row_id::text;"
+
+# --- n2c2 Track3 (schema + sample + silver) -----------------------------------
+
+N2C2_T3_SAMPLE_DIR ?= data/n2c2/track3-sample
+
+n2c2-schema:
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/text_n2c2_track3.sql
+
+n2c2-t3-sample-import: n2c2-schema
 	@$(PY) server/scripts/ingest_n2c2_t3_sample.py --base $(N2C2_T3_SAMPLE_DIR)
 
 n2c2-t3-sample-qa:
@@ -230,26 +243,40 @@ n2c2-t3-sample-qa:
 	@psql -d $(DB_NAME) -c "SELECT section_name, COUNT(*) FROM text.n2c2_ap_sections GROUP BY 1 ORDER BY 1;"
 	@psql -d $(DB_NAME) -c "SELECT label, COUNT(*) FROM text.n2c2_ap_relations GROUP BY 1 ORDER BY 2 DESC;"
 
-n2c2-t3-sample-reset:
-	@psql -d $(DB_NAME) -c "DELETE FROM text.n2c2_notes WHERE track='2022-T3' AND filename IN ('n2c2_sample_raw.csv','n2c2_sample.csv');"
-
-n2c2-t3-sample-context:
+n2c2-t3-sample-context: ## Show example A&P snippets
 	@psql -d $(DB_NAME) -c "\
-WITH r AS ( \
-  SELECT r.rel_id, r.label, n.note_text, a.span_start a_s, a.span_end a_e, p.span_start p_s, p.span_end p_e \
-  FROM text.n2c2_ap_relations r \
-  JOIN text.n2c2_ap_sections a ON a.section_id=r.assess_id \
-  JOIN text.n2c2_ap_sections p ON p.section_id=r.plan_id \
-  JOIN text.n2c2_notes n ON n.note_id=r.note_id \
-  LIMIT 5 \
-) \
-SELECT rel_id, label, \
-       substr(note_text, a_s+1, a_e-a_s) AS assessment, \
-       substr(note_text, p_s+1, p_e-p_s) AS plan_item \
-FROM r;"
+SELECT rel_id, label, assessment, plan_item \
+FROM text.v_n2c2_ap_pairs \
+WHERE track = '2022-T3' \
+LIMIT 5;"
 
-n2c2-t3-backfill:
-	@psql -d $(DB_NAME) -c "UPDATE text.n2c2_notes n SET note_text = m.text FROM text.mimic3_notes m WHERE n.track='2022-T3' AND n.external_id = m.row_id::text;"
+# Silver extraction from MIMIC-III / MIMIC-IV-Note
+n2c2-ap-extract-m3: n2c2-schema
+	@$(PY) server/scripts/extract_ap_pairs_from_mimic.py --source m3 --limit $${LIMIT:-20000} --track MIII-AP
+
+n2c2-ap-extract-miv: n2c2-schema
+	@$(PY) server/scripts/extract_ap_pairs_from_mimic.py --source miv --domain discharge --limit $${LIMIT:-20000} --track MIV-AP
+
+# Quick QA + export
+# --- A&P extraction QA ---
+n2c2-ap-qa: ## Counts for notes/sections/relations (by track)
+	@psql -d $(DB_NAME) -c "SELECT track, COUNT(*) AS notes FROM text.n2c2_notes GROUP BY 1 ORDER BY 1;"
+	@psql -d $(DB_NAME) -c "SELECT s.section_name, COUNT(*) FROM text.n2c2_ap_sections s GROUP BY 1 ORDER BY 1;"
+	@psql -d $(DB_NAME) -c "\
+SELECT n.track, COUNT(*) AS rels \
+FROM text.n2c2_ap_relations r \
+JOIN text.n2c2_notes n USING (note_id) \
+GROUP BY 1 ORDER BY 1;"
+
+n2c2-export-gold:
+	@psql -d $(DB_NAME) -c "\copy (SELECT * FROM text.v_n2c2_ap_pairs WHERE track='2022-T3') TO 'data/n2c2/train_gold.csv' CSV HEADER"
+
+n2c2-export-silver-m3:
+	@psql -d $(DB_NAME) -c "\copy (SELECT * FROM text.v_n2c2_ap_pairs WHERE track='MIII-AP') TO 'data/n2c2/train_silver_m3.csv' CSV HEADER"
+
+n2c2-export-silver-miv:
+	@psql -d $(DB_NAME) -c "\copy (SELECT * FROM text.v_n2c2_ap_pairs WHERE track='MIV-AP') TO 'data/n2c2/train_silver_miv.csv' CSV HEADER"
+
 
 # -------------------------
 # Backend control
