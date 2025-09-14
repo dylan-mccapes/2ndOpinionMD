@@ -143,21 +143,82 @@ mimic3-sanity: ## A couple of quick checks
 	@psql -d 2ndopinionmd -c "SELECT hadm_id, count(*) labs FROM ehr_mimic3.labevents GROUP BY hadm_id ORDER BY labs DESC NULLS LAST LIMIT 5;"
 	@psql -d 2ndopinionmd -c "SELECT d.icd9_code, di.long_title, count(*) n FROM ehr_mimic3.diagnoses_icd d LEFT JOIN ehr_mimic3.d_icd_diagnoses di USING(icd9_code) GROUP BY 1,2 ORDER BY n DESC LIMIT 10;"
 
-# ---- MIMIC-IV Notes ----
-mimiciv-notes-dry-run:
-	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --notes --sample 1000 --replace
+# --- MIMIC-III NOTEEVENTS -> text.mimic3_notes ---
+mimic3-notes-schema:
+	@psql -d 2ndopinionmd -c "\
+CREATE SCHEMA IF NOT EXISTS text; \
+CREATE TABLE IF NOT EXISTS text.mimic3_notes ( \
+	row_id INTEGER PRIMARY KEY, subject_id INTEGER, hadm_id INTEGER, \
+	chartdate DATE, charttime TIMESTAMP, storetime TIMESTAMP, \
+	category TEXT, description TEXT, cgid INTEGER, iserror TEXT, text TEXT); \
+CREATE INDEX IF NOT EXISTS mimic3_notes_hadm_idx    ON text.mimic3_notes(hadm_id); \
+CREATE INDEX IF NOT EXISTS mimic3_notes_subject_idx ON text.mimic3_notes(subject_id);"
 
-mimiciv-notes-import:
-	@python server/scripts/ingest_mimic.py --dir $(DIR) --version iv --notes --replace
+mimic3-notes-import: mimic3-notes-schema ## Load NOTEEVENTS.csv.gz into text.mimic3_notes
+	@psql -d 2ndopinionmd -c "\copy text.mimic3_notes (row_id,subject_id,hadm_id,chartdate,charttime,storetime,category,description,cgid,iserror,text) \
+FROM PROGRAM 'gzip -dc physionet.org/files/mimiciii/1.4/NOTEEVENTS.csv.gz' WITH (FORMAT csv, HEADER true)"
 
-mimiciv-notes-stats:
-	@psql -d 2ndopinionmd -c "SELECT COUNT(*) FROM text.mimiciv_notes;"
+# --- MIMIC-IV Note (free-text) ---
+MIMICIV_NOTE_DIR ?= physionet.org/files/mimic-iv-note/2.2
 
-n2c2-t3-sample-schema:
-\tpsql -d 2ndopinionmd -c "\\i database/schemas/text_n2c2_ap_pairs.sql"
+mimiciv-note-schema:
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/text_mimiciv_notes.sql
 
-n2c2-t3-sample-import:
-\tpython server/scripts/ingest_n2c2_t3_sample.py --base data/n2c2/track3-sample
+mimiciv-note-import: mimiciv-note-schema
+	@. server/venv312/bin/activate && python server/scripts/ingest_mimiciv_note.py --dir "$(MIMICIV_NOTE_DIR)"
+
+mimiciv-note-stats:
+	@psql -d $(DB_NAME) -c "SELECT domain, COUNT(*) AS n FROM text.mimiciv_notes GROUP BY 1 ORDER BY 1;"
+	@psql -d $(DB_NAME) -c "SELECT COUNT(*) AS with_hadm, SUM((hadm_id IS NULL)::int) AS hadm_null FROM text.mimiciv_notes;"
+
+# A&P extraction (silver) from MIMIC-III and MIMIC-IV
+n2c2-ap-extract-m3:
+	@. server/venv312/bin/activate && python server/scripts/extract_ap_pairs_from_mimiciv.py --source m3 --limit $${LIMIT:-20000}
+
+n2c2-ap-extract-m4:
+	@. server/venv312/bin/activate && python server/scripts/extract_ap_pairs_from_mimiciv.py --source m4 --limit $${LIMIT:-20000}
+
+n2c2-ap-qa:
+	@psql -d $(DB_NAME) -c "SELECT track, COUNT(*) notes FROM text.n2c2_notes GROUP BY 1 ORDER BY 1;"
+	@psql -d $(DB_NAME) -c "SELECT section_name, COUNT(*) FROM text.n2c2_ap_sections GROUP BY 1 ORDER BY 1;"
+	@psql -d $(DB_NAME) -c "SELECT label, COUNT(*) FROM text.n2c2_ap_relations GROUP BY 1 ORDER BY 2 DESC;"
+
+# --- n2c2 Track 3 (A&P sample) ---
+N2C2_T3_SAMPLE_DIR ?= data/n2c2/track3-sample
+
+.PHONY: n2c2-t3-sample-schema n2c2-t3-sample-import n2c2-t3-sample-qa n2c2-t3-sample-reset n2c2-t3-sample-context
+
+n2c2-t3-sample-schema: ## Ensure Track-3 schema is present
+	@psql -v ON_ERROR_STOP=1 -d 2ndopinionmd -c "\i database/schemas/text_n2c2_track3.sql"
+
+n2c2-t3-sample-import: n2c2-t3-sample-schema ## Import sample (raw notes + offsets)
+	@$(PY) server/scripts/ingest_n2c2_t3_sample.py --base $(N2C2_T3_SAMPLE_DIR)
+
+n2c2-t3-sample-qa: ## Counts for notes/sections/relations
+	@psql -d 2ndopinionmd -c "SELECT COUNT(*) AS notes FROM text.n2c2_notes WHERE track='2022-T3';"
+	@psql -d 2ndopinionmd -c "SELECT section_name, COUNT(*) FROM text.n2c2_ap_sections GROUP BY 1 ORDER BY 1;"
+	@psql -d 2ndopinionmd -c "SELECT label, COUNT(*) FROM text.n2c2_ap_relations GROUP BY 1 ORDER BY 2 DESC;"
+
+n2c2-t3-sample-reset: ## Remove only the sample rows so re-imports are clean
+	@psql -d 2ndopinionmd -c "DELETE FROM text.n2c2_notes WHERE track='2022-T3' AND filename IN ('n2c2_sample_raw.csv','n2c2_sample.csv');"
+
+n2c2-t3-sample-context: ## Show example A&P snippets
+	@psql -d 2ndopinionmd -c "\
+WITH r AS ( \
+  SELECT r.rel_id, r.label, n.note_text, a.span_start a_s, a.span_end a_e, p.span_start p_s, p.span_end p_e \
+  FROM text.n2c2_ap_relations r \
+  JOIN text.n2c2_ap_sections a ON a.section_id=r.assess_id \
+  JOIN text.n2c2_ap_sections p ON p.section_id=r.plan_id \
+  JOIN text.n2c2_notes n ON n.note_id=r.note_id \
+  LIMIT 5 \
+) \
+SELECT rel_id, label, \
+       substr(note_text, a_s+1, a_e-a_s) AS assessment, \
+       substr(note_text, p_s+1, p_e-p_s) AS plan_item \
+FROM r;"
+
+n2c2-t3-backfill: ## Fill 2022-T3 notes from mimic3 by ROW_ID
+	@psql -d 2ndopinionmd -c "UPDATE text.n2c2_notes n SET note_text = m.text FROM text.mimic3_notes m WHERE n.track='2022-T3' AND n.external_id = m.row_id::text;"
 
 # --- Backend control ---
 be-stop: ## Stop backend server
