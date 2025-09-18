@@ -7,11 +7,16 @@ from pydantic import BaseModel
 import asyncpg
 from openai import OpenAI
 from dotenv import load_dotenv
+from pathlib import Path
 
 from server.vectordb.hybrid_query import ann_query, bm25_query, fuse
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+logger.info("OPENAI_API_KEY prefix: %r", (os.getenv("OPENAI_API_KEY") or "")[:10])
+
+server_dir = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=server_dir / ".env")
 
 router = APIRouter()
 

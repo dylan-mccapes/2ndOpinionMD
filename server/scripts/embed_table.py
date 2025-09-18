@@ -14,7 +14,12 @@ def get_sync_database_url():
         return async_url.replace("postgresql+asyncpg://", "postgresql://")
     return async_url
 
-DATABASE_URL = get_sync_database_url()
+DATABASE_URL = (
+    os.getenv("SYNC_DATABASE_URL")
+    or cfg.get("SYNC_DATABASE_URL")
+    or os.getenv("DATABASE_URL")
+    or cfg.get("DATABASE_URL")
+)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL = os.getenv("EMBED_MODEL","text-embedding-3-small")
 BATCH = int(os.getenv("EMBED_BATCH","256"))

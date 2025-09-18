@@ -7,6 +7,7 @@ import traceback
 import re
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,10 +19,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 # --- sys.path & env -----------------------------------------------------------
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-env_path = os.path.join(project_root, ".env")
-load_dotenv(env_path)
+server_dir = Path(__file__).resolve().parent.parent
+env_path = server_dir / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # --- logging ------------------------------------------------------------------
 from server.utils.encrypted_logging import setup_encrypted_logging
@@ -59,6 +59,8 @@ from server.api.hpo_routes import router as hpo_router
 from server.api.mimic3_routes import router as mimic3_router
 from server.api.mimic4_routes import router as mimic4_router
 from server.api.notes_routes  import router as notes_router
+
+from server.api.kg import router as kg_router
 
 from server.api.schemas import DiagnoseResponse
 
@@ -131,6 +133,7 @@ app.include_router(mimic3_router)
 app.include_router(mimic4_router)
 app.include_router(notes_router)
 
+app.include_router(kg_router)
 
 # --- Middlewares ---------------------------------------------------------------
 @app.middleware("http")
