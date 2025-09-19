@@ -277,6 +277,106 @@ n2c2-export-silver-m3:
 n2c2-export-silver-miv:
 	@psql -d $(DB_NAME) -c "\copy (SELECT * FROM text.v_n2c2_ap_pairs WHERE track='MIV-AP') TO 'data/n2c2/train_silver_miv.csv' CSV HEADER"
 
+.PHONY: panelapp-schema panelapp-indexes panelapp-import \
+        api-panelapp-search api-panelapp-panel api-panelapp-stats
+
+# --- PanelApp schema + indexes ---
+panelapp-schema:
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/012_panelapp_gene_panels.sql
+
+panelapp-indexes:  ## (schema already creates these; safe to re-run)
+	@psql -d $(DB_NAME) -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_panel_name_trgm ON molecular.gene_panels USING gin (panel_name gin_trgm_ops);"
+	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_gene_symbol_trgm ON molecular.gene_panels USING gin (gene_symbol gin_trgm_ops);"
+	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_ts_gin ON molecular.gene_panels USING gin (ts);"
+	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_signedoff_idx ON molecular.gene_panels (signed_off);"
+	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_panel_id_version_idx ON molecular.gene_panels (panel_id, panel_version);"
+
+# --- PanelApp ingest ---
+panelapp-import: panelapp-schema
+	@echo ">>> Importing PanelApp signed-off panels (Motor Neuron Disease, MS Susceptibility)"
+	@$(PY) server/scripts/panelapp_import.py
+	@$(MAKE) panelapp-indexes
+
+# --- API helpers ---
+api-panelapp-search:
+	@curl -s "http://localhost:8000/api/panelapp/search?q=$(Q)&limit=$(LIMIT)&only_green=$(GREEN)" | jq .
+
+api-panelapp-panel:
+	@curl -s "http://localhost:8000/api/panelapp/panel/$(PANEL_ID)?version=$(VERSION)&only_green=$(GREEN)" | jq .
+
+api-panelapp-stats:
+	@curl -s "http://localhost:8000/api/panelapp/stats" | jq .
+
+panelapp-import-ids: panelapp-schema
+	@echo ">>> Importing PanelApp by IDs: $(IDS)"
+	@PANELAPP_VERIFY=$(VERIFY) PANELAPP_IDS="$(IDS)" PANELAPP_ALLOW_UNSIGNED=1 $(PY) server/scripts/panelapp_import.py
+	@$(MAKE) panelapp-indexes
+
+# --- PanelApp pipeline --------------------------------------------------------
+panelapp-schema:
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -f database/schemas/012_panelapp_gene_panels.sql
+
+panelapp-import:
+	@echo ">>> Importing PanelApp signed-off targets ($(PANELAPP_PANELS))"
+	@PANELAPP_PANELS="$(PANELAPP_PANELS)" $(PY) server/scripts/panelapp_import.py
+	@$(MAKE) panelapp-indexes
+
+panelapp-import-ids:
+	@echo ">>> Importing PanelApp by IDs: $(IDS)"
+	@PANELAPP_ALLOW_UNSIGNED=$(ALLOW_UNSIGNED) PANELAPP_IDS="$(IDS)" $(PY) server/scripts/panelapp_import.py
+	@$(MAKE) panelapp-indexes
+
+panelapp-indexes:
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS gp_panel_name_trgm    ON molecular.gene_panels USING gin (panel_name gin_trgm_ops);"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS gp_gene_symbol_trgm    ON molecular.gene_panels USING gin (gene_symbol gin_trgm_ops);"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS gp_ts_gin             ON molecular.gene_panels USING gin (ts);"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS gp_signedoff_idx      ON molecular.gene_panels (signed_off);"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS gp_panel_id_version_idx ON molecular.gene_panels (panel_id, panel_version);"
+
+panelapp-rag-upsert:
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "\
+INSERT INTO public.rag_corpus (source, title, text, ts) \
+SELECT 'panelapp', \
+       'Panel: '||panel_name||' — '||gene_symbol, \
+       trim(both ' ' FROM concat_ws(' ', 'Panel:', panel_name, 'Gene:', gene_symbol, \
+           'Confidence:', coalesce(confidence_level,''), \
+           'MOI:', coalesce(mode_of_inheritance,''), \
+           'Phenotypes:', coalesce(array_to_string(phenotypes,'; '),''), \
+           'Evidence:',   coalesce(array_to_string(evidence,'; '),''), \
+           'Relevant disorders:', coalesce(array_to_string(relevant_disorders,'; '),''))) AS text, \
+       to_tsvector('english', coalesce(panel_name,'')||' '||coalesce(gene_symbol,'')||' '|| \
+           coalesce(array_to_string(phenotypes,' '),'')||' '|| \
+           coalesce(array_to_string(evidence,' '),'')||' '|| \
+           coalesce(array_to_string(relevant_disorders,' '),'')) \
+FROM molecular.gene_panels gp \
+WHERE NOT EXISTS ( \
+  SELECT 1 FROM public.rag_corpus rc \
+  WHERE rc.source='panelapp' AND rc.title='Panel: '||gp.panel_name||' — '||gp.gene_symbol); \
+UPDATE public.rag_corpus SET ts = to_tsvector('english', coalesce(title,'')||' '||coalesce(text,'')) WHERE source='panelapp';"
+
+panelapp-embed:
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus \
+	  --id-col id \
+	  --text-col text \
+	  --embedding-col embedding \
+	  --model text-embedding-3-small \
+	  --batch 256 \
+	  --where "source='panelapp' AND embedding IS NULL"
+
+panelapp-rag: panelapp-rag-upsert panelapp-embed
+
+# convenience API smoketests
+api-panelapp-stats:
+	@curl -s "http://localhost:8000/api/panelapp/stats" | jq .
+
+api-panelapp-search:
+	@curl -s "http://localhost:8000/api/panelapp/search?q=$(Q)&only_green=$(GREEN)" | jq .
+
+api-panelapp-panel:
+	@curl -sf "http://localhost:8000/api/panelapp/panel/$(PANEL_ID)?only_green=$(GREEN)" | jq .
 
 # -------------------------
 # Backend control

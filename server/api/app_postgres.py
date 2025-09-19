@@ -59,6 +59,7 @@ from server.api.hpo_routes import router as hpo_router
 from server.api.mimic3_routes import router as mimic3_router
 from server.api.mimic4_routes import router as mimic4_router
 from server.api.notes_routes  import router as notes_router
+from server.api.panelapp_routes import router as panelapp_router
 
 from server.api.kg import router as kg_router
 
@@ -132,6 +133,7 @@ app.include_router(hpo_router)
 app.include_router(mimic3_router)
 app.include_router(mimic4_router)
 app.include_router(notes_router)
+app.include_router(panelapp_router)
 
 app.include_router(kg_router)
 
