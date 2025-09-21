@@ -486,6 +486,25 @@ guidelines-ingest-all-nice:
 	  $(MAKE) guidelines-load GUIDE_SRC_KEY=nice GUIDE_DOC_KEY="$$dk" GUIDE_PDF="$$f"; \
 	done
 
+.PHONY: diagrules-schema diagrules-import diagrules-list diagrules-apply-sample
+
+diagrules-schema:
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_diagnostic_rules.sql
+
+diagrules-import: diagrules-schema
+	@$(PY) server/scripts/ingest_diagnostic_rules.py --file data/diagnostic_rules_seed.json
+
+diagrules-list:
+	@curl -s "http://localhost:8000/api/diagnostic_rules/list?q=$(Q)" | jq .
+
+diagrules-apply-sample:
+	@curl -s -X POST "http://localhost:8000/api/diagnostic_rules/mcdonald_2017/apply" \
+	  -H 'Content-Type: application/json' \
+	  -d '{"has_typical_cis":true,"mri_lesion_sites_positive":3,"clinical_evidence_multiple_sites":false,"simultaneous_gad_non_gad":false,"new_t2_or_gad_on_followup":true,"csf_oligoclonal_bands":false,"better_diagnosis_present":false,"progression_1_year":false,"spinal_cord_lesions":0,"brain_mri_consistent":false}' | jq .
+
+diagrules-test:
+	@$(PY) server/scripts/run_diagnostic_rule_tests.py
+
 # -------------------------
 # Backend control
 # -------------------------
