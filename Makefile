@@ -31,7 +31,8 @@ PSQL ?= $(firstword \
 
 .PHONY: \
 	ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean \
-	loinc-import rxnorm-import api-rxnorm-search api-rxnorm-drug api-rxnorm-ndc \
+	loinc-schema loinc-indexes loinc-import loinc-smoke \
+	rxnorm-import api-rxnorm-search api-rxnorm-drug api-rxnorm-ndc \
 	rxnorm-trgm-index rxnorm-indexes \
 	chv-setup chv-import chv-dry-run chv-search chv-fuzzy \
 	mimic3-schema mimic4-schema mimic4-dry-run mimic4-import \
@@ -41,11 +42,14 @@ PSQL ?= $(firstword \
 	mimiciv-note-schema mimiciv-note-import mimiciv-note-dry mimiciv-note-stats \
 	n2c2-t3-sample-schema n2c2-t3-sample-import n2c2-t3-sample-qa n2c2-t3-sample-reset n2c2-t3-sample-context n2c2-t3-backfill \
 	be-stop be-start be-restart be-hard-restart be-logs api-health api-openapi \
-	api-loinc-search api-loinc-concept \
+	api-loinc-search api-loinc-concept api-loinc-term api-loinc-panel \
 	snomed-audit snomed-preview snomed-import snomed-trgm-index \
 	api-snomed-search api-snomed-concept api-snomed-map api-snomed-stats \
 	orphanet-import orphanet-indexes api-orphanet-search api-orphanet-disease api-orphanet-stats \
-	hpo-import hpo-links-import api-hpo-search api-hpo-term
+	hpo-import hpo-links-import api-hpo-search api-hpo-term \
+	guidelines-schema guidelines-stats guidelines-fts guidelines-embed \
+	guidelines-load guidelines-load-ng220 guidelines-load-ng65 guidelines-load-ng193 \
+	guidelines-ingest-all-nice guidelines-health
 
 # -------------------------
 # Frontend deploy helpers
@@ -101,9 +105,29 @@ api-openapi:
 # -------------------------
 # LOINC / RxNorm
 # -------------------------
+loinc-schema:
+	@echo ">>> Creating LOINC schema/tables"
+	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_loinc_schema.sql
+	@echo ">>> LOINC schema ready."
+
+loinc-indexes:
+	@echo ">>> Ensuring LOINC trigram indexes (for fast ILIKE)"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS loinc_long_common_name_trgm ON ontology.loinc_terms USING gin (long_common_name gin_trgm_ops);"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS loinc_shortname_trgm        ON ontology.loinc_terms USING gin (shortname gin_trgm_ops);"
+
 loinc-import:
 	@echo ">>> LOINC import"
+	@test -n "$(ZIP_URL)" || (echo "ERROR: set ZIP_URL=https://.../Loinc_YYYYMMDD.zip" ; exit 1)
+	@$(MAKE) loinc-schema
 	@$(PY) server/scripts/ingest_loinc.py --zip-url $(ZIP_URL)
+	@$(MAKE) loinc-indexes
+
+loinc-smoke:
+	@psql -d $(DB_NAME) -c "SELECT loinc_num, shortname, system, scale_typ FROM ontology.loinc_terms WHERE loinc_num='2345-7';"
+	@curl -s "http://localhost:8000/api/loinc/search?q=glucose&limit=5" | jq .
+	@curl -s "http://localhost:8000/api/loinc/term/2345-7" | jq .
+	@echo ">>> If the above calls return data, LOINC API wiring is good."
 
 rxnorm-import:
 	@echo ">>> RxNorm import"
@@ -368,19 +392,13 @@ GUIDE_PDF            ?=                # required for guidelines-load (path to l
 GUIDE_DATA_DIR       ?= data/nice      # where you scp'd PDFs
 GUIDE_EMBED_MODEL    ?= text-embedding-3-small
 
-.PHONY: guidelines-schema guidelines-stats guidelines-fts guidelines-embed \
-        guidelines-load guidelines-load-ng220 guidelines-load-ng65 guidelines-load-ng193 \
-        guidelines-ingest-all-nice guidelines-health
-
 # 1) Schema (idempotent)
 guidelines-schema:
 	@echo ">>> Creating guidelines schema + provenance columns"
 	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_guidelines_schema.sql
 	@echo ">>> Done."
 
-# 2) Load a single PDF  guidelines.docs/sections  stage rows in rag_corpus
-# Usage:
-#   make guidelines-load GUIDE_SRC_KEY=nice GUIDE_DOC_KEY=NG220 GUIDE_PDF="data/nice/NG220.pdf" GUIDE_TITLE="..." GUIDE_URL="..."
+# 2) Load a single PDF into rag_corpus (and embed)
 guidelines-load: ## Load one guideline PDF
 	@test -n "$(GUIDE_PDF)" || (echo "ERROR: set GUIDE_PDF=path/to/file.pdf" ; exit 1)
 	@echo ">>> Loading $(GUIDE_SRC_KEY):$(GUIDE_DOC_KEY) from $(GUIDE_PDF)"
@@ -394,7 +412,7 @@ guidelines-load: ## Load one guideline PDF
 	@$(MAKE) guidelines-embed WHERE="source='$(GUIDE_SRC_KEY)' AND (meta->>'doc_key')='$(GUIDE_DOC_KEY)' AND embedding IS NULL"
 	@$(MAKE) guidelines-stats
 
-# 3) Refresh FTS for any new guideline rows
+# 3) Refresh FTS
 guidelines-fts:
 	@echo ">>> Refreshing FTS (ts) for guideline rows missing ts"
 	@psql -d $(DB_NAME) -c "\
@@ -403,8 +421,7 @@ SET ts = to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(text,'')) 
 WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_dod') AND ts IS NULL;"
 	@echo ">>> FTS refresh complete."
 
-# 4) Embed guideline rows (filter via WHERE=...). Defaults to all guideline sources.
-# Usage: make guidelines-embed WHERE="source='nice' AND embedding IS NULL"
+# 4) Embed guideline rows
 guidelines-embed:
 	@echo ">>> Embedding guideline rows ($(GUIDE_EMBED_MODEL))"
 	@$(PY) server/scripts/embed_table.py \
@@ -433,8 +450,7 @@ FROM public.rag_corpus \
 WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_dod') \
 ORDER BY id DESC LIMIT 10;"
 
-# 6) Convenience: load your three NICE PDFs already on disk
-#    These assume the exact filenames you listed are present in $(GUIDE_DATA_DIR).
+# 6) Convenience: load your three NICE PDFs
 guidelines-load-ng220:
 	@$(MAKE) guidelines-load \
 		GUIDE_SRC_KEY=nice \
@@ -459,8 +475,7 @@ guidelines-load-ng193:
 		GUIDE_URL="https://www.nice.org.uk/guidance/ng193/resources" \
 		GUIDE_PDF="$(GUIDE_DATA_DIR)/chronic-pain-primary-and-secondary-in-over-16s-assessment-of-all-chronic-pain-and-management-of-chronic-primary-pain-pdf-66142080468421.pdf"
 
-# 7) Batch helper: ingest all PDFs in data/nice as doc_key heuristics (NG### from filename)
-#    Uses a simple sed to extract NG number; skip files that don't match.
+# 7) Batch helper: ingest all PDFs in data/nice
 guidelines-ingest-all-nice:
 	@echo ">>> Batch ingest: $(GUIDE_DATA_DIR)/*.pdf"
 	@set -e; \
@@ -508,8 +523,14 @@ api-health:
 api-loinc-search:
 	@curl -s "http://localhost:8000/api/loinc/search?q=$(Q)&limit=$(LIMIT)" | jq .
 
-api-loinc-concept:
-	@curl -s "http://localhost:8000/api/loinc/concept/$(LOINC_NUM)" | jq .
+api-loinc-concept: ## kept for backward compat; calls /term under the hood
+	@curl -s "http://localhost:8000/api/loinc/term/$(LOINC_NUM)" | jq .
+
+api-loinc-term:
+	@curl -s "http://localhost:8000/api/loinc/term/$(LOINC_NUM)" | jq .
+
+api-loinc-panel:
+	@curl -s "http://localhost:8000/api/loinc/panel/$(LOINC_NUM)" | jq .
 
 snomed-audit:
 	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema='ontology' AND (table_name ILIKE 'snomed%' OR table_name IN ('concepts', 'descriptions', 'relationships', 'refset_members')) ORDER BY 1,2;"
