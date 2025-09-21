@@ -18,6 +18,17 @@ MIMICIV_NOTE_DIR      ?= physionet.org/files/mimic-iv-note/2.2
 # n2c2 sample
 N2C2_T3_SAMPLE_DIR    ?= data/n2c2/track3-sample
 
+# Ensure the Make shell has Homebrew paths
+SHELL := /bin/zsh
+.SHELLFLAGS := -lc
+export PATH := /opt/homebrew/bin:/opt/homebrew/sbin:/opt/homebrew/opt/libpq/bin:$(PATH)
+
+# Pick a psql (first that exists)
+PSQL ?= $(firstword \
+  $(wildcard /opt/homebrew/bin/psql) \
+  $(wildcard /opt/homebrew/opt/libpq/bin/psql) \
+  $(shell command -v psql))
+
 .PHONY: \
 	ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean \
 	loinc-import rxnorm-import api-rxnorm-search api-rxnorm-drug api-rxnorm-ndc \
@@ -280,39 +291,6 @@ n2c2-export-silver-miv:
 .PHONY: panelapp-schema panelapp-indexes panelapp-import \
         api-panelapp-search api-panelapp-panel api-panelapp-stats
 
-# --- PanelApp schema + indexes ---
-panelapp-schema:
-	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/012_panelapp_gene_panels.sql
-
-panelapp-indexes:  ## (schema already creates these; safe to re-run)
-	@psql -d $(DB_NAME) -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_panel_name_trgm ON molecular.gene_panels USING gin (panel_name gin_trgm_ops);"
-	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_gene_symbol_trgm ON molecular.gene_panels USING gin (gene_symbol gin_trgm_ops);"
-	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_ts_gin ON molecular.gene_panels USING gin (ts);"
-	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_signedoff_idx ON molecular.gene_panels (signed_off);"
-	@psql -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS gp_panel_id_version_idx ON molecular.gene_panels (panel_id, panel_version);"
-
-# --- PanelApp ingest ---
-panelapp-import: panelapp-schema
-	@echo ">>> Importing PanelApp signed-off panels (Motor Neuron Disease, MS Susceptibility)"
-	@$(PY) server/scripts/panelapp_import.py
-	@$(MAKE) panelapp-indexes
-
-# --- API helpers ---
-api-panelapp-search:
-	@curl -s "http://localhost:8000/api/panelapp/search?q=$(Q)&limit=$(LIMIT)&only_green=$(GREEN)" | jq .
-
-api-panelapp-panel:
-	@curl -s "http://localhost:8000/api/panelapp/panel/$(PANEL_ID)?version=$(VERSION)&only_green=$(GREEN)" | jq .
-
-api-panelapp-stats:
-	@curl -s "http://localhost:8000/api/panelapp/stats" | jq .
-
-panelapp-import-ids: panelapp-schema
-	@echo ">>> Importing PanelApp by IDs: $(IDS)"
-	@PANELAPP_VERIFY=$(VERIFY) PANELAPP_IDS="$(IDS)" PANELAPP_ALLOW_UNSIGNED=1 $(PY) server/scripts/panelapp_import.py
-	@$(MAKE) panelapp-indexes
-
 # --- PanelApp pipeline --------------------------------------------------------
 panelapp-schema:
 	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -f database/schemas/012_panelapp_gene_panels.sql
@@ -339,7 +317,7 @@ panelapp-rag-upsert:
 	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "\
 INSERT INTO public.rag_corpus (source, title, text, ts) \
 SELECT 'panelapp', \
-       'Panel: '||panel_name||' — '||gene_symbol, \
+       'Panel: '||panel_name||' ??? '||gene_symbol, \
        trim(both ' ' FROM concat_ws(' ', 'Panel:', panel_name, 'Gene:', gene_symbol, \
            'Confidence:', coalesce(confidence_level,''), \
            'MOI:', coalesce(mode_of_inheritance,''), \
@@ -353,7 +331,7 @@ SELECT 'panelapp', \
 FROM molecular.gene_panels gp \
 WHERE NOT EXISTS ( \
   SELECT 1 FROM public.rag_corpus rc \
-  WHERE rc.source='panelapp' AND rc.title='Panel: '||gp.panel_name||' — '||gp.gene_symbol); \
+  WHERE rc.source='panelapp' AND rc.title='Panel: '||gp.panel_name||' ??? '||gp.gene_symbol); \
 UPDATE public.rag_corpus SET ts = to_tsvector('english', coalesce(title,'')||' '||coalesce(text,'')) WHERE source='panelapp';"
 
 panelapp-embed:
@@ -377,6 +355,121 @@ api-panelapp-search:
 
 api-panelapp-panel:
 	@curl -sf "http://localhost:8000/api/panelapp/panel/$(PANEL_ID)?only_green=$(GREEN)" | jq .
+
+# -------------------------
+# Guidelines (NICE / CKS / WHO / CDC / VA-DoD)
+# -------------------------
+
+GUIDE_SRC_KEY        ?= nice           # one of: nice, cks, who_eml, cdc_opioid, va_dod
+GUIDE_DOC_KEY        ?= NG220          # e.g., NG220, NG65, NG193, or slug
+GUIDE_TITLE          ?=                # optional override
+GUIDE_URL            ?=                # optional override
+GUIDE_PDF            ?=                # required for guidelines-load (path to local PDF)
+GUIDE_DATA_DIR       ?= data/nice      # where you scp'd PDFs
+GUIDE_EMBED_MODEL    ?= text-embedding-3-small
+
+.PHONY: guidelines-schema guidelines-stats guidelines-fts guidelines-embed \
+        guidelines-load guidelines-load-ng220 guidelines-load-ng65 guidelines-load-ng193 \
+        guidelines-ingest-all-nice guidelines-health
+
+# 1) Schema (idempotent)
+guidelines-schema:
+	@echo ">>> Creating guidelines schema + provenance columns"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_guidelines_schema.sql
+	@echo ">>> Done."
+
+# 2) Load a single PDF  guidelines.docs/sections  stage rows in rag_corpus
+# Usage:
+#   make guidelines-load GUIDE_SRC_KEY=nice GUIDE_DOC_KEY=NG220 GUIDE_PDF="data/nice/NG220.pdf" GUIDE_TITLE="..." GUIDE_URL="..."
+guidelines-load: ## Load one guideline PDF
+	@test -n "$(GUIDE_PDF)" || (echo "ERROR: set GUIDE_PDF=path/to/file.pdf" ; exit 1)
+	@echo ">>> Loading $(GUIDE_SRC_KEY):$(GUIDE_DOC_KEY) from $(GUIDE_PDF)"
+	@$(PY) server/scripts/load_guideline_pdf.py \
+		SRC_KEY="$(GUIDE_SRC_KEY)" \
+		DOC_KEY="$(GUIDE_DOC_KEY)" \
+		TITLE="$(GUIDE_TITLE)" \
+		URL="$(GUIDE_URL)" \
+		PDF="$(GUIDE_PDF)"
+	@$(MAKE) guidelines-fts
+	@$(MAKE) guidelines-embed WHERE="source='$(GUIDE_SRC_KEY)' AND (meta->>'doc_key')='$(GUIDE_DOC_KEY)' AND embedding IS NULL"
+	@$(MAKE) guidelines-stats
+
+# 3) Refresh FTS for any new guideline rows
+guidelines-fts:
+	@echo ">>> Refreshing FTS (ts) for guideline rows missing ts"
+	@psql -d $(DB_NAME) -c "\
+UPDATE public.rag_corpus \
+SET ts = to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(text,'')) \
+WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_dod') AND ts IS NULL;"
+	@echo ">>> FTS refresh complete."
+
+# 4) Embed guideline rows (filter via WHERE=...). Defaults to all guideline sources.
+# Usage: make guidelines-embed WHERE="source='nice' AND embedding IS NULL"
+guidelines-embed:
+	@echo ">>> Embedding guideline rows ($(GUIDE_EMBED_MODEL))"
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus \
+	  --id-col id \
+	  --text-col text \
+	  --embedding-col embedding \
+	  --model $(GUIDE_EMBED_MODEL) \
+	  --batch 256 \
+	  --where "$(if $(WHERE),$(WHERE),source IN ('nice','cks','who_eml','cdc_opioid','va_dod') AND embedding IS NULL)"
+	@echo ">>> Embedding pass complete."
+
+# 5) Stats / sanity
+guidelines-stats:
+	@psql -d $(DB_NAME) -c "\
+SELECT source, COUNT(*) AS n, \
+       COUNT(*) FILTER (WHERE embedding IS NULL) AS no_emb \
+FROM public.rag_corpus \
+WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_dod') \
+GROUP BY 1 ORDER BY 2 DESC;"
+
+guidelines-health: ## sample rows
+	@psql -d $(DB_NAME) -c "\
+SELECT id, LEFT(title,100) AS title, meta->>'doc_key' AS doc_key, source \
+FROM public.rag_corpus \
+WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_dod') \
+ORDER BY id DESC LIMIT 10;"
+
+# 6) Convenience: load your three NICE PDFs already on disk
+#    These assume the exact filenames you listed are present in $(GUIDE_DATA_DIR).
+guidelines-load-ng220:
+	@$(MAKE) guidelines-load \
+		GUIDE_SRC_KEY=nice \
+		GUIDE_DOC_KEY=NG220 \
+		GUIDE_TITLE="Multiple sclerosis in adults: management (NG220)" \
+		GUIDE_URL="https://www.nice.org.uk/guidance/ng220/resources" \
+		GUIDE_PDF="$(GUIDE_DATA_DIR)/multiple-sclerosis-in-adults-management-pdf-66143828948677.pdf"
+
+guidelines-load-ng65:
+	@$(MAKE) guidelines-load \
+		GUIDE_SRC_KEY=nice \
+		GUIDE_DOC_KEY=NG65 \
+		GUIDE_TITLE="Spondyloarthritis in over 16s: diagnosis and management (NG65)" \
+		GUIDE_URL="https://www.nice.org.uk/guidance/ng65/resources" \
+		GUIDE_PDF="$(GUIDE_DATA_DIR)/spondyloarthritis-in-over-16s-diagnosis-and-management-pdf-1837575441349.pdf"
+
+guidelines-load-ng193:
+	@$(MAKE) guidelines-load \
+		GUIDE_SRC_KEY=nice \
+		GUIDE_DOC_KEY=NG193 \
+		GUIDE_TITLE="Chronic pain (primary/secondary) in over 16s: assessment & management (NG193)" \
+		GUIDE_URL="https://www.nice.org.uk/guidance/ng193/resources" \
+		GUIDE_PDF="$(GUIDE_DATA_DIR)/chronic-pain-primary-and-secondary-in-over-16s-assessment-of-all-chronic-pain-and-management-of-chronic-primary-pain-pdf-66142080468421.pdf"
+
+# 7) Batch helper: ingest all PDFs in data/nice as doc_key heuristics (NG### from filename)
+#    Uses a simple sed to extract NG number; skip files that don't match.
+guidelines-ingest-all-nice:
+	@echo ">>> Batch ingest: $(GUIDE_DATA_DIR)/*.pdf"
+	@set -e; \
+	for f in $(GUIDE_DATA_DIR)/*.pdf; do \
+	  dk=$$(basename "$$f" | sed -nE 's/.*(NG[0-9]{2,3}).*/\1/p'); \
+	  if [ -z "$$dk" ]; then echo "!! Skip (no NG key): $$f"; continue; fi; \
+	  echo ">>> Ingest $$dk  $$f"; \
+	  $(MAKE) guidelines-load GUIDE_SRC_KEY=nice GUIDE_DOC_KEY="$$dk" GUIDE_PDF="$$f"; \
+	done
 
 # -------------------------
 # Backend control
