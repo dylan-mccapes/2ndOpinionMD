@@ -503,7 +503,7 @@ diagrules-apply-sample:
 	  -d '{"has_typical_cis":true,"mri_lesion_sites_positive":3,"clinical_evidence_multiple_sites":false,"simultaneous_gad_non_gad":false,"new_t2_or_gad_on_followup":true,"csf_oligoclonal_bands":false,"better_diagnosis_present":false,"progression_1_year":false,"spinal_cord_lesions":0,"brain_mri_consistent":false}' | jq .
 
 diagrules-test:
-	@$(PY) server/scripts/run_diagnostic_rule_tests.py
+	@PYTHONPATH=. $(PY) server/scripts/run_diagnostic_rule_tests.py
 
 # -------------------------
 # Backend control
