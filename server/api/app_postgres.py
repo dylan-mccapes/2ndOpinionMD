@@ -61,6 +61,7 @@ from server.api.mimic4_routes import router as mimic4_router
 from server.api.notes_routes  import router as notes_router
 from server.api.panelapp_routes import router as panelapp_router
 from server.api.guidelines_routes import router as guidelines_router
+from server.api import diagnostic_rules_routes
 
 from server.api.kg import router as kg_router
 
@@ -136,6 +137,7 @@ app.include_router(mimic4_router)
 app.include_router(notes_router)
 app.include_router(panelapp_router)
 app.include_router(guidelines_router)
+app.include_router(diagnostic_rules_routes.router)
 
 app.include_router(kg_router)
 

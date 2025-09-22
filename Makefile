@@ -30,6 +30,7 @@ PSQL ?= $(firstword \
   $(shell command -v psql))
 
 .PHONY: \
+	dev-setup env-doctor \
 	ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean \
 	loinc-schema loinc-indexes loinc-import loinc-smoke \
 	rxnorm-import api-rxnorm-search api-rxnorm-drug api-rxnorm-ndc \
@@ -49,7 +50,60 @@ PSQL ?= $(firstword \
 	hpo-import hpo-links-import api-hpo-search api-hpo-term \
 	guidelines-schema guidelines-stats guidelines-fts guidelines-embed \
 	guidelines-load guidelines-load-ng220 guidelines-load-ng65 guidelines-load-ng193 \
-	guidelines-ingest-all-nice guidelines-health
+	guidelines-ingest-all-nice guidelines-health \
+	diagrules-schema diagrules-import diagrules-list diagrules-apply-sample diagrules-test \
+	diagrules-rag-upsert diagrules-embed diagrules-rag
+
+# ---------------------------------
+# Dev bootstrap & environment checks
+# ---------------------------------
+dev-setup:
+	@echo ">>> Detecting Homebrew..."
+	@BP=$$( (brew --prefix 2>/dev/null) || echo /opt/homebrew ); \
+	echo "    brew prefix: $$BP"; \
+	ZRC="$$HOME/.zshrc"; \
+	echo ">>> Ensuring Homebrew PATHs in $$ZRC"; \
+	grep -q 'export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH"' "$$ZRC" 2>/dev/null || printf '%s\n' 'export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH"' >> "$$ZRC"; \
+	LPQ_BIN="$$BP/opt/libpq/bin"; \
+	if [ -d "$$LPQ_BIN" ]; then \
+	  echo "    libpq bin: $$LPQ_BIN"; \
+	  grep -q 'export PATH=".*/opt/libpq/bin:$$PATH"' "$$ZRC" 2>/dev/null || printf '%s\n' 'export PATH="'"$$LPQ_BIN"':$$PATH"' >> "$$ZRC"; \
+	else \
+	  echo "    (libpq not found under $$BP/opt/libpq; run: brew install libpq && brew info libpq)"; \
+	fi; \
+	echo ">>> Adding 2OMD env loader to $$ZRC (if missing)"; \
+	if ! grep -q '# 2ndOpinionMD env loader' "$$ZRC" 2>/dev/null; then \
+	  { \
+	    printf '%s\n' '# 2ndOpinionMD env loader'; \
+	    printf '%s\n' '2omd_env() {'; \
+	    printf '%s\n' '  if [ -f "'"$(PWD)/server/.env"'" ]; then'; \
+	    printf '%s\n' '    set -a; . "'"$(PWD)/server/.env"'" ; set +a;'; \
+	    printf '%s\n' '    echo "[2OMD] Loaded env from server/.env"'; \
+	    printf '%s\n' '  else'; \
+	    printf '%s\n' '    echo "[2OMD] server/.env not found"'; \
+	    printf '%s\n' '  fi'; \
+	    printf '%s\n' '}'; \
+	    printf '%s\n' 'alias 2omd='\''cd '"$(PWD)"'\'''; \
+	  } >> "$$ZRC"; \
+	else \
+	  echo "    (env loader already present)"; \
+	fi; \
+	echo ">>> Done. Open a new shell OR run: source $$ZRC"
+
+# Quick sanity report for PATHs and critical env
+env-doctor:
+	@echo "=== ENV DOCTOR ==="
+	@echo "Shell: $$SHELL"
+	@echo "Homebrew: $$(command -v brew 2>/dev/null || echo '(not found)')"
+	@echo "brew --prefix: $$( (brew --prefix 2>/dev/null) || echo '(n/a)')"
+	@echo "psql: $$(command -v psql 2>/dev/null || echo '(not found)')"
+	@echo "psql --version: $$( (psql --version 2>/dev/null) || echo '(n/a)')"
+	@echo "Python: $$(command -v $(PY) 2>/dev/null || echo '(not found)')"
+	@echo "Python ver: $$( ($(PY) -V 2>/dev/null) || echo '(n/a)')"
+	@echo "DATABASE_URL: $${DATABASE_URL:+***$${DATABASE_URL: -12}}"
+	@echo "OPENAI_API_KEY: $${OPENAI_API_KEY:+***$${OPENAI_API_KEY: -6}}"
+	@echo "PATH sample: $$(echo $$PATH | tr ':' '\n' | sed -n '1,6p') ..."
+	@echo "Tip: run 'source $$HOME/.zshrc' then '2omd_env' to load server/.env"
 
 # -------------------------
 # Frontend deploy helpers
@@ -264,9 +318,6 @@ n2c2-t3-backfill:
 	@psql -d $(DB_NAME) -c "UPDATE text.n2c2_notes n SET note_text = m.text FROM text.mimic3_notes m WHERE n.track='2022-T3' AND n.external_id = m.row_id::text;"
 
 # --- n2c2 Track3 (schema + sample + silver) -----------------------------------
-
-N2C2_T3_SAMPLE_DIR ?= data/n2c2/track3-sample
-
 n2c2-schema:
 	@psql -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/text_n2c2_track3.sql
 
@@ -504,6 +555,25 @@ diagrules-apply-sample:
 
 diagrules-test:
 	@PYTHONPATH=. $(PY) server/scripts/run_diagnostic_rule_tests.py
+
+.PHONY: diagrules-rag-upsert diagrules-embed diagrules-rag
+
+diagrules-rag-upsert:
+	@$(PY) server/scripts/diagrules_rag_upsert.py
+
+diagrules-embed:
+	@echo ">>> Embedding ACR/EULAR rows"
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus \
+	  --id-col id \
+	  --text-col text \
+	  --embedding-col embedding \
+	  --model $(if $(GUIDE_EMBED_MODEL),$(GUIDE_EMBED_MODEL),text-embedding-3-small) \
+	  --batch 256 \
+	  --where "source='acr_eular' AND embedding IS NULL"
+	@echo ">>> Embeddings up to date for ACR/EULAR"
+
+diagrules-rag: diagrules-rag-upsert diagrules-embed
 
 # -------------------------
 # Backend control

@@ -1,30 +1,46 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Body
+from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Body, Query
 from pydantic import BaseModel
 import asyncpg
 from openai import OpenAI
 from dotenv import load_dotenv
-from pathlib import Path
 
+# Hybrid retrieval helpers (ANN + BM25 + RRF fuse)
 from server.vectordb.hybrid_query import ann_query, bm25_query, fuse
 
-load_dotenv()
+# ----------------------------
+# Environment + logging setup
+# ----------------------------
 logger = logging.getLogger(__name__)
-logger.info("OPENAI_API_KEY prefix: %r", (os.getenv("OPENAI_API_KEY") or "")[:10])
 
-server_dir = Path(__file__).resolve().parent.parent
-load_dotenv(dotenv_path=server_dir / ".env")
+# 1) Load repo root .env first (if present)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / ".env")
 
-router = APIRouter()
+# 2) Load server/.env second to allow per-service overrides
+SERVER_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(SERVER_DIR / ".env")
 
+logger.info("kg.py loaded. OPENAI_API_KEY set: %s",
+            "yes" if os.getenv("OPENAI_API_KEY") else "no")
+
+router = APIRouter(prefix="/api/kg", tags=["kg"])
+
+# ----------------------------
+# Models
+# ----------------------------
 class ResolveRAGOptions(BaseModel):
     rag_top_k: Optional[int] = 6
     return_scores: Optional[bool] = True
     use_openai: Optional[bool] = True
     force_rag: Optional[bool] = False
+    # Optional filter: restrict to a single RAG source (e.g., 'acr_eular', 'nice')
+    source: Optional[str] = None
 
 class ResolveRAGRequest(BaseModel):
     text: str
@@ -37,161 +53,215 @@ class ResolveRAGResponse(BaseModel):
     rag_context_preview: Dict[str, Any]
     analysis: Optional[str] = None
 
-@router.post("/api/kg/resolve_rag", response_model=ResolveRAGResponse)
+# ----------------------------
+# Utils
+# ----------------------------
+def _normalize_db_url(url: Optional[str]) -> str:
+    """
+    Ensure the URL is acceptable for asyncpg.connect().
+    We accept:
+      - postgresql+asyncpg://...  -> convert to postgresql://...
+      - postgresql://...
+      - postgresql:///dbname
+    """
+    if not url:
+        raise HTTPException(500, {"code": "db_not_configured", "message": "DATABASE_URL not configured"})
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return url
+
+def _safe_meta(row: Dict[str, Any]) -> Dict[str, Any]:
+    # Some query functions name this column "meta", others "metadata"
+    if isinstance(row.get("meta"), (dict,)):
+        return row["meta"]
+    if isinstance(row.get("metadata"), (dict,)):
+        return row["metadata"]
+    # Try to parse JSON string if needed
+    for k in ("meta", "metadata"):
+        v = row.get(k)
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                pass
+    return {}
+
+def _make_heuristics(text: str, labs: Optional[List[Dict[str, Any]]]) -> str:
+    text_lower = (text or "").lower()
+    medical_keywords = [
+        "pain", "fatigue", "fever", "headache", "nausea", "vomiting", "diarrhea",
+        "constipation", "weight", "loss", "gain", "thyroid", "diabetes", "arthritis",
+        "joint", "muscle", "skin", "rash", "breathing", "chest", "heart", "blood",
+        "ana", "rf", "ccp", "esr", "crp"
+    ]
+    heur: List[str] = [k for k in medical_keywords if k in text_lower]
+    if labs:
+        for lab in labs:
+            n = (lab.get("name") or "").strip().lower()
+            if n:
+                heur.append(n)
+    # dedupe but keep order a bit stable
+    seen = set()
+    out = []
+    for h in heur:
+        if h not in seen:
+            out.append(h)
+            seen.add(h)
+    return " ".join(out) or text
+
+# ----------------------------
+# Endpoint
+# ----------------------------
+@router.post("/resolve_rag", response_model=ResolveRAGResponse)
 async def resolve_rag(payload: ResolveRAGRequest = Body(...)):
     """
-    RAG + KG hybrid retrieval endpoint with scoring
+    RAG + KG hybrid retrieval endpoint with optional source filter and OpenAI analysis.
     """
     try:
-        logger.info("RAG resolve request: text_len=%d labs=%d", 
-                   len(payload.text) if payload.text else 0,
-                   len(payload.labs) if payload.labs else 0)
-
         if not payload.text or not payload.text.strip():
             raise HTTPException(400, {"code": "empty_text", "message": "Text is required"})
 
         options = payload.options or ResolveRAGOptions()
-        
+
+        # ----------------------------
+        # Embedding / OpenAI gating
+        # ----------------------------
         openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key or openai_api_key.startswith("sk-placeholder"):
+        if not openai_api_key:
             if options.use_openai:
-                raise HTTPException(500, {"code": "openai_not_configured", "message": "OpenAI API key not configured"})
-            else:
-                logger.warning("OpenAI not configured, proceeding without embeddings")
-                return ResolveRAGResponse(
-                    rag_used=False,
-                    evidence={"rag": []},
-                    rag_context_preview={"gating": {"error": "OpenAI not configured"}},
-                    analysis="OpenAI API key not configured for analysis"
-                )
+                raise HTTPException(500, {"code": "openai_not_configured",
+                                          "message": "OPENAI_API_KEY not set in environment. "
+                                                     "For uvicorn/systemd, ensure it's exported in the service env."})
+            # Proceed without embeddings
+            return ResolveRAGResponse(
+                rag_used=False,
+                evidence={"rag": []},
+                rag_context_preview={"gating": {"error": "OpenAI not configured"}},
+                analysis="OpenAI API key not configured; embeddings disabled"
+            )
 
         client = OpenAI(api_key=openai_api_key)
         emb_model = os.getenv("EMBED_MODEL", "text-embedding-3-small")
-        
-        heuristic_terms = []
-        text_lower = payload.text.lower()
-        
-        medical_keywords = [
-            "pain", "fatigue", "fever", "headache", "nausea", "vomiting", "diarrhea",
-            "constipation", "weight", "loss", "gain", "thyroid", "diabetes", "arthritis",
-            "joint", "muscle", "skin", "rash", "breathing", "chest", "heart", "blood"
-        ]
-        
-        for keyword in medical_keywords:
-            if keyword in text_lower:
-                heuristic_terms.append(keyword)
-        
-        if payload.labs:
-            for lab in payload.labs:
-                if lab.get("name"):
-                    heuristic_terms.append(lab["name"].lower())
-        
-        q_lex = " ".join(sorted(set(heuristic_terms))) or payload.text
-        q_vec = payload.text + " " + q_lex
-        
+
+        q_lex = _make_heuristics(payload.text, payload.labs)
+        q_vec = f"{payload.text}\n{q_lex}".strip()
+
         try:
             q_embedding = client.embeddings.create(model=emb_model, input=[q_vec]).data[0].embedding
         except Exception as e:
-            logger.error("Failed to get embedding: %s", e)
             if options.force_rag:
-                raise HTTPException(500, {"code": "embedding_failed", "message": f"Failed to get embedding: {e}"})
+                raise HTTPException(500, {"code": "embedding_failed", "message": f"Embedding failed: {e}"})
             return ResolveRAGResponse(
                 rag_used=False,
                 evidence={"rag": []},
                 rag_context_preview={"gating": {"error": f"Embedding failed: {e}"}},
-                analysis="Failed to generate embeddings for analysis"
+                analysis="Failed to generate embeddings"
             )
-        
-        database_url = os.getenv("DATABASE_URL")
-        if not database_url:
-            raise HTTPException(500, {"code": "db_not_configured", "message": "DATABASE_URL not configured"})
-        
-        asyncpg_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
-        conn = await asyncpg.connect(dsn=asyncpg_url)
+
+        # ----------------------------
+        # DB connect + search
+        # ----------------------------
+        database_url = _normalize_db_url(os.getenv("DATABASE_URL"))
+        conn = await asyncpg.connect(dsn=database_url)
         try:
-            topk = options.rag_top_k or 6
-            
-            dense_items = await ann_query(conn, q_embedding, topk)
-            bm25_items = await bm25_query(conn, q_lex, topk)
-            fused = fuse(dense_items, bm25_items)
-            
-            id2row = {r["id"]: r for r in (dense_items + bm25_items)}
-            rag_items = []
-            
-            for _id, rrf_score, final in fused[:topk]:
+            topk = int(options.rag_top_k or 6)
+
+            dense_items = await ann_query(conn, q_embedding, topk * 3)  # over-fetch for post-filter
+            bm25_items  = await bm25_query(conn, q_lex,      topk * 3)
+            fused: List[Tuple[int, float, float]] = fuse(dense_items, bm25_items)
+
+            # Build id->row map, allow source filter post-hoc
+            id2row: Dict[Any, Dict[str, Any]] = {}
+            for r in (dense_items + bm25_items):
+                id2row[r["id"]] = r
+
+            rag_items: List[Dict[str, Any]] = []
+            for _id, rrf_score, final_score in fused:
                 if _id not in id2row:
                     continue
-                    
                 row = id2row[_id]
+
+                # Optional source filter
+                src = row.get("source")
+                if options.source and src != options.source:
+                    continue
+
+                # Raw component scores
                 d_raw = next((r["dense_score"] for r in dense_items if r["id"] == _id), 0.0)
-                b_raw = next((r["bm25_score"] for r in bm25_items if r["id"] == _id), 0.0)
-                
+                b_raw = next((r["bm25_score"]  for r in bm25_items  if r["id"] == _id), 0.0)
+
                 rag_items.append({
                     "id": _id,
-                    "source": row["source"],
-                    "source_id": row["source_id"],
-                    "title": row["title"],
-                    "text": row["text"],
-                    "metadata": row["metadata"],
+                    "source": src,
+                    "source_id": row.get("source_id"),
+                    "title": row.get("title"),
+                    "text": row.get("text"),
+                    "meta": _safe_meta(row),
                     "scores": {
                         "dense": round(float(d_raw), 4),
-                        "bm25": round(float(b_raw), 4),
-                        "rrf": round(float(rrf_score), 6),
-                        "final": round(float(final), 4)
-                    }
+                        "bm25":  round(float(b_raw), 4),
+                        "rrf":   round(float(rrf_score), 6),
+                        "final": round(float(final_score), 4),
+                    },
                 })
+                if len(rag_items) >= topk:
+                    break
         finally:
             await conn.close()
-        
+
+        # ----------------------------
+        # Optional OpenAI analysis
+        # ----------------------------
         analysis = None
         if options.use_openai and rag_items:
             try:
-                context_text = "\n\n".join([
-                    f"Source: {item['source']} - {item['title']}\n{item['text'][:500]}..."
-                    for item in rag_items[:3]
+                preview = "\n\n".join([
+                    f"Source: {it['source']}  {it['title']}\n{(it['text'] or '')[:600]}..."
+                    for it in rag_items[:3]
                 ])
-                
-                prompt = f"""
-                Based on the patient's description: "{payload.text}"
-                
-                And the following medical knowledge:
-                {context_text}
-                
-                Provide a brief medical analysis focusing on potential conditions and recommendations.
-                Be concise and reference the sources when relevant.
-                """
-                
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a medical AI assistant providing analysis based on retrieved medical knowledge."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=500
+                prompt = (
+                    "Patient description:\n"
+                    f"{payload.text}\n\n"
+                    "Relevant context:\n"
+                    f"{preview}\n\n"
+                    "Provide a concise medical reasoning summary. "
+                    "List likely conditions and brief next steps. "
+                    "When relevant, mention which source informed a claim."
                 )
-                analysis = response.choices[0].message.content
+
+                # Keep model selectable via env; default to a small, fast model
+                chat_model = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+                resp = client.chat.completions.create(
+                    model=chat_model,
+                    messages=[
+                        {"role": "system",
+                         "content": "You are a careful clinical reasoning assistant. Do not overstate."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=600,
+                )
+                analysis = resp.choices[0].message.content
             except Exception as e:
-                logger.warning("Failed to generate OpenAI analysis: %s", e)
-                analysis = "Analysis generation failed"
-        
+                logger.warning("OpenAI analysis failed: %s", e)
+                analysis = "Analysis unavailable."
+
         return ResolveRAGResponse(
             rag_used=len(rag_items) > 0,
             evidence={"rag": rag_items},
             rag_context_preview={
                 "gating": {
-                    "requested_top_k": topk,
-                    "fused_candidates": len(fused),
+                    "requested_top_k": options.rag_top_k,
                     "returned": len(rag_items),
-                    "dense_results": len(dense_items),
-                    "bm25_results": len(bm25_items)
+                    "source_filter": options.source or "",
                 }
             },
             analysis=analysis
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error in resolve_rag: %s", str(e))
-        raise HTTPException(500, {"code": "internal_error", "message": f"Internal error: {str(e)}"})
+        logger.exception("resolve_rag internal error")
+        raise HTTPException(500, {"code": "internal_error", "message": str(e)})
+
