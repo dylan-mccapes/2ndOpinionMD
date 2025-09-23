@@ -55,6 +55,7 @@ from server.api.snomed_routes import router as snomed_router
 from server.api.rxnorm_routes import router as rxnorm_router
 from server.api.orphanet_routes import router as orphanet_router
 from server.api.hpo_routes import router as hpo_router
+from server.api.clingen_actionability_routes import router as clingen_actionability_router
 
 from server.api.mimic3_routes import router as mimic3_router
 from server.api.mimic4_routes import router as mimic4_router
@@ -131,6 +132,7 @@ app.include_router(snomed_router)
 app.include_router(rxnorm_router)
 app.include_router(orphanet_router)
 app.include_router(hpo_router)
+app.include_router(clingen_actionability_router)
 
 app.include_router(mimic3_router)
 app.include_router(mimic4_router)

@@ -3,7 +3,7 @@ from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from fastapi import Request
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://2ndopinionmd@localhost:5432/2ndopinionmd")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://devin:devin123@localhost:5432/2ndopinionmd")
 
 if "+asyncpg" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("+psycopg", "+asyncpg")
