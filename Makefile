@@ -676,3 +676,15 @@ api-hpo-search:
 api-hpo-term:
 	@curl -s "http://localhost:8000/api/hpo/term/$(HPO)" | jq .
 
+# -------------------------
+# ClinGen Actionability
+# -------------------------
+act.router.smoke:
+	@echo "→ Router smoke tests"
+	@curl -s -H 'Accept: application/json' "http://localhost:8000/api/clingen/actionability/summary?limit=5" | head -c 400; echo
+	@curl -s -H 'Accept: application/json' "http://localhost:8000/api/clingen/actionability/quick?limit=5" | head -c 400; echo
+
+act.mv.rebuild:
+	@echo "→ Rebuilding materialized view"
+	@python server/scripts/setup_clingen_actionability.py
+
