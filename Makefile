@@ -679,14 +679,6 @@ api-hpo-term:
 # -------------------------
 # ClinGen Actionability
 # -------------------------
-ingest.actionability:
-	@echo "→ Fetching ClinGen Actionability + Variant Pathogenicity"
-	server/etl/fetch_actionability.sh $${SOURCE_DIR:-$$HOME/datasets/clingen_actionability}
-	@echo "→ Ingesting into Postgres"
-	SOURCE_DIR=$${SOURCE_DIR:-$$HOME/datasets/clingen_actionability} \
-	EXPORT_DIR=$${EXPORT_DIR:-$$HOME/exports} \
-	python3 server/etl/ingest_actionability.py
-
 act.router.smoke:
 	@echo "→ Router smoke tests"
 	@curl -s -H 'Accept: application/json' "http://localhost:8000/api/clingen/actionability/summary?limit=5" | head -c 400; echo
@@ -695,8 +687,4 @@ act.router.smoke:
 act.mv.rebuild:
 	@echo "→ Rebuilding materialized view"
 	@python server/scripts/setup_clingen_actionability.py
-
-bootstrap.local:
-	@echo "→ Running local development bootstrap"
-	@bash scripts/bootstrap_local.sh
 

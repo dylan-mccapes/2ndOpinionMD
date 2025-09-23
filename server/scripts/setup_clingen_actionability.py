@@ -4,9 +4,15 @@ import psycopg2
 from dotenv import load_dotenv
 from pathlib import Path
 
+server_dir = Path(__file__).resolve().parent.parent
+server_env_path = server_dir / ".env"
+if server_env_path.exists():
+    load_dotenv(dotenv_path=server_env_path)
+
 project_root = Path(__file__).resolve().parent.parent.parent
-env_path = project_root / ".env"
-load_dotenv(dotenv_path=env_path)
+root_env_path = project_root / ".env"
+if root_env_path.exists():
+    load_dotenv(dotenv_path=root_env_path)
 
 def get_database_url():
     db_url = os.environ.get("DATABASE_URL")
@@ -144,8 +150,8 @@ def setup_schema():
           COALESCE(s.disease_mondo_id, s.disease_name) AS disease_key,
           s.actionability_assertion,
           sc.score,
-          sc.evidence_type,
-          s.report_date
+          COALESCE(sc.evidence_type, '~') AS evidence_type,
+          COALESCE(s.report_date, DATE '0001-01-01') AS report_date
         FROM clingen.actionability_summary s
         LEFT JOIN clingen.actionability_scoring sc
           ON sc.cohort = s.cohort
@@ -159,14 +165,11 @@ def setup_schema():
           COALESCE(s.report_date, DATE '0001-01-01') DESC,
           COALESCE(sc.score, -1) DESC
         """)
-        print("  ✅ Materialized view 'v_actionability_quick' created with DISTINCT ON")
+        print("  ✅ Materialized view 'v_actionability_quick' created with DISTINCT ON and non-nullable columns")
         
         cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_v_act_quick_unique
-        ON clingen.v_actionability_quick
-          (cohort, hgnc_id, disease_key,
-           COALESCE(evidence_type,'~'),
-           COALESCE(report_date, DATE '0001-01-01'))
+        ON clingen.v_actionability_quick (cohort, hgnc_id, disease_key, evidence_type, report_date)
         """)
         print("  ✅ Unique index 'idx_v_act_quick_unique' created for concurrent refresh")
         
