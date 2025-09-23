@@ -105,6 +105,41 @@ env-doctor:
 	@echo "PATH sample: $$(echo $$PATH | tr ':' '\n' | sed -n '1,6p') ..."
 	@echo "Tip: run 'source $$HOME/.zshrc' then '2omd_env' to load server/.env"
 
+.PHONY: py-venv deps-install deps-upgrade pip-check dev-setup-full
+
+# Create Python venv (prefers 3.12, falls back to python3)
+py-venv:
+	@if [ ! -x server/venv312/bin/python ]; then \
+	  echo ">>> Creating Python venv at server/venv312"; \
+	  if command -v python3.12 >/dev/null 2>&1; then \
+	    python3.12 -m venv server/venv312; \
+	  else \
+	    python3 -m venv server/venv312; \
+	  fi; \
+	else \
+	  echo ">>> venv exists at server/venv312"; \
+	fi
+
+# Install all deps from server/requirements.txt into the venv
+deps-install: py-venv
+	@echo ">>> Upgrading pip/setuptools/wheel"
+	@$(PY) -m pip install --upgrade pip setuptools wheel
+	@echo ">>> Installing server/requirements.txt"
+	@$(PY) -m pip install -r server/requirements.txt
+
+# Upgrade already-installed deps to the pinned versions
+deps-upgrade:
+	@echo ">>> Upgrading to match server/requirements.txt"
+	@$(PY) -m pip install --upgrade -r server/requirements.txt
+
+# Sanity check: ensure key modules import cleanly
+pip-check:
+	@$(PY) -c "import psycopg2, asyncpg, sqlalchemy, fastapi, httpx, requests; print('OK')"
+
+# Run your existing dev-setup, then build venv + install deps
+dev-setup-full: dev-setup py-venv deps-install
+	@echo ">>> dev-setup-full complete."
+
 # -------------------------
 # Frontend deploy helpers
 # -------------------------
@@ -680,11 +715,11 @@ api-hpo-term:
 # ClinGen Actionability
 # -------------------------
 act.router.smoke:
-	@echo "→ Router smoke tests"
+	@echo "??? Router smoke tests"
 	@curl -s -H 'Accept: application/json' "http://localhost:8000/api/clingen/actionability/summary?limit=5" | head -c 400; echo
 	@curl -s -H 'Accept: application/json' "http://localhost:8000/api/clingen/actionability/quick?limit=5" | head -c 400; echo
 
 act.mv.rebuild:
-	@echo "→ Rebuilding materialized view"
+	@echo "??? Rebuilding materialized view"
 	@python server/scripts/setup_clingen_actionability.py
 
