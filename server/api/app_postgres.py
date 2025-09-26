@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 # --- sys.path & env -----------------------------------------------------------
 server_dir = Path(__file__).resolve().parent.parent
 env_path = server_dir / ".env"
-load_dotenv(dotenv_path=env_path)
+load_dotenv(dotenv_path=env_path, override=True)
 
 # --- logging ------------------------------------------------------------------
 from server.utils.encrypted_logging import setup_encrypted_logging
@@ -63,6 +63,8 @@ from server.api.notes_routes  import router as notes_router
 from server.api.panelapp_routes import router as panelapp_router
 from server.api.guidelines_routes import router as guidelines_router
 from server.api import diagnostic_rules_routes
+from .disgenet_routes import router as disgenet_router
+from server.api.gwas_routes import router as gwas_router
 
 from server.api.kg import router as kg_router
 
@@ -140,6 +142,8 @@ app.include_router(notes_router)
 app.include_router(panelapp_router)
 app.include_router(guidelines_router)
 app.include_router(diagnostic_rules_routes.router)
+app.include_router(disgenet_router)
+app.include_router(gwas_router)
 
 app.include_router(kg_router)
 
