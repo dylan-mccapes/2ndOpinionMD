@@ -16,6 +16,7 @@ RELEASES_DIR          := /opt/homebrew/var/www/2ndopinionmd_releases
 HOST                  := 2ndopinionmd.ai
 
 PY                    ?= server/venv312/bin/python
+EMBED_MAX_CHARS       ?= 6000
 DB_NAME               ?= 2ndopinionmd
 
 # Pick a psql (first that exists)
@@ -536,39 +537,46 @@ who-eml-embed-missing:
 
 
 # ==== WHO AWaRe ====
+
+PY?=server/venv312/bin/python
+
 who-aware-import:
-	@$(PY) server/scripts/who_aware_import.py --file "$${FILE:-data/who/aware_2025.xlsx}"
+	$(PY) server/scripts/who_aware_import.py --file $(FILE) $(if $(SHEET),--sheet '$(SHEET)',)
+
 
 who-aware-apply:
-	@psql "$${SYNC_DATABASE_URL:-$${DATABASE_URL}}" -v ON_ERROR_STOP=1 \
-		-f server/scripts/who_eml_apply_aware.sql
+	psql "$(SYNC_DATABASE_URL)" -f server/scripts/who_eml_apply_aware.sql
 
-who-aware-api-smoke:
-	@echo ">>> AWaRe stats"
-	@curl -s http://localhost:8000/api/who/aware/stats | jq .
-	@echo ">>> Access slice (5)"
-	@curl -s "http://localhost:8000/api/who/eml/by-aware/Access?limit=5" | jq .
+who-aware-smoke:
+	@echo ">>> AWaRe stats (J01 only)"
+	curl -s "http://localhost:8000/api/who/aware/stats" | jq .
+	@echo ">>> Access sample"
+	curl -s "http://localhost:8000/api/who/eml/by-aware/Access?limit=10" | jq .
 
-# (If you already have a target named who-aware-smoke causing the override warning,
-# delete the older one or keep just 'who-aware-api-smoke' to avoid confusion.)
+who-eml-smoke:
+	@echo ">>> EML stats"
+	curl -s http://localhost:8000/api/who/eml/stats | jq .
+	@echo ">>> Search amoxicillin (aware=Access)"
+	curl -s "http://localhost:8000/api/who/eml/search?q=amoxicillin&aware=Access&limit=5" | jq .
 
-# ==== WHO Committee chunking/embedding ====
 who-committee-chunk:
-	@psql "$${SYNC_DATABASE_URL:-$${DATABASE_URL}}" -v ON_ERROR_STOP=1 \
-		-f server/scripts/rag_upsert_who_committee_chunked.sql
+	psql "$(SYNC_DATABASE_URL)" -f server/scripts/rag_upsert_who_committee_chunked.sql
 
 who-committee-embed-safe:
-	@BATCH="$${BATCH:-8}"; \
+	env EMBED_MAX_CHARS=$(EMBED_MAX_CHARS) \
 	$(PY) server/scripts/embed_table.py \
-		--table public.rag_corpus --id-col id --text-col text \
-		--embedding-col embedding --model text-embedding-3-small \
-		--batch $$BATCH --where "source='who_committee' AND embedding IS NULL"
+	  --table public.rag_corpus --id-col id --text-col text \
+	  --embedding-col embedding --model text-embedding-3-small \
+	  --batch $(BATCH) --where "source='who_committee' AND embedding IS NULL"
+
+who-committee-ann:
+	psql "$(SYNC_DATABASE_URL)" -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_who_committee ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) WITH (lists=200) WHERE source='who_committee'; ANALYZE public.rag_corpus;"
 
 who-committee-api-smoke:
 	@echo ">>> Sections count"
-	@curl -s http://localhost:8000/api/who/committee/stats | jq .
+	curl -s http://localhost:8000/api/who/committee/stats | jq .
 	@echo ">>> Search insulin (3)"
-	@curl -s "http://localhost:8000/api/who/committee/search?q=insulin&limit=3" | jq .
+	curl -s "http://localhost:8000/api/who/committee/search?q=insulin&limit=3" | jq .
 
 
 # =========================
@@ -1136,4 +1144,3 @@ act.router.smoke:
 act.mv.rebuild:
 	@echo "??? Rebuilding materialized view"
 	@python server/scripts/setup_clingen_actionability.py
-

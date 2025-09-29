@@ -65,6 +65,10 @@ from server.api.guidelines_routes import router as guidelines_router
 from server.api import diagnostic_rules_routes
 from .disgenet_routes import router as disgenet_router
 from server.api.gwas_routes import router as gwas_router
+from server.api.neurolex_routes import router as neurolex_router
+from .neurolex_xref_routes import router as neurolex_xref_router
+from .rag_routes import router as rag_router
+from . import who_routes
 
 from server.api.kg import router as kg_router
 
@@ -144,6 +148,10 @@ app.include_router(guidelines_router)
 app.include_router(diagnostic_rules_routes.router)
 app.include_router(disgenet_router)
 app.include_router(gwas_router)
+app.include_router(neurolex_router)
+app.include_router(neurolex_xref_router)
+app.include_router(rag_router)
+app.include_router(who_routes.router)
 
 app.include_router(kg_router)
 
