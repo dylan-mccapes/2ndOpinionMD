@@ -1,0 +1,6 @@
+section_id,system,code,display,how_derived,confidence
+42,SNOMED,416608005,Prescription drug monitoring program (procedure),curated,0.95
+52,SNOMED,416608005,Prescription drug monitoring program (procedure),curated,0.95
+45,RxNorm,727,Naloxone,curated,0.98
+18,SNOMED,182888003,Opioid analgesic therapy (regime/therapy),curated,0.9
+19,SNOMED,182888003,Opioid analgesic therapy (regime/therapy),curated,0.9

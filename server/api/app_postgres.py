@@ -69,6 +69,7 @@ from server.api.neurolex_routes import router as neurolex_router
 from .neurolex_xref_routes import router as neurolex_xref_router
 from .rag_routes import router as rag_router
 from . import who_routes
+from .guidelines_cdc_routes import router as cdc_opioid_router
 
 from server.api.kg import router as kg_router
 
@@ -152,6 +153,10 @@ app.include_router(neurolex_router)
 app.include_router(neurolex_xref_router)
 app.include_router(rag_router)
 app.include_router(who_routes.router)
+app.include_router(cdc_opioid_router,
+                    prefix="/api/guidelines/cdc/opioid",
+                    tags=["guidelines.cdc.opioid"])
+
 
 app.include_router(kg_router)
 

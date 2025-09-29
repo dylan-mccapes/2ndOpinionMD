@@ -3,6 +3,13 @@
 # ===============================
 
 # -------- Basic Vars --------
+
+# ---------- Defaults & Environment ----------
+SYNC_DATABASE_URL ?= postgresql://2ndopinionmd@localhost:5432/2ndopinionmd
+PY ?= server/venv312/bin/python
+
+.PHONY: cdc-opioid-schema cdc-opioid-xref-schema cdc-opioid-xref-seed \            cdc-opioid-fetch cdc-opioid-parse cdc-opioid-rag-upsert \            cdc-opioid-embed cdc-opioid-ann cdc-opioid-stats cdc-opioid-smoke \            cdc-opioid-all
+
 SHELL := /bin/zsh
 .ONESHELL:
 .SHELLFLAGS := -lc
@@ -14,8 +21,8 @@ FRONTEND_DIR          := frontend/react
 FRONTEND_DEPLOY_PATH  := /opt/homebrew/var/www/2ndopinionmd
 RELEASES_DIR          := /opt/homebrew/var/www/2ndopinionmd_releases
 HOST                  := 2ndopinionmd.ai
-
-PY                    ?= server/venv312/bin/python
+# Prefer the project venv; fall back to python3 on PATH
+PY                    ?= $(shell [ -x server/venv312/bin/python ] && echo server/venv312/bin/python || which python3)
 EMBED_MAX_CHARS       ?= 6000
 DB_NAME               ?= 2ndopinionmd
 
@@ -35,39 +42,6 @@ LISTS ?= 200
 PROBES ?= 8
 
 # -------- PHONY --------
-.PHONY: \
-  dev-setup env-doctor py-venv deps-install deps-upgrade pip-check dev-setup-full \
-  ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean \
-  api-openapi \
-  disgenet-schema disgenet-download-genes disgenet-import disgenet-smoke disgenet-auth-test \
-  disgenet-ai-rank disgenet-ai-map disgenet-ai-pull \
-  loinc-schema loinc-indexes loinc-import loinc-smoke \
-  rxnorm-import api-rxnorm-search api-rxnorm-drug api-rxnorm-ndc rxnorm-trgm-index rxnorm-indexes \
-  chv-setup chv-import chv-dry-run chv-search chv-fuzzy \
-  mimic3-schema mimic4-schema mimic4-dry-run mimic4-import \
-  api-m4-i50-hadm api-m4-any-hadm mimic3-dry-run mimic3-import mimic3-stats mimic3-sanity \
-  mimic3-notes-schema mimic3-notes-import \
-  mimiciv-note-schema mimiciv-note-import mimiciv-note-dry mimiciv-note-stats \
-  n2c2-schema n2c2-t3-sample-schema n2c2-t3-sample-import n2c2-t3-sample-qa n2c2-t3-sample-reset n2c2-t3-sample-context n2c2-t3-backfill \
-  n2c2-ap-extract-m3 n2c2-ap-extract-miv n2c2-ap-qa n2c2-export-gold n2c2-export-silver-m3 n2c2-export-silver-miv \
-  panelapp-schema panelapp-import panelapp-import-ids panelapp-indexes \
-  api-panelapp-search api-panelapp-panel api-panelapp-stats \
-  panelapp-rag-upsert panelapp-embed panelapp-rag \
-  guidelines-schema guidelines-fts guidelines-embed guidelines-stats guidelines-health \
-  guidelines-load guidelines-load-ng220 guidelines-load-ng65 guidelines-load-ng193 guidelines-ingest-all-nice \
-  diagrules-schema diagrules-import diagrules-list diagrules-apply-sample diagrules-test \
-  diagrules-rag-upsert diagrules-embed diagrules-rag \
-  be-stop be-start be-restart be-hard-restart be-logs api-health \
-  api-loinc-search api-loinc-concept api-loinc-term api-loinc-panel \
-  snomed-audit snomed-preview snomed-import snomed-trgm-index \
-  api-snomed-search api-snomed-concept api-snomed-map api-snomed-stats \
-  orphanet-import orphanet-indexes api-orphanet-search api-orphanet-disease api-orphanet-stats \
-  hpo-import hpo-links-import api-hpo-search api-hpo-term \
-  act.router.smoke act.mv.rebuild
-
-# =========================
-# Dev bootstrap & Python env
-# =========================
 dev-setup:
 	@echo ">>> Detecting Homebrew..."
 	@BP=$$( (brew --prefix 2>/dev/null) || echo /opt/homebrew ); \
@@ -183,6 +157,35 @@ fe-clean:
 	rm -rf $(FRONTEND_DIR)/build
 
 # =========================
+# Database helpers
+# =========================
+
+db-audit:
+	@echo "-- RAG by source" && \
+	psql -d 2ndopinionmd -c "\
+	SELECT source, COUNT(*) AS n_rows,\
+	       COUNT(*) FILTER (WHERE embedding IS NULL) AS no_embed\
+	FROM public.rag_corpus\
+	GROUP BY 1 ORDER BY n_rows DESC;" && \
+	echo "\n-- All user tables (exact)" && \
+	psql -d 2ndopinionmd <<'SQL' \
+		DO $$
+		DECLARE r record;
+		BEGIN
+		CREATE TEMP TABLE tmp_counts(schema_name text, table_name text, exact_count bigint) ON COMMIT DROP;
+		FOR r IN SELECT schemaname, relname FROM pg_stat_user_tables LOOP
+			EXECUTE format('INSERT INTO tmp_counts SELECT %L, %L, count(*) FROM %I.%I', r.schemaname, r.relname, r.schemaname, r.relname);
+		END LOOP;
+		END$$;
+		TABLE tmp_counts ORDER BY schema_name, table_name;
+		SQL
+	&& echo "\n-- ANN indexes on rag_corpus" && \
+	psql -d 2ndopinionmd -c "\
+	SELECT indexname, indexdef FROM pg_indexes\
+	WHERE tablename='rag_corpus' AND indexname ~ 'embedding.*ann'\
+	ORDER BY 1;"
+
+# =========================
 # OpenAPI (quick list)
 # =========================
 api-openapi:
@@ -197,10 +200,18 @@ rag-neighbors:
 	@echo ">>> RAG neighbors: id=$(ID), source='$(SOURCE)', limit=$(LIMIT), probes=$(PROBES)"
 	@curl -s "http://localhost:8000/api/rag/neighbors/$(ID)?limit=$(LIMIT)&source=$(SOURCE)&probes=$(PROBES)" | jq .
 
+### =========================
+### CDC Opioid (Guidelines)
+### =========================
 
-# -------------------------
-# NeuroLex / InterLex
-# -------------------------
+DB_DSN ?= $(SYNC_DATABASE_URL)
+PSQL   = psql "$(DB_DSN)"
+
+# 0) Schemas
+cdc-opioid-rag-delete:
+	-$(PSQL) -f database/sql/cdc_opioid_rag_delete.sql
+
+# 4) Embed (uses script provided earlier)
 neurolex-schema:
 	@echo ">>> Creating NeuroLex schema/tables"
 	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_neurolex_schema.sql
@@ -520,15 +531,6 @@ who-committee-embed:
 		--embedding-col embedding --model text-embedding-3-small \
 		--batch 256 --where "source='who_committee' AND embedding IS NULL"
 
-who-committee-ann:
-	@$(PSQL) -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_who_committee ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) WITH (lists=200) WHERE source='who_committee'; ANALYZE public.rag_corpus;"
-
-# ===== WHO AWaRe =====
-who-aware-smoke:
-	@$(PSQL) -d $(DB_NAME) -c "SELECT antibiotic_group, COUNT(*) FROM guidelines.who_eml_medicines WHERE antibiotic_group IS NOT NULL GROUP BY 1 ORDER BY 1;"
-	@$(PSQL) -d $(DB_NAME) -c "SELECT inn, antibiotic_group FROM guidelines.who_eml_medicines WHERE antibiotic_group IS NOT NULL ORDER BY inn LIMIT 10;"
-
-# If AWaRe imported after initial RAG upsert, re-embed new/changed rows
 who-eml-embed-missing:
 	@$(PY) server/scripts/embed_table.py \
 	  --table public.rag_corpus --id-col id --text-col text \
@@ -1144,3 +1146,52 @@ act.router.smoke:
 act.mv.rebuild:
 	@echo "??? Rebuilding materialized view"
 	@python server/scripts/setup_clingen_actionability.py
+
+# ---------- CDC Opioid: fetch → parse → RAG upsert → embed → ANN → stats ----------
+
+cdc-opioid-schema:
+	psql "$${SYNC_DATABASE_URL}" -f database/schemas/setup_cdc_opioid.sql
+
+cdc-opioid-xref-schema:
+	psql "$${SYNC_DATABASE_URL}" -f database/schemas/setup_cdc_opioid_xref.sql
+
+cdc-opioid-xref-seed:
+	test -f data/cdc_opioid/seed_section_codes.csv
+	psql "$${SYNC_DATABASE_URL}" -v ON_ERROR_STOP=1 -c "CREATE TEMP TABLE tmp_section_code_map (LIKE guidelines.section_code_map INCLUDING ALL);"
+	cat data/cdc_opioid/seed_section_codes.csv | psql "$${SYNC_DATABASE_URL}" -c "\copy tmp_section_code_map(section_id,system,code,display,how_derived,confidence) FROM STDIN WITH CSV HEADER"
+	psql "$${SYNC_DATABASE_URL}" -v ON_ERROR_STOP=1 -c "\
+	  INSERT INTO guidelines.section_code_map(section_id,system,code,display,how_derived,confidence) \
+	  SELECT section_id,system,code,display,how_derived,confidence FROM tmp_section_code_map \
+	  ON CONFLICT (section_id, system, code) DO UPDATE \
+	    SET display=EXCLUDED.display, how_derived=EXCLUDED.how_derived, confidence=EXCLUDED.confidence;"
+	psql "$${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) FROM guidelines.v_cdc_section_codes;"
+
+cdc-opioid-fetch:
+	$(PY) server/scripts/cdc_opioid_fetch.py --out data/cdc_opioid
+
+cdc-opioid-parse:
+	$(PY) server/scripts/cdc_opioid_parse.py --in data/cdc_opioid
+
+cdc-opioid-rag-upsert:
+	psql "$${SYNC_DATABASE_URL}" -f database/sql/cdc_opioid_rag_upsert.sql
+
+cdc-opioid-embed:
+	SOURCE=cdc_opioid EMBED_MODEL=text-embedding-3-small $(PY) server/scripts/embed_rag_source.py
+	psql "$${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) total, COUNT(*) FILTER (WHERE embedding IS NULL) no_embed FROM public.rag_corpus WHERE source='cdc_opioid';"
+
+cdc-opioid-ann:
+	psql "$${SYNC_DATABASE_URL}" -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_cdc \
+	  ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) \
+	  WITH (lists = 64) WHERE source='cdc_opioid';"
+
+cdc-opioid-stats:
+	psql "$${SYNC_DATABASE_URL}" -c "SELECT source, COUNT(*) n, COUNT(*) FILTER (WHERE embedding IS NULL) no_embed FROM public.rag_corpus WHERE source='cdc_opioid' GROUP BY 1;"
+	psql "$${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) FROM guidelines.v_cdc_section_codes;"
+
+cdc-opioid-smoke:
+	curl -s http://localhost:8000/api/guidelines/cdc/opioid/health | jq .
+	curl -s http://localhost:8000/api/guidelines/cdc/opioid/stats  | jq .
+	curl -s "http://localhost:8000/api/guidelines/cdc/opioid/search?q=PDMP&limit=3" | jq .
+
+# Full pipeline
+cdc-opioid-all: cdc-opioid-schema cdc-opioid-xref-schema cdc-opioid-fetch cdc-opioid-parse cdc-opioid-rag-upsert cdc-opioid-embed cdc-opioid-ann cdc-opioid-stats cdc-opioid-smoke
