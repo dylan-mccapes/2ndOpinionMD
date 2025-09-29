@@ -23,23 +23,55 @@ async def eml_stats():
     return dict(rows[0]) if rows else {"n_eml":0,"n_emlc":0}
 
 @router.get("/eml/search")
-async def eml_search(q: str,
-                     atc: str | None = None,
-                     icd11: str | None = None,
-                     aware: str | None = None,
-                     limit: int = 20):
-    conds = ["m.ts @@ plainto_tsquery('english',$1)"]
-    params = [q]
-    pi = 2
+async def eml_search(
+    q: str = Query(..., min_length=2),
+    atc: str | None = None,
+    icd11: str | None = None,
+    aware: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    prefix: bool = False,
+):
+    """
+    Search WHO EML medicines by free text, with optional filters:
+      - atc: ATC code prefix (e.g., J01)
+      - icd11: ICD-11 code prefix
+      - aware: Access | Watch | Reserve
+      - prefix: when true, use prefix FTS (to_tsquery with :*)
+    """
+    # Build FTS condition
+    if prefix:
+        # to_tsquery with prefix tokens, e.g. "amoxi:* & clavulanic:*"
+        terms = re.findall(r"\w+", q)
+        tsq = " & ".join(f"{t}:*" for t in terms) if terms else q
+        conds = ["m.ts @@ to_tsquery('english', $1)"]
+        params: list[object] = [tsq]
+    else:
+        conds = ["m.ts @@ plainto_tsquery('english', $1)"]
+        params = [q]
+
+    pi = 2  # next $-param index
+
     if atc:
-        conds.append(f"EXISTS (SELECT 1 FROM guidelines.who_eml_atc a WHERE a.med_id=m.med_id AND a.atc_code ILIKE ${pi})")
-        params.append(atc+'%'); pi+=1
+        conds.append(
+            f"EXISTS (SELECT 1 FROM guidelines.who_eml_atc a "
+            f"        WHERE a.med_id = m.med_id AND a.atc_code ILIKE ${pi})"
+        )
+        params.append(atc.strip().upper().replace(" ", "") + "%")
+        pi += 1
+
     if icd11:
-        conds.append(f"EXISTS (SELECT 1 FROM guidelines.who_eml_icd11 i WHERE i.med_id=m.med_id AND i.icd11_code ILIKE ${pi})")
-        params.append(icd11+'%'); pi+=1
+        conds.append(
+            f"EXISTS (SELECT 1 FROM guidelines.who_eml_icd11 i "
+            f"        WHERE i.med_id = m.med_id AND i.icd11_code ILIKE ${pi})"
+        )
+        params.append(icd11.strip().upper().replace(" ", "") + "%")
+        pi += 1
+
     if aware:
         conds.append(f"m.antibiotic_group = ${pi}")
-        params.append(aware.strip().title()); pi+=1
+        params.append(aware.strip().title())
+        pi += 1
+
     params.append(limit)
     sql = f"""
       SELECT m.med_id, m.inn, m.list_type, m.section_path, m.antibiotic_group
@@ -48,11 +80,13 @@ async def eml_search(q: str,
       ORDER BY m.inn
       LIMIT ${pi}
     """
+
     conn = await asyncpg.connect(_DSN)
     try:
         rows = await conn.fetch(sql, *params)
     finally:
         await conn.close()
+
     return [dict(r) for r in rows]
 
 @router.get("/eml/medicine/{med_id}")
