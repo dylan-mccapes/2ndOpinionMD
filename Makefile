@@ -30,6 +30,9 @@ MIMIC4_DIR        ?= data/mimic-iv-2.2
 MIMICIV_NOTE_DIR  ?= physionet.org/files/mimic-iv-note/2.2
 N2C2_T3_SAMPLE_DIR?= data/n2c2/track3-sample
 
+LISTS ?= 200
+PROBES ?= 8
+
 # -------- PHONY --------
 .PHONY: \
   dev-setup env-doctor py-venv deps-install deps-upgrade pip-check dev-setup-full \
@@ -185,6 +188,156 @@ api-openapi:
 	@{ curl -sf http://localhost:8000/api/openapi.json || curl -sf http://localhost:8000/openapi.json; } \
 	| jq -r '.paths | keys[]' | sed 's/^/  /'
 
+rag-search:
+	@echo ">>> RAG search: q='$(Q)', source='$(SOURCE)', limit=$(LIMIT), probes=$(PROBES)"
+	@curl -s "http://localhost:8000/api/rag/search?q=$(Q)&limit=$(LIMIT)&source=$(SOURCE)&probes=$(PROBES)" | jq .
+
+rag-neighbors:
+	@echo ">>> RAG neighbors: id=$(ID), source='$(SOURCE)', limit=$(LIMIT), probes=$(PROBES)"
+	@curl -s "http://localhost:8000/api/rag/neighbors/$(ID)?limit=$(LIMIT)&source=$(SOURCE)&probes=$(PROBES)" | jq .
+
+
+# -------------------------
+# NeuroLex / InterLex
+# -------------------------
+neurolex-schema:
+	@echo ">>> Creating NeuroLex schema/tables"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/setup_neurolex_schema.sql
+	@echo ">>> NeuroLex schema ready."
+
+neurolex-indexes:
+	@echo ">>> Ensuring NeuroLex indexes"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS neurolex_label_fts ON ontology.neurolex USING gin (to_tsvector('english', label));"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS neurolex_synonyms_trgm ON ontology.neurolex USING gin (synonyms gin_trgm_ops);"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS neurolex_ann_value_prefix_idx ON ontology.neurolex_annotations (split_part(value, ':', 1), prop_label);"
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS neurolex_ann_value_fts ON ontology.neurolex_annotations USING gin (to_tsvector('english', value));"
+	@echo ">>> NeuroLex indexes ensured."
+
+neurolex-import-api:  ## Usage: make neurolex-import-api PARENT_ILX=ilx_XXXXX  OR  LABEL="neurological disorder"
+	@test -n "$(SCICRUNCH_API_KEY)" || (echo "ERROR: export SCICRUNCH_API_KEY first"; exit 2)
+	@if [ -z "$(PARENT_ILX)$(LABEL)" ]; then echo "ERROR: set PARENT_ILX=ilx_... or LABEL=\"...\""; exit 2; fi
+	@echo ">>> Importing NeuroLex from InterLex (parent=$(PARENT_ILX), label=$(LABEL), size=$(SIZE), pages=$(PAGES))"
+	@$(PY) server/scripts/ingest_neurolex.py \
+	  $(if $(PARENT_ILX),--parent-ilx "$(PARENT_ILX)",) \
+	  $(if $(LABEL),--label "$(LABEL)",) \
+	  --size "$(if $(SIZE),$(SIZE),1000)" \
+	  --pages "$(if $(PAGES),$(PAGES),50)"
+
+
+neurolex-import-file: ## Usage: make neurolex-import-file FILE=data/neurolex_branch.jsonl
+	@test -n "$(FILE)" || (echo "ERROR: set FILE=path/to/neurolex.jsonl"; exit 2)
+	@echo ">>> Importing NeuroLex from file: $(FILE)"
+	@$(PY) server/scripts/ingest_neurolex.py --mode file --file "$(FILE)"
+
+neurolex-embed:  ## Embeds label+definition+synonyms into vec
+	@echo ">>> Embedding NeuroLex rows (vec)"
+	@$(PY) server/scripts/embed_table.py \
+	  --table ontology.neurolex \
+	  --id-col ilx_id \
+	  --text-col label \
+	  --extra-cols definition,synonyms \
+	  --embedding-col vec \
+	  --model $(if $(MODEL),$(MODEL),text-embedding-3-small) \
+	  --batch 256 \
+	  --where "vec IS NULL"
+	@echo ">>> Embedding pass complete."
+
+neurolex-stats:
+	@$(PSQL) -d $(DB_NAME) -c "SELECT COUNT(*) AS terms FROM ontology.neurolex;"
+	@$(PSQL) -d $(DB_NAME) -c "SELECT prop_label, COUNT(*) n FROM ontology.neurolex_annotations GROUP BY 1 ORDER BY n DESC LIMIT 10;"
+	@$(PSQL) -d $(DB_NAME) -c "SELECT split_part(value,':',1) AS system, COUNT(*) n FROM ontology.neurolex_annotations WHERE prop_label='hasDbXref' GROUP BY 1 ORDER BY n DESC LIMIT 10;"
+
+# --- NeuroLex (query mode) ---
+neurolex-import-query:
+	@echo ">>> Importing NeuroLex by query: '$(Q)' (size=$(SIZE), pages=$(PAGES))"
+	@$(PY) server/scripts/ingest_neurolex_query.py \
+		--query '$(Q)' \
+		--size $(if $(SIZE),$(SIZE),500) \
+		--pages $(if $(PAGES),$(PAGES),20)
+
+neurolex-reindex:
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "\
+		UPDATE ontology.neurolex SET ts = to_tsvector('english', \
+		coalesce(label,'')||' '||coalesce(definition,'')||' '||coalesce(array_to_string(synonyms,' '),'')); \
+		CREATE INDEX IF NOT EXISTS neurolex_ts_gin ON ontology.neurolex USING gin (ts); \
+		ANALYZE ontology.neurolex;"
+
+# (Optional) RAG upsert so NeuroLex appears in /api/diagnose retrieval too
+neurolex-rag-upsert:
+	@echo ">>> Upserting NeuroLex into rag_corpus via script"
+	@$(PY) server/scripts/neurolex_rag_upsert.py $(if $(LIMIT),--limit $(LIMIT),)
+
+neurolex-rag-upsert-since:
+	@echo ">>> Upserting NeuroLex into rag_corpus since $(SINCE)"
+	@$(PY) server/scripts/neurolex_rag_upsert.py --since "$(SINCE)" $(if $(LIMIT),--limit $(LIMIT),)
+
+neurolex-rag-upsert-dry:
+	@echo ">>> DRY RUN: NeuroLex → rag_corpus"
+	@$(PY) server/scripts/neurolex_rag_upsert.py --dry-run $(if $(LIMIT),--limit $(LIMIT),)
+
+# (Once router is mounted)
+api-neurolex-search:
+	@curl -s "http://localhost:8000/api/neurolex/search?q=$(Q)&limit=$(LIMIT)" | jq .
+
+api-neurolex-term:
+	@curl -s "http://localhost:8000/api/neurolex/term/$(ILX)" | jq .
+
+
+neurolex-api-smoke:
+	@echo ">>> NeuroLex API smoke"
+	@curl -s "http://localhost:8000/api/neurolex/stats" | jq .
+	@curl -s "http://localhost:8000/api/neurolex/search?q=optic&limit=5" | jq .
+
+neurolex-rag-semantic:
+	@test -n "$(Q)" || (echo "Usage: make neurolex-rag-semantic Q='your query' [LIMIT=10] [PROBES=8]"; exit 2)
+	@echo ">>> Semantic search (NeuroLex) for: '$(Q)'"
+	@EMB=$$($(PY) - <<'PY'
+		import os, sys
+		from dotenv import load_dotenv
+		load_dotenv('server/.env'); load_dotenv('.env')
+		from openai import OpenAI
+		client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+		q = os.environ.get("Q") or ""
+		if not q:
+			sys.exit("Missing Q")
+		resp = client.embeddings.create(model="text-embedding-3-small", input=q)
+		vec = resp.data[0].embedding
+		print("[" + ",".join(f"{x:.6f}" for x in vec) + "]", end="")
+		PY
+	); \
+	PROBES=$${PROBES:-8}; \
+	LIMIT=$${LIMIT:-10}; \
+	psql -d $(DB_NAME) -v ON_ERROR_STOP=1 <<SQL
+		SET ivfflat.probes = $${PROBES};
+		WITH q AS (SELECT '$$EMB'::vector AS e)
+		SELECT id, source, LEFT(title,120) AS title,
+			ROUND(1 - (embedding <=> q.e)::numeric, 4) AS cosine_sim
+		FROM public.rag_corpus, q
+		WHERE source='neurolex'
+		ORDER BY embedding <=> q.e
+		LIMIT $$LIMIT;
+		SQL
+
+
+# Build ANN index only for NeuroLex rows
+neurolex-ann-index:
+	@echo ">>> Creating ANN index for NeuroLex embeddings (lists=$(LISTS))"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "SET maintenance_work_mem='256MB';"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS rag_corpus_embedding_ann_neurolex ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) WITH (lists = $(LISTS)) WHERE source='neurolex';"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "ANALYZE public.rag_corpus;"
+
+# Explain a random NeuroLex semantic query to confirm ANN usage
+neurolex-ann-explain:
+	@echo ">>> EXPLAIN ANALYZE (probes=$(PROBES))"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "SET enable_seqscan=off; SET ivfflat.probes=$(PROBES); EXPLAIN ANALYZE WITH q AS (SELECT embedding e FROM public.rag_corpus WHERE source='neurolex' ORDER BY random() LIMIT 1) SELECT id, LEFT(title,120) AS title FROM public.rag_corpus rc, q WHERE rc.source='neurolex' ORDER BY rc.embedding <=> q.e LIMIT 5;"
+
+# Quick smoke test for nearest neighbors among NeuroLex rows
+neurolex-ann-smoke:
+	@echo ">>> Semantic smoke test (probes=$(PROBES))"
+	@psql -d $(DB_NAME) -v ON_ERROR_STOP=1 -c "SET ivfflat.probes=$(PROBES); WITH q AS (SELECT embedding e FROM public.rag_corpus WHERE source='neurolex' ORDER BY random() LIMIT 1) SELECT id, LEFT(title,120) AS title, (rc.embedding <=> q.e) AS dist FROM public.rag_corpus rc, q WHERE rc.source='neurolex' ORDER BY rc.embedding <=> q.e LIMIT 5;"
+
+
 # -------- GWAS Catalog (autoimmune traits) --------
 GWAS_DIR              ?= data/gwas
 GWAS_ALL_TSV          ?= $(GWAS_DIR)/gwas_catalog.tsv
@@ -298,6 +451,125 @@ kg-api-smoke:
 	@curl -s -X POST "http://localhost:8000/api/diagnose" -H 'Content-Type: application/json' \
 		-d '{"symptoms":["optic neuritis","numbness in legs","fatigue","gait imbalance"],"demographics":{"sex":"female","age":34},"model":"gpt-3.5-turbo"}' | jq .
 
+# Expect:
+#   PSQL ?= psql
+#   DB_NAME ?= 2ndopinionmd
+#   PY ?= server/venv312/bin/python
+# Optional:
+#   PIP ?= $(PY) -m pip
+
+who-reqs:
+	@$(PY) -m pip install --upgrade pandas openpyxl pypdf psycopg2-binary python-calamine
+
+# ===== WHO EML (adults) =====
+who-eml: who-eml-schema who-eml-import who-eml-rag who-eml-ann who-eml-api-smoke
+	@echo ">>> WHO EML pipeline complete."
+
+who-eml-schema:
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f database/schemas/guidelines_who_eml.sql
+
+who-eml-import:
+	@FILE="$${FILE:-data/who/eml_2025.xlsx}"; \
+	echo ">>> Importing $$FILE"; \
+	$(PY) server/scripts/who_eml_import.py --file "$$FILE"
+
+who-eml-rag: who-eml-rag-upsert who-eml-embed
+	@echo ">>> WHO EML → RAG complete."
+
+who-eml-rag-upsert:
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f server/scripts/rag_upsert_who_eml.sql
+
+who-eml-embed:
+	@$(PY) server/scripts/embed_table.py \
+		--table public.rag_corpus --id-col id --text-col text \
+		--embedding-col embedding --model text-embedding-3-small \
+		--batch 256 --where "source='who_eml' AND embedding IS NULL"
+
+who-eml-ann:
+	@$(PSQL) -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_who_eml ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) WITH (lists=200) WHERE source='who_eml'; ANALYZE public.rag_corpus;"
+
+who-eml-api-smoke:
+	@echo ">>> WHO EML endpoints"
+	@curl -s http://localhost:8000/api/openapi.json | jq -r '.paths | keys[] | select(test("^/api/who"))'
+	@echo ">>> Stats"
+	@curl -s "http://localhost:8000/api/who/eml/stats" | jq .
+	@echo ">>> Search amoxicillin (5)"
+	@curl -s "http://localhost:8000/api/who/eml/search?q=amoxicillin&limit=5" | jq -c 'length'
+
+# ===== WHO Expert Committee (executive summary PDF) =====
+who-committee: who-committee-import who-committee-rag who-committee-ann who-committee-api-smoke
+	@echo ">>> WHO Committee pipeline complete."
+
+who-committee-import:
+	@PDF="$${FILE:-data/who/expert_committee_2025_execsum.pdf}"; \
+	echo ">>> Parsing $$PDF"; \
+	$(PY) server/scripts/who_committee_import.py \
+		--pdf "$$PDF" --year "$${YEAR:-2025}" --eml "$${EML:-24}" --emlc "$${EMLC:-10}" \
+		--title "$${TITLE:-The selection and use of essential medicines, 2025: report of the 25th WHO Expert Committee}"
+
+who-committee-rag: who-committee-rag-upsert who-committee-embed
+	@echo ">>> WHO Committee → RAG complete."
+
+who-committee-rag-upsert:
+	@$(PSQL) -v ON_ERROR_STOP=1 -d $(DB_NAME) -f server/scripts/rag_upsert_who_committee.sql
+
+who-committee-embed:
+	@$(PY) server/scripts/embed_table.py \
+		--table public.rag_corpus --id-col id --text-col text \
+		--embedding-col embedding --model text-embedding-3-small \
+		--batch 256 --where "source='who_committee' AND embedding IS NULL"
+
+who-committee-ann:
+	@$(PSQL) -d $(DB_NAME) -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_who_committee ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) WITH (lists=200) WHERE source='who_committee'; ANALYZE public.rag_corpus;"
+
+# ===== WHO AWaRe =====
+who-aware-smoke:
+	@$(PSQL) -d $(DB_NAME) -c "SELECT antibiotic_group, COUNT(*) FROM guidelines.who_eml_medicines WHERE antibiotic_group IS NOT NULL GROUP BY 1 ORDER BY 1;"
+	@$(PSQL) -d $(DB_NAME) -c "SELECT inn, antibiotic_group FROM guidelines.who_eml_medicines WHERE antibiotic_group IS NOT NULL ORDER BY inn LIMIT 10;"
+
+# If AWaRe imported after initial RAG upsert, re-embed new/changed rows
+who-eml-embed-missing:
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus --id-col id --text-col text \
+	  --embedding-col embedding --model text-embedding-3-small \
+	  --batch 256 --where "source='who_eml' AND embedding IS NULL"
+
+
+# ==== WHO AWaRe ====
+who-aware-import:
+	@$(PY) server/scripts/who_aware_import.py --file "$${FILE:-data/who/aware_2025.xlsx}"
+
+who-aware-apply:
+	@psql "$${SYNC_DATABASE_URL:-$${DATABASE_URL}}" -v ON_ERROR_STOP=1 \
+		-f server/scripts/who_eml_apply_aware.sql
+
+who-aware-api-smoke:
+	@echo ">>> AWaRe stats"
+	@curl -s http://localhost:8000/api/who/aware/stats | jq .
+	@echo ">>> Access slice (5)"
+	@curl -s "http://localhost:8000/api/who/eml/by-aware/Access?limit=5" | jq .
+
+# (If you already have a target named who-aware-smoke causing the override warning,
+# delete the older one or keep just 'who-aware-api-smoke' to avoid confusion.)
+
+# ==== WHO Committee chunking/embedding ====
+who-committee-chunk:
+	@psql "$${SYNC_DATABASE_URL:-$${DATABASE_URL}}" -v ON_ERROR_STOP=1 \
+		-f server/scripts/rag_upsert_who_committee_chunked.sql
+
+who-committee-embed-safe:
+	@BATCH="$${BATCH:-8}"; \
+	$(PY) server/scripts/embed_table.py \
+		--table public.rag_corpus --id-col id --text-col text \
+		--embedding-col embedding --model text-embedding-3-small \
+		--batch $$BATCH --where "source='who_committee' AND embedding IS NULL"
+
+who-committee-api-smoke:
+	@echo ">>> Sections count"
+	@curl -s http://localhost:8000/api/who/committee/stats | jq .
+	@echo ">>> Search insulin (3)"
+	@curl -s "http://localhost:8000/api/who/committee/search?q=insulin&limit=3" | jq .
+
 
 # =========================
 # DisGeNET: schema + pulls
@@ -379,6 +651,9 @@ disgenet-ai-pull:
 	  --endpoint $${DISGENET_ENDPOINT:-gda/summary} \
 	  --auth-mode $${DISGENET_AUTH_MODE:-bare} \
 	  --sleep $${DISGENET_SLEEP:-0}
+
+disgenet-finish:
+	@server/scripts/disgenet_finish.sh data/autoimmune_gene_ids.clean
 
 # =========================
 # LOINC / RxNorm
