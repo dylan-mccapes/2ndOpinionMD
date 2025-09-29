@@ -63,3 +63,36 @@ server/logs/
 *.log
 # macOS
 .DS_Store
+# secrets
+.env
+server/.env
+
+# local snapshots / dumps
+snapshots/
+*.sql
+
+# editor / temp
+*.swp
+*~
+*.bak
+*.bak.*
+
+# big vendor datasets & working folders
+data/SnomedCT_*/
+data/Orphadata/
+data/chv/
+data/clinvar/
+data/gwas/
+data/n2c2/
+physionet.org/
+data/who/
+
+# batch scratch & backups
+data/disgenet_batches/
+data/disgenet_curated.tsv.bak.*
+data/*_ids
+data/*_ids.*
+data/*_ids.tsv
+data/*_ids.txt
+data/*_symbols.txt
+data/*_ranked*.tsv
