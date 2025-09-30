@@ -1195,3 +1195,72 @@ cdc-opioid-smoke:
 
 # Full pipeline
 cdc-opioid-all: cdc-opioid-schema cdc-opioid-xref-schema cdc-opioid-fetch cdc-opioid-parse cdc-opioid-rag-upsert cdc-opioid-embed cdc-opioid-ann cdc-opioid-stats cdc-opioid-smoke
+
+### =========================
+### VA/DoD GUIDELINES (Item 21)
+### =========================
+PY ?= server/venv312/bin/python
+SYNC_DATABASE_URL ?= postgresql://2ndopinionmd@localhost:5432/2ndopinionmd
+
+va-schema:
+	psql "${SYNC_DATABASE_URL}" -f database/schemas/setup_va_guidelines.sql
+
+# Seed mapping for VA (optional). Create a CSV at data/va/seed_section_codes.csv
+va-fetch:
+	${PY} server/scripts/va_guidelines_fetch.py --out data/va
+
+va-parse:
+	${PY} server/scripts/va_guidelines_parse.py --in data/va
+
+va-rag-delete:
+	psql "${SYNC_DATABASE_URL}" -f database/sql/va_guidelines_rag_delete.sql
+
+va-rag-upsert:
+	psql "${SYNC_DATABASE_URL}" -f database/sql/va_guidelines_rag_upsert.sql
+
+va-embed:
+	SOURCE=va_guidelines EMBED_MODEL=text-embedding-3-small ${PY} server/scripts/embed_rag_source.py
+	psql "${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) total, COUNT(*) FILTER (WHERE embedding IS NULL) no_embed FROM public.rag_corpus WHERE source='va_guidelines';"
+
+va-ann:
+	psql "${SYNC_DATABASE_URL}" -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_va \
+	  ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) \
+	  WITH (lists = 64) WHERE source='va_guidelines';"
+
+va-stats:
+	psql "${SYNC_DATABASE_URL}" -c "SELECT source, COUNT(*) n, COUNT(*) FILTER (WHERE embedding IS NULL) no_embed FROM public.rag_corpus WHERE source='va_guidelines' GROUP BY 1;"
+	psql "${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) FROM guidelines.va_docs;"
+	psql "${SYNC_DATABASE_URL}" -c "SELECT COUNT(*) FROM guidelines.va_sections;"
+
+va-smoke:
+	curl -s http://localhost:8000/api/guidelines/va/health | jq .
+	curl -s http://localhost:8000/api/guidelines/va/stats  | jq .
+	curl -s "http://localhost:8000/api/guidelines/va/search?q=taper&limit=3" | jq .
+
+va-all: va-schema va-xref-schema va-fetch va-parse va-rag-delete va-rag-upsert va-embed va-ann va-stats va-smoke
+	@echo "VA/DoD ingestion complete."
+
+# ---------- VA XREF ----------
+# Fallback DB URL if SYNC_DATABASE_URL is not set
+DB_URL := $${SYNC_DATABASE_URL:-postgresql://2ndopinionmd@localhost:5432/2ndopinionmd}
+
+va-xref-schema:
+	psql "$(DB_URL)" -f database/schemas/setup_va_guidelines_xref.sql
+
+va-xref-seed:
+	@test -f data/va/seed_section_codes.csv || (echo "Missing data/va/seed_section_codes.csv. Headers: section_id,system,code,display,how_derived,confidence" ; exit 1)
+	# strip blank lines to avoid COPY empty-row errors
+	sed -i.bak '/^[[:space:]]*$$/d' data/va/seed_section_codes.csv
+	# persistent staging table so we can use multiple psql invocations
+	psql "$(DB_URL)" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS guidelines._va_codes_staging (LIKE guidelines.va_section_code_map INCLUDING DEFAULTS)"
+	psql "$(DB_URL)" -v ON_ERROR_STOP=1 -c "TRUNCATE guidelines._va_codes_staging"
+	# server-side COPY from STDIN (no \copy or heredoc headaches)
+	psql "$(DB_URL)" -v ON_ERROR_STOP=1 -c "COPY guidelines._va_codes_staging(section_id,system,code,display,how_derived,confidence) FROM STDIN WITH CSV HEADER" < data/va/seed_section_codes.csv
+	psql "$(DB_URL)" -v ON_ERROR_STOP=1 -c "INSERT INTO guidelines.va_section_code_map(section_id,system,code,display,how_derived,confidence) SELECT section_id, system, code, COALESCE(display,''), COALESCE(how_derived,'curated'), COALESCE(confidence,0.90) FROM guidelines._va_codes_staging ON CONFLICT (section_id, system, code) DO UPDATE SET display=EXCLUDED.display, how_derived=EXCLUDED.how_derived, confidence=EXCLUDED.confidence"
+
+va-xref-preview:
+	psql "$(DB_URL)" -c "SELECT * FROM guidelines.v_va_section_codes ORDER BY section_id LIMIT 10;"
+
+va-xref-all: va-xref-schema va-xref-seed va-xref-preview
+
+

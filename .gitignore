@@ -96,3 +96,7 @@ data/*_ids.tsv
 data/*_ids.txt
 data/*_symbols.txt
 data/*_ranked*.tsv
+
+# data dumps
+/data/**
+*/seed_*.csv
