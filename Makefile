@@ -1263,4 +1263,89 @@ va-xref-preview:
 
 va-xref-all: va-xref-schema va-xref-seed va-xref-preview
 
+# ---- API smoke ---------------------------------------------------------------
+API_BASE ?= http://localhost:8000
 
+smoke-cdc:
+	@echo "== CDC health =="
+	curl -s "$(API_BASE)/api/guidelines/cdc/opioid/health" | jq .
+	@echo "== CDC stats =="
+	curl -s "$(API_BASE)/api/guidelines/cdc/opioid/stats" | jq .
+	@echo "== CDC search: PDMP =="
+	curl -s "$(API_BASE)/api/guidelines/cdc/opioid/search?q=PDMP&limit=3" | jq .
+
+smoke-va:
+	@echo "== VA health =="
+	curl -s "$(API_BASE)/api/guidelines/va/health" | jq .
+	@echo "== VA stats =="
+	curl -s "$(API_BASE)/api/guidelines/va/stats" | jq .
+	@echo "== VA search: taper =="
+	curl -s "$(API_BASE)/api/guidelines/va/search?q=taper&limit=3" | jq .
+
+smoke-all: smoke-cdc smoke-va
+
+
+# ---------- DB Backup & Integrity ----------
+
+DB_URL = $${SYNC_DATABASE_URL:-postgresql://2ndopinionmd@localhost:5432/2ndopinionmd}
+JOBS ?= 0  # 0 means "auto" (script chooses ~ half cores)
+
+.PHONY: db-backup db-backup-verify db-report db-report-json db-report-all
+
+db-backup:
+	@mkdir -p backups
+	@chmod +x server/scripts/pg_backup.sh
+	@JOBS=$(JOBS) server/scripts/pg_backup.sh "$(DB_URL)"
+
+db-backup-verify:
+	@chmod +x server/scripts/pg_backup_verify.sh
+	@JOBS=$(JOBS) server/scripts/pg_backup_verify.sh backups/latest
+
+db-report:
+	@mkdir -p reports
+	@psql "$(DB_URL)" -f database/sql/integrity_report.sql | tee reports/integrity_$$(date +%Y%m%d_%H%M%S).txt
+
+db-report-json:
+	@mkdir -p reports
+	@psql -tA "$(DB_URL)" -f database/sql/integrity_report_json.sql > reports/integrity_$$(date +%Y%m%d_%H%M%S).json
+	@echo "wrote JSON report to reports/"
+
+db-report-all: db-report db-report-json
+
+# ---- Integrity & Backup ------------------------------------------------------
+SYNC_DATABASE_URL ?= postgresql://2ndopinionmd@localhost:5432/2ndopinionmd
+PY ?= server/venv312/bin/python
+NOW := $(shell date +%Y%m%d_%H%M%S)
+
+integrity-report:
+	@echo "== Integrity report (human-readable) =="
+	psql "${SYNC_DATABASE_URL}" -f database/sql/integrity_report.sql
+
+integrity-report-json:
+	@echo "== Integrity report (JSON) =="
+	psql "${SYNC_DATABASE_URL}" -f database/sql/integrity_report_json.sql
+
+# quick embedded sanity checks
+integrity-embeddings:
+	@echo "== Embedding sanity =="
+	psql "${SYNC_DATABASE_URL}" -c "SELECT source, COUNT(*) n, COUNT(*) FILTER (WHERE embedding IS NULL) no_embed FROM public.rag_corpus GROUP BY 1 ORDER BY 1;"
+	psql "${SYNC_DATABASE_URL}" -c "SELECT indexname, indexdef FROM pg_indexes WHERE tablename='rag_corpus' AND indexname LIKE 'rag_corpus_embedding_ann_%';"
+
+# orphan checks (sections without RAG rows) – CDC + VA
+integrity-orphans:
+	@echo "== CDC sections without rag rows =="
+	psql "${SYNC_DATABASE_URL}" -c "SELECT s.section_id, s.doc_slug, s.heading FROM guidelines.cdc_sections s LEFT JOIN public.rag_corpus r ON r.source='cdc_opioid' AND r.external_id = s.section_id::text WHERE r.external_id IS NULL LIMIT 10;"
+	@echo "== VA sections without rag rows =="
+	psql "${SYNC_DATABASE_URL}" -c "SELECT s.section_id, s.doc_slug, s.heading FROM guidelines.va_sections s LEFT JOIN public.rag_corpus r ON r.source='va_guidelines' AND r.external_id = s.section_id::text WHERE r.external_id IS NULL LIMIT 10;"
+
+integrity-all: integrity-report integrity-report-json integrity-embeddings integrity-orphans
+
+# Backups (scripts you wrote)
+backup-now:
+	bash server/scripts/pg_backup.sh
+
+backup-verify:
+	bash server/scripts/pg_backup_verify.sh
+
+post-launch-checks: integrity-all backup-verify
+	@echo "✅ Post-launch checks complete."
