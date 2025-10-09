@@ -100,3 +100,10 @@ data/*_ranked*.tsv
 # data dumps
 /data/**
 */seed_*.csv
+# CHV/MIMIC build outputs & local artifacts
+backups/
+db_integrity_reports/
+reports/
+models/
+nano
+failed_ids.txt
