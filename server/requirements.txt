@@ -26,3 +26,6 @@ bcrypt==4.1.2
 python-multipart==0.0.6
 fastapi-mail==1.4.1
 cryptography==42.0.5
+
+# Database Integrity
+reportlab==4.0.7

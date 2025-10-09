@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from typing import Optional, List, Dict, Any
+from typing import List, Dict
+
+# Use the same session dependency everywhere
 from server.db.session import get_session
 
 router = APIRouter(prefix="/api/snomed", tags=["snomed"])
+
 
 @router.get("/search")
 async def search_snomed(
@@ -13,10 +16,8 @@ async def search_snomed(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Search SNOMED CT terms by description with preference for active preferred terms.
-    
-    Returns SNOMED concepts matching the search query with ILIKE matching on
-    description terms, prioritizing preferred terms and active concepts.
+    Search SNOMED CT descriptions with ILIKE matching, preferring active synonym
+    terms over FSNs, and active concepts over inactive.
     """
     try:
         sql = """
@@ -25,47 +26,36 @@ async def search_snomed(
             d.concept_id,
             d.term,
             d.type_id,
-            c.active as concept_active,
-            d.active as description_active,
+            c.active AS concept_active,
+            d.active AS description_active,
             CASE 
               WHEN d.type_id = 900000000000013009 THEN 1  -- Synonym
               WHEN d.type_id = 900000000000003001 THEN 2  -- FSN
               ELSE 3
-            END as type_rank,
+            END AS type_rank,
             CASE 
               WHEN d.term ILIKE :exact_q THEN 1
               WHEN d.term ILIKE :q THEN 2
               ELSE 3
-            END as match_rank
+            END AS match_rank
           FROM ontology.descriptions d
           JOIN ontology.concepts c ON d.concept_id = c.concept_id
           WHERE d.term ILIKE :q
-            AND d.active = true
-            AND c.active = true
+            AND d.active = TRUE
+            AND c.active = TRUE
           ORDER BY d.concept_id, type_rank, match_rank, d.term
         )
         SELECT concept_id, term, type_id, concept_active, description_active
         FROM ranked_results
         ORDER BY match_rank, type_rank, term
-        LIMIT :limit
+        LIMIT :limit;
         """
-        
-        params = {
-            "q": f"%{q}%",
-            "exact_q": q,
-            "limit": limit
-        }
-        
-        result = await session.execute(text(sql), params)
-        rows = result.mappings().all()
-        
-        return [dict(row) for row in rows]
-        
+        params = {"q": f"%{q}%", "exact_q": q, "limit": limit}
+        rows = (await session.execute(text(sql), params)).mappings().all()
+        return [dict(r) for r in rows]
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error searching SNOMED terms: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error searching SNOMED terms: {e}")
+
 
 @router.get("/concept/{concept_id}")
 async def get_snomed_concept(
@@ -73,9 +63,7 @@ async def get_snomed_concept(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get detailed information about a specific SNOMED CT concept.
-    
-    Returns concept information, preferred term, synonyms, and relationships.
+    Return concept metadata, a few synonyms, and some outgoing relationships.
     """
     try:
         concept_sql = """
@@ -85,149 +73,123 @@ async def get_snomed_concept(
             c.active,
             c.module_id,
             c.definition_status,
-            d.term as preferred_term,
-            d.type_id as term_type_id
+            d.term AS preferred_term,
+            d.type_id AS term_type_id
         FROM ontology.concepts c
-        LEFT JOIN ontology.descriptions d ON c.concept_id = d.concept_id 
-            AND d.type_id = 900000000000013009  -- Synonym
-            AND d.active = true
+        LEFT JOIN ontology.descriptions d
+          ON d.concept_id = c.concept_id
+         AND d.type_id = 900000000000013009  -- Synonym
+         AND d.active = TRUE
         WHERE c.concept_id = :concept_id
-        LIMIT 1
+        LIMIT 1;
         """
-        
-        concept_result = await session.execute(text(concept_sql), {"concept_id": concept_id})
-        concept_row = concept_result.mappings().first()
-        
+        concept_row = (
+            await session.execute(text(concept_sql), {"concept_id": concept_id})
+        ).mappings().first()
         if not concept_row:
-            raise HTTPException(
-                status_code=404,
-                detail=f"SNOMED concept {concept_id} not found"
-            )
-        
-        concept_data = dict(concept_row)
-        
-        synonyms_sql = """
+            raise HTTPException(status_code=404, detail=f"SNOMED concept {concept_id} not found")
+        concept = dict(concept_row)
+
+        syn_sql = """
         SELECT term, type_id, active
         FROM ontology.descriptions
-        WHERE concept_id = :concept_id AND active = true
+        WHERE concept_id = :concept_id
+          AND active = TRUE
         ORDER BY 
-            CASE WHEN type_id = 900000000000013009 THEN 1 ELSE 2 END,
-            term
-        LIMIT 10
+          CASE WHEN type_id = 900000000000013009 THEN 1 ELSE 2 END,
+          term
+        LIMIT 10;
         """
-        
-        synonyms_result = await session.execute(text(synonyms_sql), {"concept_id": concept_id})
-        synonyms_rows = synonyms_result.mappings().all()
-        concept_data["synonyms"] = [dict(row) for row in synonyms_rows]
-        
-        relationships_sql = """
+        syn_rows = (
+            await session.execute(text(syn_sql), {"concept_id": concept_id})
+        ).mappings().all()
+        concept["synonyms"] = [dict(r) for r in syn_rows]
+
+        rel_sql = """
         SELECT 
-            r.relationship_id,
-            r.source_id,
-            r.destination_id,
-            r.type_id,
-            r.active,
-            d.term as destination_term
+          r.relationship_id,
+          r.source_id,
+          r.destination_id,
+          r.type_id,
+          r.active,
+          d.term AS destination_term
         FROM ontology.relationships r
-        LEFT JOIN ontology.descriptions d ON r.destination_id = d.concept_id
-            AND d.type_id = 900000000000013009  -- Synonym
-            AND d.active = true
-        WHERE r.source_id = :concept_id AND r.active = true
-        ORDER BY r.type_id, d.term
-        LIMIT 20
+        LEFT JOIN ontology.descriptions d
+          ON d.concept_id = r.destination_id
+         AND d.type_id = 900000000000013009  -- Synonym
+         AND d.active = TRUE
+        WHERE r.source_id = :concept_id
+          AND r.active = TRUE
+        ORDER BY r.type_id, destination_term
+        LIMIT 20;
         """
-        
-        relationships_result = await session.execute(text(relationships_sql), {"concept_id": concept_id})
-        relationships_rows = relationships_result.mappings().all()
-        concept_data["relationships"] = [dict(row) for row in relationships_rows]
-        
-        return concept_data
-        
+        rel_rows = (
+            await session.execute(text(rel_sql), {"concept_id": concept_id})
+        ).mappings().all()
+        concept["relationships"] = [dict(r) for r in rel_rows]
+
+        return concept
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving SNOMED concept: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving SNOMED concept: {e}")
 
-@router.get("/map/icd10cm/{concept_id}")
-async def get_snomed_icd10cm_map(
-    concept_id: int,
+
+@router.get("/map/icd10cm/{cid}")
+async def snomed_map_icd10cm(
+    cid: int,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get ICD-10-CM mappings for a SNOMED CT concept.
-    
-    Returns all active ICD-10-CM mappings with priority and group information.
+    Return active rows from ontology.snomed_map_icd10cm for a SNOMED concept.
+    Uses SNOMED 'referenced_component_id' as the source concept column.
     """
     try:
-        sql = """
-        SELECT 
-            concept_id,
-            map_group,
-            map_priority,
-            map_target,
-            map_category_id,
-            active,
-            effective_time
-        FROM ontology.snomed_map_icd10cm
-        WHERE concept_id = :concept_id AND active = true
-        ORDER BY map_group, map_priority
-        """
-        
-        result = await session.execute(text(sql), {"concept_id": concept_id})
-        rows = result.mappings().all()
-        
-        if not rows:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No ICD-10-CM mappings found for SNOMED concept {concept_id}"
-            )
-        
-        return [dict(row) for row in rows]
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving ICD-10-CM mappings: {str(e)}"
+        sql = text(
+            """
+            SELECT
+              referenced_component_id AS concept_id,
+              map_group,
+              map_priority,
+              map_target,
+              map_category_id,
+              active,
+              effective_time
+            FROM ontology.snomed_map_icd10cm
+            WHERE referenced_component_id = :cid
+              AND active = TRUE
+            ORDER BY map_group, map_priority;
+            """
         )
+        rows = (await session.execute(sql, {"cid": cid})).mappings().all()
+        return {"concept_id": cid, "mappings": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving ICD-10-CM mappings: {e}")
+
 
 @router.get("/stats")
 async def get_snomed_stats(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get SNOMED CT database statistics.
-    
-    Returns row counts for all SNOMED tables.
+    Count rows across the core SNOMED tables + refset + ICD-10-CM map.
     """
     try:
-        stats = {}
-        
-        tables = [
+        stats: Dict[str, int | str] = {}
+        tables: List[tuple[str, str]] = [
             ("concepts", "ontology.concepts"),
             ("descriptions", "ontology.descriptions"),
             ("relationships", "ontology.relationships"),
             ("refset_members", "ontology.refset_members"),
-            ("icd10cm_mappings", "ontology.snomed_map_icd10cm")
+            ("icd10cm_mappings", "ontology.snomed_map_icd10cm"),
         ]
-        
-        for table_name, table_path in tables:
+        for name, fq in tables:
             try:
-                count_sql = f"SELECT COUNT(*) as count FROM {table_path}"
-                result = await session.execute(text(count_sql))
-                count = result.scalar()
-                stats[table_name] = count
+                count = (await session.execute(text(f"SELECT COUNT(*) FROM {fq}"))).scalar()
+                stats[name] = count
             except Exception as e:
-                stats[table_name] = f"Error: {str(e)}"
-        
+                stats[name] = f"Error: {e}"
         return stats
-        
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving SNOMED statistics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving SNOMED statistics: {e}")
