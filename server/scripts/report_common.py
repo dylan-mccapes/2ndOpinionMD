@@ -183,25 +183,16 @@ def ai_analyze(
     model: str | None = None,
 ) -> dict:
     """
-    Flexible AI call for integrity grading.
-
-    Usage (new, explicit prompts):
-        ai_analyze(system="You are auditing...", user={"tables":[...], "counts":{...}})
-
-    Usage (legacy, structured):
-        ai_analyze(kind="hpo_integrity", facts={"tables":[...], "counts":{...}})
-
     Returns:
       {"verdict": "pass"|"warn"|"fail"|"info", "rationale": "<brief text>"}
-
-    - Never raises; on error returns {"verdict":"info","rationale":"..."}.
-    - `model` overrides REPORTS_AI_MODEL env var (defaults to gpt-4o-mini).
+    - Uses OpenAI v1 client only and ALWAYS ensures the word 'json' is present.
+    - Gracefully degrades to INFO with a clear reason.
     """
     import os, json
 
-    model = model or os.getenv("REPORTS_AI_MODEL", "gpt-4o-mini")
+    if not os.getenv("OPENAI_API_KEY"):
+        return {"verdict": "info", "rationale": "AI disabled: OPENAI_API_KEY not set."}
 
-    # Compact + truncate so we don't blow up tokens
     def compact(obj, max_chars=20000) -> str:
         try:
             s = json.dumps(obj, separators=(",", ":"), default=str)
@@ -211,61 +202,38 @@ def ai_analyze(
 
     default_system = (
         "You are a meticulous database integrity QA assistant. "
-        "Given JSON facts about a dataset, reply ONLY with a JSON object:\n"
-        '{ "verdict": "pass|warn|fail|info", "rationale": "<=3 concise sentences>" } '
-        "where 'verdict' reflects overall integrity risk."
+        'Respond only with json: {"verdict":"pass|warn|fail|info","rationale":"<=3 concise sentences"}'
     )
-
-    # Prefer explicit system/user if provided; otherwise build from kind/facts.
     sys_msg = system or default_system
-    if user is None:
-        payload = {"kind": kind or "generic", "facts": facts or {}}
-        user_msg = compact(payload)
-    else:
-        user_msg = compact(user)
+    # enforce 'json' hint even if caller supplied a custom system message
+    if "json" not in sys_msg.lower():
+        sys_msg += ' Respond only with json: {"verdict":"pass|warn|fail|info","rationale":"<=3 concise sentences"}.'
+
+    payload = {"kind": kind or "generic", "facts": facts or {}}
+    user_msg = compact(user if user is not None else payload)
 
     try:
-        try:
-            # New SDK
-            from openai import OpenAI
-            client = OpenAI()
-            resp = client.chat.completions.create(
-                model=model,
-                temperature=0,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": sys_msg},
-                    {"role": "user", "content": user_msg},
-                ],
-            )
-            txt = resp.choices[0].message.content
-        except Exception:
-            # Legacy SDK fallback
-            import openai as legacy_openai  # type: ignore
-            if not os.getenv("OPENAI_API_KEY"):
-                raise RuntimeError("OPENAI_API_KEY not set")
-            legacy_openai.api_key = os.getenv("OPENAI_API_KEY")
-            resp = legacy_openai.ChatCompletion.create(
-                model=model,
-                temperature=0,
-                messages=[
-                    {"role": "system", "content": sys_msg + " Respond ONLY with valid JSON."},
-                    {"role": "user", "content": user_msg},
-                ],
-            )
-            txt = resp["choices"][0]["message"]["content"]
-
+        from openai import OpenAI
+        client = OpenAI()
+        mdl = model or os.getenv("REPORTS_AI_MODEL", "gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=mdl,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+        txt = resp.choices[0].message.content
         data = json.loads(txt)
         verdict = str(data.get("verdict", "info")).strip().lower()
         if verdict not in ("pass", "warn", "fail", "info"):
             verdict = "info"
-        rationale = str(data.get("rationale", "")).strip()
-        return {"verdict": verdict, "rationale": rationale or "No AI rationale provided."}
+        rationale = (data.get("rationale") or "").strip() or "No AI rationale provided."
+        return {"verdict": verdict, "rationale": rationale}
     except Exception as e:
-        return {
-            "verdict": "info",
-            "rationale": f"AI analysis unavailable or failed: {type(e).__name__}: {e}",
-        }
+        return {"verdict": "info", "rationale": f"AI unavailable: {type(e).__name__}: {e}"}
 
 def render_ai_assessment(story, title: str, ai_obj: dict, content_width: float):
     """

@@ -3,8 +3,22 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from .db import get_conn, put_conn
+import inspect
+import asyncio
 
 router = APIRouter(prefix="/api/mimic4", tags=["MIMIC-IV"])
+
+async def _get_conn():
+    c = get_conn()
+    if inspect.isawaitable(c):
+        return await c
+    return c
+
+async def _put_conn(conn):
+    p = put_conn(conn)
+    if inspect.isawaitable(p):
+        return await p
+    return p
 
 # ---- Models
 class DxItem(BaseModel):
@@ -88,7 +102,7 @@ def cohort_by_icd(
         cur.close(); put_conn(conn)
 
 @router.get("/labs", response_model=List[LabEvent])
-def labs(
+async def labs(
     hadm_id: Optional[int] = None,
     subject_id: Optional[int] = None,
     label: Optional[str] = Query(None, description="LIKE match on d_labitems.label"),
@@ -99,7 +113,9 @@ def labs(
 ):
     if not any([hadm_id, subject_id, itemid, label]):
         raise HTTPException(400, "Provide at least one filter: hadm_id, subject_id, itemid, or label")
-    conn = get_conn(); cur = conn.cursor()
+
+    conn = await _get_conn()
+    cur = conn.cursor()
     try:
         sql = """
           SELECT l.itemid, dl.label, l.charttime, l.valuenum, l.valueuom, l.value, l.hadm_id, l.subject_id
@@ -108,24 +124,23 @@ def labs(
           WHERE 1=1
         """
         params = []
-        if hadm_id:   sql += " AND l.hadm_id=%s";   params.append(hadm_id)
-        if subject_id:sql += " AND l.subject_id=%s";params.append(subject_id)
-        if itemid:    sql += " AND l.itemid=%s";    params.append(itemid)
-        if label:     sql += " AND dl.label ILIKE %s"; params.append(f"%{label}%")
-        if since:     sql += " AND l.charttime >= %s"; params.append(since)
-        if until:     sql += " AND l.charttime <= %s"; params.append(until)
+        if hadm_id:    sql += " AND l.hadm_id=%s";     params.append(hadm_id)
+        if subject_id: sql += " AND l.subject_id=%s";  params.append(subject_id)
+        if itemid:     sql += " AND l.itemid=%s";      params.append(itemid)
+        if label:      sql += " AND dl.label ILIKE %s";params.append(f"%{label}%")
+        if since:      sql += " AND l.charttime >= %s";params.append(since)
+        if until:      sql += " AND l.charttime <= %s";params.append(until)
         sql += " ORDER BY l.charttime DESC NULLS LAST LIMIT %s"; params.append(limit)
+
         cur.execute(sql, tuple(params))
         rows = cur.fetchall()
-        out = []
-        for r in rows:
-            out.append(LabEvent(
-                itemid=r[0], label=r[1],
-                charttime=r[2].isoformat() if r[2] else None,
-                valuenum=r[3], valueuom=r[4], value=r[5],
-                hadm_id=r[6], subject_id=r[7]
-            ))
-        return out
+        return [LabEvent(
+            itemid=r[0], label=r[1],
+            charttime=r[2].isoformat() if r[2] else None,
+            valuenum=r[3], valueuom=r[4], value=r[5],
+            hadm_id=r[6], subject_id=r[7]
+        ) for r in rows]
     finally:
-        cur.close(); put_conn(conn)
+        cur.close()
+        await _put_conn(conn)
 

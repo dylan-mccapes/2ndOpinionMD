@@ -13,10 +13,11 @@ from typing import List, Tuple, Optional
 # Helpers: DB
 # ----------------------------
 def get_conn():
-    dsn = os.getenv("DATABASE_URL")
+    dsn = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL") or "postgresql://localhost/2ndopinionmd"
     if not dsn:
         # fall back to local
         dsn = "postgresql://localhost/2ndopinionmd"
+    dsn = re.sub(r"\+asyncpg\b", "", dsn)
     return psycopg2.connect(dsn)
 
 def safe_span_text(note_text: str | None, start, end) -> str | None:
