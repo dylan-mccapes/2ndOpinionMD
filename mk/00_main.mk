@@ -151,7 +151,8 @@ rag-backfill-meta-dry:
 -include mk/07_mimic_structured.mk
 -include mk/08_notes.mk
 -include mk/09_n2c2.mk
--include mk/10_clinvar_clingen.mk
+-include mk/10_clinvar.mk
+-include mk/11_clingen.mk
 -include mk/12_panelapp.mk
 -include mk/13_guidelines.mk
 -include mk/14_diagrules.mk

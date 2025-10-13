@@ -51,5 +51,31 @@ clinvar-report-pdf:
 	@$(PY) server/scripts/report_clinvar_pdf.py \
 	  --out db_integrity_reports/10_clinvar.pdf $(if $(AI),--ai,)
 
+# -------- ClinGen ACI report (portable) --------
+# Auto-detect a Python if $(PY) isn't set upstream
+PY ?= $(shell [ -x server/venv312/bin/python ] && printf server/venv312/bin/python || (command -v python3 || command -v python))
 
-reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf
+clingen-aci-report:
+	@mkdir -p db_integrity_reports
+	@env PYTHONIOENCODING=utf-8 LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+		$(PY) server/scripts/report_clingen_aci_pdf.py --out db_integrity_reports/11_clingen_aci.pdf
+	@printf "📄 wrote %s\n" "db_integrity_reports/11_clingen_aci.pdf"
+
+
+# =========================
+# 90) Integrity Reports
+# =========================
+
+# PanelApp integrity report (12_panelapp.pdf)
+panelapp-report:
+	@$(PY) server/scripts/report_panelapp_pdf.py --out db_integrity_reports/12_panelapp.pdf $(if $(AI),--ai,)
+
+# (optional aggregator)
+reports: panelapp-report
+
+
+reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf clingen-aci-report clingen-validity-report-pdf
+
+# 11) ClinGen Validity report
+clingen-validity-report-pdf:
+	@$(PY) server/scripts/report_clingen_validity_pdf.py --out db_integrity_reports/11_clingen_validity.pdf $(if $(AI),--ai,)

@@ -63,3 +63,20 @@ SET ts =
  || setweight(to_tsvector('english', coalesce(array_to_string(evidence, ' '), '')), 'D')
 WHERE ts IS NULL OR ts = '';
 
+-- Helper MV for latest version per panel (by version segments; fallback to imported_at)
+CREATE MATERIALIZED VIEW IF NOT EXISTS molecular.v_gene_panels_latest AS
+WITH ranked AS (
+  SELECT gp.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY gp.panel_id
+           ORDER BY
+             split_part(gp.panel_version,'.',1)::int DESC,
+             split_part(gp.panel_version,'.',2)::int DESC,
+             split_part(gp.panel_version,'.',3)::int DESC,
+             gp.imported_at DESC
+         ) AS rn
+  FROM molecular.gene_panels gp
+)
+SELECT * FROM ranked WHERE rn = 1;
+
+CREATE INDEX IF NOT EXISTS v_gp_latest_panel ON molecular.v_gene_panels_latest (panel_id);

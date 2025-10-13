@@ -45,7 +45,11 @@ async def panel_detail(
         panel_id = :panel_id AND panel_version = (
             SELECT panel_version FROM molecular.gene_panels
             WHERE panel_id = :panel_id
-            ORDER BY panel_version DESC
+            ORDER BY
+              split_part(panel_version,'.',1)::int DESC,
+              split_part(panel_version,'.',2)::int DESC,
+              split_part(panel_version,'.',3)::int DESC,
+              imported_at DESC
             LIMIT 1
         )"""
 
