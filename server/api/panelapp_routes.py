@@ -18,7 +18,7 @@ async def search_panelapp(
     SELECT panel_id, panel_name, panel_version, gene_symbol, confidence_level
     FROM molecular.gene_panels
     WHERE ts @@ websearch_to_tsquery('english', :q)
-      AND (:only_green::bool IS FALSE OR confidence_level ILIKE 'High')
+    AND (:only_green = false OR confidence_level IN ('High','Green','3'))
     ORDER BY panel_name, gene_symbol
     LIMIT :limit
     """
@@ -39,38 +39,38 @@ async def panel_detail(
     session: AsyncSession = Depends(get_session),
 ):
     if version:
-        where = "panel_id = :panel_id AND panel_version = :version"
+        sql = """
+        SELECT panel_id, panel_name, panel_version, gene_symbol, confidence_level,
+            mode_of_inheritance, hgnc_id, ensembl_gene_id_grch37, ensembl_gene_id_grch38
+        FROM molecular.gene_panels
+        WHERE panel_id = :panel_id AND panel_version = :version
+        AND (:only_green = false OR confidence_level IN ('High','Green','3'))
+        ORDER BY gene_symbol
+        """
+        params = {"panel_id": panel_id, "version": version, "only_green": only_green}
+        rows = (await session.execute(
+            text(sql).bindparams(
+                bindparam("panel_id", panel_id),
+                bindparam("version", version),
+                bindparam("only_green", only_green),
+            )
+        )).mappings().all()
     else:
-        where = """
-        panel_id = :panel_id AND panel_version = (
-            SELECT panel_version FROM molecular.gene_panels
-            WHERE panel_id = :panel_id
-            ORDER BY
-              split_part(panel_version,'.',1)::int DESC,
-              split_part(panel_version,'.',2)::int DESC,
-              split_part(panel_version,'.',3)::int DESC,
-              imported_at DESC
-            LIMIT 1
-        )"""
-
-    sql = f"""
-    SELECT panel_id, panel_name, panel_version, gene_symbol, confidence_level,
-           mode_of_inheritance, hgnc_id, ensembl_gene_id_grch37, ensembl_gene_id_grch38
-    FROM molecular.gene_panels
-    WHERE {where}
-      AND (:only_green::bool IS FALSE OR confidence_level ILIKE 'High')
-    ORDER BY gene_symbol
-    """
-    params = {"panel_id": panel_id, "version": version, "only_green": only_green}
-    rows = (await session.execute(text(sql), params)).mappings().all()
-    if not rows:
-        raise HTTPException(404, detail="Panel not found")
-    header = {
-        "panel_id": rows[0]["panel_id"],
-        "panel_name": rows[0]["panel_name"],
-        "panel_version": rows[0]["panel_version"],
-        "n_genes": len(rows),
-    }
+        # Use MV that already resolves the latest version and contains ALL its gene rows
+        sql = """
+        SELECT panel_id, panel_name, panel_version, gene_symbol, confidence_level,
+            mode_of_inheritance, hgnc_id, ensembl_gene_id_grch37, ensembl_gene_id_grch38
+        FROM molecular.v_gene_panels_latest
+        WHERE panel_id = :panel_id
+        AND (:only_green = false OR confidence_level IN ('High','Green','3'))
+        ORDER BY gene_symbol
+        """
+        rows = (await session.execute(
+            text(sql).bindparams(
+                bindparam("panel_id", panel_id),
+                bindparam("only_green", only_green),
+            )
+        )).mappings().all()
     return {"panel": header, "genes": list(rows)}
 
 @router.get("/stats")
