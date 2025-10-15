@@ -61,6 +61,18 @@ clingen-aci-report:
 		$(PY) server/scripts/report_clingen_aci_pdf.py --out db_integrity_reports/11_clingen_aci.pdf
 	@printf "📄 wrote %s\n" "db_integrity_reports/11_clingen_aci.pdf"
 
+### -------- NICE Guidelines report --------
+nice-report:
+	@$(PY) server/scripts/report_nice_pdf.py $(if $(AI),--ai,)
+	@echo "📄 wrote db_integrity_reports/13_guidelines_nice.pdf"
+
+nice-status:
+	@$(PSQL) -c "\
+		WITH t AS (SELECT to_regclass('guidelines.docs') IS NOT NULL AS has), \
+		c AS (SELECT COUNT(*)::bigint AS n FROM guidelines.docs WHERE source_key='nice') \
+		SELECT CASE WHEN NOT (SELECT has FROM t) THEN 'FAIL' \
+					WHEN (SELECT n FROM c)=0 THEN 'WARN' \
+					ELSE 'PASS' END AS status;"
 
 # =========================
 # 90) Integrity Reports

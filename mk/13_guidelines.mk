@@ -76,3 +76,26 @@ guidelines-ingest-all-nice:
 	  [ -n "$$dk" ] && $(MAKE) guidelines-load GUIDE_SRC_KEY=nice GUIDE_DOC_KEY="$$dk" GUIDE_PDF="$$f"; \
 	done
 
+# ---------------- API smoke tests (Guidelines) ----------------
+api-guidelines-ping:
+	@echo "GET /api/guidelines/stats"
+	@curl -sf "$(API_BASE)/api/guidelines/stats" | jq '.docs_by_source'
+	@echo "GET /api/guidelines/docs?source=nice"
+	@curl -sf "$(API_BASE)/api/guidelines/docs?source=nice" | jq '.[0]'
+
+api-guidelines-doccheck:
+	@docs=$$(curl -sf "$(API_BASE)/api/guidelines/docs?source=nice" | jq 'length'); \
+	if [ "$$docs" -ge 1 ]; then echo "docs: OK ($$docs)"; else echo "!! docs: 0"; exit 4; fi
+
+api-guidelines-sections:
+	@test -n "$(DOC_KEY)" || (echo "Set DOC_KEY=NG220 (or similar)"; exit 2)
+	@curl -sf "$(API_BASE)/api/guidelines/sections?doc_key=$(DOC_KEY)&limit=5" | jq '. | length'
+
+api-guidelines-search:
+	@q=$${Q:-relapse}; \
+	lim=$${LIMIT:-5}; \
+	curl -sf "$(API_BASE)/api/guidelines/search?q=$$q&limit=$$lim" | jq '. | length'
+
+
+api-guidelines-smoke: api-guidelines-ping api-guidelines-doccheck
+	@echo "✓ API guidelines smoke passed"
