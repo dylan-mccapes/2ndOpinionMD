@@ -22,7 +22,7 @@ Example:
 """
 import os, sys, argparse, hashlib, datetime as dt, subprocess, shlex
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 
 DATABASE_URL = os.getenv("SYNC_DATABASE_URL", "postgresql://2ndopinionmd@localhost:5432/2ndopinionmd")
 
@@ -63,29 +63,40 @@ def extract_pdf_pages(path):
         return []
 
 def upsert_doc(conn, *, source_key, doc_key, title, url, pdf_path, sha256):
-    sql = """
-    INSERT INTO guidelines.docs
-      (source_key, doc_key, version, title, url, published_at, fetched_at,
-       sha256, mime_type, bytes, storage_path, text_full, meta)
-    VALUES (%s,%s,NULL,%s,%s,NULL,now(),%s,'application/pdf',NULL,%s,%s)
-    ON CONFLICT (source_key, doc_key, version)
-    DO UPDATE SET
-      title = EXCLUDED.title,
-      url = EXCLUDED.url,
-      fetched_at = now(),
-      sha256 = EXCLUDED.sha256,
-      storage_path = EXCLUDED.storage_path,
-      text_full = EXCLUDED.text_full,
-      meta = COALESCE(guidelines.docs.meta,'{}'::jsonb) || EXCLUDED.meta
-    RETURNING id;
-    """
-    # full text will be supplied by caller; here we just prepare statement
+    meta = Json({"loader": "load_guideline_pdf.py"})
+    abs_path = os.path.abspath(pdf_path)
+
     with conn.cursor() as cur:
-        # we set text_full later, so pass empty string now; caller re-executes with actual content
-        cur.execute(sql, (source_key, doc_key, title, url, sha256, pdf_path, {"loader":"load_guideline_pdf.py"}))
+        # 1) Try update existing (version IS NULL)
+        cur.execute("""
+            UPDATE guidelines.docs
+               SET title=%s,
+                   url=%s,
+                   fetched_at=now(),
+                   sha256=%s,
+                   mime_type='application/pdf',
+                   storage_path=%s,
+                   meta=COALESCE(meta,'{}'::jsonb) || %s
+             WHERE source_key=%s AND doc_key=%s AND version IS NULL
+         RETURNING id
+        """, (title, url or "", sha256, abs_path, meta, source_key, doc_key))
+        row = cur.fetchone()
+        if row:
+            conn.commit()
+            return row[0]
+
+        # 2) Insert fresh
+        cur.execute("""
+            INSERT INTO guidelines.docs
+              (source_key, doc_key, version, title, url, fetched_at, sha256, mime_type, storage_path, meta)
+            VALUES (%s, %s, NULL, %s, %s, now(), %s, 'application/pdf', %s, %s)
+         RETURNING id
+        """, (source_key, doc_key, title, url or "", sha256, abs_path, meta))
         doc_id = cur.fetchone()[0]
     conn.commit()
     return doc_id
+
+
 
 def update_doc_fulltext(conn, doc_id, full_text):
     with conn.cursor() as cur:
@@ -93,17 +104,13 @@ def update_doc_fulltext(conn, doc_id, full_text):
     conn.commit()
 
 def replace_sections(conn, doc_id, pages):
-    """
-    Delete existing sections for doc_id, then insert one row per page.
-    Returns list[(sect_id, ord)] aligned to pages-order.
-    """
     with conn.cursor() as cur:
         cur.execute("DELETE FROM guidelines.sections WHERE doc_id=%s", (doc_id,))
     conn.commit()
 
     rows = []
     for i, txt in enumerate(pages, start=1):
-        rows.append((doc_id, i, None, f"page-{i}", txt, {}))
+        rows.append((doc_id, i, None, f"page-{i}", txt, Json({})))  # <- Json wrapper
 
     sql = """
       INSERT INTO guidelines.sections
@@ -114,20 +121,19 @@ def replace_sections(conn, doc_id, pages):
     with conn.cursor() as cur:
         ret = execute_values(cur, sql, rows, page_size=200, fetch=True)
     conn.commit()
-    # return in the same order as inserted (ord ascending)
     ret.sort(key=lambda x: x[1])
     return ret
 
 def replace_rag(conn, *, source_key, title, doc_id, doc_key, sect_ids_and_ords):
     """
     Remove existing RAG rows for this doc, then insert one per section.
-    We keep ts NULL here; your 'make guidelines-fts' populates it.
     """
+    from psycopg2.extras import Json
+
     with conn.cursor() as cur:
         cur.execute("DELETE FROM public.rag_corpus WHERE source=%s AND doc_id=%s", (source_key, doc_id))
     conn.commit()
 
-    # fetch the fresh section texts to avoid re-plumbing them here
     with conn.cursor() as cur:
         cur.execute("""
           SELECT s.id, s.ord, s.text
@@ -140,13 +146,13 @@ def replace_rag(conn, *, source_key, title, doc_id, doc_key, sect_ids_and_ords):
     rag_rows = []
     for sid, ord_, text in sect_rows:
         rag_rows.append((
-            source_key,                                 # source
-            title or doc_key,                           # title
-            text,                                       # text
-            None,                                       # ts (NULL; filled by guidelines-fts)
-            {"doc_key": doc_key},                       # meta
-            doc_id,                                     # doc_id
-            sid                                         # sect_id
+            source_key,
+            title or doc_key,
+            text,
+            None,                       # ts stays NULL; 'make guidelines-fts' will fill it
+            Json({"doc_key": doc_key}),
+            doc_id,
+            sid
         ))
 
     sql = """
@@ -158,6 +164,7 @@ def replace_rag(conn, *, source_key, title, doc_id, doc_key, sect_ids_and_ords):
         execute_values(cur, sql, rag_rows, page_size=300)
     conn.commit()
     return len(rag_rows)
+
 
 def main():
     ap = argparse.ArgumentParser()

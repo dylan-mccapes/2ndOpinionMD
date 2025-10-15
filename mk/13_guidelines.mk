@@ -1,25 +1,45 @@
 # =========================================================
 # 13) NICE Guidelines PDFs/HTML (+ 18 CKS under guidelines)
 # =========================================================
+GUIDE_EMBED_MODEL ?= text-embedding-3-small
+
 guidelines-schema:
 	@$(PSQL) -f database/schemas/setup_guidelines_schema.sql
 
 guidelines-load:
 	@test -n "$(GUIDE_PDF)" || (echo "Set GUIDE_PDF=path/to/file.pdf"; exit 1)
 	@$(PY) server/scripts/load_guideline_pdf.py \
-		SRC_KEY="$(GUIDE_SRC_KEY)" DOC_KEY="$(GUIDE_DOC_KEY)" \
-		TITLE="$(GUIDE_TITLE)" URL="$(GUIDE_URL)" PDF="$(GUIDE_PDF)"
+	  --src "$(GUIDE_SRC_KEY)" \
+	  --doc "$(GUIDE_DOC_KEY)" \
+	  --title "$(GUIDE_TITLE)" \
+	  --url "$(GUIDE_URL)" \
+	  "$(GUIDE_PDF)"
 	@$(MAKE) guidelines-fts
-	@$(MAKE) guidelines-embed WHERE="source='$(GUIDE_SRC_KEY)' AND (meta->>'doc_key')='$(GUIDE_DOC_KEY)' AND embedding IS NULL"
+	@$(MAKE) guidelines-chunk GUIDE_DOC_KEY="$(GUIDE_DOC_KEY)"
+	@$(MAKE) guidelines-fts
+	@$(MAKE) guidelines-embed-chunks WHERE="doc_id IN (SELECT id FROM guidelines.docs WHERE doc_key='$(GUIDE_DOC_KEY)') AND embedding IS NULL"
 	@$(MAKE) guidelines-stats
 
 guidelines-fts:
 	@$(PSQL) -c "\
-UPDATE public.rag_corpus \
-SET ts = to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(text,'')) \
-WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_guidelines') AND ts IS NULL;"
+		UPDATE public.rag_corpus \
+		SET ts = to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(text,'')) \
+		WHERE source IN ('nice','cks','who_eml','cdc_opioid','va_guidelines') AND ts IS NULL;"
+	@$(PSQL) -c "\
+		UPDATE public.rag_corpus_chunks \
+		SET ts = to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(text,'')) \
+		WHERE ts IS NULL;"
 
-guidelines-embed:
+guidelines-chunk:
+	@$(PY) server/scripts/chunk_guidelines.py --sources "nice,cks" --min-len 8000 --size 3000 --overlap 300 $(if $(GUIDE_DOC_KEY),--doc-key $(GUIDE_DOC_KEY),)
+
+guidelines-embed-chunks:
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus_chunks --id-col id --text-col text \
+	  --embedding-col embedding --model $(GUIDE_EMBED_MODEL) \
+	  --batch 256 --where "$(if $(WHERE),$(WHERE),embedding IS NULL)"
+
+guidelines-embed-corpus:
 	@$(PY) server/scripts/embed_table.py \
 	  --table public.rag_corpus --id-col id --text-col text \
 	  --embedding-col embedding --model $(GUIDE_EMBED_MODEL) \
