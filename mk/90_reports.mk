@@ -85,6 +85,22 @@ panelapp-report:
 # (optional aggregator)
 reports: panelapp-report
 
+### -------- Diagnostic Rules (ACR/EULAR) --------
+diagrules-report:
+	@$(PY) server/scripts/report_diagrules_pdf.py $(if $(AI),--ai,)
+	@echo "📄 wrote db_integrity_reports/14_diagnostic_rules.pdf"
+
+diagrules-status:
+	@$(PSQL) -c "\
+WITH p AS ( \
+  SELECT to_regclass('guidelines.diagnostic_rules') IS NOT NULL AS has_table, \
+         COALESCE((SELECT COUNT(*) FROM guidelines.diagnostic_rules),0) AS rows \
+) SELECT CASE \
+  WHEN NOT has_table THEN 'FAIL' \
+  WHEN rows=0       THEN 'WARN' \
+  ELSE 'PASS' END AS status FROM p;"
+
+
 
 reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf clingen-aci-report clingen-validity-report-pdf
 

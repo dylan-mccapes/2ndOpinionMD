@@ -31,3 +31,12 @@ CREATE TABLE IF NOT EXISTS guidelines.diagnostic_rule_tests (
 CREATE INDEX IF NOT EXISTS diagnostic_rules_key_idx   ON guidelines.diagnostic_rules(rule_key);
 CREATE INDEX IF NOT EXISTS diagnostic_rules_title_idx ON guidelines.diagnostic_rules USING gin (to_tsvector('english', title));
 
+-- Fast filter/sort
+CREATE INDEX IF NOT EXISTS diag_rules_org_idx       ON guidelines.diagnostic_rules (org);
+CREATE INDEX IF NOT EXISTS diag_rules_condition_idx ON guidelines.diagnostic_rules (condition);
+CREATE INDEX IF NOT EXISTS diag_rules_version_idx   ON guidelines.diagnostic_rules (version);
+CREATE INDEX IF NOT EXISTS diag_rules_date_idx      ON guidelines.diagnostic_rules (published_date);
+
+-- JSONB and array search
+CREATE INDEX IF NOT EXISTS diag_rules_rulejson_gin  ON guidelines.diagnostic_rules USING gin (rule_json jsonb_path_ops);
+CREATE INDEX IF NOT EXISTS diag_rules_sources_gin   ON guidelines.diagnostic_rules USING gin (source_urls);

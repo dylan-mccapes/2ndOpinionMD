@@ -29,3 +29,26 @@ diagrules-embed:
 
 diagrules-rag: diagrules-rag-upsert diagrules-embed
 
+# Quick health SQL
+diagrules-smoke:
+	@$(PSQL) -c "SELECT COUNT(*) rules FROM guidelines.diagnostic_rules;"
+	@$(PSQL) -c "SELECT COUNT(*) tests FROM guidelines.diagnostic_rule_tests;"
+
+# API smoke: list → pick a key → get → (optional) apply sample for McDonald 2017
+api-diagrules-smoke:
+	@set -e; \
+	base="$(API_BASE)"; \
+	echo "GET $$base/api/diagnostic_rules/list"; \
+	k=$$(curl -sf "$$base/api/diagnostic_rules/list" | jq -r '.[0].rule_key'); \
+	[ -n "$$k" ] || (echo "No rules in API list"; exit 2); \
+	echo "Rule key -> $$k"; \
+	echo "GET $$base/api/diagnostic_rules/$$k"; \
+	curl -sf "$$base/api/diagnostic_rules/$$k" | jq -r '.rule_key' >/dev/null; \
+	if [ "$$k" = "mcdonald_2017" ]; then \
+	  echo "POST $$base/api/diagnostic_rules/$$k/apply"; \
+	  curl -sf -X POST "$$base/api/diagnostic_rules/$$k/apply" \
+	    -H 'Content-Type: application/json' \
+	    -d '{"has_typical_cis":true,"mri_lesion_sites_positive":3,"new_t2_or_gad_on_followup":true}' \
+	    | jq . >/dev/null; \
+	fi; \
+	echo "✓ API diagnostic_rules smoke passed"
