@@ -48,3 +48,14 @@ gwas-rag: gwas-rag-upsert gwas-embed
 gwas-api-smoke:
 	@curl -s "$(API_BASE)/api/gwas/stats" | jq .
 
+gwas-audit-sql:
+	@$(PSQL) -f database/sql/16_gwas_audit.sql -tA | jq .
+
+# optional: beefier FTS index (generated column)
+gwas-add-indexes:
+	@$(PSQL) -c "ALTER TABLE molecular.gwas_hits \
+	  ADD COLUMN IF NOT EXISTS fts tsvector \
+	  GENERATED ALWAYS AS (to_tsvector('english', \
+	    coalesce(disease_trait,'') || ' ' || coalesce(mapped_trait,'') || ' ' || \
+	    coalesce(reported_genes,'') || ' ' || coalesce(mapped_gene,''))) STORED;"
+	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS gwas_fts_gin ON molecular.gwas_hits USING gin (fts);"

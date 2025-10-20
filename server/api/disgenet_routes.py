@@ -79,3 +79,27 @@ def disgenet_search(
     rows = pg_read(sql, tuple(params))
     return JSONResponse(jsonable_encoder(rows))
 
+@router.get("/disease/{name}")
+def disgenet_by_disease(name: str, limit: int = Query(10, ge=1, le=200)):
+    rows = pg_read("""
+        SELECT assoc_id, gene_ncbi_id, gene_symbol, disease_name, disease_umls_cui,
+               disease_type, score::float AS score, num_pmids::int AS num_pmids
+        FROM molecular.disgenet_associations
+        WHERE UPPER(disease_name) = UPPER(%s)
+        ORDER BY score DESC NULLS LAST, num_pmids DESC NULLS LAST
+        LIMIT %s
+    """, (name, limit))
+    return JSONResponse(jsonable_encoder(rows))
+
+@router.get("/geneid/{ncbi_id}")
+def disgenet_by_geneid(ncbi_id: int, limit: int = Query(10, ge=1, le=200)):
+    rows = pg_read("""
+        SELECT assoc_id, gene_ncbi_id, gene_symbol, disease_name, disease_umls_cui,
+               disease_type, score::float AS score, num_pmids::int AS num_pmids
+        FROM molecular.disgenet_associations
+        WHERE gene_ncbi_id = %s
+        ORDER BY score DESC NULLS LAST, num_pmids DESC NULLS LAST
+        LIMIT %s
+    """, (ncbi_id, limit))
+    return JSONResponse(jsonable_encoder(rows))
+

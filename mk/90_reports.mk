@@ -61,6 +61,10 @@ clingen-aci-report:
 		$(PY) server/scripts/report_clingen_aci_pdf.py --out db_integrity_reports/11_clingen_aci.pdf
 	@printf "📄 wrote %s\n" "db_integrity_reports/11_clingen_aci.pdf"
 
+# 11) ClinGen Validity report
+clingen-validity-report-pdf:
+	@$(PY) server/scripts/report_clingen_validity_pdf.py --out db_integrity_reports/11_clingen_validity.pdf $(if $(AI),--ai,)
+
 ### -------- NICE Guidelines report --------
 nice-report:
 	@$(PY) server/scripts/report_nice_pdf.py $(if $(AI),--ai,)
@@ -100,10 +104,11 @@ WITH p AS ( \
   WHEN rows=0       THEN 'WARN' \
   ELSE 'PASS' END AS status FROM p;"
 
+# 15_disgenet.mk
+disgenet-report:
+	@AI=$(AI) $(PY) server/scripts/report_disgenet_pdf.py
 
+gwas-report:
+	@AI="$(AI)" BRIEF="$(BRIEF)" NO_HIST="$(NO_HIST)" $(PY) server/scripts/report_gwas_pdf.py
 
 reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf clingen-aci-report clingen-validity-report-pdf
-
-# 11) ClinGen Validity report
-clingen-validity-report-pdf:
-	@$(PY) server/scripts/report_clingen_validity_pdf.py --out db_integrity_reports/11_clingen_validity.pdf $(if $(AI),--ai,)

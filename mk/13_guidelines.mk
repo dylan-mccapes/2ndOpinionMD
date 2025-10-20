@@ -96,6 +96,5 @@ api-guidelines-search:
 	lim=$${LIMIT:-5}; \
 	curl -sf "$(API_BASE)/api/guidelines/search?q=$$q&limit=$$lim" | jq '. | length'
 
-
 api-guidelines-smoke: api-guidelines-ping api-guidelines-doccheck
 	@echo "✓ API guidelines smoke passed"

@@ -108,3 +108,13 @@ disgenet-audit:
 	@echo 'DB assoc rows:' && psql -d 2ndopinionmd -Atc "SELECT COUNT(*) FROM molecular.disgenet_associations"
 	@echo 'DB distinct genes:' && psql -d 2ndopinionmd -Atc "SELECT COUNT(DISTINCT gene_ncbi_id) FROM molecular.disgenet_associations"
 
+disgenet-audit-sql:
+	@$(PSQL) -tA -f 15_disgenet_audit.sql | jq .
+
+# convenience: create all recommended indexes
+disgenet-add-indexes:
+	@$(PSQL) -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS disgenet_gene_upper_idx ON molecular.disgenet_associations (upper(gene_symbol));"
+	@$(PSQL) -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS disgenet_disease_upper_idx ON molecular.disgenet_associations (upper(disease_name));"
+	@$(PSQL) -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS disgenet_geneid_score_pmids_idx ON molecular.disgenet_associations (gene_ncbi_id, score DESC, num_pmids DESC);"
+	@$(PSQL) -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS disgenet_year_initial_brin ON molecular.disgenet_associations USING brin (year_initial);"
+	@$(PSQL) -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS disgenet_year_final_brin ON molecular.disgenet_associations USING brin (year_final);"

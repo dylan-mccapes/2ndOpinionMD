@@ -48,7 +48,7 @@ for r in rows:
     score    = pick(r, "score", "scoreValue", "gda_score")
 
     # hard requirements — mirror your existing SQL paths
-    if not assoc_id or not gene_id:
+    if not assoc_id or not gene_id or not gsym or not dname:
         continue
 
     try:

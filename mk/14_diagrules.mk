@@ -15,9 +15,6 @@ diagrules-apply-sample:
 	  -H 'Content-Type: application/json' \
 	  -d '{"has_typical_cis":true,"mri_lesion_sites_positive":3,"clinical_evidence_multiple_sites":false,"simultaneous_gad_non_gad":false,"new_t2_or_gad_on_followup":true,"csf_oligoclonal_bands":false,"better_diagnosis_present":false,"progression_1_year":false,"spinal_cord_lesions":0,"brain_mri_consistent":false}' | jq .
 
-diagrules-test:
-	@PYTHONPATH=. $(PY) server/scripts/run_diagnostic_rule_tests.py
-
 diagrules-rag-upsert:
 	@$(PY) server/scripts/diagrules_rag_upsert.py
 
@@ -52,3 +49,16 @@ api-diagrules-smoke:
 	    | jq . >/dev/null; \
 	fi; \
 	echo "✓ API diagnostic_rules smoke passed"
+
+diagrules-tests-seed:
+	@$(PSQL) -c "INSERT INTO guidelines.diagnostic_rule_tests (rule_key, patient_facts, expected_label) \
+	SELECT r.rule_key, '{}'::jsonb, 'n/a' \
+	FROM guidelines.diagnostic_rules r \
+	LEFT JOIN guidelines.diagnostic_rule_tests t USING (rule_key) \
+	WHERE t.rule_key IS NULL;"
+
+diagrules-report-all: diagrules-tests-seed diagrules-smoke
+	@AI=1 $(MAKE) diagrules-report
+
+diagrules-test:
+	@PYTHONPATH=. $(PY) server/scripts/run_diagnostic_rule_tests.py --junit build/test-results/diagrules.xml

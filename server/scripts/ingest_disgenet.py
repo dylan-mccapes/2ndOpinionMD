@@ -144,10 +144,14 @@ def main():
             for source_key, (colname, converter) in FIELD_MAP.items():
                 val = row.get(source_key)
                 out.append(converter(val))
-            # skip if no assoc_id (should never happen)
-            if not out[0]:
+            # required fields: assoc_id, gene_id, gene_symbol, disease_name
+            if not out[0]:  # assoc_id
+                continue
+            req_idx = [1, 2, 7]  # gene_ncbi_id, gene_symbol, disease_name
+            if any(out[i] is None for i in req_idx):
                 continue
             rows.append(tuple(out))
+
 
     if not rows:
         print(f"No rows parsed from {TSV_PATH} (headers? delimiter?)")
