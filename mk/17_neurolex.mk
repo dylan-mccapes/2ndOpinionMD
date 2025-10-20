@@ -2,12 +2,12 @@
 # 17) NeuroLex (InterLex)
 # =========================
 neurolex-schema:
-	@$(PSQL) -d $(DB_NAME) -v ON_ERROR_STOP=1 -f database/schemas/setup_neurolex_schema.sql
+	@$(PSQL) -v ON_ERROR_STOP=1 -f database/schemas/setup_neurolex_schema.sql
 
 neurolex-indexes:
 	@$(PSQL) -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_label_fts ON ontology.neurolex USING gin (to_tsvector('english', label));"
-	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_synonyms_trgm ON ontology.neurolex USING gin (synonyms gin_trgm_ops);"
+	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_label_trgm ON ontology.neurolex USING gin (label gin_trgm_ops);"
+	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_synonyms_expr_trgm ON ontology.neurolex USING gin ((array_to_string(synonyms,' ')) gin_trgm_ops);"
 	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_ann_value_prefix_idx ON ontology.neurolex_annotations (split_part(value, ':', 1), prop_label);"
 	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS neurolex_ann_value_fts ON ontology.neurolex_annotations USING gin (to_tsvector('english', value));"
 
@@ -52,8 +52,8 @@ api-neurolex-term:
 	@curl -s "$(API_BASE)/api/neurolex/term/$(ILX)" | jq .
 
 neurolex-api-smoke:
-	@curl -s "$(API_BASE)/api/neurolex/stats" | jq .
-	@curl -s "$(API_BASE)/api/neurolex/search?q=optic&limit=5" | jq .
+	@curl -s "$${API_BASE}/api/neurolex/stats" | jq .
+	@curl -s "$${API_BASE}/api/neurolex/search?q=optic&limit=5" | jq .
 
 neurolex-rag-semantic:
 	@test -n "$(Q)" || (echo "Usage: make neurolex-rag-semantic Q='query'"; exit 2)
@@ -85,3 +85,41 @@ neurolex-ann-explain:
 neurolex-ann-smoke:
 	@$(PSQL) -c "SET ivfflat.probes=$(PROBES); WITH q AS (SELECT embedding e FROM public.rag_corpus WHERE source='neurolex' ORDER BY random() LIMIT 1) SELECT id, LEFT(title,120), (rc.embedding <=> q.e) AS dist FROM public.rag_corpus rc, q WHERE rc.source='neurolex' ORDER BY rc.embedding <=> q.e LIMIT 5;"
 
+neurolex-audit-sql:
+	@psql -d $${DB_NAME:-2ndopinionmd} -tA -f database/sql/17_neurolex_audit.sql | jq .
+
+neurolex-add-indexes:
+	@$(PSQL) -v ON_ERROR_STOP=1 <<'SQL'
+		-- trigram on label (ILIKE)
+		CREATE EXTENSION IF NOT EXISTS pg_trgm;
+		CREATE INDEX IF NOT EXISTS neurolex_label_trgm
+		ON ontology.neurolex USING gin (label gin_trgm_ops);
+
+		-- generated text for synonyms to accelerate ILIKE on any synonym
+		ALTER TABLE ontology.neurolex
+		ADD COLUMN IF NOT EXISTS synonyms_text text
+		GENERATED ALWAYS AS (array_to_string(synonyms,' ')) STORED;
+		CREATE INDEX IF NOT EXISTS neurolex_synonyms_text_trgm
+		ON ontology.neurolex USING gin (synonyms_text gin_trgm_ops);
+
+		-- annotation value prefix already exists in your schema; keep it
+		ANALYZE ontology.neurolex;
+		ANALYZE ontology.neurolex_annotations;
+		SQL
+
+neurolex-add-indexes:
+	@$(PSQL) -v ON_ERROR_STOP=1 <<'SQL'
+		CREATE EXTENSION IF NOT EXISTS pg_trgm;
+		ALTER TABLE ontology.neurolex
+		ADD COLUMN IF NOT EXISTS synonyms_text text
+		GENERATED ALWAYS AS (array_to_string(synonyms,' ')) STORED;
+		CREATE INDEX IF NOT EXISTS neurolex_label_trgm
+		ON ontology.neurolex USING gin (label gin_trgm_ops);
+		CREATE INDEX IF NOT EXISTS neurolex_synonyms_text_trgm
+		ON ontology.neurolex USING gin (synonyms_text gin_trgm_ops);
+		ANALYZE ontology.neurolex;
+		ANALYZE ontology.neurolex_annotations;
+		SQL
+
+neurolex-audit-sql:
+	@$(PSQL) -f database/sql/17_neurolex_audit.sql -tA | jq .
