@@ -1,30 +1,47 @@
--- 17_neurolex_audit.sql
+-- database/sql/17_neurolex_audit.sql
+-- Emits one JSON row with overall + core stats.
+
 WITH
-terms AS (
-  SELECT COUNT(*)::int AS n_terms,
-         COUNT(*) FILTER (WHERE label IS NULL OR label='')::int AS null_label,
-         COUNT(*) FILTER (WHERE iri   IS NULL OR iri='')::int   AS null_iri,
-         COUNT(*) FILTER (WHERE definition IS NULL OR definition='')::int AS null_definition,
-         COUNT(*) FILTER (WHERE array_length(synonyms,1) IS NULL OR array_length(synonyms,1)=0)::int AS no_synonyms
+presence AS (
+  SELECT
+    (to_regclass('ontology.neurolex') IS NOT NULL)        AS has_terms,
+    (to_regclass('ontology.neurolex_annotations') IS NOT NULL) AS has_ann,
+    COALESCE((SELECT COUNT(*) FROM ontology.neurolex),0)         AS n_terms,
+    COALESCE((SELECT COUNT(*) FROM ontology.neurolex_annotations),0) AS n_ann
+),
+overall AS (
+  SELECT
+    COUNT(*)::int                                                AS terms,
+    COUNT(*) FILTER (WHERE label IS NULL OR label='')::int       AS null_label,
+    COUNT(*) FILTER (WHERE iri   IS NULL OR iri='')::int         AS null_iri,
+    COUNT(*) FILTER (WHERE definition IS NULL OR definition='')::int AS null_definition,
+    COUNT(*) FILTER (WHERE synonyms IS NULL OR array_length(synonyms,1)=0)::int AS no_synonyms
   FROM ontology.neurolex
 ),
+core_src AS (
+  SELECT to_regclass('ontology.neurolex_core') IS NOT NULL AS has_core
+),
+core AS (
+  SELECT
+    CASE WHEN (SELECT has_core FROM core_src) THEN
+      (SELECT COUNT(*)::int FROM ontology.neurolex_core) ELSE 0 END AS terms,
+    CASE WHEN (SELECT has_core FROM core_src) THEN
+      (SELECT COUNT(*)::int FROM ontology.neurolex_core WHERE definition IS NULL OR definition='') ELSE 0 END AS null_definition,
+    CASE WHEN (SELECT has_core FROM core_src) THEN
+      (SELECT COUNT(*)::int FROM ontology.neurolex_core WHERE synonyms IS NULL OR array_length(synonyms,1)=0) ELSE 0 END AS no_synonyms
+),
 dupes AS (
-  SELECT COALESCE(SUM(cnt) FILTER (WHERE cnt>1),0)::int AS ilx_dupes
+  SELECT COUNT(*)::int AS ilx_dupes
   FROM (
-    SELECT ilx_id, COUNT(*) AS cnt
-    FROM ontology.neurolex
-    GROUP BY 1
+    SELECT ilx_id, COUNT(*) FROM ontology.neurolex GROUP BY 1 HAVING COUNT(*)>1
   ) d
 ),
-ann AS (
-  SELECT COUNT(*)::int AS n_ann
-  FROM ontology.neurolex_annotations
-),
 syn_hist AS (
-  SELECT COALESCE(array_length(synonyms,1),0)::int AS syn_count, COUNT(*)::int AS n
+  SELECT COALESCE(array_length(synonyms,1),0) AS syn_count, COUNT(*)::int AS n
   FROM ontology.neurolex
   GROUP BY 1
   ORDER BY 1
+  LIMIT 60
 ),
 top_labels AS (
   SELECT label, COUNT(*)::int AS n
@@ -42,43 +59,32 @@ top_props AS (
   LIMIT 20
 ),
 xref_prefixes AS (
-  SELECT split_part(value,':',1) AS prefix, COUNT(*)::int AS n
+  -- count prefixes from annotation cross-refs (most informative)
+  SELECT split_part(value, ':', 1) AS prefix, COUNT(*)::int AS n
   FROM ontology.neurolex_annotations
-  WHERE prop_label='hasDbXref'
-    AND COALESCE(value,'')<>''
+  WHERE prop_label='hasDbXref' AND COALESCE(value,'')<>''
   GROUP BY 1
   ORDER BY n DESC, prefix
   LIMIT 20
 ),
 samples AS (
-  SELECT ilx_id,
-         label,
-         COALESCE(array_length(synonyms,1),0)::int AS n_synonyms,
-         LEFT(COALESCE(definition,''), 120) AS definition_snip
+  SELECT
+    ilx_id,
+    label,
+    LEFT(COALESCE(definition,''), 120) AS definition_snip,
+    COALESCE(array_length(synonyms,1),0) AS n_synonyms
   FROM ontology.neurolex
-  ORDER BY random()
+  ORDER BY ilx_id
   LIMIT 12
 )
-SELECT json_build_object(
-  'presence', json_build_object(
-      'has_terms', (SELECT n_terms>0 FROM terms),
-      'has_ann',   (SELECT (n_ann>0) FROM ann),
-      'n_terms',   (SELECT n_terms FROM terms),
-      'n_ann',     (SELECT n_ann   FROM ann)
-  ),
-  'totals', json_build_object(
-      'terms',          (SELECT n_terms       FROM terms),
-      'null_label',     (SELECT null_label    FROM terms),
-      'null_iri',       (SELECT null_iri      FROM terms),
-      'null_definition',(SELECT null_definition FROM terms),
-      'no_synonyms',    (SELECT no_synonyms   FROM terms)
-  ),
-  'duplicates', json_build_object(
-      'ilx_dupes', (SELECT ilx_dupes FROM dupes)
-  ),
-  'synonyms_hist', (SELECT COALESCE(json_agg(row_to_json(syn_hist)), '[]'::json) FROM syn_hist),
-  'top_labels',    (SELECT COALESCE(json_agg(row_to_json(top_labels)), '[]'::json) FROM top_labels),
-  'top_annotation_props', (SELECT COALESCE(json_agg(row_to_json(top_props)), '[]'::json) FROM top_props),
-  'xref_prefixes', (SELECT COALESCE(json_agg(row_to_json(xref_prefixes)), '[]'::json) FROM xref_prefixes),
-  'samples',       (SELECT COALESCE(json_agg(row_to_json(samples)), '[]'::json) FROM samples)
-) AS audit;
+SELECT jsonb_build_object(
+  'presence',        (SELECT jsonb_build_object('has_terms',has_terms,'has_ann',has_ann,'n_terms',n_terms,'n_ann',n_ann) FROM presence),
+  'totals',          (SELECT to_jsonb(overall) FROM overall),
+  'core',            (SELECT to_jsonb(core)    FROM core),
+  'duplicates',      (SELECT to_jsonb(dupes)   FROM dupes),
+  'synonyms_hist',   (SELECT jsonb_agg(jsonb_build_object('syn_count',syn_count,'n',n)) FROM syn_hist),
+  'top_labels',      (SELECT jsonb_agg(jsonb_build_object('label',label,'n',n)) FROM top_labels),
+  'top_annotation_props', (SELECT jsonb_agg(jsonb_build_object('prop_label',prop_label,'n',n)) FROM top_props),
+  'xref_prefixes',   (SELECT jsonb_agg(jsonb_build_object('prefix',prefix,'n',n)) FROM xref_prefixes),
+  'samples',         (SELECT jsonb_agg(jsonb_build_object('ilx_id',ilx_id,'label',label,'definition_snip',definition_snip,'n_synonyms',n_synonyms)) FROM samples)
+) AS json;
