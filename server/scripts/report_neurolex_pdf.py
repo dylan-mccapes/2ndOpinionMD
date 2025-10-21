@@ -5,14 +5,45 @@ from report_common import connect, q, build_doc, P, H2, BODY, TableFromRows, Spa
 SQL = "database/sql/17_neurolex_audit.sql"
 OUT = "db_integrity_reports/17_neurolex.pdf"
 
+def _unwrap_sql_json_row(row):
+    """
+    The audit SQL returns a single JSON object in one column (e.g., 'audit' or '?column?').
+    This unwraps that so we hand a plain dict to the rest of the code.
+    """
+    # If row is already a dict with expected keys, just return it.
+    if isinstance(row, dict) and any(k in row for k in ("presence","totals","core")):
+        return row
+
+    # If it's a dict with a single JSON value, unwrap it.
+    if isinstance(row, dict) and len(row) == 1:
+        v = next(iter(row.values()))
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                pass
+
+    # If it's a JSON string, parse it.
+    if isinstance(row, str):
+        try:
+            return json.loads(row)
+        except Exception:
+            pass
+
+    return row  # best effort fallback
+
 def load():
     conn = connect()
     try:
-        # Execute the audit SQL (no psql metas)
-        row = q(conn, open(SQL).read())[0]
+        rs = q(conn, open(SQL).read())
+        if not rs:
+            return {}
+        row = rs[0]
+        return _unwrap_sql_json_row(row)
     finally:
         conn.close()
-    return row
 
 def verdict_from(audit):
     """
@@ -25,15 +56,19 @@ def verdict_from(audit):
     totals = audit.get("totals",   {}) or {}
     core   = audit.get("core",     {}) or {}
 
-    if not pres.get("has_terms"):
+    # If nothing was loaded from SQL, treat as fail.
+    if not totals and not pres and not core:
+        return "fail", "Audit SQL returned no data."
+
+    # Basic presence checks
+    if (pres.get("has_terms") is False) or (int(totals.get("terms", 0)) == 0):
         return "fail", "No terms loaded."
-    if int(totals.get("terms", 0)) == 0:
-        return "warn", "Table exists but contains 0 terms."
 
     # Hard check: labels & IRIs must be present
     if int(totals.get("null_label", 0)) > 0 or int(totals.get("null_iri", 0)) > 0:
         return "warn", "Some terms are missing stable identifiers (label/IRI)."
 
+    # Core health
     core_terms  = int(core.get("terms", 0))
     core_no_syn = int(core.get("no_synonyms", 0))
     syn_bad = (core_terms > 0 and (core_no_syn / core_terms) > 0.40)
@@ -72,11 +107,12 @@ def main(out=OUT, use_ai=False):
 
         # Totals
         totals = audit.get("totals", {}) or {}
-        story.append(P("Totals (overall)", H2))
-        story.append(TableFromRows([totals], ["terms","null_label","null_iri","null_definition","no_synonyms"]))
-        story.append(Spacer(1, 6))
+        if totals:
+            story.append(P("Totals (overall)", H2))
+            story.append(TableFromRows([totals], ["terms","null_label","null_iri","null_definition","no_synonyms"]))
+            story.append(Spacer(1, 6))
 
-        # Core snapshot
+        # Core snapshot (used for grading)
         core = audit.get("core", {}) or {}
         if core:
             story.append(P("Core slice (used for grading)", H2))
@@ -87,7 +123,6 @@ def main(out=OUT, use_ai=False):
         dupes = audit.get("duplicates", {}) or {}
         if dupes:
             story.append(P("Duplicates", H2))
-            # Render as rows of key→value
             dupe_rows = [{"metric": k, "n": v} for k, v in dupes.items()]
             story.append(TableFromRows(dupe_rows, ["metric","n"]))
             story.append(Spacer(1, 6))
@@ -131,7 +166,7 @@ def main(out=OUT, use_ai=False):
     build_doc(out, "NEUROLEX (InterLex) — INTEGRITY REPORT", None, flow, ai_obj=ai_obj)
 
 if __name__ == "__main__":
-    import sys, os
+    import sys
     out = OUT
     use_ai = ("--ai" in sys.argv) or (os.getenv("AI","0").lower() in ("1","true","yes"))
     if "--out" in sys.argv:
