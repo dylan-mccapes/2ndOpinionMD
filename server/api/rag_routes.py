@@ -1,173 +1,165 @@
-from typing import Optional, List, Tuple
-import asyncio
-from fastapi import APIRouter, Query, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from __future__ import annotations
+
+import os
+import logging
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
-from server.db.session import get_session
-# import your existing models/helpers
-# from .schemas import RAGSearchResponse, RAGItem
-# from .emb import _embed_sync, _vec_literal
-# from .pool import init_pool
-
+# Exported router (app_postgres imports this symbol)
 router = APIRouter(prefix="/api/rag", tags=["rag"])
 
-class RAGItem(BaseModel):
-    id: str | int
-    source: str
-    title: str
-    dist: float
+log = logging.getLogger(__name__)
 
-class RAGSearchResponse(BaseModel):
-    items: List[RAGItem]
-    total_searched: int
-    limit: int
-    source: Optional[str] = None
+# --------------------------
+# Helpers
+# --------------------------
+def _to_dict(obj: Any) -> Dict[str, Any]:
+    try:
+        return obj.model_dump()
+    except Exception:
+        try:
+            return obj.dict()
+        except Exception:
+            pass
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+def _safe_get(d: Dict[str, Any], *path, default=None):
+    cur: Any = d
+    for k in path:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(k)
+    return cur if cur is not None else default
+
+def _mk_supporting_by_source(items: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for i, it in enumerate(items, 1):
+        src = it.get("source") or "unknown"
+        meta = it.get("meta") or {}
+        doc_key = meta.get("doc_key") or it.get("source_id") or it.get("id")
+        url = (
+            meta.get("url")
+            or meta.get("source_url")
+            or meta.get("doc_url")
+            or it.get("url")
+            or ""
+        )
+        entry = {
+            "rank": i,
+            "doc_key": doc_key,
+            "title": it.get("title"),
+            "url": url,
+            "scores": it.get("scores"),
+        }
+        out.setdefault(src, []).append(entry)
+    return out
+
+async def _handle_rag_ask(q: str, k: int, debug: int) -> Dict[str, Any]:
+    # Lazy import KG pieces here to avoid any chance of circular imports
+    try:
+        from .kg import ResolveRAGRequest, ResolveRAGOptions, resolve_rag as _kg_resolve
+    except Exception as e:
+        raise HTTPException(500, detail={"code": "kg_import_failed", "message": str(e)})
+
+    # Build KG request (search across all sources the vector DB has)
+    opts = ResolveRAGOptions(
+        rag_top_k=int(k or 6),
+        return_scores=True,
+        use_openai=False,   # we will do the model synthesis below
+        force_rag=False,
+        source=None,        # do NOT filter; allow multi-database results
+    )
+    req = ResolveRAGRequest(text=q, options=opts)
+
+    kg_res = await _kg_resolve(req)
+    kgd = _to_dict(kg_res)
+    rag_items: List[Dict[str, Any]] = _safe_get(kgd, "evidence", "rag", default=[]) or []
+
+    # Compose AI "organic" response using OpenAI if available and we have evidence
+    ai_text: Optional[str] = None
+    model_used: Optional[str] = None
+    if rag_items:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            try:
+                from openai import OpenAI  # v1 client, already used elsewhere
+                client = OpenAI(api_key=api_key)
+                preview = "\n\n".join(
+                    [
+                        f"[{i+1}] {(it.get('source') or 'unknown')} — {(it.get('title') or 'Untitled')[:160]}"
+                        f"\n{(it.get('text') or '')[:700]}..."
+                        for i, it in enumerate(rag_items[:6])
+                    ]
+                )
+                prompt = (
+                    "Question:\n"
+                    f"{q}\n\n"
+                    "Evidence snippets from multiple databases (e.g., NICE, ACR/EULAR, internal DBs):\n"
+                    f"{preview}\n\n"
+                    "Write a concise, clinically useful answer for a physician.\n"
+                    "Prioritize guideline-backed recommendations and practical next steps.\n"
+                    "Where applicable, reconcile differences and note key caveats.\n"
+                    "Avoid hedging and avoid hallucinations."
+                )
+                model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+                resp = client.chat.completions.create(
+                    model=model_used,
+                    messages=[
+                        {"role": "system", "content": "You are a careful clinical assistant. Be specific, safe, and concise."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=700,
+                )
+                ai_text = resp.choices[0].message.content
+            except Exception as e:
+                log.warning("AI synthesis failed: %s", e)
+                ai_text = f"AI response unavailable: {e}"
+        else:
+            ai_text = None  # key not set; leave null
+
+    by_source = _mk_supporting_by_source(rag_items)
+
+    out: Dict[str, Any] = {
+        "ai_response": {
+            "text": ai_text,
+            "model": model_used,
+            "supporting_documents_by_source": by_source,
+        },
+        "matches": rag_items,
+    }
+    if debug:
+        out["debug"] = {
+            "kg_preview": kgd.get("rag_context_preview"),
+            "items_returned": len(rag_items),
+        }
+    return out
+
+# --------------------------
+# Schemas for POST
+# --------------------------
+class AskPayload(BaseModel):
     q: str
+    k: Optional[int] = 6
+    alpha: Optional[float] = 0.5  # kept for backward compatibility; not used in new flow
+    debug: Optional[int] = 0
 
-async def expand_with_chv(session, user_query: str, k_best: int = 10, k_fuzzy: int = 10, k_ngrams: int = 10) -> List[str]:
-    """
-    Returns unique lowercase expansions (strings). We avoid disparaged/misspelled n-grams.
-    """
-    sql = """
-      WITH base AS (SELECT lower(:q) AS t),
-      best AS (
-        SELECT s.term
-        FROM ontology.chv_best s, base b
-        WHERE s.term_lower = b.t
-        LIMIT :k_best
-      ),
-      fuzzy AS (
-        SELECT s.term
-        FROM ontology.synonyms s, base b
-        WHERE s.source='CHV' AND s.term ILIKE '%'||b.t||'%'
-        ORDER BY length(s.term) ASC
-        LIMIT :k_fuzzy
-      ),
-      ngrams AS (
-        SELECT n.term
-        FROM ontology.chv_ngrams n, base b
-        WHERE n.term ILIKE '%'||b.t||'%'
-          AND NOT n.disparaged
-          AND NOT n.misspelled
-        ORDER BY length(n.term) ASC
-        LIMIT :k_ngrams
-      )
-      SELECT lower(term) AS term FROM best
-      UNION
-      SELECT lower(term) FROM fuzzy
-      UNION
-      SELECT lower(term) FROM ngrams
-    """
-    rows = (await session.execute(
-        text(sql),
-        {"q": user_query, "k_best": k_best, "k_fuzzy": k_fuzzy, "k_ngrams": k_ngrams},
-    )).scalars().all()
-    # include the original query first
-    out = [user_query.lower()] + [t for t in rows if t and t != user_query.lower()]
-    # de-dupe preserving order
-    seen, uniq = set(), []
-    for t in out:
-        if t not in seen:
-            uniq.append(t); seen.add(t)
-    return uniq[: (1 + k_best + k_fuzzy + k_ngrams)]
-
-@router.get("/search", response_model=RAGSearchResponse)
-async def semantic_search(
-    q: str,
-    source: Optional[str] = None,
-    limit: int = Query(5, ge=1, le=50),
-    probes: int = Query(8, ge=1, le=1000),
-    expand: bool = Query(True, description="Expand with CHV best/raw + n-grams"),
+# --------------------------
+# Routes
+# --------------------------
+@router.get("/ask")
+async def ask_get(
+    q: str = Query(..., min_length=1),
+    k: int = Query(6, ge=1, le=50),
+    alpha: float = Query(0.5),  # compatibility only
+    debug: int = Query(0),
 ):
-    # 1) gather expansions
-    exp_terms: list[str] = []
-    pool = await init_pool()
-    if expand:
-        async with pool.acquire() as pg:
-            # reuse your async session factory if you prefer
-            async with get_session() as session:
-                exp_terms = await expand_with_chv(session, q, k=8)
+    return await _handle_rag_ask(q=q, k=k, debug=debug)
 
-    # 2) build a small set of queries to embed
-    variants = [q] + [f"{q} · {t}" for t in exp_terms[:8]]
-    # embed each (sync helper in threadpool)
-    try:
-        loop = asyncio.get_event_loop()
-        vecs = await asyncio.gather(*[
-            loop.run_in_executor(None, _embed_sync, v) for v in variants
-        ])
-    except Exception as e:
-        raise HTTPException(400, f"Embedding error: {e}")
-
-    where = "TRUE"
-    params: list = []
-    if source:
-        where = "rc.source = $1"
-        params.append(source)
-
-    # 3) query per embedding and keep the best (lowest dist) per doc
-    # NOTE: ivfflat.probes set per statement
-    async with pool.acquire() as conn:
-        best: dict[int, tuple[float, str]] = {}  # id -> (dist, title)
-        for vec, variant in zip(vecs, variants):
-            vec_lit = _vec_literal(vec)
-            sql = f"""
-              WITH _set AS (SELECT set_config('ivfflat.probes', '{int(probes)}', true))
-              , q AS (SELECT '{vec_lit}'::vector AS e)
-              SELECT rc.id, rc.source, rc.title, (rc.embedding <=> q.e) AS dist
-              FROM public.rag_corpus rc, q
-              WHERE {where}
-              ORDER BY rc.embedding <=> q.e
-              LIMIT {int(limit)};
-            """
-            rows = await conn.fetch(sql, *params)
-            for r in rows:
-                rid = int(r["id"])
-                dist = float(r["dist"])
-                title = r["title"]
-                if rid not in best or dist < best[rid][0]:
-                    best[rid] = (dist, title)
-
-    # 4) return top-N overall
-    items_sorted = sorted(best.items(), key=lambda kv: kv[1][0])[:limit]
-    items = [RAGItem(id=i, source=source or "mixed", title=t, dist=d) for i,(d,t) in items_sorted]
-    return RAGSearchResponse(items=items, total_searched=len(items), limit=limit, source=source, q=q)
-
-@router.get("/neighbors/{id}", response_model=List[RAGItem])
-async def neighbors(
-    id: int,
-    source: Optional[str] = None,
-    limit: int = Query(5, ge=1, le=50),
-    probes: int = Query(8, ge=1, le=1000),
-):
-    if source:
-        where = "rc.source = $2 AND rc.id <> $1"
-        params = [id, source]
-    else:
-        where = "rc.id <> $1"
-        params = [id]
-
-    sql = f"""
-      WITH _set AS (
-        SELECT set_config('ivfflat.probes', '{int(probes)}', true)
-      ),
-      q AS (
-        SELECT embedding AS e FROM public.rag_corpus WHERE id = $1
-      )
-      SELECT rc.id, rc.source, rc.title, (rc.embedding <=> q.e) AS dist
-      FROM public.rag_corpus rc, q
-      WHERE {where}
-      ORDER BY rc.embedding <=> q.e
-      LIMIT {int(limit)};
-    """
-
-    pool = await init_pool()
-    try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(sql, *params)
-    except Exception as e:
-        raise HTTPException(500, f"DB error: {e}")
-
-    return [RAGItem(id=r["id"], source=r["source"], title=r["title"], dist=float(r["dist"])) for r in rows]
+@router.post("/ask")
+async def ask_post(payload: AskPayload = Body(...)):
+    return await _handle_rag_ask(q=payload.q, k=int(payload.k or 6), debug=int(payload.debug or 0))
