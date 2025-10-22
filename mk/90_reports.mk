@@ -66,9 +66,10 @@ clingen-validity-report-pdf:
 	@$(PY) server/scripts/report_clingen_validity_pdf.py --out db_integrity_reports/11_clingen_validity.pdf $(if $(AI),--ai,)
 
 ### -------- NICE Guidelines report --------
+
 nice-report:
-	@$(PY) server/scripts/report_nice_pdf.py $(if $(AI),--ai,)
-	@echo "📄 wrote db_integrity_reports/13_guidelines_nice.pdf"
+	@AI=$(AI) PYTHONPATH=. $(PY) server/scripts/report_nice_pdf.py $(if $(AI),--ai,)
+	@echo "Wrote db_integrity_reports/18_nice.pdf"
 
 nice-status:
 	@$(PSQL) -c "\
@@ -110,5 +111,9 @@ disgenet-report:
 
 gwas-report:
 	@AI="$(AI)" BRIEF="$(BRIEF)" NO_HIST="$(NO_HIST)" $(PY) server/scripts/report_gwas_pdf.py
+
+neurolex-report:
+	@AI=$${AI:-0} PYTHONPATH=. $(PY) server/scripts/report_neurolex_pdf.py
+	@echo "Wrote db_integrity_reports/17_neurolex.pdf"
 
 reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf clingen-aci-report clingen-validity-report-pdf

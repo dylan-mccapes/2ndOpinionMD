@@ -159,6 +159,7 @@ rag-backfill-meta-dry:
 -include mk/15_disgenet.mk
 -include mk/16_gwas.mk
 -include mk/17_neurolex.mk
+-include mk/18_nice.mk
 -include mk/19_who.mk
 -include mk/20_cdc_opioid.mk
 -include mk/21_va.mk

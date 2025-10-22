@@ -87,3 +87,13 @@ nice-api-smoke:
 	@curl -s "$(API_BASE)/api/guidelines/docs?source=$(NICE_SRC)" | jq '.[0:3]'
 	@curl -s "$(API_BASE)/api/guidelines/search?q=hypertension&limit=$(LIMIT)" | jq .
 
+# === Audit & Report ===
+nice-audit-sql:
+	@psql -d $${DB_NAME:-2ndopinionmd} -tA -f database/sql/18_nice_audit.sql | jq .
+
+# (Optional) Safer embed: skip ultra-long rows that can overflow token limits
+nice-embed-safe:
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus --id-col id --text-col text \
+	  --embedding-col embedding --model $(EMB_MODEL) --batch 128 \
+	  --where "source='$(NICE_SRC)' AND embedding IS NULL AND length(text) <= 20000"
