@@ -39,14 +39,24 @@ def detect_aware_group_col(cur):
       SELECT column_name FROM information_schema.columns
       WHERE table_schema='guidelines' AND table_name='who_aware_map'
     """)
-    cols = {r[0] for r in cur.fetchall()}
-    # handle either schema shape
+    rows = cur.fetchall()
+    cols = set()
+    for r in rows:
+        if isinstance(r, dict):
+            cols.add(r.get("column_name"))
+        elif isinstance(r, (list, tuple)):
+            cols.add(r[0])
+        else:
+            try:
+                cols.add(r[0])
+            except Exception:
+                pass
     if "group_name" in cols:  return "group_name"
     if "group" in cols:       return '"group"'
     return None
 
 def main(md_out: str|None, json_out: str|None):
-    out = {"generated_at": datetime.datetime.utcnow().isoformat()+"Z"}
+    out = {"generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z')}
 
     with psycopg2.connect(DSN, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
