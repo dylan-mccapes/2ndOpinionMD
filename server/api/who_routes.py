@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query, HTTPException
-import os, asyncpg
+import os, asyncpg, re
 
 router = APIRouter(prefix="/api/who", tags=["WHO"])
 _DSN = (os.environ.get("DATABASE_URL") or os.environ.get("SYNC_DATABASE_URL") or "").replace("+asyncpg","")
@@ -163,3 +163,32 @@ async def committee_search(q: str = Query(..., min_length=2), limit: int = 10):
         LIMIT $2
     """, {"q": q, "limit": limit})
     return [dict(r) for r in rows]
+
+@router.get("/audit")
+async def who_audit_summary():
+    dsn = (os.environ.get("DATABASE_URL") or os.environ.get("SYNC_DATABASE_URL") or "").replace("+asyncpg","")
+    if not dsn:
+        raise HTTPException(500, "DATABASE_URL not set")
+    conn = await asyncpg.connect(dsn)
+    try:
+        rows = await conn.fetch("""
+          WITH base AS (
+            SELECT
+              (SELECT COUNT(*) FROM guidelines.who_eml_medicines) AS n_meds,
+              (SELECT COUNT(*) FROM guidelines.who_eml_atc)       AS n_atc,
+              (SELECT COUNT(*) FROM guidelines.who_eml_icd11)     AS n_icd11,
+              (SELECT COUNT(*) FROM guidelines.who_committee_sections) AS n_committee_sec
+          ),
+          rag AS (
+            SELECT
+              COUNT(*) FILTER (WHERE source='who_eml')        AS n_who_eml,
+              COUNT(*) FILTER (WHERE source='who_committee')  AS n_who_committee,
+              COUNT(*) FILTER (WHERE source='who_eml' AND embedding IS NULL)       AS n_who_eml_missing,
+              COUNT(*) FILTER (WHERE source='who_committee' AND embedding IS NULL)  AS n_who_committee_missing
+            FROM public.rag_corpus
+          )
+          SELECT * FROM base, rag
+        """)
+        return dict(rows[0]) if rows else {}
+    finally:
+        await conn.close()
