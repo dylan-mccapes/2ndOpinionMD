@@ -47,3 +47,14 @@ who-aware-apply:
 who-aware-smoke:
 	@curl -s "$(API_BASE)/api/who/aware/stats" | jq .
 
+# --- Audit & Integrity ---
+who-audit:
+	@$(PY) server/scripts/who_audit_integrity.py --md server/reports/who_audit.md
+	@echo "Wrote server/reports/who_audit.md"; tail -n +1 server/reports/who_audit.md | sed -n '1,80p'
+
+who-audit-json:
+	@$(PY) server/scripts/who_audit_integrity.py --md server/reports/who_audit.md --json server/reports/who_audit.json
+	@jq . server/reports/who_audit.json | sed -n '1,80p'
+
+who-audit-api-smoke:
+	@curl -s "$(API_BASE)/api/who/audit" | jq .
