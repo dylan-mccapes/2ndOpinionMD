@@ -13,6 +13,27 @@ import psycopg2
 EDITION_EML = 24
 YEAR = 2025
 
+STRENGTH_RE = re.compile(
+    r"(\d+(?:\.\d+)?\s*(?:mg|g|mcg|µg|iu|units|ml|mL|%)"
+    r"(?:\s*(?:/|per)\s*\d*(?:\.\d+)?\s*(?:ml|mL|g|h|actuation|dose))?)",
+    re.I,
+)
+
+ROUTE_TOKENS = {
+    "oral": "oral",
+    "parenteral": "parenteral",
+    "intravenous": "iv",
+    "intramuscular": "im",
+    "subcutaneous": "sc",
+    "topical": "topical",
+    "rectal": "rectal",
+    "vaginal": "vaginal",
+    "inhalation": "inhalation",
+    "ophthalmic": "ophthalmic",
+    "otic": "otic",
+    "nasal": "nasal",
+}
+
 # ---------- DSN helpers ----------
 def get_dsn():
     dsn = os.environ.get("SYNC_DATABASE_URL") or os.environ.get("DATABASE_URL")
@@ -36,17 +57,66 @@ def split_multi(val):
     return [p.strip() for p in re.split(r"[;\n\|,]", val) if p.strip()]
 
 def parse_formulations(val: str):
+    """
+    Parses lines like:
+      - "Oral: tablet 500 mg; Oral: suspension 250 mg/5 mL"
+      - "Parenteral/IV: solution 1 g; IM: injection 40 mg/mL"
+      - "Topical cream 1%"
+    Produces items with at least route OR dose_form (we avoid inserting empty rows).
+    """
     if not isinstance(val, str) or not val.strip():
         return []
     items = []
-    for chunk in split_multi(val):
-        # try "route: form strength" pattern loosely
-        route, rest = (chunk.split(":", 1) + [None])[:2] if ":" in chunk else (None, chunk)
-        route = (route or "").strip() or None
-        rest = (rest or chunk).strip()
-        m = re.search(r"(\d+(?:\.\d+)?\s*(?:mg|g|mcg|µg|iu|units|ml|mL))", rest, re.I)
-        items.append({"route": route, "dose_form": rest, "strength": m.group(1) if m else None})
-    return items
+    for raw_chunk in split_multi(val.replace("—", "-")):
+        chunk = raw_chunk.strip()
+        if not chunk:
+            continue
+
+        # 1) Explicit "route: rest" form (support route lists like "Parenteral/IV")
+        if ":" in chunk:
+            head, tail = chunk.split(":", 1)
+            head = head.strip().lower()
+            tail = tail.strip()
+            routes = [t.strip() for t in re.split(r"[\/,]", head) if t.strip()]
+            if routes:
+                for r in routes:
+                    r_norm = ROUTE_TOKENS.get(r, r)
+                    m = STRENGTH_RE.search(tail)
+                    items.append({
+                        "route": r_norm,
+                        "dose_form": tail or None,
+                        "strength": m.group(1) if m else None,
+                    })
+                continue  # handled
+
+        # 2) Try to infer the route from tokens inside the text
+        r_guess = None
+        for tok, norm in ROUTE_TOKENS.items():
+            if re.search(rf"\b{re.escape(tok)}\b", chunk, re.I):
+                r_guess = norm
+                break
+
+        m = STRENGTH_RE.search(chunk)
+        strength = m.group(1) if m else None
+
+        # Strip a leading route token if it exists to clean up dose_form
+        if r_guess:
+            dose_form = re.sub(rf"^\s*{re.escape(r_guess)}\s*:?","", chunk, flags=re.I).strip() or None
+        else:
+            dose_form = chunk or None
+
+        # 3) Discard truly empty items (avoid creating “bad” rows)
+        if not (r_guess or dose_form or strength):
+            continue
+
+        items.append({
+            "route": r_guess,
+            "dose_form": dose_form,
+            "strength": strength,
+        })
+
+    # Final guard: keep only entries that have at least route OR dose_form
+    return [it for it in items if (it.get("route") or it.get("dose_form"))]
 
 def md5_key(*parts: str) -> str:
     return hashlib.md5("|".join([p or "" for p in parts]).encode("utf-8")).hexdigest()

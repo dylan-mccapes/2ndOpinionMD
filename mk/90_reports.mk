@@ -116,4 +116,9 @@ neurolex-report:
 	@AI=$${AI:-0} PYTHONPATH=. $(PY) server/scripts/report_neurolex_pdf.py
 	@echo "Wrote db_integrity_reports/17_neurolex.pdf"
 
+# Standard PDF report (like report_gwas)
+who-audit-pdf:
+	@$(PY) server/scripts/report_who_audit_pdf.py --out db_integrity_reports/19_who.pdf
+	@ls -lah db_integrity_reports/19_who.pdf
+
 reports-all: snomed-report-pdf icd-report-pdf hpo-report-pdf overall-report-pdf orphanet-report-pdf chv-report-pdf mimic-report-pdf n2c2-report-pdf clinvar-report-pdf clingen-aci-report clingen-validity-report-pdf

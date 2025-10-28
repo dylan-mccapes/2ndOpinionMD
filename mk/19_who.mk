@@ -1,3 +1,4 @@
+ICD11_FILE ?= data/who/icd11_eml_map.csv
 # ==========================================================
 # 19) WHO — EML, AWARE, Expert Committee (exec summary)
 # ==========================================================
@@ -48,13 +49,46 @@ who-aware-smoke:
 	@curl -s "$(API_BASE)/api/who/aware/stats" | jq .
 
 # --- Audit & Integrity ---
-who-audit:
-	@$(PY) server/scripts/who_audit_integrity.py --md server/reports/who_audit.md
-	@echo "Wrote server/reports/who_audit.md"; tail -n +1 server/reports/who_audit.md | sed -n '1,80p'
 
-who-audit-json:
-	@$(PY) server/scripts/who_audit_integrity.py --md server/reports/who_audit.md --json server/reports/who_audit.json
-	@jq . server/reports/who_audit.json | sed -n '1,80p'
+who-indexes:
+	@$(PSQL) -f server/scripts/who_indexes.sql
+	@echo "[who-indexes] ok"
 
-who-audit-api-smoke:
-	@curl -s "$(API_BASE)/api/who/audit" | jq .
+who-form-backfill:
+	@$(PSQL) -f server/scripts/who_eml_form_backfill.sql
+	@echo "[who_form_backfill] done"
+
+ICD11_FILE ?= data/who/icd11_eml_map.csv
+
+who-icd11-export-missing:
+	@mkdir -p server/reports
+	@$(PSQL) -v out="$(PWD)/server/reports/who_icd11_missing.csv" -f server/scripts/who_icd11_export_missing.psql
+	@test -s server/reports/who_icd11_missing.csv || (echo "ERROR: export created empty CSV" >&2; exit 1)
+	@echo "Wrote server/reports/who_icd11_missing.csv ($$(wc -l < server/reports/who_icd11_missing.csv) lines)"
+
+
+who-icd11-backfill:
+	@server/venv312/bin/python server/scripts/who_icd11_backfill.py "$(FILE)"
+
+who-icd11-backfill-default:
+	@$(MAKE) who-icd11-export-missing
+	@cp server/reports/who_icd11_missing.csv $(ICD11_FILE)
+	@$(MAKE) who-icd11-backfill FILE=$(ICD11_FILE)
+
+# convenience
+who-audit-json: who-audit
+
+
+who-validate:
+	@echo "[who-validate] null breakdown (route/form/strength):"
+	@$(PSQL) -c "SELECT sum((COALESCE(route,'')='')::int) AS null_route, sum((COALESCE(dose_form,'')='')::int) AS null_form, sum((COALESCE(strength,'')='')::int) AS null_strength FROM guidelines.who_eml_formulations;"
+	@echo "[who-validate] top 10 meds by missing formulations:"
+	@$(PSQL) -c "SELECT m.inn, count(*) AS n_missing FROM guidelines.who_eml_medicines m JOIN guidelines.who_eml_formulations f USING (med_id) WHERE (COALESCE(f.route,'')='' OR COALESCE(f.dose_form,'')='' OR COALESCE(f.strength,'')='') GROUP BY m.inn ORDER BY n_missing DESC, m.inn LIMIT 10;"
+
+who-audit: who-form-backfill who-indexes
+	@server/venv312/bin/python server/scripts/who_audit_integrity.py --md server/reports/who_audit.md --json server/reports/who_audit.json
+	@echo "Wrote server/reports/who_audit.md && server/reports/who_audit.json"
+
+who-sweeps:
+	@$(PSQL) -f server/scripts/who_eml_sweeps.sql
+	@echo "[who_sweeps] done"
