@@ -1,4 +1,5 @@
-
+CREATE UNIQUE INDEX IF NOT EXISTS rag_corpus_source_source_id_uidx
+  ON public.rag_corpus(source, source_id);
 
 WITH src AS (
   SELECT

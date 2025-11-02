@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-import os, asyncio, json, time, math
+import os, asyncio, json, time, math, argparse
 from typing import List
 import aiohttp
 import psycopg2, psycopg2.extras
 
 DSN   = os.getenv("SYNC_DATABASE_URL", "postgresql://2ndopinionmd@localhost:5432/2ndopinionmd")
-SOURCE= os.getenv("SOURCE", "icd10cm")
 MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 BATCH = int(os.getenv("BATCH", "256"))
 CONC  = int(os.getenv("CONC",  "6"))
@@ -40,23 +39,23 @@ async def embed_inputs(session: aiohttp.ClientSession, texts: List[str]) -> List
                 raise
             await asyncio.sleep(BACKOFF * (2 ** (attempt-1)))
 
-async def worker(name: str, http_session: aiohttp.ClientSession):
+async def worker(name: str, http_session: aiohttp.ClientSession, source: str):
     while True:
         # 1) pull a locked batch
         with db() as conn, conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute("""
-                SELECT id, text
+                SELECT id, COALESCE(content, text) AS body
                 FROM public.rag_corpus
-                WHERE source=%s AND embedding IS NULL
+                WHERE source=%s AND COALESCE(content, text) IS NOT NULL AND embedding IS NULL
                 ORDER BY id
                 FOR UPDATE SKIP LOCKED
                 LIMIT %s
-            """, (SOURCE, BATCH))
+            """, (source, BATCH))
             rows = cur.fetchall()
             if not rows:
                 return
             ids   = [r["id"] for r in rows]
-            texts = [r["text"] or "" for r in rows]
+            texts = [r["body"] or "" for r in rows]
 
         # 2) embed in sub-chunks
         out: List[list] = []
@@ -77,9 +76,16 @@ async def worker(name: str, http_session: aiohttp.ClientSession):
         print(f"[{name}] embedded {len(ids)} rows")
 
 async def main():
+    parser = argparse.ArgumentParser(description="Embed RAG corpus rows for a given source")
+    parser.add_argument("--source", type=str, default=None, help="Source to embed (overrides SOURCE env var)")
+    args = parser.parse_args()
+    
+    source = args.source or os.getenv("SOURCE", "icd10cm")
+    print(f"Embedding source: {source}")
+    
     timeout = aiohttp.ClientTimeout(total=180)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        tasks = [asyncio.create_task(worker(f"W{i+1}", session)) for i in range(CONC)]
+        tasks = [asyncio.create_task(worker(f"W{i+1}", session, source)) for i in range(CONC)]
         await asyncio.gather(*tasks)
 
 if __name__ == "__main__":

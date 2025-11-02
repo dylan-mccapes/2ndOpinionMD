@@ -16,7 +16,7 @@ icd11-rag-upsert:
 	@$(PSQL) -f $(SQL_DIR)/icd11_rag_upsert.sql
 
 icd11-embed:
-	@SOURCE=icd11 $(PY) server/scripts/embed_rag_source_async.py
+	@$(PY) server/scripts/embed_rag_source_async.py --source icd11
 
 icd11-ann:
 	@$(PSQL) -f $(SQL_DIR)/icd_indexes.sql
