@@ -150,6 +150,7 @@ rag-backfill-meta-dry:
 # =========================
 -include mk/01_snomed.mk
 -include mk/02_icd.mk
+-include mk/03_icd11.mk
 -include mk/03_hpo.mk
 -include mk/04_loinc_rxnorm.mk
 -include mk/05_orphanet.mk

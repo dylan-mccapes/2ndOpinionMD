@@ -70,6 +70,8 @@ server/.env
 # local snapshots / dumps
 snapshots/
 *.sql
+# allow our versioned SQL
+!database/sql/*.sql
 
 # editor / temp
 *.swp
