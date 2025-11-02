@@ -61,3 +61,29 @@ va-xref-preview:
 
 va-xref-all: va-xref-schema va-xref-seed va-xref-preview
 
+.PHONY: va-audit va-audit-pdf va-audit-json va-audit-json-out va-assert va-ci va-indexes
+
+va-audit-json:
+	@$(PSQL) -f database/sql/21_va_audit.sql
+
+va-audit-json-out:
+	@mkdir -p server/reports
+	@$(PSQL) -t -A -f database/sql/21_va_audit.sql > server/reports/va_audit.json && \
+	echo "Wrote server/reports/va_audit.json"
+
+va-assert:
+	@$(PSQL) -v ON_ERROR_STOP=1 -f database/sql/va_assert.sql
+
+va-audit:
+	@$(PY) server/scripts/report_va_audit_pdf.py --brief --out db_integrity_reports/21_va.pdf
+	@echo "Wrote db_integrity_reports/21_va.pdf (brief)"
+
+va-audit-pdf:
+	@AI=1 $(PY) server/scripts/report_va_audit_pdf.py --ai --out db_integrity_reports/21_va.pdf
+	@echo "Wrote db_integrity_reports/21_va.pdf (AI analysis enabled)"
+
+# CI-style one-shot: write JSON and enforce invariants
+va-ci: va-audit-json-out va-assert
+
+va-indexes:
+	@$(PSQL) -f database/sql/va_indexes.sql

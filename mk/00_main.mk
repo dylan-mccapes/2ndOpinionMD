@@ -40,27 +40,33 @@ help:
 	@grep -E '^[a-zA-Z0-9_\-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 dev-setup:
-	@echo ">>> Ensuring brew/libpq PATHs in ~/.zshrc and env loader (2omd_env)"
-	BP=$$(brew --prefix 2>/dev/null || echo /opt/homebrew)
-	ZRC="$$HOME/.zshrc"
-	grep -q 'export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH"' "$$ZRC" 2>/dev/null || \
-	  printf '%s\n' 'export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH"' >> "$$ZRC"
-	LPQ_BIN="$$BP/opt/libpq/bin"
-	[ -d "$$LPQ_BIN" ] && grep -q "$$LPQ_BIN" "$$ZRC" 2>/dev/null || printf '%s\n' 'export PATH='"$$LPQ_BIN"':$$PATH' >> "$$ZRC"
-	if ! grep -q '# 2ndOpinionMD env loader' "$$ZRC" 2>/dev/null; then \
-	  { \
-	    echo '# 2ndOpinionMD env loader'; \
-	    echo '2omd_env(){ if [ -f "server/.env" ]; then set -a; . server/.env; set +a; echo "[2OMD] Loaded server/.env"; else echo "[2OMD] server/.env not found"; fi }'; \
-	    echo "alias 2omd='cd $(PWD)'"; \
-	  } >> "$$ZRC"; \
-	fi
-	@echo ">>> dev-setup done. Run: source $$HOME/.zshrc && 2omd_env"
+	@set -euo pipefail; \
+	ZRC="$$HOME/.zshrc"; \
+	touch "$$ZRC"; \
+	BREW=$$(command -v brew || true); \
+	if [ -z "$$BREW" ]; then \
+	  # fall back to the standard Apple Silicon path
+	  if [ -x /opt/homebrew/bin/brew ]; then BREW=/opt/homebrew/bin/brew; else echo "❌ Homebrew not found. Install from https://brew.sh"; exit 1; fi; \
+	fi; \
+	BP=$$("$$BREW" --prefix 2>/dev/null || echo /opt/homebrew); \
+	add_line() { grep -Fqx "$$1" "$$ZRC" || printf '%s\n' "$$1" >> "$$ZRC"; }; \
+	add_line 'export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH"'; \
+	add_line 'export PATH="$$PATH:/opt/homebrew/opt/libpq/bin"'; \
+	add_line 'export LDFLAGS="-L/opt/homebrew/opt/libpq/lib"'; \
+	add_line 'export CPPFLAGS="-I/opt/homebrew/opt/libpq/include"'; \
+	add_line 'export PKG_CONFIG_PATH="/opt/homebrew/opt/libpq/lib/pkgconfig"'; \
+	echo "✅ Updated $$ZRC. Run:  source $$ZRC"; \
+	echo -n "psql -> "; /usr/bin/env PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$$PATH" command -v psql || echo "missing"
+
 
 env-doctor:
-	@echo "=== ENV DOCTOR ==="
-	@echo "psql: $$(command -v psql || echo '(not found)')"
-	@echo "python: $$(command -v $(PY) || echo '(not found)')"
-	@echo "SYNC_DATABASE_URL: $${SYNC_DATABASE_URL:+***$${SYNC_DATABASE_URL: -12}}"
+	@echo "=== ENV DOCTOR ==="; \
+	echo -n "psql:      "; command -v psql || echo "missing"; \
+	echo -n "pg_config: "; command -v pg_config || echo "missing"; \
+	echo -n "python:    "; command -v server/venv312/bin/python || echo "missing"; \
+	echo -n "SYNC_DATABASE_URL: "; \
+	printf '%s\n' "$${SYNC_DATABASE_URL:-<unset>}" | sed 's,//[^:@]*:[^@]*@,//***:***@,'
+
 
 py-venv:
 	@[ -x server/venv312/bin/python ] || { echo ">>> creating venv"; python3 -m venv server/venv312; }
@@ -161,7 +167,7 @@ rag-backfill-meta-dry:
 -include mk/17_neurolex.mk
 -include mk/18_nice.mk
 -include mk/19_who.mk
--include mk/20_cdc_opioid.mk
+-include mk/20_cdc.mk
 -include mk/21_va.mk
 -include mk/22_integrity.mk
 -include mk/90_reports.mk
