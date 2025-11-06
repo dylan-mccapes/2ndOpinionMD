@@ -1,45 +1,31 @@
 #!/usr/bin/env python3
-"""
-Script to clear the users table in PostgreSQL for 2ndOpinionMD.
-This allows for fresh registrations with the fixed email verification system.
-"""
-import sys
-import os
-import asyncio
+import sys, os, asyncio
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent))
+# ✨ Put the REPO ROOT on sys.path (…/2ndOpinionMD-MVP), not …/server
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 from server.db.session import SessionLocal
 from database.models.postgresql.models import User, JournalEntry
 from sqlalchemy import delete
 
 async def clear_users_table():
-    """Clear all users from the PostgreSQL users table."""
     try:
         async with SessionLocal() as session:
-            journal_result = await session.execute(delete(JournalEntry))
-            journal_count = journal_result.rowcount
-            
-            user_result = await session.execute(delete(User))
-            user_count = user_result.rowcount
-            
+            await session.execute(delete(JournalEntry))
+            await session.execute(delete(User))
             await session.commit()
-            
-            print(f"Successfully deleted {journal_count} journal entry(ies) from the database.")
-            print(f"Successfully deleted {user_count} user(s) from the database.")
+            print("Deleted all users and journal entries.")
             return True
     except Exception as e:
         print(f"Error clearing users table: {e}")
         return False
 
 if __name__ == "__main__":
-    print("This script will delete ALL users and their journal entries from the PostgreSQL database.")
-    print("All users will need to re-register and verify their email addresses.")
-    confirmation = input("Are you sure you want to proceed? (yes/no): ")
-    
-    if confirmation.lower() == "yes":
+    print("This deletes ALL users and their journal entries.")
+    if input("Proceed? (yes/no): ").strip().lower() == "yes":
         asyncio.run(clear_users_table())
-        print("Users table cleared. You can now register new users with email verification.")
+        print("Done.")
     else:
-        print("Operation cancelled.")
+        print("Cancelled.")

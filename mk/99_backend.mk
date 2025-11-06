@@ -25,3 +25,9 @@ api-health:
 post-launch-checks: integrity-all backup-verify
 	@echo "✅ Post-launch checks complete."
 
+clear-users:
+	@read -p "This WILL DELETE all users + journals. Type 'yes' to continue: " ans; \
+	[ "$$ans" = "yes" ] || { echo "Cancelled."; exit 1; }; \
+	psql "$(DB)" -v ON_ERROR_STOP=1 -c "TRUNCATE TABLE public.journal_entries, public.users RESTART IDENTITY CASCADE;"; \
+	psql "$(DB)" -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) AS users FROM public.users;"; \
+	psql "$(DB)" -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) AS journals FROM public.journal_entries;"

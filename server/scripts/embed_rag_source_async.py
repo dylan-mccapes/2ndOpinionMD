@@ -4,10 +4,10 @@ from typing import List
 import aiohttp
 import psycopg2, psycopg2.extras
 
-DSN   = os.getenv("SYNC_DATABASE_URL", "postgresql://2ndopinionmd@localhost:5432/2ndopinionmd")
+DSN   = (os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
 MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
-BATCH = int(os.getenv("BATCH", "256"))
-CONC  = int(os.getenv("CONC",  "6"))
+BATCH = int((os.getenv("BATCH") or "256").strip())
+CONC  = int((os.getenv("CONC")  or "8").strip())
 CHUNK = int(os.getenv("CHUNK", "96"))
 APIKEY= os.getenv("OPENAI_API_KEY")
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "6"))
@@ -80,7 +80,7 @@ async def main():
     parser.add_argument("--source", type=str, default=None, help="Source to embed (overrides SOURCE env var)")
     args = parser.parse_args()
     
-    source = args.source or os.getenv("SOURCE", "icd10cm")
+    source = args.source or "loinc"
     print(f"Embedding source: {source}")
     
     timeout = aiohttp.ClientTimeout(total=180)
