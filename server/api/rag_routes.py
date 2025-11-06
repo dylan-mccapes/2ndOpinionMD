@@ -14,7 +14,7 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Defaults include orphanet; all lists normalized to lowercase.
-_DEF = os.getenv("RAG_DEFAULT_SOURCES", "hpo,icd10cm,icd11,loinc,rxnorm,orphanet")
+_DEF = os.getenv("RAG_DEFAULT_SOURCES", "hpo,icd10cm,icd11,loinc,rxnorm,orphanet,chv")
 DEFAULT_SOURCES: List[str] = [s.strip().lower() for s in _DEF.split(",") if s.strip()]
 _ALLOWED = os.getenv("RAG_ALLOWED_SOURCES", _DEF)
 ALLOWED_SOURCES: Set[str] = {s.strip().lower() for s in _ALLOWED.split(",") if s.strip()}
@@ -54,21 +54,24 @@ async def _pg_rag_search(q: str, source: str, k: int) -> List[dict]:
         # --- Stage A: vector + stored ts (fast path) ---
         sql_a = """
         WITH q AS (
-          SELECT
-            plainto_tsquery('english', $1) AS tsq,
-            CASE WHEN $2 IS NULL THEN NULL::vector ELSE ($2)::vector END AS qvec
+        SELECT plainto_tsquery('english', :q) AS tsq
+        ),
+        ranked AS (
+        SELECT
+            r.id, r.source, r.source_id, r.title, r.text, r.meta,
+            /* dense: cosine similarity */
+            (1 - (r.embedding <=> :qvec))                   AS dense,
+            /* bm25: use stored ts or compute on the fly */
+            ts_rank(
+            COALESCE(r.ts, to_tsvector('english', r.title || ' ' || r.text)),
+            q.tsq
+            )                                               AS bm25
+        FROM public.rag_corpus r, q
+        WHERE r.source = 'chv'
         )
-        SELECT id, source, source_id, title, text, meta,
-               CASE WHEN q.qvec IS NULL THEN NULL
-                    ELSE 1.0/(1.0 + (embedding <-> q.qvec)) END AS dense,
-               ts_rank(ts, q.tsq) AS bm25
-        FROM public.rag_corpus rc, q
-        WHERE rc.source = $3
-          AND (q.qvec IS NOT NULL OR (q.tsq @@ rc.ts))
-        ORDER BY COALESCE(CASE WHEN q.qvec IS NULL THEN NULL ELSE 1.0/(1.0 + (embedding <-> q.qvec)) END, 0) DESC,
-                 ts_rank(ts, q.tsq) DESC,
-                 title NULLS LAST
-        LIMIT $4
+        SELECT * FROM ranked
+        ORDER BY dense DESC, bm25 DESC
+        LIMIT :k
         """
         rows = await conn.fetch(sql_a, q, emb_lit, source, k)
         if rows:

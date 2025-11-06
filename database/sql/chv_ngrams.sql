@@ -1,10 +1,14 @@
--- CHV n-grams: term-only list
 CREATE SCHEMA IF NOT EXISTS ontology;
 
-CREATE TABLE IF NOT EXISTS ontology.chv_ngrams (
-  term TEXT PRIMARY KEY
+DROP TABLE IF EXISTS ontology.chv_ngrams;
+CREATE TABLE ontology.chv_ngrams (
+  term        TEXT PRIMARY KEY,
+  meta        BOOLEAN DEFAULT false,
+  mod         BOOLEAN DEFAULT false,
+  disparaged  BOOLEAN DEFAULT false,
+  misspelled  BOOLEAN DEFAULT false,
+  comment     TEXT
 );
 
--- fuzzy lookup helper
 CREATE INDEX IF NOT EXISTS chv_ngrams_term_trgm
   ON ontology.chv_ngrams USING gin (term gin_trgm_ops);

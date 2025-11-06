@@ -6,6 +6,9 @@ NGRAMS ?= data/chv/ngrams.tsv
 PSQL ?= psql -d 2ndopinionmd -v ON_ERROR_STOP=1
 CHV_DIR ?= data/chv
 
+PY ?= server/venv312/bin/python
+API_BASE ?= http://127.0.0.1:8000
+
 # ---------- CHV filters & ngrams: tables ----------
 chv-filters-schema:
 	@$(PSQL) -f database/sql/chv_filters.sql
@@ -100,4 +103,48 @@ api-chv-ngrams-map:
 	@echo "GET /api/chv/ngrams/map?q=$(Q)&limit=$(LIMIT)" 1>&2
 	@curl -sS "http://localhost:8000/api/chv/ngrams/map?q=$(Q)&limit=$(LIMIT)" | jq .
 
+# ---------- RAG upsert / embed / ANN / stats ----------
+chv-rag-upsert:
+	@$(PSQL) -f database/sql/chv_rag_upsert.sql
+	@$(PSQL) -c "SELECT 'chv_total' AS what, COUNT(*) AS n FROM public.rag_corpus WHERE source='chv' \
+	             UNION ALL \
+	             SELECT 'pending_embed', COUNT(*) FROM public.rag_corpus WHERE source='chv' AND embedding IS NULL;"
 
+chv-embed:
+	@EMBED_MODEL=$${EMBED_MODEL:-text-embedding-3-small} \
+	EMBED_BATCH=$${BATCH:-256} \
+	EMBED_WORKERS=$${WORKERS:-8} \
+	$(PY) server/scripts/embed_rag_source_async.py --source chv
+
+chv-ann:
+	@$(PSQL) -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_chv \
+	  ON public.rag_corpus USING ivfflat (embedding vector_cosine_ops) \
+	  WITH (lists = 256) WHERE source='chv';"
+	@$(PSQL) -c "ANALYZE public.rag_corpus;"
+
+# JSON snapshot for automation/dashboards
+chv-stats-json:
+	@$(PSQL) -At -c "SELECT json_build_object( \
+	  'source','chv', \
+	  'total',      COUNT(*), \
+	  'embedded',   COUNT(*) FILTER (WHERE embedding IS NOT NULL), \
+	  'pending',    COUNT(*) FILTER (WHERE embedding IS NULL) \
+	)::text FROM public.rag_corpus WHERE source='chv'" | jq .
+
+# Smoke: route through /rag/ask, single-source fallback guarantees hits
+api-chv-ask:
+	@echo "GET $(API_BASE)/api/rag/ask?q=$${Q:-blood sugar}&sources=chv&limit=$${LIMIT:-5}&debug=1"
+	@curl -s "$(API_BASE)/api/rag/ask?q=$${Q:-blood%20sugar}&sources=chv&limit=$${LIMIT:-5}&debug=1" | jq .
+
+chv-bm25-rebuild:
+	@$(PSQL) -c "UPDATE public.rag_corpus \
+	  SET ts = to_tsvector('english', coalesce(title,'')||' '||coalesce(text,'')) \
+	  WHERE source='chv';"
+	@$(PSQL) -c "ANALYZE public.rag_corpus;"
+
+chv-bm25-sanity:
+	@$(PSQL) -c "SELECT source_id, title, \
+	    ts_rank(ts, plainto_tsquery('english','blood sugar')) AS bm25 \
+	  FROM public.rag_corpus \
+	  WHERE source='chv' AND title ILIKE '%blood%' \
+	  ORDER BY bm25 DESC LIMIT 10;"
