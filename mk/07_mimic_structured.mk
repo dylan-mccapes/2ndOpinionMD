@@ -77,3 +77,48 @@ mimic4-import-icu-safe:
 	@$(PY) server/scripts/load_by_header.py --table ehr_mimic4.icustays --csv data/mimic-iv-2.2/icu/icustays.csv.gz --truncate
 	@$(PY) server/scripts/load_by_header.py --table ehr_mimic4.d_items   --csv data/mimic-iv-2.2/icu/d_items.csv.gz   --truncate
 	@echo "Loaded ICU tables (icustays, d_items) via header-aware loader."
+
+# --- RAG corpus (dict-level) for MIMIC
+mimic-rag-upsert:
+	@$(PSQL) -f database/sql/mimic_rag_upsert.sql
+	@$(PSQL) -At -c "COPY ( \
+	  SELECT source, COUNT(*) AS total, COUNT(*) FILTER (WHERE embedding IS NOT NULL) AS embedded, \
+	         COUNT(*) FILTER (WHERE embedding IS NULL) AS pending \
+	  FROM public.rag_corpus \
+	  WHERE source IN ('mimic3_dx','mimic3_proc','mimic3_labitems','mimic4_dx','mimic4_proc','mimic4_labitems') \
+	  GROUP BY source ORDER BY source \
+	) TO STDOUT WITH (FORMAT csv, HEADER true)"
+
+mimic-embed:
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic3_dx
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic3_proc
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic3_labitems
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic4_dx
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic4_proc
+	@$(PY) server/scripts/embed_rag_source_async.py --source mimic4_labitems
+
+mimic-ann:
+	@$(PSQL) -f database/sql/mimic_indexes.sql
+
+mimic-bm25-rebuild:
+	@$(PSQL) -c "UPDATE public.rag_corpus r \
+SET ts = to_tsvector('english', coalesce(r.title,'')||' '||coalesce(r.text,'')) \
+WHERE r.source IN ('mimic3_dx','mimic3_proc','mimic3_labitems','mimic4_dx','mimic4_proc','mimic4_labitems');"
+	@$(PSQL) -c "ANALYZE public.rag_corpus;"
+
+mimic-stats-json:
+	@$(PSQL) -c "SELECT jsonb_pretty(jsonb_object_agg(source, jsonb_build_object('total', COUNT(*), 'embedded', COUNT(*) FILTER (WHERE embedding IS NOT NULL), 'pending', COUNT(*) FILTER (WHERE embedding IS NULL)))) \
+FROM public.rag_corpus WHERE source LIKE 'mimic%%';"
+
+mimic-integrity:
+	@REPORT_AI=1 $(PY) server/scripts/report_mimic_pdf.py --out db_integrity_reports/07_mimic.pdf --ai
+	@echo "Wrote db_integrity_reports/07_mimic.pdf"
+
+mimic-watch:
+	@server/venv312/bin/python server/scripts/watch_embeddings.py --like "mimic%%" --interval $${INTERVAL:-3} --wide
+
+mimic-watch-m3:
+	@server/venv312/bin/python server/scripts/watch_embeddings.py --like "mimic3%%" --interval $${INTERVAL:-3} --wide
+
+mimic-watch-m4:
+	@server/venv312/bin/python server/scripts/watch_embeddings.py --like "mimic4%%" --interval $${INTERVAL:-3} --wide

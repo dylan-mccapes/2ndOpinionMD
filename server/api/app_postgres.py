@@ -71,6 +71,13 @@ from .rag_routes import router as rag_router
 from . import who_routes
 from .guidelines_cdc_routes import router as cdc_opioid_router
 from .guidelines_va_routes import router as va_router
+from .coding_routes import router as coding_router
+from .ask_eoh_v2 import router as ask_eoh_router
+from .rag_ask_compat import router as rag_ask_router
+from .coding_routes_v2 import router as coding_v2_router
+from .rag_ask_compat_v2 import router as ask_compat_v2_router
+from .rag_stream_routes import router as rag_stream_router
+from .llm_stream_routes import router as llm_stream_router
 
 from server.api.kg import router as kg_router
 
@@ -112,10 +119,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+async def get_pool():
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            dsn=os.getenv("POSTGRES_DSN", "postgres://localhost/2ndopinionmd"),
+            min_size=1, max_size=int(os.getenv("PGPOOL_MAX", "10")),
+            command_timeout=60,
+        )
+    return _pool
+
 # psycopg2 pool for sync endpoints
 @app.on_event("startup")
-def _startup():
-    init_pool(minconn=1, maxconn=8)
+async def _attach_pool():
+    app.state.pool = await get_pool()
 
 
 # --- CORS (safe with credentials) ---------------------------------------------
@@ -158,6 +176,14 @@ app.include_router(cdc_opioid_router,
                     prefix="/api/guidelines/cdc/opioid",
                     tags=["guidelines.cdc.opioid"])
 app.include_router(va_router)
+app.include_router(coding_router)
+app.include_router(ask_eoh_router)
+app.include_router(rag_ask_router)
+app.include_router(ask_compat_v2_router)
+app.include_router(coding_v2_router)
+app.include_router(kg_router)
+app.include_router(rag_stream_router)
+app.include_router(llm_stream_router)
 
 # --- Middlewares ---------------------------------------------------------------
 @app.middleware("http")

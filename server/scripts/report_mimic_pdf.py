@@ -39,42 +39,66 @@ SELECT
   (SELECT n FROM m4_adm_w_dx)::float / NULLIF((SELECT n FROM m4_adm),0) AS m4_adm_with_dx_rate;
 """
 
+SQL_EMBED = """
+  SELECT source,
+         COUNT(*) AS total,
+         COUNT(*) FILTER (WHERE embedding IS NOT NULL) AS done,
+         COUNT(*) FILTER (WHERE embedding IS NULL)     AS pending,
+         ROUND(100.0 * COUNT(*) FILTER (WHERE embedding IS NOT NULL) / NULLIF(COUNT(*),0), 2) AS pct
+  FROM public.rag_corpus
+  WHERE source IN ('mimic3_dx','mimic3_proc','mimic3_labitems','mimic4_dx','mimic4_proc','mimic4_labitems')
+  GROUP BY source ORDER BY source
+"""
+
+SQL_ANN = r"""
+  SELECT i.indexname, x.indisvalid, x.indisready,
+         COALESCE( (SELECT option_value::int
+                    FROM pg_options_to_table(c.reloptions)
+                    WHERE option_name='lists'), 0) AS lists,
+         pg_size_pretty(pg_relation_size(x.indexrelid)) AS size
+  FROM pg_index x
+  JOIN pg_class c ON c.oid=x.indexrelid
+  JOIN pg_namespace n ON n.oid=c.relnamespace
+  JOIN pg_indexes i ON i.indexname=c.relname
+  WHERE i.tablename='rag_corpus'
+    AND i.indexname LIKE 'rag_corpus_embedding_ann_mimic%%'
+  ORDER BY i.indexname
+"""
+
 def load_facts():
     conn = connect()
     try:
         m3 = q(conn, SQL_M3_COUNTS)
         m4 = q(conn, SQL_M4_COUNTS)
         qual = q(conn, SQL_QUALITY)
+        emb = q(conn, SQL_EMBED)
+        ann = q(conn, SQL_ANN)
         quality = (qual[0] if qual else {"iv_labs_within_stay": 0, "m3_adm_with_dx_rate": 0.0, "m4_adm_with_dx_rate": 0.0})
     finally:
         conn.close()
-    return m3, m4, quality
+    return m3, m4, quality, emb, ann
 
 def main(out="db_integrity_reports/07_mimic.pdf", use_ai=False):
-    m3, m4, quality = load_facts()
+    m3, m4, quality, emb, ann = load_facts()
 
-    # Verdict (structural): PASS only if all core tables are non-zero
     all_nonzero = all(int(r["n"]) > 0 for r in (m3 + m4))
     verdict_struct = "pass" if all_nonzero else "warn"
 
     def build_flow(story, content_width):
-        source_line = (
-            "Source: ehr_mimic3.{patients, admissions, d_labitems, labevents, "
-            "d_icd_diagnoses, diagnoses_icd, icustays} + "
-            "ehr_mimic4.{patients, admissions, d_labitems, labevents, "
-            "d_icd_diagnoses, diagnoses_icd, icustays}"
-        )
-        story.append(P(source_line, BODY))
+        story.append(P("MIMIC-III/IV structured load status", BODY))
         story.append(P(f"Verdict (structural): {verdict_struct.upper()}", BODY))
-        story.append(Spacer(1, 6))
+
+        story.append(P("Embedding coverage (RAG corpus)", H2))
+        story.append(TableFromRows(emb, columns=["source","total","done","pending","pct"]))
+
+        story.append(P("ANN (ivfflat) indexes", H2))
+        story.append(TableFromRows(ann, columns=["indexname","indisvalid","indisready","lists","size"]))
 
         story.append(P("MIMIC-III — core counts", H2))
-        story.append(TableFromRows(m3, columns=["what", "n"]))
-        story.append(Spacer(1, 6))
+        story.append(TableFromRows(m3, columns=["what","n"]))
 
         story.append(P("MIMIC-IV — core counts", H2))
-        story.append(TableFromRows(m4, columns=["what", "n"]))
-        story.append(Spacer(1, 6))
+        story.append(TableFromRows(m4, columns=["what","n"]))
 
         story.append(P("Quality checks", H2))
         qc_rows = [
@@ -82,27 +106,19 @@ def main(out="db_integrity_reports/07_mimic.pdf", use_ai=False):
             {"metric": "m3_adm_with_dx_rate", "value": round(float(quality.get("m3_adm_with_dx_rate") or 0.0), 4)},
             {"metric": "m4_adm_with_dx_rate", "value": round(float(quality.get("m4_adm_with_dx_rate") or 0.0), 4)},
         ]
-        story.append(TableFromRows(qc_rows, columns=["metric", "value"]))
+        story.append(TableFromRows(qc_rows, columns=["metric","value"]))
 
-    # Optional AI PASS/WARN/FAIL box (same house style as 06)
     ai_obj = None
     if use_ai:
         ai_obj = ai_analyze(
-            system=(
-                "You are auditing MIMIC-IV note joins. "
-                "Only WARN if (hadm_null / rows) > 0.25 or mapped_any is very low. "
-                "Otherwise PASS with a brief note. Respond as JSON verdict+rationale."
-            ),
-            user={
-                "rows": rows_total, "hadm_null": hadm_null, "mapped_any": mapped_any,
-                "by_method": map_counts, "m3_counts": m3, "m4_counts": m4, "quality": quality
-            }
+            system=("You are auditing structured MIMIC-III/IV loads and their RAG readiness. "
+                    "Return only JSON: {\"verdict\":\"pass|warn|fail|info\",\"rationale\":\"<=3 sentences\"}. "
+                    "Consider: missing core tables, low embedding coverage, invalid/absent ANN."),
+            user={"m3_counts": m3, "m4_counts": m4, "quality": quality, "embed": emb, "ann": ann}
         )
 
-    title = "MIMIC (III/IV) — INTEGRITY REPORT"
-    subtitle = None  # build_doc prints the Generated: timestamp
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    build_doc(out, title, subtitle, build_flow, ai_obj=ai_obj)
+    title = "07 • MIMIC (III/IV) — RAG Integrity"
+    build_doc(out, title, subtitle=None, build_flow=build_flow, ai_obj=ai_obj)
 
 if __name__ == "__main__":
     out = "db_integrity_reports/07_mimic.pdf"

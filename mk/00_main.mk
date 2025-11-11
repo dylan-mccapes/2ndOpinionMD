@@ -172,5 +172,6 @@ rag-backfill-meta-dry:
 -include mk/21_va.mk
 -include mk/22_integrity.mk
 -include mk/90_reports.mk
+-include mk/91_coding.mk
 -include mk/98_backups.mk
 -include mk/99_backend.mk

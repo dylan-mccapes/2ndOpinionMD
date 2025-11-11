@@ -109,3 +109,8 @@ reports/
 models/
 nano
 failed_ids.txt
+
+# build artifacts
+*.csv
+*.pdf
+=*
