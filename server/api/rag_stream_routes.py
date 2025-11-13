@@ -1,175 +1,74 @@
-# server/api/rag_stream_routes.py
 from __future__ import annotations
-
-import asyncio
-import json
 import os
-import re
-from collections import defaultdict
+import json
+import asyncio
 from typing import Any, Dict, List, Tuple, Optional
+from fastapi import APIRouter, Request, HTTPException
+from starlette.responses import StreamingResponse
+from integrations.valyu_retriever import search_valyu
 
 import asyncpg
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
 
+# If you have a central embeddings helper, import it here.
+# It should return a list[float] vector for the query text.
+# Fallback: define a no-op that returns [] (ts-only).
 try:
-    from openai import AsyncOpenAI
+    from .embeddings import embed_text as embed_query  # (text:str)->list[float]
 except Exception:
-    AsyncOpenAI = None
+    async def embed_query(_: str) -> List[float]:
+        return []
 
-router = APIRouter()
+router = APIRouter(prefix="/api/rag", tags=["rag"])
 
-# ---------- Config ----------
-EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-POSTGRES_DSN = os.getenv("POSTGRES_DSN", "postgresql://localhost/2ndopinionmd")
+# ---------------------- Utilities ----------------------
 
-MAX_PREVIEW = 5
-RRF_C = 60
-EDGE_BONUS = 0.15
-SOURCE_BONUS = {"guidelines": 0.10, "va_guidelines": 0.10, "who_eml": 0.06}
-DEFAULT_TOPK_TS = 20
-DEFAULT_TOPK_ANN = 20
-DEFAULT_CONTEXT_K = 12
+def sse(event: str, data: Any) -> str:
+    if isinstance(data, (dict, list)):
+        payload = json.dumps(data, ensure_ascii=False)
+    else:
+        payload = str(data)
+    return f"event: {event}\ndata: {payload}\n\n"
 
-
-# ---------- SSE helpers ----------
-def sse(event: str, data: Dict[str, Any]) -> bytes:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
-
-def status(msg: str, **extra) -> bytes:
-    d = {"status": msg}
-    d.update(extra)
-    return sse("status", d)
-
-def _to_vector_literal(vec):
-    # minimal, fast, no trailing space
+def _to_vector_literal(vec: List[float]) -> str:
+    # asyncpg won’t auto-cast python list -> pgvector reliably; send as text + ::vector
     return "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
 
-
-# ---------- OpenAI helpers (sentence-buffered) ----------
-async def embed_query(text: str) -> List[float]:
-    if AsyncOpenAI is None:
-        raise RuntimeError("openai package not available")
-    client = AsyncOpenAI()
-    resp = await client.embeddings.create(model=EMBED_MODEL, input=[text])
-    return resp.data[0].embedding  # type: ignore
-
-
-async def llm_stream_chunks(prompt: str):
-    """
-    Emits fewer, larger chunks (end of sentence or ~200 chars).
-    """
-    if AsyncOpenAI is None:
-        yield "LLM unavailable on server."
-        return
-    client = AsyncOpenAI()
-    sys = (
-        "You are a careful clinical summarizer. "
-        "Use the provided context to answer concisely with bullet points when useful. "
-        "Cite facts using [source:id] tags from the context. "
-        "If information is uncertain or missing, say so."
-    )
-    messages = [{"role": "system", "content": sys}, {"role": "user", "content": prompt}]
-    buf = ""
-    stream = await client.chat.completions.create(
-        model=LLM_MODEL, messages=messages, temperature=0.2, stream=True
-    )
-    async for chunk in stream:
-        delta = chunk.choices[0].delta.content or ""  # type: ignore[index]
-        if not delta:
-            continue
-        buf += delta
-        if re.search(r"[\.!\?]\s$", buf) or len(buf) >= 200:
-            yield buf
-            buf = ""
-    if buf:
-        yield buf
-
-
-# ---------- Pool resolution (robust with fallback) ----------
-async def _create_fallback_pool(app) -> asyncpg.Pool:
-    pool = await asyncpg.create_pool(
-        dsn=POSTGRES_DSN,
-        min_size=int(os.getenv("PGPOOL_MIN", "1")),
-        max_size=int(os.getenv("PGPOOL_MAX", "10")),
-        command_timeout=60,
-    )
-    # stash for reuse
-    if getattr(app, "state", None) is not None:
-        setattr(app.state, "pg_pool", pool)
-    return pool
-
-
-async def resolve_pool_with_via(request: Request) -> Tuple[Optional[asyncpg.Pool], str]:
-    app = getattr(request, "app", None)
-    state = getattr(app, "state", None)
-
-    # 1) Known state attributes
-    if state:
-        for name in ("pool", "db_pool", "pg_pool", "pgpool"):
-            maybe = getattr(state, name, None)
-            if isinstance(maybe, asyncpg.pool.Pool):
-                return maybe, f"app.state.{name}"
-
-    # 2) Lazy import of app_postgres.get_pool (no circular at import time)
+async def resolve_pg_pool(request: Request) -> Tuple[asyncpg.Pool, str]:
+    # Try app.state.pg_pool first (your primary), then import fallback, then make one
+    if getattr(request.app.state, "pg_pool", None):
+        return request.app.state.pg_pool, "app.state.pg_pool"
+    # lazy import fallback getter if present
     try:
-        from .app_postgres import get_pool as _get_pool  # type: ignore
-        pool = await _get_pool() if asyncio.iscoroutinefunction(_get_pool) else _get_pool()
-        if asyncio.iscoroutine(pool):  # just in case
-            pool = await pool
-        if isinstance(pool, asyncpg.pool.Pool):
-            # also cache on app.state for future calls
-            if state and not getattr(state, "pool", None):
-                setattr(state, "pool", pool)
-            return pool, "import:get_pool"
-    except Exception as e:
-        # Fall through to 3), but surface the reason
-        # We won't print() here; we'll return the reason to the caller via 'via'
-        import_err = f"import:get_pool_failed:{e}"
-    else:
-        import_err = "import:get_pool_none"
+        from .app_postgres import get_pool  # not imported at module top to avoid cycles
+        pool = await get_pool()
+        return pool, "import:get_pool"
+    except Exception:
+        pass
+    dsn = os.getenv("POSTGRES_DSN", "postgresql://localhost/2ndopinionmd")
+    max_size = int(os.getenv("PGPOOL_MAX", "10"))
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=max_size)
+    request.app.state.pg_pool = pool
+    return pool, "fallback:created_pg_pool"
 
-    # 3) Fallback: create our own pool with DSN and stash
-    try:
-        pool = await _create_fallback_pool(app)
-        return pool, "fallback:created_pg_pool"
-    except Exception as e:
-        return None, f"{import_err}|fallback_failed:{e}"
+# ---------------------- Retrieval ----------------------
 
-
-# ---------- Retrieval ----------
 async def ts_search(conn: asyncpg.Connection, q: str, source: str, k: int) -> List[Dict[str, Any]]:
+    # Minimal text search placeholder; replace with your optimized query (tsvector/rum/etc.)
     rows = await conn.fetch(
         """
-        SELECT id, source, title
+        SELECT id, source, title, 0.0 AS score
         FROM rag_corpus
-        WHERE source = $1
-          AND (
-            title ILIKE '%' || $2 || '%'
-            OR to_tsvector('simple', coalesce(title,'')) @@ plainto_tsquery('simple', $2)
-          )
-        ORDER BY
-          CASE WHEN position(lower($2) in lower(title)) > 0 THEN 0 ELSE 1 END,
-          id
+        WHERE source = $1 AND (title ILIKE '%'||$2||'%' OR $2 = '')
         LIMIT $3
         """,
-        source, q, k,
+        source, q, k
     )
-    return [{"id": r["id"], "source": r["source"], "title": r["title"], "score": 0.0} for r in rows]
+    return [{"id": r["id"], "source": r["source"], "title": r["title"], "score": float(r["score"])} for r in rows]
 
-
-async def source_has_embeddings(conn: asyncpg.Connection, source: str) -> bool:
-    r = await conn.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM rag_corpus WHERE source=$1 AND embedding IS NOT NULL LIMIT 1)", source
-    )
-    return bool(r)
-
-
-async def ann_search(conn, q_vec, source: str, k: int):
+async def ann_search(conn: asyncpg.Connection, q_vec: List[float], source: str, k: int) -> List[Dict[str, Any]]:
     if not q_vec:
         return []
-    qv = _to_vector_literal(q_vec)  # -> "[0.123,-0.456,...]"
+    qv = _to_vector_literal(q_vec)  # "[...]" then cast to ::vector in SQL
     rows = await conn.fetch(
         """
         SELECT id, source, title, (1 - (embedding <=> $1::vector)) AS sim
@@ -178,11 +77,29 @@ async def ann_search(conn, q_vec, source: str, k: int):
         ORDER BY embedding <=> $1::vector
         LIMIT $3
         """,
-        qv, source, k,
+        qv, source, k
     )
     return [{"id": r["id"], "source": r["source"], "title": r["title"], "score": float(r["sim"])} for r in rows]
 
+async def phase_valyu(q, limit, inline_citations):
+    yield sse_event("phase_start", j({"source":"valyu","method":"external"}))
+    data = await search_valyu(q, k=limit, response_length="short", search_type="proprietary")
+    matches = data["matches"]
+    # Emit as regular matches so the UI “Sources” panel just works
+    yield sse_event("matches", j({"source":"valyu_web","method":"external","rows":[
+        {"id":m["id"],"source":"valyu_web","title":m["title"],"score":m["score"],"url":m["url"],"subtype":m["subtype"]}
+        for m in matches
+    ]}))
+    # Optional: emit a citations block for UI
+    yield sse_event("citations", j({"items":[
+        {"id":m["id"],"source":"valyu_web","title":m["title"],"url":m["url"]}
+        for m in matches
+    ]}))
+    yield sse_event("phase_end", j({"source":"valyu","method":"external"}))
+    return matches  # can be fused with local TS/ANN
+
 async def expand_edges(conn: asyncpg.Connection, cands: List[Tuple[str, str]], limit: int = 2000) -> List[Dict[str, Any]]:
+    # cands: list of (source, id)
     if not cands:
         return []
     await conn.execute(
@@ -190,221 +107,286 @@ async def expand_edges(conn: asyncpg.Connection, cands: List[Tuple[str, str]], l
     )
     await conn.execute("TRUNCATE cand;")
     await conn.executemany("INSERT INTO cand(source, src_id) VALUES($1, $2)", cands)
-
-    edges = await conn.fetch(
+    rows = await conn.fetch(
         """
-        WITH x AS (
-          SELECT e.dst_source, e.dst_id, MAX(e.weight) AS edge_w
-          FROM cand c
-          JOIN ontology_edges e
-            ON e.src_source=c.source AND e.src_id=c.src_id
-          GROUP BY 1,2
-          LIMIT $1
-        )
-        SELECT r.id, r.source, r.title, x.edge_w
-        FROM x
-        JOIN rag_corpus r
-          ON r.source = x.dst_source AND r.id::text = x.dst_id
+        SELECT e.dst_source AS source, e.dst_id::text AS id, MAX(e.weight) AS edge_w
+        FROM cand c
+        JOIN ontology_edges e
+          ON e.src_source=c.source AND e.src_id=c.src_id
+        GROUP BY 1,2
+        ORDER BY MAX(e.weight) DESC
+        LIMIT $1
         """,
-        limit,
+        limit
     )
-    return [{"id": r["id"], "source": r["source"], "title": r["title"], "edge_w": float(r["edge_w"])} for r in edges]
-
-
-def rrf_fuse(
-    ts_by_source: Dict[str, List[Dict[str, Any]]],
-    ann_by_source: Dict[str, List[Dict[str, Any]]],
-    edge_rows: List[Dict[str, Any]],
-    k_final: int,
-) -> List[Dict[str, Any]]:
-    ts_rank, ann_rank = {}, {}
-    for s, rows in ts_by_source.items():
-        for i, r in enumerate(rows):
-            ts_rank[(s, r["id"])] = i
-    for s, rows in ann_by_source.items():
-        for i, r in enumerate(rows):
-            ann_rank[(s, r["id"])] = i
-
-    edge_bonus = defaultdict(float)
-    for r in edge_rows:
-        edge_bonus[(r["source"], r["id"])] = max(edge_bonus[(r["source"], r["id"])], r.get("edge_w", 0.0))
-
-    keys = set(ts_rank) | set(ann_rank) | set(edge_bonus)
-    fused: List[Tuple[float, Tuple[str, Any]]] = []
-    for key in keys:
-        s, _doc_id = key
-        score = 0.0
-        if (rk := ts_rank.get(key)) is not None:
-            score += 1.0 / (RRF_C + rk)
-        if (rk := ann_rank.get(key)) is not None:
-            score += 1.0 / (RRF_C + rk)
-        score += EDGE_BONUS * edge_bonus.get(key, 0.0)
-        score += SOURCE_BONUS.get(s, 0.0)
-        fused.append((score, key))
-
-    fused.sort(key=lambda x: x[0], reverse=True)
-
-    idx: Dict[Tuple[str, Any], Dict[str, Any]] = {}
-    for d in ts_by_source.values():
-        for r in d:
-            idx[(r["source"], r["id"])] = r
-    for d in ann_by_source.values():
-        for r in d:
-            idx.setdefault((r["source"], r["id"]), r)
-    for r in edge_rows:
-        idx.setdefault((r["source"], r["id"]), {"id": r["id"], "source": r["source"], "title": r["title"]})
-
-    out: List[Dict[str, Any]] = []
-    seen_titles = set()
-    for sc, key in fused:
-        s, _ = key
-        row = idx.get(key)
-        if not row:
-            continue
-        t = (s, (row.get("title") or "").strip().lower())
-        if t in seen_titles:
-            continue
-        seen_titles.add(t)
-        out.append({"id": row["id"], "source": s, "title": row.get("title"), "score": sc})
-        if len(out) >= k_final:
-            break
+    # Enrich edge targets with titles
+    if not rows:
+        return []
+    ids = [(r["source"], r["id"]) for r in rows]
+    # build dynamic IN tuple query
+    # safer to use temp table for lookups
+    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS dst (source text, id text) ON COMMIT PRESERVE ROWS;")
+    await conn.execute("TRUNCATE dst;")
+    await conn.executemany("INSERT INTO dst(source, id) VALUES($1, $2)", ids)
+    info = await conn.fetch(
+        """
+        SELECT r.id::text AS id, r.source, r.title
+        FROM rag_corpus r
+        JOIN dst d ON d.source = r.source AND d.id::text = r.id::text
+        """
+    )
+    title_map = {(r["source"], r["id"]): r["title"] for r in info}
+    out = []
+    for r in rows:
+        key = (r["source"], r["id"])
+        out.append({
+            "id": r["id"],
+            "source": r["source"],
+            "title": title_map.get(key, None),
+            "score": float(r["edge_w"]),
+        })
     return out
 
+def rrf_fuse(groups: List[List[Dict[str, Any]]], k: int = 50, k_rrf: float = 60.0) -> List[Dict[str, Any]]:
+    # groups: list of ranked lists; returns fused, deduped ranking
+    scores: Dict[Tuple[str, str], float] = {}
+    keep: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for g in groups:
+        for rank, r in enumerate(g, start=1):
+            key = (r["source"], str(r["id"]))
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k_rrf + rank)
+            if key not in keep:
+                keep[key] = {"id": str(r["id"]), "source": r["source"], "title": r.get("title")}
+    fused = [{"id": v["id"], "source": v["source"], "title": v.get("title"), "score": scores[(v["source"], v["id"])]}
+             for v in keep.values()]
+    fused.sort(key=lambda x: x["score"], reverse=True)
+    return fused[:k]
 
-def build_prompt(user_q: str, ctx_rows: List[Dict[str, Any]]) -> str:
-    lines = [f"Question: {user_q}", "", "Context:"]
-    for r in ctx_rows:
-        tag = f"[{r['source']}:{r['id']}]"
-        title = (r.get("title") or "").strip()
-        lines.append(f"{tag} {title}")
-    lines.append("")
-    lines.append("Answer succinctly. Cite with the same [source:id] tags inline where relevant.")
-    return "\n".join(lines)
+async def fetch_citation_rows(conn: asyncpg.Connection, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not items:
+        return []
+    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS cite (source text, id text) ON COMMIT PRESERVE ROWS;")
+    await conn.execute("TRUNCATE cite;")
+    await conn.executemany("INSERT INTO cite(source, id) VALUES($1, $2)", [(i["source"], str(i["id"])) for i in items])
+    rows = await conn.fetch(
+        """
+        SELECT r.id::text AS id, r.source, r.title,
+               COALESCE(r.payload->>'url', NULL) AS url
+        FROM rag_corpus r
+        JOIN cite c ON c.source=r.source AND c.id::text = r.id::text
+        """
+    )
+    # Dedup stable order by (source,id)
+    seen = set()
+    out = []
+    for r in rows:
+        key = (r["source"], r["id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": r["id"], "source": r["source"], "title": r["title"], "url": r["url"]})
+    return out
 
+# ---------------------- LLM streaming ----------------------
 
-# ---------- Main SSE route ----------
-@router.get("/api/rag/ask_stream")
-async def rag_ask_stream(
+async def llm_stream_yield(text_gen, llm_mode: str = "chunk"):
+    """
+    text_gen must be an async generator yielding token deltas (strings).
+    llm_mode:
+      - 'delta' : forward model deltas as llm_delta
+      - 'chunk' : sentence-buffered llm_chunk (quiet)
+    """
+    if llm_mode == "delta":
+        async for tok in text_gen:
+            if tok:
+                yield sse("llm_delta", {"text": tok})
+        return
+
+    # chunk mode
+    buf = []
+    acc_len = 0
+    flush_marks = {".", "!", "?", "\n"}
+    async for tok in text_gen:
+        if not tok:
+            continue
+        buf.append(tok)
+        acc_len += len(tok)
+        if any(ch in tok for ch in flush_marks) or acc_len >= 500:
+            chunk = "".join(buf)
+            buf, acc_len = [], 0
+            if chunk.strip():
+                yield sse("llm_chunk", {"text": chunk})
+    # trailing
+    if buf:
+        chunk = "".join(buf)
+        if chunk.strip():
+            yield sse("llm_chunk", {"text": chunk})
+
+# Replace with your OpenAI client; this is a skinny wrapper you can adapt.
+async def openai_chat_stream(prompt: str, sys: Optional[str] = None):
+    """
+    Yields token deltas (strings). Plug your existing client here.
+    """
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI()
+    msgs = []
+    if sys:
+        msgs.append({"role": "system", "content": sys})
+    msgs.append({"role": "user", "content": prompt})
+    stream = await client.chat.completions.create(
+        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        messages=msgs,
+        temperature=0.2,
+        stream=True,
+    )
+    async for event in stream:
+        if hasattr(event, "choices") and event.choices:
+            delta = event.choices[0].delta.content or ""
+            if delta:
+                yield delta
+
+# ---------------------- Route ----------------------
+
+@router.get("/ask_stream")
+async def ask_stream(
     request: Request,
     q: str,
     limit: int = 10,
-    sources: str = "mimic4_dx",
-    pings: int = 1,
+    sources: str = "",
     with_llm: int = 0,
-    topk_ts: int = DEFAULT_TOPK_TS,
-    topk_ann: int = DEFAULT_TOPK_ANN,
-    ctx_k: int = DEFAULT_CONTEXT_K,
+    ctx_k: int = 8,
+    use_edges: int = 1,
+    llm_mode: str = "chunk",             # <-- NEW: 'chunk' (quiet) or 'delta' (raw)
+    inline_citations: int = 1,           # keep inline [source:src:id] tags in LLM text
 ):
-    async def gen():
-        src_list = [s.strip() for s in sources.split(",") if s.strip()]
-        yield sse("start", {"q": q, "limit": max(1, min(100, limit)), "sources": ",".join(src_list)})
+    async def streamer():
+        # announce query
+        yield sse("start", {"q": q, "limit": limit, "sources": sources or None})
 
-        pool, via = await resolve_pool_with_via(request)
-        if pool is None:
-            yield sse("phase_error", {"source": "db", "method": "pool", "error": "DB pool unavailable", "via": via})
+        # resolve pool
+        try:
+            pool, via = await resolve_pg_pool(request)
+            yield sse("status", {"status": "db_pool_resolved", "via": via})
+        except Exception as e:
+            yield sse("phase_error", {"source": "db", "method": "pool", "error": str(e)})
             yield sse("done", {"q": q})
             return
-        else:
-            yield status("db_pool_resolved", via=via)
 
-        yield status("retrieving_candidates", q=q)
+        # parse sources
+        srcs = [s.strip() for s in (sources.split(",") if sources else []) if s.strip()]
+        # embed once for ANN across sources
+        try:
+            q_vec: List[float] = await embed_query(q)
+        except Exception:
+            q_vec = []
 
-        topk_ts_clamped = max(1, min(200, topk_ts))
-        topk_ann_clamped = max(1, min(200, topk_ann))
-        ctx_k_clamped = max(1, min(30, ctx_k))
+        yield sse("status", {"status": "retrieving_candidates", "q": q})
 
         async with pool.acquire() as conn:
-            # Embed once (optional)
-            try:
-                q_vec = await embed_query(q)
-            except Exception as e:
-                q_vec = None
-                yield status("embed_query_failed", error=str(e))
+            # ts + ann per source
+            all_groups: List[List[Dict[str, Any]]] = []
+            base_cands: List[Tuple[str, str]] = []
 
-            ts_by_source: Dict[str, List[Dict[str, Any]]] = {}
-            ann_by_source: Dict[str, List[Dict[str, Any]]] = {}
-
-            for src in src_list:
+            for src in srcs or []:
                 # TS
-                yield sse("phase_start", {"source": src, "method": "ts"})
                 try:
-                    ts_rows = await ts_search(conn, q=q, source=src, k=topk_ts_clamped)
+                    yield sse("phase_start", {"source": src, "method": "ts"})
+                    ts_rows = await ts_search(conn, q, src, limit)
+                    if ts_rows:
+                        yield sse("matches", {"source": src, "method": "ts", "rows": ts_rows})
+                        all_groups.append(ts_rows)
+                        base_cands.extend([(r["source"], str(r["id"])) for r in ts_rows])
                 except Exception as e:
-                    ts_rows = []
                     yield sse("phase_error", {"source": src, "method": "ts", "error": str(e)})
-                ts_by_source[src] = ts_rows
-                if ts_rows:
-                    yield sse("matches", {"source": src, "method": "ts", "rows": ts_rows[:MAX_PREVIEW]})
-                yield sse("phase_end", {"source": src, "method": "ts"})
+                finally:
+                    yield sse("phase_end", {"source": src, "method": "ts"})
 
                 # ANN
-                yield sse("phase_start", {"source": src, "method": "ann"})
-                ann_rows: List[Dict[str, Any]] = []
                 try:
-                    if q_vec is not None and await source_has_embeddings(conn, src):
-                        ann_rows = await ann_search(conn, q_vec=q_vec, source=src, k=topk_ann_clamped)
+                    yield sse("phase_start", {"source": src, "method": "ann"})
+                    ann_rows = await ann_search(conn, q_vec, src, limit)
+                    if ann_rows:
+                        yield sse("matches", {"source": src, "method": "ann", "rows": ann_rows})
+                        all_groups.append(ann_rows)
+                        base_cands.extend([(r["source"], str(r["id"])) for r in ann_rows])
                 except Exception as e:
                     yield sse("phase_error", {"source": src, "method": "ann", "error": str(e)})
-                ann_by_source[src] = ann_rows
-                if ann_rows:
-                    yield sse("matches", {"source": src, "method": "ann", "rows": ann_rows[:MAX_PREVIEW]})
-                yield sse("phase_end", {"source": src, "method": "ann"})
+                finally:
+                    yield sse("phase_end", {"source": src, "method": "ann"})
 
-            # Edge expansion
-            yield sse("phase_start", {"source": "edges", "method": "expand"})
-            base_keys: List[Tuple[str, str]] = []
-            for s, rows in ts_by_source.items():
-                for r in rows[:5]:
-                    base_keys.append((s, str(r["id"])))
-            for s, rows in ann_by_source.items():
-                for r in rows[:5]:
-                    base_keys.append((s, str(r["id"])))
-            base_keys = list({(s, i) for (s, i) in base_keys})
+            # Edges expansion (optional)
             try:
-                edge_rows = await expand_edges(conn, base_keys, limit=2000)
-                if edge_rows:
-                    yield sse("matches", {"source": "edges", "method": "expand", "rows": edge_rows[:MAX_PREVIEW]})
-            except Exception as e:
+                yield sse("phase_start", {"source": "edges", "method": "expand"})
                 edge_rows = []
+                if use_edges and base_cands:
+                    edge_rows = await expand_edges(conn, base_cands, limit=2000)
+                    if edge_rows:
+                        yield sse("matches", {"source": "edges", "method": "expand", "rows": edge_rows[:min(50, len(edge_rows))]})
+                        all_groups.append(edge_rows)
+                yield sse("phase_end", {"source": "edges", "method": "expand"})
+            except Exception as e:
                 yield sse("phase_error", {"source": "edges", "method": "expand", "error": str(e)})
-            yield sse("phase_end", {"source": "edges", "method": "expand"})
+                yield sse("phase_end", {"source": "edges", "method": "expand"})
 
             # Fusion
-            yield status("fusing_results")
-            fused = rrf_fuse(ts_by_source, ann_by_source, edge_rows, k_final=limit)
-            yield sse("phase_start", {"source": "rag_fusion", "method": "rank"})
-            yield sse("matches", {"source": "rag_fusion", "method": "rank", "rows": fused[:MAX_PREVIEW]})
-            yield sse("phase_end", {"source": "rag_fusion", "method": "rank"})
+            yield sse("status", {"status": "fusing_results"})
+            try:
+                yield sse("phase_start", {"source": "rag_fusion", "method": "rank"})
+                fused = rrf_fuse(all_groups, k=max(limit, ctx_k))
+                if fused:
+                    yield sse("matches", {"source": "rag_fusion", "method": "rank", "rows": fused[:limit]})
+                yield sse("phase_end", {"source": "rag_fusion", "method": "rank"})
+            except Exception as e:
+                yield sse("phase_error", {"source": "rag_fusion", "method": "rank", "error": str(e)})
+                fused = []
 
-            # Optional LLM
-            if with_llm:
-                yield status("generating_summary")
-                yield sse("phase_start", {"source": "rag_fusion", "method": "llm"})
-                prompt = build_prompt(q, fused[:ctx_k_clamped])
-                try:
-                    async for chunk in llm_stream_chunks(prompt):
-                        yield sse("llm_chunk", {"text": chunk})
-                except Exception as e:
-                    yield sse("phase_error", {"source": "rag_fusion", "method": "llm", "error": str(e)})
-                yield sse("phase_end", {"source": "rag_fusion", "method": "llm"})
+            # Build context + citations
+            ctx = fused[:ctx_k]
+            try:
+                citations = await fetch_citation_rows(conn, ctx)
+            except Exception:
+                citations = [{"id": r["id"], "source": r["source"], "title": r.get("title")} for r in ctx]
+
+        # Ship citations as a dedicated event for the frontend Sources panel
+        if citations:
+            yield sse("phase_start", {"source": "rag_fusion", "method": "citations"})
+            yield sse("citations", {"items": citations})
+            yield sse("phase_end", {"source": "rag_fusion", "method": "citations"})
+
+        # Optionally call LLM
+        if with_llm:
+            yield sse("status", {"status": "generating_summary"})
+            yield sse("phase_start", {"source": "rag_fusion", "method": "llm"})
+
+            # Construct a compact prompt w/ inline cite tokens if desired
+            lines = []
+            for r in ctx:
+                tag = f"[{r['source']}:{r['id']}]"
+                title = (r.get("title") or "").strip()
+                if title:
+                    lines.append(f"- {title} {tag}")
+                else:
+                    lines.append(f"- {tag}")
+
+            sys_prompt = (
+                "You are a clinical summarizer. Write concise, factual bullets. "
+                "If inline citations are present like [source:id], leave them at the end of the relevant bullet. "
+                "If a requested detail is not supported by the provided context, say it is not found."
+            )
+            user_prompt = (
+                f"Query: {q}\nContext items (for citation):\n" + "\n".join(lines) +
+                ("\n\nInclude a brief 'Sources:' section listing the tags used." if inline_citations else "")
+            )
+
+            async def gen():
+                async for tok in openai_chat_stream(user_prompt, sys_prompt):
+                    yield tok
+
+            async for piece in llm_stream_yield(gen(), llm_mode=llm_mode):
+                yield piece
+
+            yield sse("phase_end", {"source": "rag_fusion", "method": "llm"})
 
         yield sse("done", {"q": q})
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
-
-
-# ---------- Health: helps confirm pool wiring ----------
-@router.get("/api/health/db")
-async def health_db(request: Request):
-    async def gen():
-        pool, via = await resolve_pool_with_via(request)
-        if pool is None:
-            yield sse("db", {"ok": False, "via": via})
-            return
-        try:
-            async with pool.acquire() as conn:
-                v = await conn.fetchval("select version()")
-            yield sse("db", {"ok": True, "via": via, "version": v})
-        except Exception as e:
-            yield sse("db", {"ok": False, "via": via, "error": str(e)})
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(streamer(), media_type="text/event-stream")
