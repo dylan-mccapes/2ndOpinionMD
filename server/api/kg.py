@@ -29,6 +29,10 @@ load_dotenv(SERVER_DIR / ".env")
 logger.info("kg.py loaded. OPENAI_API_KEY set: %s",
             "yes" if os.getenv("OPENAI_API_KEY") else "no")
 
+logging.info("VALYU_API_KEY present: %s tail=%s",
+             bool(os.getenv("VALYU_API_KEY")),
+             (os.getenv("VALYU_API_KEY") or "")[-4:] or None)
+
 router = APIRouter(prefix="/api/kg", tags=["kg"])
 
 # ----------------------------
