@@ -38,6 +38,9 @@ nice-setup:
 nice-scrape:
 	@test -n "$(DOC)" || (echo "Usage: make nice-scrape DOC=NG220 [SRC=nice|cks]"; exit 2)
 	@$(PY) server/scripts/scrape_nice_pdf.py --doc "$(DOC)" --src "$(NICE_SRC)" --out "$(NICE_OUT)"
+	@latest=$$(ls -t "$(NICE_OUT)"/*.pdf | head -n1); \
+	  cp "$$latest" "$(NICE_OUT)/$(DOC).pdf"; \
+	  echo "Aliased $$latest -> $(NICE_OUT)/$(DOC).pdf"
 
 # Load a single already-downloaded PDF into guidelines.* + rag_corpus
 nice-load:
@@ -74,6 +77,12 @@ nice-embed:
 	  --embedding-col embedding --model $(EMB_MODEL) --batch 256 \
 	  --where "source='$(NICE_SRC)' AND embedding IS NULL"
 
+nice-embed-safe:
+	@$(PY) server/scripts/embed_table.py \
+	  --table public.rag_corpus --id-col id --text-col text \
+	  --embedding-col embedding --model $(EMB_MODEL) --batch 128 \
+	  --where "source='$(NICE_SRC)' AND embedding IS NULL AND length(text) <= 20000"
+
 # ANN index scoped to NICE (optional; requires pgvector)
 nice-ann-index:
 	@$(PSQL) -v ON_ERROR_STOP=1 -c "CREATE INDEX IF NOT EXISTS rag_corpus_embedding_ann_$(NICE_SRC) \
@@ -91,9 +100,20 @@ nice-api-smoke:
 nice-audit-sql:
 	@psql -d $${DB_NAME:-2ndopinionmd} -tA -f database/sql/18_nice_audit.sql | jq .
 
-# (Optional) Safer embed: skip ultra-long rows that can overflow token limits
-nice-embed-safe:
-	@$(PY) server/scripts/embed_table.py \
-	  --table public.rag_corpus --id-col id --text-col text \
-	  --embedding-col embedding --model $(EMB_MODEL) --batch 128 \
-	  --where "source='$(NICE_SRC)' AND embedding IS NULL AND length(text) <= 20000"
+NICE_DIR              := data/guidelines/nice
+NICE_NG106_PDF        := $(NICE_DIR)/nice_ng106_full.pdf
+NICE_NG28_PDF         := $(NICE_DIR)/nice_ng28_full.pdf
+
+rag_nice_ng106: $(NICE_NG106_PDF)
+	$(PYTHON) server/scripts/ingest_nice_guidelines.py \
+	  --pdf-path $(NICE_NG106_PDF) \
+	  --guideline-id NG106 \
+	  --guideline-title "NICE NG106 Chronic heart failure in adults: diagnosis and management"
+
+rag_nice_ng28: $(NICE_NG28_PDF)
+	$(PYTHON) server/scripts/ingest_nice_guidelines.py \
+	  --pdf-path $(NICE_NG28_PDF) \
+	  --guideline-id NG28 \
+	  --guideline-title "NICE NG28 Type 2 diabetes in adults: management"
+
+rag_nice: rag_nice_ng106 rag_nice_ng28

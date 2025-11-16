@@ -29,6 +29,7 @@ cryptography==42.0.5
 
 # Database Integrity
 reportlab==4.2.2
+pypdf>=4.0.0
 
 sse-starlette>=1.8
 valyu>=1.0.9

@@ -3,14 +3,22 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 import httpx
+import logging
 
 VALYU_BASE = os.getenv("VALYU_BASE", "https://api.valyu.ai/v1").rstrip("/")
 VALYU_API_KEY = (os.getenv("VALYU_API_KEY") or "").strip()
 VALYU_ORG_ID = (os.getenv("VALYU_ORG_ID") or "").strip()
+VALYU_MAX_PRICE = float(os.getenv("VALYU_MAX_PRICE", "20.0"))  # dollars per query guardrail
+logger = logging.getLogger(__name__)
+VALYU_WARN_THRESHOLD = float(os.getenv("VALYU_WARN_THRESHOLD", "0.25"))
+
+# Soft cost guardrails (per-valyu pricing is per 1k retrievals)
+VALYU_MAX_PRICE = float(os.getenv("VALYU_MAX_PRICE", "20.0"))  # search()
+VALYU_ANSWER_MAX_PRICE = float(os.getenv("VALYU_ANSWER_MAX_PRICE", "30.0"))  # answer()
 
 # Default PubMed dataset slug per Valyu docs
-# https://valyu.ai/healthcare (see "Healthcare Datasets")
 DEFAULT_INCLUDED_SOURCES = ["valyu/valyu-pubmed"]
+
 
 def _headers() -> Dict[str, str]:
     h = {
@@ -18,12 +26,14 @@ def _headers() -> Dict[str, str]:
         "Content-Type": "application/json",
     }
     if VALYU_API_KEY:
-        # Accept both Authorization and x-api-key (header names are case-insensitive)
+        # Both are accepted (headers are case-insensitive); this is the combo that
+        # fixed your “missing equals-sign / Missing Authentication Token” error.
         h["Authorization"] = f"Bearer {VALYU_API_KEY}"
         h["x-api-key"] = VALYU_API_KEY
     if VALYU_ORG_ID:
         h["X-Org-Id"] = VALYU_ORG_ID
     return h
+
 
 async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if not VALYU_API_KEY:
@@ -39,9 +49,8 @@ async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 out["success"] = True
             return out
         except httpx.HTTPStatusError as e:
-            body: Any
             try:
-                body = r.json()
+                body: Any = r.json()
             except Exception:
                 body = {"raw": r.text}
             return {
@@ -51,10 +60,8 @@ async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
                 "body": body,
             }
 
+
 def _extract_results(vy: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Normalize different shapes into a simple list of results.
-    """
     for key in ("results", "search_results", "documents", "data"):
         val = vy.get(key)
         if isinstance(val, list):
@@ -66,22 +73,32 @@ def _extract_results(vy: Dict[str, Any]) -> List[Dict[str, Any]]:
                     return v2
     return []
 
+
 def _norm_row(r: Dict[str, Any]) -> Dict[str, Any]:
     rid = str(r.get("id") or r.get("url") or r.get("doi") or "result")
     title = r.get("title") or r.get("site") or r.get("url") or "result"
+
     # Prefer a short snippet-like field if present; otherwise truncate content
     snippet = r.get("snippet") or r.get("summary") or r.get("description")
     if not snippet:
         content = r.get("content") or r.get("text")
         if isinstance(content, str):
             snippet = content[:400]
+
+    # Normalize score so SSE never sees null
+    score = r.get("score")
+    if score is None:
+        score = r.get("rank")
+    if score is None:
+        score = 1.0
+
     return {
         "id": rid,
         "title": title,
         "url": r.get("url"),
         "site": r.get("site"),
         "snippet": snippet,
-        "score": r.get("score") or r.get("rank"),
+        "score": float(score),
         "doi": r.get("doi"),
         "authors": r.get("authors"),
         "source_type": r.get("source_type"),
@@ -106,14 +123,15 @@ async def search(
         "max_num_results": k,
         "return_contents": return_contents,
         "fast_mode": fast_mode,
-        # Explicitly scope to PubMed by default
         "included_sources": included_sources or DEFAULT_INCLUDED_SOURCES,
     }
-    out = await _post("/search", payload)
+    out = await _post("/deepsearch", payload)
     if not out.get("success"):
         return out
     out["results"] = [_norm_row(r) for r in _extract_results(out)]
     return out
+
+
 
 async def answer(
     query: str,
@@ -124,20 +142,23 @@ async def answer(
     cite: bool = True,
 ) -> Dict[str, Any]:
     """
-    Valyu /answer — ask with built-in retrieval over selected sources.
-    IMPORTANT: Body key is 'query', not 'question'.
+    Valyu /answer — RAG-style answer with built-in retrieval.
+    Body key is 'query' (not 'question').
     """
     payload: Dict[str, Any] = {
-        "query": query,                          # <-- required key per docs
+        "query": query,
         "included_sources": included_sources or DEFAULT_INCLUDED_SOURCES,
-        "search_type": search_type,              # "proprietary" keeps it in curated sources like PubMed
+        "search_type": search_type,
         "max_tokens": max_tokens,
         "cite": cite,
+        # Separate guardrail for /answer
+        "data_max_price": VALYU_ANSWER_MAX_PRICE,
+        "tool_call_mode": True,
     }
     out = await _post("/answer", payload)
-    # Normalize a results list if the API returned any evidence
     out["results"] = [_norm_row(r) for r in _extract_results(out)]
     return out
+
 
 async def call_valyu(
     mode: str,

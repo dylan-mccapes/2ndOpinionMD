@@ -43,7 +43,7 @@ guidelines-embed-corpus:
 	@$(PY) server/scripts/embed_table.py \
 	  --table public.rag_corpus --id-col id --text-col text \
 	  --embedding-col embedding --model $(GUIDE_EMBED_MODEL) \
-	  --batch 256 --where "$(if $(WHERE),$(WHERE),source IN ('nice','cks') AND embedding IS NULL)"
+	  --batch 256 --where "$(if $(WHERE),$(WHERE),source IN ('nice','cks') AND embedding IS NULL AND length(text) <= 20000)"
 
 guidelines-stats:
 	@$(PSQL) -c "SELECT source, COUNT(*) n, COUNT(*) FILTER (WHERE embedding IS NULL) no_emb FROM public.rag_corpus WHERE source IN ('nice','cks') GROUP BY 1 ORDER BY 2 DESC;"
