@@ -172,6 +172,7 @@ rag-backfill-meta-dry:
 -include mk/21_va.mk
 -include mk/22_integrity.mk
 -include mk/23_pubmed.mk
+-include mk/31_ethos_of_health.mk
 -include mk/51_pubmd.mk
 -include mk/90_reports.mk
 -include mk/91_coding.mk
