@@ -98,3 +98,28 @@ api-guidelines-search:
 
 api-guidelines-smoke: api-guidelines-ping api-guidelines-doccheck
 	@echo "✓ API guidelines smoke passed"
+
+GUIDE_PY := server/scripts/ingest_guidelines_rheum.py
+
+guidelines-rheum-ingest:
+	$(PYTHON) $(GUIDE_PY)
+
+guidelines-rheum-embed:
+	# reuse your generic embed script to fill embeddings for each source
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source acr_ra_2021
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source eular_ra_2022
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source eular_acr_sle_2019
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source esc_ers_ph_2022
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source kdigo_gn_ln_2021
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source acr_ild_2023
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source nice_ta397_belimumab
+
+RA_GUIDELINES_PDFS := $(wildcard data/ra_guidelines/*.pdf)
+
+.PHONY: ra_guidelines.ingest
+ra_guidelines.ingest: $(RA_GUIDELINES_PDFS)
+	$(PYTHON) server/scripts/ingest_ra_guidelines.py
+
+.PHONY: ra_guidelines.embed
+ra_guidelines.embed:
+	$(PYTHON) server/scripts/embed_rag_source_async.py ra_guidelines

@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Depends, Query, Request
 from openai import OpenAI
 from sse_starlette.sse import EventSourceResponse
+
 from . import valyu_client
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,18 @@ MAX_CONTEXT_CHARS = 32_000
 VALYU_BASE_URL = os.getenv("VALYU_BASE_URL", "").strip()
 VALYU_API_KEY = os.getenv("VALYU_API_KEY", "").strip()
 VALYU_TIMEOUT = float(os.getenv("VALYU_TIMEOUT", "20.0"))
+
+# Heuristic source-gating config
+# These are intentionally conservative and fail-open if they drop everything.
+SOURCE_GATING_ENABLED = bool(int(os.getenv("RAG_SOURCE_GATING_ENABLED", "1")))
+MIN_DOCS_PER_SOURCE = int(os.getenv("RAG_MIN_DOCS_PER_SOURCE", "1"))
+REL_SCORE_CUTOFF = float(os.getenv("RAG_REL_SCORE_CUTOFF", "0.35"))
+ABS_SCORE_CUTOFF = float(os.getenv("RAG_ABS_SCORE_CUTOFF", "0.0"))
+ALWAYS_KEEP_SOURCES = {
+    s.strip()
+    for s in os.getenv("RAG_ALWAYS_KEEP_SOURCES", "").split(",")
+    if s.strip()
+}
 
 client = OpenAI()
 
@@ -60,7 +73,7 @@ def normalize_row(
     """
     Normalize a DB row or external hit (e.g., Valyu) into a common shape.
     Expected keys:
-      - id (or uid/pmid for Valyu)
+      - id (or uid/pmid/pubmed_id/doc_id for Valyu-like rows)
       - source
       - title
       - text
@@ -144,6 +157,9 @@ def build_fused_context(
 def format_context_for_llm(ctx: Iterable[Dict[str, Any]]) -> str:
     """
     Turn fused context rows into a single prompt string.
+
+    Each block is numbered [1], [2], ... in the same order as `final_ctx`,
+    which is the same numbering used for citations (`index` field).
     """
     blocks: List[str] = []
     for i, row in enumerate(ctx, start=1):
@@ -159,6 +175,155 @@ def format_context_for_llm(ctx: Iterable[Dict[str, Any]]) -> str:
     if len(context_str) > MAX_CONTEXT_CHARS:
         context_str = context_str[:MAX_CONTEXT_CHARS] + "\n[truncated]"
     return context_str
+
+
+# ---------------------------------------------------------------------------
+# Heuristic-based source gating
+# ---------------------------------------------------------------------------
+
+
+def summarize_source_scores(
+    rows: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Compute simple statistics over scores for a source, for gating.
+
+    Returns:
+      {
+        "n": <count>,
+        "top1": <best score>,
+        "top3_mean": <mean of up to top-3 scores>,
+        "median": <median score>,
+      }
+    or None if rows empty.
+    """
+    if not rows:
+        return None
+
+    scores = sorted(
+        [float(r.get("score", 0.0) or 0.0) for r in rows],
+        reverse=True,
+    )
+    n = len(scores)
+    top1 = scores[0]
+    top3_mean = sum(scores[:3]) / min(3, n)
+    median = scores[n // 2]
+    return {
+        "n": n,
+        "top1": top1,
+        "top3_mean": top3_mean,
+        "median": median,
+    }
+
+
+def apply_source_gating(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """
+    Apply simple heuristics to drop obviously off-topic / weak sources.
+
+    Heuristics (tunable by env):
+      - If SOURCE_GATING_ENABLED == 0: keep everything, just report stats.
+      - Require at least MIN_DOCS_PER_SOURCE rows for a source to be considered,
+        unless the source is in ALWAYS_KEEP_SOURCES.
+      - Compute per-source top1 score and global max(top1).
+      - Keep a source if:
+          * source in ALWAYS_KEEP_SOURCES, OR
+          * (top1 / global_top1) >= REL_SCORE_CUTOFF, OR
+          * (ABS_SCORE_CUTOFF > 0 and top1 >= ABS_SCORE_CUTOFF).
+      - If all sources would be dropped, we fail-open and keep everything.
+
+    Returns:
+      (filtered_results_by_source, gating_info_dict)
+      where gating_info_dict is suitable for logging / SSE debugging.
+    """
+    gating_info: Dict[str, Any] = {
+        "enabled": SOURCE_GATING_ENABLED,
+        "min_docs": MIN_DOCS_PER_SOURCE,
+        "rel_cutoff": REL_SCORE_CUTOFF,
+        "abs_cutoff": ABS_SCORE_CUTOFF,
+        "always_keep": sorted(list(ALWAYS_KEEP_SOURCES)),
+        "sources": {},
+    }
+
+    # Pre-compute stats
+    stats_by_src: Dict[str, Optional[Dict[str, Any]]] = {
+        src: summarize_source_scores(rows) for src, rows in results_by_source.items()
+    }
+
+    nonempty_stats = {
+        src: st for src, st in stats_by_src.items() if st is not None and st["n"] > 0
+    }
+
+    if not nonempty_stats:
+        gating_info["n_sources_before"] = len(results_by_source)
+        gating_info["n_sources_after"] = len(results_by_source)
+        gating_info["global_top1"] = None
+        gating_info["fail_open"] = True
+        return results_by_source, gating_info
+
+    global_top1 = max(st["top1"] for st in nonempty_stats.values())
+    gating_info["global_top1"] = global_top1
+
+    # If gating explicitly disabled, keep everything but still report stats.
+    if not SOURCE_GATING_ENABLED:
+        kept = dict(results_by_source)
+        for src, rows in results_by_source.items():
+            gating_info["sources"][src] = {
+                "decision": "keep",
+                "reason": "gating_disabled",
+                "stats": stats_by_src[src],
+            }
+        gating_info["n_sources_before"] = len(results_by_source)
+        gating_info["n_sources_after"] = len(kept)
+        gating_info["fail_open"] = False
+        return kept, gating_info
+
+    kept: Dict[str, List[Dict[str, Any]]] = {}
+
+    for src, rows in results_by_source.items():
+        stats = stats_by_src[src]
+        if stats is None or stats["n"] == 0:
+            decision = "drop"
+            reason = "no_rows"
+        elif src in ALWAYS_KEEP_SOURCES:
+            decision = "keep"
+            reason = "always_keep"
+        elif stats["n"] < MIN_DOCS_PER_SOURCE:
+            decision = "drop"
+            reason = f"too_few_docs({stats['n']})"
+        else:
+            rel = stats["top1"] / global_top1 if global_top1 > 0 else 0.0
+            meets_rel = rel >= REL_SCORE_CUTOFF
+            meets_abs = ABS_SCORE_CUTOFF > 0.0 and stats["top1"] >= ABS_SCORE_CUTOFF
+
+            if meets_rel or meets_abs:
+                decision = "keep"
+                reason = f"score_ok(rel={rel:.3f})"
+            else:
+                decision = "drop"
+                reason = f"weak_score(rel={rel:.3f})"
+
+        gating_info["sources"][src] = {
+            "decision": decision,
+            "reason": reason,
+            "stats": stats,
+        }
+
+        if decision == "keep":
+            kept[src] = rows
+
+    # If we dropped everything, fail-open as a safety valve.
+    if not kept:
+        gating_info["fail_open"] = True
+        kept = dict(results_by_source)
+    else:
+        gating_info["fail_open"] = False
+
+    gating_info["n_sources_before"] = len(results_by_source)
+    gating_info["n_sources_after"] = len(kept)
+
+    return kept, gating_info
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +418,6 @@ async def search_source_ts(
     return [normalize_row(dict(r), source=source, method="ts") for r in rows]
 
 
-from typing import Any, Dict, List
-
 async def search_source_ann(
     pool: Any,
     source: str,
@@ -301,7 +464,7 @@ async def search_source_ann(
 
         return [normalize_row(dict(r), source="nice", method="ann") for r in rows]
 
-    # Default path for all other sources (unchanged logic)
+    # Default path for all other sources
     sql = """
         SELECT id, source, title, text, meta,
                1.0 - (embedding <=> $1::vector) AS score
@@ -313,7 +476,6 @@ async def search_source_ann(
     """
     rows = await pool.fetch(sql, q_vec_literal, source, limit)
     return [normalize_row(dict(r), source=source, method="ann") for r in rows]
-
 
 
 # ---------------------------------------------------------------------------
@@ -500,7 +662,10 @@ def stream_llm_events(
                 # Buffered sentence-ish chunks
                 buf += piece
                 # Heuristic: flush when we see sentence-ending punctuation
-                if any(buf.endswith(end) for end in [". ", ".\n", "?\n", "!\n", ".\n\n"]):
+                if any(
+                    buf.endswith(end)
+                    for end in [". ", ".\n", "?\n", "!\n", ".\n\n"]
+                ):
                     for ev in flush_chunk():
                         yield ev
                 elif len(buf) > 600:
@@ -517,6 +682,80 @@ def stream_llm_events(
 
 
 # ---------------------------------------------------------------------------
+# Citations helpers
+# ---------------------------------------------------------------------------
+
+
+def _classify_citation_kind(row: Dict[str, Any]) -> str:
+    """
+    Classify a context row into a citation kind:
+      - 'valyu'     : Valyu PubMed-style hits
+      - 'ethos'     : Ethos of Health model / preprint chunks
+      - 'guideline' : everything else (guidelines, codes, ontologies, etc.)
+    """
+    source = (row.get("source") or "").lower()
+    method = (row.get("method") or "").lower()
+
+    if source.startswith("valyu") or method == "valyu":
+        return "valyu"
+    if source in {"ethos_model", "ethos"}:
+        return "ethos"
+    return "guideline"
+
+
+def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build a citations list from the final context:
+
+    - Each context block [i] becomes a citation with index = i.
+    - Valyu citations are grouped first, then Ethos, then guidelines/other.
+    - `extra.meta` carries through the row's meta so codes/etc. can be surfaced
+      by the UI or report generator.
+    """
+    raw_citations: List[Dict[str, Any]] = []
+
+    for i, row in enumerate(context_items, start=1):
+        kind = _classify_citation_kind(row)
+        src = row.get("source", "unknown")
+        meta = row.get("meta") or {}
+        method = row.get("method")
+
+        # Derive a stable-ish key
+        if kind == "valyu":
+            key = (
+                meta.get("pmcid")
+                or meta.get("pmid")
+                or meta.get("pubmed_id")
+                or meta.get("id")
+                or row.get("id")
+            )
+        elif kind == "ethos":
+            # Cite Ethos by chunk (more specific to sections)
+            key = f"{src}:{row.get('id')}"
+        else:
+            # Guidelines/other: source + row id
+            key = f"{src}:{row.get('id')}"
+
+        raw_citations.append(
+            {
+                "index": i,  # matches [i] in the answer/context
+                "kind": kind,
+                "source": src,
+                "key": str(key),
+                "title": row.get("title") or "",
+                "extra": {
+                    "method": method,
+                    "meta": meta,
+                },
+            }
+        )
+
+    kind_order = {"valyu": 0, "ethos": 1, "guideline": 2}
+    raw_citations.sort(key=lambda c: (kind_order.get(c["kind"], 99), c["index"]))
+    return raw_citations
+
+
+# ---------------------------------------------------------------------------
 # Main streaming endpoint
 # ---------------------------------------------------------------------------
 
@@ -526,7 +765,6 @@ async def ask_stream(
     request: Request,
     q: str = Query(..., description="User query"),
     limit: int = Query(5, ge=1, le=50),
-
     # context size for LLM (vs per-source limit)
     ctx_k: int = Query(
         BASE_RRF_K,
@@ -534,7 +772,6 @@ async def ask_stream(
         le=128,
         description="How many fused internal context chunks to send to the LLM",
     ),
-
     # how many Valyu docs to append (by Valyu's own heuristic ranking)
     valyu_k: int = Query(
         5,
@@ -542,14 +779,12 @@ async def ask_stream(
         le=32,
         description="How many Valyu documents to append to the LLM context",
     ),
-
     # LLM controls
     with_llm: int = Query(1, description="1 = run LLM, 0 = retrieval only"),
     llm_mode: str = Query(
         "chunk",
         description="LLM streaming mode: 'chunk' (sentence-ish) or 'delta' (token-ish)",
     ),
-
     # Valyu controls
     use_valyu: int = Query(0, description="1 = include Valyu, 0 = skip"),
     valyu_mode: str = Query("answer"),
@@ -562,13 +797,11 @@ async def ask_stream(
         1.0,
         description="Optional Valyu boost factor (used upstream by Valyu, not in local fusion)",
     ),
-
     # optional CSV: sources=mimic4_note,nice,who_eml,cdc_opioid,va_guidelines
     sources: Optional[str] = Query(
         None,
         description="Comma-separated list of rag_corpus.source keys",
     ),
-
     pool: Any = Depends(resolve_pg_pool),
 ):
     """
@@ -601,6 +834,11 @@ async def ask_stream(
           - Fused (internal + Valyu tail that will be sent to the LLM):
               { "phase": "fused", "source": "fused", "matches": [...] }
 
+      - gating:
+          { "enabled", "global_top1", "rel_cutoff", "abs_cutoff",
+            "n_sources_before", "n_sources_after", "fail_open",
+            "sources": { "<src>": { "decision", "reason", "stats" } } }
+
       - llm_chunk (llm_mode=chunk):
           { "text": "<sentence-ish chunk>" }
 
@@ -610,11 +848,28 @@ async def ask_stream(
       - llm_done:
           { "text": "<full answer>" }
 
+      - citations:
+          { "citations": [
+              {
+                "index": <int>,       # matches [index] in the answer/context
+                "kind": "valyu" | "ethos" | "guideline",
+                "source": "<source>",
+                "key": "<stable-ish key>",
+                "title": "<title>",
+                "extra": {
+                  "method": "<ts|ann|valyu|...>",
+                  "meta": { ... }     # includes codes/etc. if present
+                }
+              }, ...
+            ]
+          }
+
       - error:
           { "error": "...", "detail": "..." }
 
       - end:
-          { "meta": { "n_sources", "n_ctx_internal", "n_ctx_valyu",
+          { "meta": { "n_sources_raw", "n_sources",
+                      "n_ctx_internal", "n_ctx_valyu",
                       "n_ctx_total", "ctx_k", "valyu_k", "with_llm" } }
     """
 
@@ -745,7 +1000,16 @@ async def ask_stream(
             if await request.is_disconnected():
                 return
 
-        # 3) Valyu (optional, kept separate from internal fusion)
+        raw_source_count = len(results_by_source)
+
+        # 3) Apply heuristic source gating on internal results
+        gated_results_by_source, gating_info = apply_source_gating(results_by_source)
+        yield sse("gating", gating_info)
+
+        if await request.is_disconnected():
+            return
+
+        # 4) Valyu (optional, kept separate from internal fusion)
         if use_valyu_bool:
             yield sse("status", {"status": "valyu_fetch"})
             try:
@@ -795,9 +1059,9 @@ async def ask_stream(
             if await request.is_disconnected():
                 return
 
-        # 4) Fuse internal contexts and append Valyu tail
+        # 5) Fuse internal contexts and append Valyu tail
         yield sse("status", {"status": "fusing_context"})
-        internal_ctx = build_fused_context(results_by_source, k=ctx_k)
+        internal_ctx = build_fused_context(gated_results_by_source, k=ctx_k)
 
         # Valyu tail: independent of internal heuristics, purely Valyu's ranking
         if use_valyu_bool and valyu_k > 0 and valyu_matches:
@@ -829,14 +1093,20 @@ async def ask_stream(
         if await request.is_disconnected():
             return
 
-        # 5) LLM streaming (optional)
+        # Build citations from the final context (internal + Valyu tail).
+        citations = build_citations(final_ctx)
+
+        # 6) LLM streaming (optional)
         if not with_llm_bool:
             yield sse("status", {"status": "done_no_llm"})
+            # Citations still make sense even in retrieval-only mode
+            yield sse("citations", {"citations": citations})
             yield sse(
                 "end",
                 {
                     "meta": {
-                        "n_sources": len(results_by_source),
+                        "n_sources_raw": raw_source_count,
+                        "n_sources": len(gated_results_by_source),
                         "n_ctx_internal": len(internal_ctx),
                         "n_ctx_valyu": valyu_ctx_count,
                         "n_ctx_total": len(final_ctx),
@@ -850,11 +1120,13 @@ async def ask_stream(
 
         if not final_ctx:
             yield sse("status", {"status": "done_no_llm"})
+            yield sse("citations", {"citations": []})
             yield sse(
                 "end",
                 {
                     "meta": {
-                        "n_sources": len(results_by_source),
+                        "n_sources_raw": raw_source_count,
+                        "n_sources": len(gated_results_by_source),
                         "n_ctx_internal": 0,
                         "n_ctx_valyu": 0,
                         "n_ctx_total": 0,
@@ -882,11 +1154,14 @@ async def ask_stream(
                 {"error": "llm_failed", "detail": str(e)},
             )
             yield sse("phase_end", {"source": "fusion", "method": "llm"})
+            # Even if LLM fails, it's still useful to see which sources were used.
+            yield sse("citations", {"citations": citations})
             yield sse(
                 "end",
                 {
                     "meta": {
-                        "n_sources": len(results_by_source),
+                        "n_sources_raw": raw_source_count,
+                        "n_sources": len(gated_results_by_source),
                         "n_ctx_internal": len(internal_ctx),
                         "n_ctx_valyu": valyu_ctx_count,
                         "n_ctx_total": len(final_ctx),
@@ -900,12 +1175,16 @@ async def ask_stream(
 
         yield sse("phase_end", {"source": "fusion", "method": "llm"})
 
-        # 6) End
+        # 7) Citations AFTER the answer, so the UI/report can render a clean References section
+        yield sse("citations", {"citations": citations})
+
+        # 8) End
         yield sse(
             "end",
             {
                 "meta": {
-                    "n_sources": len(results_by_source),
+                    "n_sources_raw": raw_source_count,
+                    "n_sources": len(gated_results_by_source),
                     "n_ctx_internal": len(internal_ctx),
                     "n_ctx_valyu": valyu_ctx_count,
                     "n_ctx_total": len(final_ctx),
