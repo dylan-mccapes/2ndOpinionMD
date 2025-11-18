@@ -1,0 +1,278 @@
+# server/api/stream_gating.py
+
+import json
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+from .stream_config import (
+    ABS_SCORE_CUTOFF,
+    ALWAYS_KEEP_SOURCES,
+    CODE_SOURCES,
+    GUIDELINE_SOURCES,
+    MIN_DOCS_PER_SOURCE,
+    REL_SCORE_CUTOFF,
+    SOURCE_CONFIG,
+    SOURCE_GATING_ENABLED,
+    RA_GUIDELINE_SOURCES,
+    is_ra_query,
+)
+
+
+def summarize_source_scores(
+    rows: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Compute simple statistics over scores for a source, for gating.
+    """
+    if not rows:
+        return None
+
+    scores = sorted(
+        [float(r.get("score", 0.0) or 0.0) for r in rows],
+        reverse=True,
+    )
+    n = len(scores)
+    top1 = scores[0]
+    top3_mean = sum(scores[:3]) / min(3, n)
+    median = scores[n // 2]
+    return {
+        "n": n,
+        "top1": top1,
+        "top3_mean": top3_mean,
+        "median": median,
+    }
+
+
+def apply_source_gating(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    query: str | None = None,
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """
+    Apply heuristics to drop obviously off-topic / weak sources.
+
+    - Uses RA-aware tweaks for RA guideline PDFs.
+    - Fails open if everything would be dropped.
+    """
+    is_ra = is_ra_query(query or "")
+
+    GUIDELINE_REL_CUTOFF = 0.65
+    RA_GUIDELINE_REL_CUTOFF = 0.35
+
+    gating_info: Dict[str, Any] = {
+        "enabled": SOURCE_GATING_ENABLED,
+        "min_docs": MIN_DOCS_PER_SOURCE,
+        "rel_cutoff": REL_SCORE_CUTOFF,
+        "abs_cutoff": ABS_SCORE_CUTOFF,
+        "always_keep": sorted(list(ALWAYS_KEEP_SOURCES)),
+        "guideline_sources": sorted(list(GUIDELINE_SOURCES)),
+        "ra_guideline_sources": sorted(list(RA_GUIDELINE_SOURCES)),
+        "is_ra_query": is_ra,
+        "sources": {},
+    }
+
+    stats_by_src: Dict[str, Optional[Dict[str, Any]]] = {
+        src: summarize_source_scores(rows)
+        for src, rows in results_by_source.items()
+    }
+    nonempty_stats = {
+        src: st for src, st in stats_by_src.items() if st is not None and st["n"] > 0
+    }
+
+    if not nonempty_stats:
+        gating_info["n_sources_before"] = len(results_by_source)
+        gating_info["n_sources_after"] = len(results_by_source)
+        gating_info["global_top1"] = None
+        gating_info["fail_open"] = True
+        return results_by_source, gating_info
+
+    global_top1 = max(st["top1"] for st in nonempty_stats.values())
+    gating_info["global_top1"] = global_top1
+
+    # If gating disabled, keep everything but still report stats.
+    if not SOURCE_GATING_ENABLED:
+        kept = dict(results_by_source)
+        for src, rows in results_by_source.items():
+            gating_info["sources"][src] = {
+                "decision": "keep",
+                "reason": "gating_disabled",
+                "stats": stats_by_src[src],
+            }
+        gating_info["n_sources_before"] = len(results_by_source)
+        gating_info["n_sources_after"] = len(kept)
+        gating_info["fail_open"] = False
+        return kept, gating_info
+
+    kept: Dict[str, List[Dict[str, Any]]] = {}
+
+    for src, rows in results_by_source.items():
+        stats = stats_by_src[src]
+
+        if stats is None or stats["n"] == 0:
+            decision = "drop"
+            reason = "no_rows"
+        elif src in ALWAYS_KEEP_SOURCES:
+            decision = "keep"
+            reason = "always_keep"
+        elif is_ra and src in RA_GUIDELINE_SOURCES:
+            decision = "keep"
+            reason = "ra_query && ra_guideline_source"
+        elif stats["n"] < MIN_DOCS_PER_SOURCE:
+            decision = "drop"
+            reason = f"too_few_docs({stats['n']})"
+        else:
+            rel = stats["top1"] / global_top1 if global_top1 > 0 else 0.0
+
+            if src in GUIDELINE_SOURCES:
+                rel_cutoff = (
+                    RA_GUIDELINE_REL_CUTOFF
+                    if (is_ra and src in RA_GUIDELINE_SOURCES)
+                    else GUIDELINE_REL_CUTOFF
+                )
+            else:
+                rel_cutoff = REL_SCORE_CUTOFF
+
+            meets_rel = rel >= rel_cutoff
+            meets_abs = ABS_SCORE_CUTOFF > 0.0 and stats["top1"] >= ABS_SCORE_CUTOFF
+
+            if meets_rel or meets_abs:
+                decision = "keep"
+                reason = f"score_ok(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
+            else:
+                decision = "drop"
+                reason = f"weak_score(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
+
+        gating_info["sources"][src] = {
+            "decision": decision,
+            "reason": reason,
+            "stats": stats,
+        }
+
+        if decision == "keep":
+            kept[src] = rows
+
+    if not kept:
+        gating_info["fail_open"] = True
+        kept = dict(results_by_source)
+    else:
+        gating_info["fail_open"] = False
+
+    gating_info["n_sources_before"] = len(results_by_source)
+    gating_info["n_sources_after"] = len(kept)
+
+    return kept, gating_info
+
+
+# ---------------------------------------------------------------------------
+# Coding-specific row filter for high-noise map corpora
+# ---------------------------------------------------------------------------
+
+
+def _simple_token_set(text: str) -> set[str]:
+    """
+    Lowercase, strip non-alphanumerics, and return a set of tokens (len>=3).
+    Used for rough lexical gating.
+    """
+    if not text or not isinstance(text, str):
+        return set()
+    text = str(text).lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return {t for t in text.split() if len(t) >= 3}
+
+
+def apply_code_row_filter(
+    rows: List[Dict[str, Any]],
+    q: str,
+    source: str,
+) -> List[Dict[str, Any]]:
+    """
+    Extra lexical gating for mapping-heavy code sources in coding mode.
+
+    - Only applies to sources marked codes_authoritative in SOURCE_CONFIG.
+    - Drops junk ICD-10-CM rows from SNOMED crosswalks.
+    - Keeps *all* rows that meet the heuristic overlap threshold; no
+      top-k truncation happens here.
+    """
+    src_norm = (source or "").lower()
+    if src_norm not in CODE_SOURCES:
+        return rows
+
+    cfg = SOURCE_CONFIG.get(src_norm, {})
+    exclude_from_tags = cfg.get("exclude_meta_from") or []
+
+    # 1) Drop rows whose meta->>'from' is in exclude_meta_from
+    if exclude_from_tags:
+        filtered_rows: List[Dict[str, Any]] = []
+        for r in rows:
+            meta = r.get("meta")
+            tag = None
+
+            if isinstance(meta, dict):
+                tag = meta.get("from")
+            elif isinstance(meta, str):
+                try:
+                    parsed = json.loads(meta)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    tag = parsed.get("from")
+
+            if tag in exclude_from_tags:
+                continue
+
+            filtered_rows.append(r)
+
+        rows = filtered_rows
+        if not rows:
+            return []
+
+    # 2) Lexical overlap gating
+    q_tokens = _simple_token_set(q or " ")
+    if not q_tokens:
+        return rows
+
+    scored: List[tuple[int, float, Dict[str, Any]]] = []
+
+    for r in rows:
+        title = (r.get("title") or "") or ""
+        text = (r.get("text") or "") or ""
+
+        meta = r.get("meta")
+        meta_parts: List[str] = []
+
+        if isinstance(meta, dict):
+            for val in meta.values():
+                if isinstance(val, str):
+                    meta_parts.append(val)
+        elif isinstance(meta, str):
+            meta_parts.append(meta)
+            try:
+                parsed = json.loads(meta)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                for val in parsed.values():
+                    if isinstance(val, str):
+                        meta_parts.append(val)
+
+        blob = " ".join([title, text] + meta_parts)
+        doc_tokens = _simple_token_set(blob)
+        overlap = len(q_tokens & doc_tokens)
+        base_score = float(r.get("score", 0.0) or 0.0)
+
+        scored.append((overlap, base_score, r))
+
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+
+    MIN_OVERLAP = 1
+    FAIL_OPEN_TOP_N = 3
+
+    kept: List[Dict[str, Any]] = []
+    for idx, (overlap, base_score, row) in enumerate(scored):
+        if overlap >= MIN_OVERLAP or idx < FAIL_OPEN_TOP_N:
+            kept.append(row)
+
+    if not kept:
+        return rows
+
+    return kept
+

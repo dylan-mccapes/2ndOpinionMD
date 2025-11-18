@@ -122,4 +122,5 @@ ra_guidelines.ingest: $(RA_GUIDELINES_PDFS)
 
 .PHONY: ra_guidelines.embed
 ra_guidelines.embed:
-	$(PYTHON) server/scripts/embed_rag_source_async.py ra_guidelines
+	$(PYTHON) server/scripts/embed_rag_source_async.py --source ra_guidelines
+

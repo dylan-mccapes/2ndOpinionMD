@@ -78,6 +78,7 @@ from .coding_routes_v2 import router as coding_v2_router
 from .rag_ask_compat_v2 import router as ask_compat_v2_router
 from .rag_stream_routes import router as rag_stream_router
 from .llm_stream_routes import router as llm_stream_router
+from .rag_stream_custom_endpoints import router as rag_stream_custom_router
 
 from server.api.kg import router as kg_router
 
@@ -184,6 +185,7 @@ app.include_router(coding_v2_router)
 app.include_router(kg_router)
 app.include_router(rag_stream_router)
 app.include_router(llm_stream_router)
+app.include_router(rag_stream_custom_router)
 
 # --- Middlewares ---------------------------------------------------------------
 @app.middleware("http")
