@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>2ndOpinionMD RAG Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: #0f172a; color: #e5e7eb; }
+    h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+    .subtitle { color: #9ca3af; margin-bottom: 1.5rem; }
+    .card {
+      max-width: 960px;
+      margin: 0 auto;
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      border: 1px solid #1f2937;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.5);
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .row label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; }
+    .input {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #f9fafb;
+      font-size: 0.9rem;
+    }
+    .input:focus {
+      outline: 2px solid #38bdf8;
+      outline-offset: 1px;
+      border-color: #38bdf8;
+    }
+    textarea.input { min-height: 4.5rem; resize: vertical; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .pill {
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .pill.active {
+      background: linear-gradient(135deg, #22c55e, #38bdf8);
+      border-color: transparent;
+      color: #020617;
+    }
+    .pill span.mode-label { font-weight: 600; }
+    .pill small { opacity: 0.8; }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .btn {
+      border: none;
+      border-radius: 999px;
+      padding: 0.6rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #22c55e, #38bdf8);
+      color: #020617;
+    }
+    .btn-secondary {
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #1f2937;
+    }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-dot {
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 999px;
+      background: #4b5563;
+    }
+    .status-dot.live { background: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2); }
+    .status-dot.error { background: #ef4444; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.2); }
+    .columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .panel {
+      background: #020617;
+      border-radius: 0.75rem;
+      border: 1px solid #1f2937;
+      padding: 0.75rem;
+      min-height: 200px;
+      font-size: 0.85rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.5rem;
+      font-size: 0.9rem;
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel h2 span.tag {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      color: #9ca3af;
+    }
+    .pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: ui-monospace, Menlo, Monaco, "SF Mono", monospace;
+      color: #e5e7eb;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.25rem;
+      font-size: 0.8rem;
+    }
+    .meta-table th, .meta-table td {
+      border-bottom: 1px solid #1f2937;
+      padding: 0.25rem 0;
+      text-align: left;
+    }
+    .meta-table th { color: #9ca3af; font-weight: 500; }
+    .meta-table td:last-child { text-align: right; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      border: 1px solid #1f2937;
+      color: #9ca3af;
+    }
+    a { color: #38bdf8; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (max-width: 768px) {
+      body { padding: 0.75rem; }
+      .card { padding: 1rem; }
+      .columns { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>2ndOpinionMD · RAG Stream Demo</h1>
+    <div class="subtitle">
+      Toggle between <strong>Guideline Q&amp;A</strong> and <strong>Coding / Abstraction</strong>. Streams directly from <code>/api/rag/ask_stream</code> or <code>/api/rag/coding_stream</code>.
+    </div>
+
+    <div class="row">
+      <label for="query">Clinical question</label>
+      <textarea id="query" class="input" placeholder="e.g. In a 52-year-old woman with long-standing seropositive RA and new HFrEF, summarize guideline-based RA therapy and map the key ICD-10/ICD-11/SNOMED/RxNorm codes."></textarea>
+    </div>
+
+    <div class="pill-row">
+      <button id="mode-guideline" class="pill active" type="button">
+        <span class="mode-label">Guideline Q&amp;A</span>
+        <small>/ask_stream</small>
+      </button>
+      <button id="mode-coding" class="pill" type="button">
+        <span class="mode-label">Coding / Abstraction</span>
+        <small>/coding_stream</small>
+      </button>
+
+      <span class="badge">
+        <span style="width:0.5rem;height:0.5rem;border-radius:999px;background:#22c55e;margin-right:0.35rem;"></span>
+        streaming SSE
+      </span>
+    </div>
+
+    <div class="button-row">
+      <div>
+        <button id="run-btn" class="btn btn-primary" type="button">
+          <span>▶</span> Run query
+        </button>
+        <button id="clear-btn" class="btn btn-secondary" type="button">
+          Clear
+        </button>
+      </div>
+      <div class="status">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">Idle</span>
+      </div>
+    </div>
+
+    <div class="columns">
+      <div class="panel">
+        <h2>
+          Context &amp; Matches
+          <span class="tag">retrieval</span>
+        </h2>
+        <div id="matches" class="pre">No results yet.</div>
+      </div>
+      <div class="panel">
+        <h2>
+          LLM Answer
+          <span class="tag">generation</span>
+        </h2>
+        <div id="answer" class="pre">No answer yet.</div>
+        <table class="meta-table" id="meta-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody id="meta-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // === CONFIG: point UI at the real backend ============================
+    // For external site through nginx:
+    const API_BASE = "https://2ndopinionmd.ai";
+    // If you want a fully local loop instead, comment the line above and use:
+    // const API_BASE = "http://localhost:8000";
+
+    const runBtn   = document.getElementById("run-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const queryEl  = document.getElementById("query");
+    const matchesEl = document.getElementById("matches");
+    const answerEl  = document.getElementById("answer");
+    const statusDot = document.getElementById("status-dot");
+    const statusText = document.getElementById("status-text");
+    const metaTable = document.getElementById("meta-table");
+    const metaBody  = document.getElementById("meta-body");
+
+    const modeGuidelineBtn = document.getElementById("mode-guideline");
+    const modeCodingBtn    = document.getElementById("mode-coding");
+
+    let mode = "guideline";  // "guideline" or "coding"
+    let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
+
+    function setMode(newMode) {
+      mode = newMode;
+      if (mode === "guideline") {
+        modeGuidelineBtn.classList.add("active");
+        modeCodingBtn.classList.remove("active");
+      } else {
+        modeGuidelineBtn.classList.remove("active");
+        modeCodingBtn.classList.add("active");
+      }
+    }
+
+    modeGuidelineBtn.addEventListener("click", () => setMode("guideline"));
+    modeCodingBtn.addEventListener("click", () => setMode("coding"));
+
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      statusDot.classList.remove("live", "error");
+      if (state === "live") statusDot.classList.add("live");
+      if (state === "error") statusDot.classList.add("error");
+    }
+
+    function resetOutput() {
+      matchesEl.textContent = "No results yet.";
+      answerEl.textContent = "No answer yet.";
+      currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
+      metaBody.innerHTML = "";
+      metaTable.style.display = "none";
+    }
+
+    clearBtn.addEventListener("click", () => {
+      queryEl.value = "";
+      resetOutput();
+      setStatus("Idle", null);
+    });
+
+    runBtn.addEventListener("click", () => {
+      const q = queryEl.value.trim();
+      if (!q) {
+        alert("Please enter a clinical question.");
+        return;
+      }
+
+      resetOutput();
+      runBtn.disabled = true;
+      setStatus("Embedding & retrieving…", "live");
+
+      const endpoint = mode === "coding"
+        ? "/api/rag/coding_stream"
+        : "/api/rag/ask_stream";
+
+      const params = new URLSearchParams({
+        q,
+        limit: "8",
+        ctx_k: "24",
+        valyu_k: "5",
+        with_llm: "1",
+        llm_mode: "chunk",
+        use_valyu: "1",
+        valyu_mode: "answer",
+        valyu_raw: "0",
+      });
+
+      // IMPORTANT: full URL to FastAPI backend, not the static server
+      const url = `${API_BASE}${endpoint}?${params.toString()}`;
+
+      const es = new EventSource(url);
+
+      let fusedSeen = false;
+      let answerText = "";
+
+      es.onmessage = (ev) => {
+        // For safety: not using the generic handler; we use explicit named events below.
+      };
+
+      es.addEventListener("start", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          matchesEl.textContent =
+            `Query: ${data.q}\nSources: ${data.sources.join(", ")}\n\nAwaiting matches…`;
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("matches", (ev) => {
+        const data = JSON.parse(ev.data);
+        const phase  = data.phase;
+        const rows   = data.matches || [];
+        currentSourceStats[phase] = (currentSourceStats[phase] || 0) + rows.length;
+
+        const header = `Phase: ${phase.toUpperCase()} · Source: ${data.source}`;
+        const lines = rows.map((r, idx) => {
+          const hasId = r.source_id && r.source_id !== "";
+          const idLabel =
+            r.source === "rxnorm"
+              ? `CUI: ${r.source_id}`
+              : hasId
+              ? `ID: ${r.source_id}`
+              : null;
+
+          const idPart = idLabel ? `  (${idLabel})` : "";
+
+          return `  [${idx + 1}] ${r.source} :: ${r.title || "(no title)"}${idPart} (score=${(r.score ?? 0).toFixed(3)})`;
+        });
+
+        const existing = matchesEl.textContent === "No results yet."
+          ? ""
+          : matchesEl.textContent + "\n\n";
+
+        matchesEl.textContent = existing + header + "\n" + lines.join("\n");
+
+        if (phase === "fused") {
+          fusedSeen = true;
+          setStatus("Fused context ready · waiting on LLM…", "live");
+        }
+      });
+
+      es.addEventListener("llm_chunk", (ev) => {
+        const data = JSON.parse(ev.data);
+        answerText += data.text;
+        answerEl.textContent = answerText;
+        setStatus("Streaming answer…", "live");
+      });
+
+      es.addEventListener("llm_done", (ev) => {
+        const data = JSON.parse(ev.data);
+        answerText = data.text;
+        answerEl.textContent = answerText;
+      });
+
+      es.addEventListener("citations", (ev) => {
+        const data = JSON.parse(ev.data);
+        const cits = data.citations || [];
+        if (!cits.length) return;
+
+        metaBody.innerHTML = "";
+        const groups = { valyu: 0, ethos: 0, guideline: 0 };
+        cits.forEach(c => { groups[c.kind] = (groups[c.kind] || 0) + 1; });
+
+        const rows = [
+          ["Valyu citations", groups.valyu || 0],
+          ["Ethos citations", groups.ethos || 0],
+          ["Guideline/other citations", groups.guideline || 0],
+          ["TS matches", currentSourceStats.ts || 0],
+          ["ANN matches", currentSourceStats.ann || 0],
+          ["Valyu matches", currentSourceStats.valyu || 0],
+          ["Fused context items", currentSourceStats.fused || 0],
+        ];
+
+        rows.forEach(([label, value]) => {
+          const tr = document.createElement("tr");
+          const td1 = document.createElement("td");
+          const td2 = document.createElement("td");
+          td1.textContent = label;
+          td2.textContent = String(value);
+          tr.appendChild(td1);
+          tr.appendChild(td2);
+          metaBody.appendChild(tr);
+        });
+
+        metaTable.style.display = "";
+      });
+
+      es.addEventListener("status", (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.status === "embedding_query") setStatus("Embedding query…", "live");
+        if (data.status === "retrieving_candidates") setStatus("Retrieving candidates…", "live");
+        if (data.status === "fusing_context") setStatus("Fusing context…", "live");
+        if (data.status === "generating_answer") setStatus("Generating answer…", "live");
+        if (data.status === "done_no_llm") setStatus("Done (retrieval only).", null);
+      });
+
+      es.addEventListener("error", (ev) => {
+        setStatus("Error during streaming (see console).", "error");
+        console.error("RAG stream error:", ev);
+        es.close();
+        runBtn.disabled = false;
+      });
+
+      es.addEventListener("end", (ev) => {
+        setStatus("Completed.", null);
+        es.close();
+        runBtn.disabled = false;
+      });
+    });
+  </script>
+</body>
+</html>

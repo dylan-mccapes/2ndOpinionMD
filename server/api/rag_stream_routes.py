@@ -20,13 +20,68 @@ from .stream_config import (
     CODE_SOURCES,
     EMBED_MODEL,
     MAX_CONTEXT_CHARS,
+    ETHOS_SOURCE_NAME,
+    is_ra_query,
 )
+
 from .stream_gating import apply_code_row_filter, apply_source_gating
+
+# Minimum per-source retrieval depth for code sources in coding_mode.
+# If the incoming `limit` is smaller than this, code sources will use this instead.
+CODE_MIN_LIMIT = int(os.getenv("CODE_MIN_LIMIT", "32"))
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rag", tags=["rag-stream"])
 
 client = OpenAI()
+
+# ---------------------------------------------------------------------------
+# Group toggles and defaults
+# ---------------------------------------------------------------------------
+
+# Enable/disable internal groups via env flags
+USE_CODE_SOURCES = os.getenv("RAG_USE_CODES", "1") != "0"
+USE_GUIDELINE_SOURCES = os.getenv("RAG_USE_GUIDELINES", "1") != "0"
+USE_REST_SOURCES = os.getenv("RAG_USE_REST", "1") != "0"
+
+# Default k per group (can be overridden via env)
+CODE_K_DEFAULT = int(os.getenv("RAG_K_CODES", "32"))
+GUIDE_K_DEFAULT = int(os.getenv("RAG_K_GUIDELINES", "4"))
+# Rest uses ctx_k passed into build_fused_context / _event_generator
+
+# Very light-weight heuristic for guideline sources
+_GUIDELINE_EXACT = {
+    "acr_ra_2021",
+    "acr_ild_2023",
+    "eular_ra_2022",
+    "va_guidelines",
+    "nice",
+    "who_eml",
+    "who_committee",
+}
+_GUIDELINE_PREFIXES = ("acr_", "eular_", "nice_", "who_", "guideline_")
+
+
+def _is_guideline_source(src: str) -> bool:
+    s = (src or "").lower()
+    if s in _GUIDELINE_EXACT:
+        return True
+    return any(s.startswith(pfx) for pfx in _GUIDELINE_PREFIXES)
+
+
+def _classify_internal_source(src: str) -> str:
+    """
+    Classify internal (DB) sources into one of:
+      - 'code'       : ICD, SNOMED, RxNorm, etc.
+      - 'guideline'  : ACR/EULAR/VA/NICE/WHO-style docs
+      - 'rest'       : everything else
+    """
+    if src in CODE_SOURCES:
+        return "code"
+    if _is_guideline_source(src):
+        return "guideline"
+    return "rest"
+
 
 # ---------------------------------------------------------------------------
 # SSE helper
@@ -66,6 +121,7 @@ def normalize_row(
     return {
         "id": rid,
         "source": src,
+        "source_id": row.get("source_id"),
         "title": row.get("title") or "",
         "text": row.get("text") or row.get("abstract") or "",
         "meta": row.get("meta") or row,
@@ -104,75 +160,171 @@ def build_fused_context(
     coding_mode: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Fuse internal sources for final context.
+    Fuse internal sources for final context using 3 groups:
 
-    - In general mode: standard RRF across all sources with top-k.
-    - In coding_mode:
-        * RRF is applied ONLY to non-code (clinical) sources.
-        * ALL code rows that pass the heuristic filters are appended,
-          regardless of k, so coders see every candidate code that
-          survived filtering.
+      - codes      : CODE_SOURCES (ICD, SNOMED, RxNorm, LOINC, etc.)
+      - guidelines : ACR/EULAR/VA/NICE/WHO, etc.
+      - rest       : everything else (notes, lab items, etc.)
+
+    Defaults:
+      - codes      : k = CODE_K_DEFAULT (env RAG_K_CODES, default 8)
+      - guidelines : k = GUIDE_K_DEFAULT (env RAG_K_GUIDELINES, default 4)
+      - rest       : k = ctx_k (the 'k' argument)
+
+    Groups can be toggled via env flags:
+      - RAG_USE_CODES
+      - RAG_USE_GUIDELINES
+      - RAG_USE_REST
+
+    Final order is always:
+      1) codes (if enabled)
+      2) guidelines (if enabled)
+      3) rest (if enabled)
+
+    'coding_mode' is still honored upstream via apply_code_row_filter
+    and downstream by format_context_for_llm for labeling, but the
+    group k logic applies regardless.
     """
     if not results_by_source:
         return []
 
-    if not coding_mode:
-        return rrf_fuse(results_by_source, k=k)
-
-    clinical_by_source: Dict[str, List[Dict[str, Any]]] = {}
-    code_rows: List[Dict[str, Any]] = []
+    code_by_source: Dict[str, List[Dict[str, Any]]] = {}
+    guideline_by_source: Dict[str, List[Dict[str, Any]]] = {}
+    rest_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
     for src, rows in results_by_source.items():
-        if src in CODE_SOURCES:
-            code_rows.extend(rows)
+        kind = _classify_internal_source(src)
+        if kind == "code":
+            code_by_source[src] = rows
+        elif kind == "guideline":
+            guideline_by_source[src] = rows
         else:
-            clinical_by_source[src] = rows
+            rest_by_source[src] = rows
 
-    clinical_ctx = rrf_fuse(clinical_by_source, k=k) if clinical_by_source else []
+    # Per-group k (with env overrides)
+    k_codes = max(0, CODE_K_DEFAULT)
+    k_guidelines = max(0, GUIDE_K_DEFAULT)
+    k_rest = max(0, k)
 
-    # Deduplicate code rows by (source, id)
-    seen: set[Tuple[Any, Any]] = set()
-    unique_code_rows: List[Dict[str, Any]] = []
-    for r in code_rows:
-        key = (r.get("source"), r.get("id"))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_code_rows.append(r)
+    fused_codes: List[Dict[str, Any]] = []
+    fused_guidelines: List[Dict[str, Any]] = []
+    fused_rest: List[Dict[str, Any]] = []
 
-    return clinical_ctx + unique_code_rows
+    if USE_CODE_SOURCES and code_by_source:
+        fused_codes = rrf_fuse(code_by_source, k=k_codes)
+
+    if USE_GUIDELINE_SOURCES and guideline_by_source:
+        fused_guidelines = rrf_fuse(guideline_by_source, k=k_guidelines)
+
+    if USE_REST_SOURCES and rest_by_source and k_rest > 0:
+        fused_rest = rrf_fuse(rest_by_source, k=k_rest)
+
+    fused = fused_codes + fused_guidelines + fused_rest
+
+    logger.info(
+        "FUSED_CONTEXT sizes: codes=%d, guidelines=%d, rest=%d, total=%d",
+        len(fused_codes),
+        len(fused_guidelines),
+        len(fused_rest),
+        len(fused),
+    )
+
+    return fused
 
 
 def format_context_for_llm(
     ctx: Iterable[Dict[str, Any]],
     coding_mode: bool = False,
 ) -> str:
+    """
+    Build a compact text context for the LLM.
+
+    In coding_mode:
+      - Code sources come first, then guidelines, then rest.
+      - Code IDs are made explicit (RxNorm CUI=..., ICD-10-CM=..., etc.).
+      - Truncation by MAX_CONTEXT_CHARS happens *after* reordering so
+        code rows are maximally preserved.
+
+    In non-coding mode:
+      - Rows keep their incoming order; we still enforce MAX_CONTEXT_CHARS.
+    """
+    from .stream_config import CODE_SOURCES as _CODE_SOURCES
+
+    rows = list(ctx)
+
+    # 1) In coding_mode, put code sources first, then guidelines, then rest.
+    if coding_mode:
+        code_rows: List[Dict[str, Any]] = []
+        guideline_rows: List[Dict[str, Any]] = []
+        rest_rows: List[Dict[str, Any]] = []
+
+        for r in rows:
+            src = r.get("source") or "unknown"
+            if src in _CODE_SOURCES:
+                code_rows.append(r)
+            elif _is_guideline_source(src):
+                guideline_rows.append(r)
+            else:
+                rest_rows.append(r)
+
+        ordered_rows = code_rows + guideline_rows + rest_rows
+    else:
+        ordered_rows = rows
+
     blocks: List[str] = []
-    for i, row in enumerate(ctx, start=1):
+    total_len = 0
+    max_chars = MAX_CONTEXT_CHARS
+
+    for i, row in enumerate(ordered_rows, start=1):
         src = row.get("source", "unknown")
         title = row.get("title") or ""
-        text = row.get("text") or ""
+        text = (row.get("text") or "").strip()
+        source_id = row.get("source_id")
+
+        source_id_str = f" ({source_id})" if source_id else ""
 
         if coding_mode:
-            from .stream_config import CODE_SOURCES as _CODE_SOURCES
-
+            # Label context kind for the model
             kind = "CODE_CONTEXT" if src in _CODE_SOURCES else "CLINICAL_CONTEXT"
-            blocks.append(
-                f"[{i}] kind={kind} source={src} title={title!r}\n"
-                f"{text.strip()}\n"
-                f"--- END [{i}] ---"
+
+            # Make codes *very* explicit for the model
+            if src == "rxnorm" and source_id:
+                code_label = f"RxNorm CUI={source_id}"
+            elif src == "icd11" and source_id:
+                code_label = f"ICD-11={source_id}"
+            elif src == "icd10cm" and source_id:
+                code_label = f"ICD-10-CM={source_id}"
+            elif src == "snomed" and source_id:
+                code_label = f"SNOMED CT={source_id}"
+            else:
+                code_label = source_id_str.strip(" ()") if source_id else ""
+
+            code_suffix = f" [{code_label}]" if code_label else ""
+
+            block = (
+                f"[{i}] kind={kind} {src}{source_id_str}{code_suffix} | "
+                f"{title} | {text}"
             )
         else:
-            blocks.append(
-                f"[{i}] source={src} title={title!r}\n"
-                f"{text.strip()}\n"
-                f"--- END [{i}] ---"
-            )
+            block = f"[{i}] {src}{source_id_str} | {title} | {text}"
+
+        # +2 for the separating "\n\n"
+        if total_len + len(block) + 2 > max_chars:
+            blocks.append("[truncated]")
+            break
+
+        blocks.append(block)
+        total_len += len(block) + 2
 
     context_str = "\n\n".join(blocks)
 
-    if len(context_str) > MAX_CONTEXT_CHARS:
-        context_str = context_str[:MAX_CONTEXT_CHARS] + "\n[truncated]"
+    # Debug logging to confirm RxNorm / codes really made it in
+    logger.info("LLM CONTEXT FINAL LEN=%s", len(context_str))
+    logger.info(
+        "LLM CONTEXT FINAL TAIL:\n%s",
+        "\n".join(context_str.splitlines()[-20:]),
+    )
+
     return context_str
 
 
@@ -235,7 +387,7 @@ async def search_source_ts(
     Uses rag_corpus.ts GIN index (ts) and filters by source.
     """
     sql = """
-        SELECT id, source, title, text, meta,
+        SELECT id, source, source_id, title, text, meta,
                ts_rank(ts, plainto_tsquery($1)) AS score
         FROM rag_corpus
         WHERE source = $2
@@ -252,6 +404,7 @@ async def search_source_ts(
             {
                 "id": r["id"],
                 "source": r["source"],
+                "source_id": r["source_id"],
                 "title": r["title"],
                 "text": r["text"],
                 "meta": r["meta"],
@@ -261,6 +414,67 @@ async def search_source_ts(
         )
     return out
 
+async def search_source_ts_for_terms(
+    pool: asyncpg.Pool,
+    source: str,
+    terms: List[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    """
+    Variant of text-search retrieval for code sources.
+
+    Instead of plainto_tsquery(full_question), we run several smaller
+    tsqueries (one per term) and then merge + re-rank results.
+
+    This dramatically cuts noise for huge code corpora like RxNorm/SNOMED.
+    """
+    # Fallback: if we somehow have no terms, just behave like the normal TS.
+    if not terms:
+        return await search_source_ts(pool, source, " ".join(terms) or "", limit)
+
+    sql = """
+        SELECT id, source, source_id, title, text, meta,
+               ts_rank(ts, plainto_tsquery($1)) AS score
+        FROM rag_corpus
+        WHERE source = $2
+          AND ts @@ plainto_tsquery($1)
+        ORDER BY score DESC
+        LIMIT $3;
+    """
+
+    combined: Dict[Any, Dict[str, Any]] = {}
+
+    # Simple heuristic: distribute the overall limit across terms
+    per_term_limit = max(3, limit // max(1, len(terms)))
+
+    async with pool.acquire() as conn:
+        for term in terms:
+            t = term.strip()
+            if not t:
+                continue
+            rows = await conn.fetch(sql, t, source, per_term_limit)
+            for r in rows:
+                rid = r["id"]
+                score = float(r["score"] or 0.0)
+                existing = combined.get(rid)
+                if existing is None or score > existing["score"]:
+                    combined[rid] = {
+                        "id": r["id"],
+                        "source": r["source"],
+                        "source_id": r["source_id"],
+                        "title": r["title"],
+                        "text": r["text"],
+                        "meta": r["meta"],
+                        "score": score,
+                        "method": "ts_terms",
+                    }
+
+    merged = sorted(
+        combined.values(),
+        key=lambda r: r.get("score", 0.0),
+        reverse=True,
+    )
+    return merged[:limit]
 
 async def search_source_ann(
     pool: asyncpg.Pool,
@@ -269,12 +483,12 @@ async def search_source_ann(
     limit: int,
 ) -> List[Dict[str, Any]]:
     """
-    HNSW vector ANN search for the given source.
+    HNSW / ivfflat vector ANN search for the given source.
     Assumes partial index:
         CREATE INDEX ... WHERE source='xyz' AND embedding IS NOT NULL;
     """
     sql = """
-        SELECT id, source, title, text, meta,
+        SELECT id, source, source_id, title, text, meta,
                1 - (embedding <=> $1::vector) AS score
         FROM rag_corpus
         WHERE source = $2
@@ -291,6 +505,7 @@ async def search_source_ann(
             {
                 "id": r["id"],
                 "source": r["source"],
+                "source_id": r["source_id"],
                 "title": r["title"],
                 "text": r["text"],
                 "meta": r["meta"],
@@ -355,15 +570,12 @@ async def fetch_valyu_results(
     grouped: Dict[str, List[Dict[str, Any]]] = {}
 
     for h in hits:
-        # For now, treat everything as coming from the PubMed-like corpus.
-        # If Valyu exposes finer-grained corpus IDs, you can branch here.
         src_key = "valyu_pubmed"
 
         base = {
             "id": h.get("id"),
             "source": src_key,
             "title": h.get("title") or "",
-            # Use snippet as the context text for the LLM
             "text": h.get("snippet") or "",
             "meta": h,
             "score": float(h.get("score", 0.0) or 0.0),
@@ -413,6 +625,84 @@ def build_llm_messages(q: str, ctx_str: str) -> List[Dict[str, Any]]:
         },
     ]
 
+async def extract_code_terms(q: str) -> List[str]:
+    """
+    Use the chat model to extract a small list of code-oriented keywords
+    (diagnoses, meds, labs, procedures) from the user's question.
+
+    The goal is to drive ts-search over code sources (ICD, SNOMED, RxNorm, LOINC)
+    with focused terms instead of the entire natural-language question.
+
+    RA queries get a conservative fallback seed list to stabilize retrieval.
+    """
+    system_msg = {
+        "role": "system",
+        "content": (
+            "You are assisting a medical coding system.\n"
+            "Given a clinician's question, extract at most 8 short keywords "
+            "or phrases that are best suited to search structured code systems "
+            "such as ICD-10-CM, ICD-11, SNOMED CT, RxNorm, and LOINC.\n\n"
+            "Focus on:\n"
+            "- diseases and syndromes\n"
+            "- medications (generic names only)\n"
+            "- lab tests / measurements\n"
+            "- procedures or major clinical entities\n\n"
+            "Return a JSON object of the form:\n"
+            "{ \"terms\": [\"term1\", \"term2\", ...] }\n"
+            "Do not include commentary or any other keys."
+        ),
+    }
+    user_msg = {
+        "role": "user",
+        "content": q.strip(),
+    }
+
+    out: List[str] = []
+    seen: set[str] = set()
+
+    try:
+        resp = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[system_msg, user_msg],
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content
+        if raw:
+            data = json.loads(raw)
+            terms = data.get("terms") or []
+            for t in terms:
+                if not isinstance(t, str):
+                    continue
+                tt = t.strip()
+                if not tt:
+                    continue
+                key = tt.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(tt)
+    except Exception:
+        logger.exception("extract_code_terms failed")
+
+    # RA-specific conservative fallback: make sure RA queries always have
+    # strong seed terms for code vocabularies even if the model was weak.
+    try:
+        if is_ra_query(q):
+            ra_seeds = [
+                "rheumatoid arthritis",
+                "seropositive rheumatoid arthritis",
+                "erosive rheumatoid arthritis",
+            ]
+            for seed in ra_seeds:
+                key = seed.lower()
+                if key not in seen:
+                    seen.add(key)
+                    out.append(seed)
+    except Exception:
+        # Never let RA detection explode the whole pipeline
+        logger.exception("RA fallback seeds in extract_code_terms failed")
+
+    return out
 
 def stream_llm_events(
     q: str,
@@ -466,11 +756,9 @@ def stream_llm_events(
         if not content:
             continue
 
-        # New client: content is usually a string
         if isinstance(content, str):
             pieces = [content]
         else:
-            # Fallback: try to iterate parts
             pieces = []
             try:
                 for part in content:
@@ -484,12 +772,9 @@ def stream_llm_events(
             full_pieces.append(piece)
 
             if mode == "delta":
-                # Fine-grained streaming
                 yield sse("llm_delta", {"text": piece})
             else:
-                # Buffered sentence-ish chunks
                 buf += piece
-                # Heuristic: flush when we see sentence-ending punctuation
                 if any(
                     buf.endswith(end)
                     for end in [". ", ".\n", "?\n", "!\n", ".\n\n"]
@@ -497,7 +782,6 @@ def stream_llm_events(
                     for ev in flush_chunk():
                         yield ev
                 elif len(buf) > 600:
-                    # Failsafe: don't let buffer grow unbounded
                     for ev in flush_chunk():
                         yield ev
 
@@ -548,7 +832,6 @@ def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         meta = row.get("meta") or {}
         method = row.get("method")
 
-        # Derive a stable-ish key
         if kind == "valyu":
             key = (
                 meta.get("pmcid")
@@ -558,15 +841,13 @@ def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 or row.get("id")
             )
         elif kind == "ethos":
-            # Cite Ethos by chunk (more specific to sections)
             key = f"{src}:{row.get('id')}"
         else:
-            # Guidelines/other: source + row id
             key = f"{src}:{row.get('id')}"
 
         raw_citations.append(
             {
-                "index": i,  # matches [i] in the answer/context
+                "index": i,
                 "kind": kind,
                 "source": src,
                 "key": str(key),
@@ -595,7 +876,7 @@ async def _event_generator(
     limit: int,
     ctx_k: int,
     valyu_k: int,
-    with_llm_bool: bool,
+    with_llm: bool,
     llm_mode: str,
     use_valyu_bool: bool,
     valyu_mode: str,
@@ -604,7 +885,13 @@ async def _event_generator(
     valyu_boost: float,
     pool: Any,
     coding_mode: bool = False,
+    use_ethos_bool: bool = False,
 ) -> AsyncIterator[Dict[str, str]]:
+    # Hard cap on Valyu context size
+    VALYU_K_MAX = 4
+    requested_valyu_k = valyu_k
+    valyu_k = max(0, min(valyu_k, VALYU_K_MAX))
+
     # 0) Initial event
     yield sse(
         "start",
@@ -613,9 +900,11 @@ async def _event_generator(
             "limit": limit,
             "ctx_k": ctx_k,
             "sources": db_sources,
-            "with_llm": with_llm_bool,
+            "with_llm": with_llm,
             "use_valyu": use_valyu_bool,
             "valyu_k": valyu_k,
+            "valyu_k_requested": requested_valyu_k,
+            "use_ethos": use_ethos_bool,
         },
     )
 
@@ -653,16 +942,63 @@ async def _event_generator(
     if await request.is_disconnected():
         return
 
+    # 1.1) In coding_mode, extract code-oriented terms once, for use by all code sources.
+    code_terms: List[str] = []
+    if coding_mode:
+        yield sse("status", {"status": "extracting_code_terms"})
+        code_terms = await extract_code_terms(q)
+        if code_terms:
+            yield sse("code_terms", {"terms": code_terms})
+    
+    # RA-aware heuristic to support rheumatoid arthritis coding queries.
+    # This flag is reused for TS fallbacks per code source.
+    try:
+        is_ra = is_ra_query(q)
+    except Exception:
+        logger.exception("is_ra_query failed; defaulting to False")
+        is_ra = False
+
     # 2) Retrieve per source (TS + ANN)
     yield sse("status", {"status": "retrieving_candidates"})
     results_by_source: Dict[str, List[Dict[str, Any]]] = {}
     valyu_matches: List[Dict[str, Any]] = []
 
     for src in db_sources:
+        # Allow deeper retrieval for code sources in coding_mode
+        per_source_limit = limit
+        if coding_mode and src in CODE_SOURCES:
+            per_source_limit = max(limit, CODE_MIN_LIMIT)
+
         # TS phase
         yield sse("phase_start", {"source": src, "method": "ts"})
         try:
-            ts_rows = await search_source_ts(pool, src, q, limit)
+            if coding_mode and src in CODE_SOURCES:
+                # Prefer focused code_terms when available.
+                if code_terms:
+                    ts_rows = await search_source_ts_for_terms(
+                        pool,
+                        source=src,
+                        terms=code_terms,
+                        limit=per_source_limit,
+                    )
+                # RA-specific fallback for code sources when we have no code_terms.
+                elif is_ra:
+                    ra_terms = [
+                        "rheumatoid arthritis",
+                        "rheumatoid",
+                        "arthritis",
+                    ]
+                    ts_rows = await search_source_ts_for_terms(
+                        pool,
+                        source=src,
+                        terms=ra_terms,
+                        limit=per_source_limit,
+                    )
+                else:
+                    # Fail back to the full-question TS only if not clearly RA.
+                    ts_rows = await search_source_ts(pool, src, q, per_source_limit)
+            else:
+                ts_rows = await search_source_ts(pool, src, q, per_source_limit)
         except Exception as e:
             logger.exception("TS search failed for source=%s", src)
             ts_rows = []
@@ -682,6 +1018,7 @@ async def _event_generator(
                         {
                             "id": r["id"],
                             "source": r["source"],
+                            "source_id": r.get("source_id") or "",
                             "title": r.get("title", ""),
                             "score": r.get("score", 0.0),
                             "method": r.get("method", "ts"),
@@ -697,7 +1034,7 @@ async def _event_generator(
         # ANN phase
         yield sse("phase_start", {"source": src, "method": "ann"})
         try:
-            ann_rows = await search_source_ann(pool, src, q_vec_literal, limit)
+            ann_rows = await search_source_ann(pool, src, q_vec_literal, per_source_limit)
         except Exception as e:
             logger.exception("ANN search failed for source=%s", src)
             ann_rows = []
@@ -717,6 +1054,7 @@ async def _event_generator(
                         {
                             "id": r["id"],
                             "source": r["source"],
+                            "source_id": r.get("source_id"),
                             "title": r.get("title", ""),
                             "score": r.get("score", 0.0),
                             "method": r.get("method", "ann"),
@@ -744,21 +1082,35 @@ async def _event_generator(
 
     raw_source_count = len(results_by_source)
 
-    # 3) Heuristic source gating
+    # 3) Heuristic source gating, with optional Ethos + Code force-keep.
+    extra_always_keep: Optional[set[str]] = None
+    if use_ethos_bool:
+        extra_always_keep = {ETHOS_SOURCE_NAME}
+
+    # In coding_mode, never allow gating to drop authoritative code sources.
+    if coding_mode:
+        code_keep = set(CODE_SOURCES)
+        if extra_always_keep is None:
+            extra_always_keep = code_keep
+        else:
+            extra_always_keep |= code_keep
+
     gated_results_by_source, gating_info = apply_source_gating(
         results_by_source,
         query=q,
+        extra_always_keep=extra_always_keep,
     )
+
     yield sse("gating", gating_info)
 
     if await request.is_disconnected():
         return
 
-    # 4) Valyu (optional, guaranteed tail)
-    if use_valyu_bool:
+    # 4) Valyu (optional, guaranteed tail, but hard-capped by valyu_k <= 4)
+    if use_valyu_bool and valyu_k > 0:
         yield sse("status", {"status": "valyu_fetch"})
         try:
-            valyu_limit = max(limit, valyu_k) if valyu_k > 0 else limit
+            valyu_limit = valyu_k
             valyu_by_source = await fetch_valyu_results(
                 q=q,
                 mode=valyu_mode,
@@ -829,6 +1181,7 @@ async def _event_generator(
                 {
                     "id": r["id"],
                     "source": r["source"],
+                    "source_id": r.get("source_id"),
                     "title": r.get("title", ""),
                     "score": r.get("score", 0.0),
                     "method": r.get("method", None),
@@ -844,7 +1197,7 @@ async def _event_generator(
     citations = build_citations(final_ctx)
 
     # 6) LLM streaming (optional)
-    if not with_llm_bool:
+    if not with_llm:
         yield sse("status", {"status": "done_no_llm"})
         yield sse("citations", {"citations": citations})
         yield sse(
@@ -859,6 +1212,7 @@ async def _event_generator(
                     "ctx_k": ctx_k,
                     "valyu_k": valyu_k,
                     "with_llm": with_llm_bool,
+                    "use_ethos": use_ethos_bool,
                 }
             },
         )
@@ -879,6 +1233,7 @@ async def _event_generator(
                     "ctx_k": ctx_k,
                     "valyu_k": valyu_k,
                     "with_llm": with_llm_bool,
+                    "use_ethos": use_ethos_bool,
                 }
             },
         )
@@ -911,7 +1266,8 @@ async def _event_generator(
                     "n_ctx_total": len(final_ctx),
                     "ctx_k": ctx_k,
                     "valyu_k": valyu_k,
-                    "with_llm": with_llm_bool,
+                    "with_llm": with_llm,
+                    "use_ethos": use_ethos_bool,
                 }
             },
         )
@@ -930,7 +1286,8 @@ async def _event_generator(
                 "n_ctx_total": len(final_ctx),
                 "ctx_k": ctx_k,
                 "valyu_k": valyu_k,
-                "with_llm": with_llm_bool,
+                "with_llm": with_llm,
+                "use_ethos": use_ethos_bool,
             }
         },
     )

@@ -8,16 +8,17 @@ pick AS (
   SELECT
     rxcui,
     COALESCE(
-      MAX(str) FILTER (WHERE sab='RXNORM' AND ispref='Y'),
-      MAX(str) FILTER (WHERE ispref='Y'),
+      MAX(str) FILTER (WHERE sab = 'RXNORM' AND ispref = 'Y'),
+      MAX(str) FILTER (WHERE ispref = 'Y'),
       MAX(str)
-    ) AS title
+    ) AS base_title
   FROM c
   GROUP BY rxcui
 ),
 tty_roll AS (
   SELECT rxcui, array_agg(DISTINCT tty ORDER BY tty) AS ttys
-  FROM c GROUP BY rxcui
+  FROM c
+  GROUP BY rxcui
 ),
 ndc_roll AS (
   SELECT rxcui, array_agg(DISTINCT ndc_norm ORDER BY ndc_norm) AS ndcs
@@ -26,19 +27,31 @@ ndc_roll AS (
 ),
 prep AS (
   SELECT
-    'rxnorm'::text AS source,
-    p.rxcui::text  AS source_id,
-    p.title,
-    CONCAT_WS(' | ',
-      p.title,
-      CASE WHEN t.ttys IS NOT NULL THEN 'TTYs: ' || array_to_string(t.ttys, ',') END,
-      CASE WHEN n.ndcs IS NOT NULL THEN 'NDCs: ' || array_to_string(n.ndcs, ',') END
+    'rxnorm'::text       AS source,
+    p.rxcui::text        AS source_id,
+
+    -- 🔍 Make RxCUI visible in the title
+    (p.base_title || ' [RxCUI ' || p.rxcui::text || ']') AS title,
+
+    -- 📄 Rich text: title + TTYs + NDCs (all with CUI visible at top)
+    CONCAT_WS(E'\n',
+      (p.base_title || ' [RxCUI ' || p.rxcui::text || ']'),
+      CASE WHEN t.ttys IS NOT NULL
+           THEN 'TTYs: ' || array_to_string(t.ttys, ', ')
+      END,
+      CASE WHEN n.ndcs IS NOT NULL
+           THEN 'NDCs: ' || array_to_string(n.ndcs, ', ')
+      END
     ) AS text,
-    to_tsvector('english',
+
+    -- 🧠 Full-text search vector also includes the CUI string
+    to_tsvector(
+      'english',
       CONCAT_WS(' ',
-        p.title,
-        COALESCE(array_to_string(t.ttys,' '),''),
-        COALESCE(array_to_string(n.ndcs,' '),'')
+        p.base_title,
+        p.rxcui::text,
+        COALESCE(array_to_string(t.ttys, ' '), ''),
+        COALESCE(array_to_string(n.ndcs, ' '), '')
       )
     ) AS ts
   FROM pick p

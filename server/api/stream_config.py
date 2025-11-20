@@ -15,12 +15,15 @@ CHAT_MODEL = "gpt-4.1-mini"  # adjust as needed
 BASE_RRF_K = 24
 
 # Hard cap on context size passed to LLM (chars; rough guard vs token overflows)
-MAX_CONTEXT_CHARS = 32_000
+MAX_CONTEXT_CHARS = 64_000
 
 # Valyu-related env (used by valyu_client, kept here for centralization)
 VALYU_BASE_URL = os.getenv("VALYU_BASE_URL", "").strip()
 VALYU_API_KEY = os.getenv("VALYU_API_KEY", "").strip()
 VALYU_TIMEOUT = float(os.getenv("VALYU_TIMEOUT", "20.0"))
+
+# Ethos model source name (rag_corpus.source)
+ETHOS_SOURCE_NAME = "ethos_model"
 
 # Heuristic source-gating config
 SOURCE_GATING_ENABLED = bool(int(os.getenv("RAG_SOURCE_GATING_ENABLED", "1")))
@@ -32,8 +35,6 @@ ALWAYS_KEEP_SOURCES: Set[str] = {
     for s in os.getenv("RAG_ALWAYS_KEEP_SOURCES", "").split(",")
     if s.strip()
 }
-
-TOKEN_RX = re.compile(r"[A-Za-z]{4,}")
 
 # ---------------------------------------------------------------------------
 # rag_corpus source registry
@@ -306,6 +307,7 @@ RA_GUIDELINE_SOURCES: Set[str] = {
 }
 
 GUIDELINE_SOURCES: Set[str] = {
+    # Core disease-specific guidelines
     "acr_ra_2021",
     "eular_ra_2022",
     "acr_ild_2023",
@@ -313,8 +315,27 @@ GUIDELINE_SOURCES: Set[str] = {
     "kdigo_gn_ln_2021",
     "nice",
     "nice_ta397_belimumab",
+    "va_guidelines",
+    "who_committee",
 }
 
+CODING_DEFAULT_SOURCES = [
+    "acr_ra_2021",
+    "eular_ra_2022",
+    "acr_ild_2023",
+    "icd11",
+    "icd10cm",
+    "loinc",
+    "rxnorm",
+    "snomed",
+    "va_guidelines",
+    "who",
+    "panelapp",
+    "disgenet",
+    "chv",
+    "hpo",
+    "valyu",
+]
 
 def is_ra_query(q: str, valyu_labels: Dict[str, float] | None = None) -> bool:
     """

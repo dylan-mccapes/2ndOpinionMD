@@ -10,13 +10,13 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- sys.path & env -----------------------------------------------------------
 server_dir = Path(__file__).resolve().parent.parent
@@ -139,7 +139,19 @@ async def _attach_pool():
 
 # --- CORS (safe with credentials) ---------------------------------------------
 # If you need wildcard origins, set allow_credentials=False.
-_allowed_origins = os.getenv("CORS_ALLOW_ORIGINS", "https://2ndopinionmd.ai,http://localhost:3000")
+_default_origins = ",".join([
+    "https://2ndopinionmd.ai",
+    "http://localhost:3000",       # existing
+    "http://localhost:8010",       # demo UI
+    "http://127.0.0.1:8010",       # demo UI
+    "http://192.168.0.108:8010",   # replace with your actual LAN IP for others to connect
+    # You can add "http://<your-public-ip>:8010" here if exposing publicly
+])
+
+_allowed_origins = os.getenv(
+    "CORS_ALLOW_ORIGINS",
+    "https://2ndopinionmd.ai,http://localhost:3000,http://127.0.0.1:8010,http://localhost:8010"
+)
 allow_origins = [o.strip() for o in _allowed_origins.split(",") if o.strip()]
 
 app.add_middleware(
@@ -149,6 +161,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # --- Mount routers -------------------------------------------------------------
 app.include_router(auth_router,   prefix="/api/auth",    tags=["authentication"])

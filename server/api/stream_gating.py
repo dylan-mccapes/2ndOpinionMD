@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 
 from .stream_config import (
     ABS_SCORE_CUTOFF,
@@ -43,14 +43,29 @@ def summarize_source_scores(
     }
 
 
+def _simple_token_set(text: str) -> set[str]:
+    """
+    Lowercase, strip non-alphanumerics, and return a set of tokens (len>=3).
+    Used for rough lexical gating.
+    """
+    if not text or not isinstance(text, str):
+        return set()
+    text = str(text).lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return {t for t in text.split() if len(t) >= 3}
+
+
 def apply_source_gating(
     results_by_source: Dict[str, List[Dict[str, Any]]],
     query: str | None = None,
+    extra_always_keep: Optional[Set[str]] = None,
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
     """
     Apply heuristics to drop obviously off-topic / weak sources.
 
     - Uses RA-aware tweaks for RA guideline PDFs.
+    - Supports an extra_always_keep set (e.g., ethos_model when use_ethos=1).
+    - Adds a light lexical-overlap check to trim “background” guidelines.
     - Fails open if everything would be dropped.
     """
     is_ra = is_ra_query(query or "")
@@ -58,12 +73,19 @@ def apply_source_gating(
     GUIDELINE_REL_CUTOFF = 0.65
     RA_GUIDELINE_REL_CUTOFF = 0.35
 
+    # Merge ALWAYS_KEEP with any per-call extra_always_keep (e.g., ethos)
+    always_keep: Set[str] = set(ALWAYS_KEEP_SOURCES)
+    if extra_always_keep:
+        always_keep |= set(extra_always_keep)
+
+    q_tokens = _simple_token_set(query or "") if query else set()
+
     gating_info: Dict[str, Any] = {
         "enabled": SOURCE_GATING_ENABLED,
         "min_docs": MIN_DOCS_PER_SOURCE,
         "rel_cutoff": REL_SCORE_CUTOFF,
         "abs_cutoff": ABS_SCORE_CUTOFF,
-        "always_keep": sorted(list(ALWAYS_KEEP_SOURCES)),
+        "always_keep": sorted(list(always_keep)),
         "guideline_sources": sorted(list(GUIDELINE_SOURCES)),
         "ra_guideline_sources": sorted(list(RA_GUIDELINE_SOURCES)),
         "is_ra_query": is_ra,
@@ -107,10 +129,19 @@ def apply_source_gating(
     for src, rows in results_by_source.items():
         stats = stats_by_src[src]
 
+        # Compute a quick lexical overlap between the query and the
+        # highest-scoring row for this source (if we have both).
+        lexical_overlap = 0
+        if q_tokens and rows:
+            top_row = max(rows, key=lambda r: float(r.get("score", 0.0) or 0.0))
+            blob = f"{top_row.get('title') or ''} {top_row.get('text') or ''}"
+            doc_tokens = _simple_token_set(blob)
+            lexical_overlap = len(q_tokens & doc_tokens)
+
         if stats is None or stats["n"] == 0:
             decision = "drop"
             reason = "no_rows"
-        elif src in ALWAYS_KEEP_SOURCES:
+        elif src in always_keep:
             decision = "keep"
             reason = "always_keep"
         elif is_ra and src in RA_GUIDELINE_SOURCES:
@@ -123,11 +154,19 @@ def apply_source_gating(
             rel = stats["top1"] / global_top1 if global_top1 > 0 else 0.0
 
             if src in GUIDELINE_SOURCES:
-                rel_cutoff = (
+                # RA-aware tweak: for RA queries, keep RA guideline sources at
+                # a lower rel_cutoff, but *raise* the bar for other guidelines.
+                base_cutoff = (
                     RA_GUIDELINE_REL_CUTOFF
                     if (is_ra and src in RA_GUIDELINE_SOURCES)
                     else GUIDELINE_REL_CUTOFF
                 )
+                if is_ra and src not in RA_GUIDELINE_SOURCES:
+                    # Non-RA guidelines in an RA query must be very competitive
+                    # to stay in the mix.
+                    rel_cutoff = max(base_cutoff, 0.80)
+                else:
+                    rel_cutoff = base_cutoff
             else:
                 rel_cutoff = REL_SCORE_CUTOFF
 
@@ -135,8 +174,21 @@ def apply_source_gating(
             meets_abs = ABS_SCORE_CUTOFF > 0.0 and stats["top1"] >= ABS_SCORE_CUTOFF
 
             if meets_rel or meets_abs:
-                decision = "keep"
-                reason = f"score_ok(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
+                # Light lexical sanity check for non-ALWAYS_KEEP, non-RA guidelines:
+                if (
+                    q_tokens
+                    and lexical_overlap == 0
+                    and src not in RA_GUIDELINE_SOURCES
+                    and src not in always_keep
+                ):
+                    decision = "drop"
+                    reason = (
+                        f"weak_lexical_overlap(0) despite score_ok"
+                        f"(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
+                    )
+                else:
+                    decision = "keep"
+                    reason = f"score_ok(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
             else:
                 decision = "drop"
                 reason = f"weak_score(rel={rel:.3f}, cutoff={rel_cutoff:.3f})"
@@ -145,6 +197,7 @@ def apply_source_gating(
             "decision": decision,
             "reason": reason,
             "stats": stats,
+            "lexical_overlap": lexical_overlap,
         }
 
         if decision == "keep":
@@ -160,6 +213,7 @@ def apply_source_gating(
     gating_info["n_sources_after"] = len(kept)
 
     return kept, gating_info
+
 
 
 # ---------------------------------------------------------------------------
@@ -263,16 +317,22 @@ def apply_code_row_filter(
 
     scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
 
-    MIN_OVERLAP = 1
-    FAIL_OPEN_TOP_N = 3
+    # For ICD-10-CM, be more permissive: descriptions are short and
+    # RA codes can have low lexical overlap with the full question.
+    if src_norm == "icd10cm":
+        MIN_OVERLAP = 0
+        FAIL_OPEN_TOP_N = 10
+    else:
+        MIN_OVERLAP = 1
+        FAIL_OPEN_TOP_N = 3
 
     kept: List[Dict[str, Any]] = []
     for idx, (overlap, base_score, row) in enumerate(scored):
         if overlap >= MIN_OVERLAP or idx < FAIL_OPEN_TOP_N:
             kept.append(row)
 
+    # Fail-open: if everything would be dropped, fall back to original rows.
     if not kept:
         return rows
 
     return kept
-
