@@ -66,7 +66,7 @@ icd10-download:
 	@echo "Place order TXT at server/data/icd10/icd10cm-order.txt or set ICD10_CMS_ZIP_URL."
 
 icd10-load: icd-schema
-	@$(PYTHON) server/scripts/icd10_cms_loader.py --local server/data/icd10/icd10cm-order.txt
+	@$(PYTHON) server/scripts/icd10_cms_loader.py --local data/icd10/icd10cm-order.txt
 
 # --- RAG: targets view + idempotent upsert + embedding/index -----------
 

@@ -8,7 +8,7 @@ from openai import AsyncOpenAI
 # -------- Defaults (env-overridable) --------
 DSN_DEFAULT         = os.getenv("POSTGRES_DSN", "postgresql://localhost/2ndopinionmd")
 MODEL_DEFAULT       = os.getenv("EMBED_MODEL", "text-embedding-3-small")  # 1536 dims
-SOURCE_DEFAULT      = os.getenv("EMBED_SOURCE", "mimic4_note")
+SOURCE_DEFAULT      = os.getenv("EMBED_SOURCE", "icd10cm")
 BATCH_DEFAULT       = int(os.getenv("BATCH", "256"))
 CONCURRENCY_DEFAULT = int(os.getenv("CONCURRENCY", "12"))
 REQ_BATCH_DEFAULT   = int(os.getenv("REQ_BATCH", "128"))   # texts per API call
