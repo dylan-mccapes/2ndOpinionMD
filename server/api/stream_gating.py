@@ -15,6 +15,9 @@ from .stream_config import (
     SOURCE_GATING_ENABLED,
     RA_GUIDELINE_SOURCES,
     is_ra_query,
+    TS_PIN_K_PER_SOURCE_CODING,
+    TS_PIN_K_PER_SOURCE_DEFAULT,
+    TS_PIN_MAX_FRAC_CTX,
 )
 
 
@@ -54,11 +57,101 @@ def _simple_token_set(text: str) -> set[str]:
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return {t for t in text.split() if len(t) >= 3}
 
+def _apply_light_pinning(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    *,
+    coding_mode: bool,
+    ctx_k: Optional[int],
+) -> None:
+    """
+    Light fusion step that "pins" top TS / TS_TERM rows per source.
+
+    - For coding_mode + code sources: use TS_PIN_K_PER_SOURCE_CODING.
+    - For others:          use TS_PIN_K_PER_SOURCE_DEFAULT.
+    - Adds a boolean 'pinned' flag to rows, to be respected by heavy fusion.
+    - Enforces a global cap so pinned rows don't eat all of ctx_k.
+    """
+    if not results_by_source:
+        return
+
+    # Reset any previous pinning
+    for rows in results_by_source.values():
+        for r in rows:
+            if "pinned" in r:
+                r["pinned"] = False
+
+    # 1) Per-source pinning
+    all_pinned: List[Dict[str, Any]] = []
+
+    for src, rows in results_by_source.items():
+        src_norm = (src or "").lower()
+
+        if coding_mode and src_norm in CODE_SOURCES:
+            cap = TS_PIN_K_PER_SOURCE_CODING
+        else:
+            cap = TS_PIN_K_PER_SOURCE_DEFAULT
+
+        if cap <= 0:
+            continue
+
+        ts_rows = [
+            r
+            for r in rows
+            if (r.get("method") in ("ts_terms", "ts"))
+        ]
+        if not ts_rows:
+            continue
+
+        ts_rows_sorted = sorted(
+            ts_rows,
+            key=lambda r: float(r.get("score", 0.0) or 0.0),
+            reverse=True,
+        )
+
+        for r in ts_rows_sorted[:cap]:
+            r["pinned"] = True
+            all_pinned.append(r)
+
+    if not all_pinned or ctx_k is None or ctx_k <= 0:
+        return
+
+    # 2) Global cap on pinned rows (as fraction of ctx_k)
+    max_frac = TS_PIN_MAX_FRAC_CTX
+    if max_frac <= 0.0:
+        max_pinned = 0
+    elif max_frac >= 1.0:
+        max_pinned = ctx_k
+    else:
+        max_pinned = max(1, int(max_frac * ctx_k))
+
+    if len(all_pinned) <= max_pinned:
+        return
+
+    # Too many pinned rows; keep only the globally best by score
+    all_pinned_sorted = sorted(
+        all_pinned,
+        key=lambda r: float(r.get("score", 0.0) or 0.0),
+        reverse=True,
+    )
+    keep_keys = {
+        ((r.get("source") or ""), r.get("id"))
+        for r in all_pinned_sorted[:max_pinned]
+    }
+
+    for rows in results_by_source.values():
+        for r in rows:
+            if r.get("pinned"):
+                key = ((r.get("source") or ""), r.get("id"))
+                if key not in keep_keys:
+                    r["pinned"] = False
+
 
 def apply_source_gating(
     results_by_source: Dict[str, List[Dict[str, Any]]],
     query: str | None = None,
     extra_always_keep: Optional[Set[str]] = None,
+    coding_mode: bool = False,
+    ctx_k: Optional[int] = None,
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
     """
     Apply heuristics to drop obviously off-topic / weak sources.
@@ -67,6 +160,8 @@ def apply_source_gating(
     - Supports an extra_always_keep set (e.g., ethos_model when use_ethos=1).
     - Adds a light lexical-overlap check to trim “background” guidelines.
     - Fails open if everything would be dropped.
+    - Also performs *light pinning* of TS matches per source, adding
+      a boolean 'pinned' field to rows. Heavy fusion will respect this.
     """
     is_ra = is_ra_query(query or "")
 
@@ -105,13 +200,19 @@ def apply_source_gating(
         gating_info["n_sources_after"] = len(results_by_source)
         gating_info["global_top1"] = None
         gating_info["fail_open"] = True
+
+        # Still apply light pinning (no-op if empty)
+        _apply_light_pinning(results_by_source, coding_mode=coding_mode, ctx_k=ctx_k)
         return results_by_source, gating_info
 
     global_top1 = max(st["top1"] for st in nonempty_stats.values())
     gating_info["global_top1"] = global_top1
 
-    # If gating disabled, keep everything but still report stats.
-    if not SOURCE_GATING_ENABLED:
+    kept: Dict[str, List[Dict[str, Any]]] = {}
+
+    # If gating disabled or we're not in coding_mode, keep everything but still
+    # compute stats + apply light pinning.
+    if not SOURCE_GATING_ENABLED or not coding_mode:
         kept = dict(results_by_source)
         for src, rows in results_by_source.items():
             gating_info["sources"][src] = {
@@ -122,9 +223,11 @@ def apply_source_gating(
         gating_info["n_sources_before"] = len(results_by_source)
         gating_info["n_sources_after"] = len(kept)
         gating_info["fail_open"] = False
+
+        _apply_light_pinning(kept, coding_mode=coding_mode, ctx_k=ctx_k)
         return kept, gating_info
 
-    kept: Dict[str, List[Dict[str, Any]]] = {}
+    # ---- Normal gating path (coding_mode=True) ----------------------------
 
     for src, rows in results_by_source.items():
         stats = stats_by_src[src]
@@ -212,8 +315,10 @@ def apply_source_gating(
     gating_info["n_sources_before"] = len(results_by_source)
     gating_info["n_sources_after"] = len(kept)
 
-    return kept, gating_info
+    # IMPORTANT: light pinning happens *after* we decide which sources to keep.
+    _apply_light_pinning(kept, coding_mode=coding_mode, ctx_k=ctx_k)
 
+    return kept, gating_info
 
 
 # ---------------------------------------------------------------------------

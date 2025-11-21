@@ -36,6 +36,16 @@ ALWAYS_KEEP_SOURCES: Set[str] = {
     if s.strip()
 }
 
+# How many TS-based rows to "pin" per source during light fusion
+# (these get guaranteed priority in the final fused context).
+TS_PIN_K_PER_SOURCE_CODING = int(os.getenv("RAG_TS_PIN_K_PER_SOURCE_CODING", "10"))
+TS_PIN_K_PER_SOURCE_DEFAULT = int(os.getenv("RAG_TS_PIN_K_PER_SOURCE_DEFAULT", "3"))
+
+# Max fraction of ctx_k that pinned rows are allowed to occupy globally.
+# Example: 0.5 → at most 50% of final context slots are reserved for pinned rows.
+TS_PIN_MAX_FRAC_CTX = float(os.getenv("RAG_TS_PIN_MAX_FRAC_CTX", "0.5"))
+
+
 # ---------------------------------------------------------------------------
 # rag_corpus source registry
 # ---------------------------------------------------------------------------
@@ -336,6 +346,76 @@ CODING_DEFAULT_SOURCES = [
     "hpo",
     "valyu",
 ]
+
+# Sources that should be used for structured coding/abstraction
+CODING_SOURCES = [
+    "icd10cm",
+    "icd11",
+    "snomed",
+    "loinc",
+    "rxnorm",
+    "hpo",
+    "chv",
+]
+
+# How many items to keep per source for coding (no global fusion)
+CODING_TS_K = 16       # top N TS hits per source
+CODING_ANN_K = 16      # top N ANN hits per source
+CODING_MAX_PER_SOURCE = 24  # hard cap (TS+ANN combined)
+
+CODING_SYSTEM_PROMPT = """
+TASK: Clinical coding abstraction.
+
+PATIENT SCENARIO:
+- Adult with biopsy-proven class IV lupus nephritis.
+- Nephrotic-range proteinuria.
+- Current treatment: mycophenolate mofetil + oral prednisone.
+
+OBJECTIVES (PLEASE RETURN CODES FOR ALL):
+
+1) DIAGNOSES
+   - Systemic lupus erythematosus (SLE).
+   - Lupus nephritis (renal involvement of SLE).
+
+2) PROCEDURES
+   - Kidney biopsy (renal biopsy).
+
+3) LABS / MONITORING
+   - Urine protein/creatinine ratio.
+   - Serum creatinine.
+   - Complement levels (C3, C4, CH50 acceptable).
+   - Anti–double stranded DNA (anti-dsDNA) antibodies.
+
+4) MEDICATIONS
+   - Mycophenolate mofetil (systemic, oral formulation acceptable).
+   - Oral prednisone.
+
+VOCABULARIES (REQUIRED):
+- ICD-10-CM and ICD-11 for diagnoses.
+- SNOMED CT for diagnoses and procedures.
+- LOINC for laboratory tests.
+- RxNorm for medications.
+
+OUTPUT FORMAT:
+For each requested concept, list all of:
+- ICD-10-CM code(s) + preferred term.
+- ICD-11 code(s) + preferred term.
+- SNOMED CT code(s) + preferred term.
+- LOINC code(s) + name.
+- RxNorm code(s) + name.
+
+- Only use codes that appear in the provided context.
+- If a requested concept has no code in context, write:
+  “NOT FOUND IN CONTEXT — DO NOT HALLUCINATE.”
+- Do NOT invent or guess codes.
+
+Very important:
+
+- You are given explicit context snippets which include codes and their vocabularies.
+- If you saw ANY codes from a vocabulary in the context, you MUST list those codes under that vocabulary in the FINAL CODING OUTPUT.
+- Only output "none_found" for a vocabulary if there were truly ZERO codes from that vocabulary ANYWHERE in the context.
+- Never "forget" codes you already listed earlier in the answer.
+""".strip()
 
 def is_ra_query(q: str, valyu_labels: Dict[str, float] | None = None) -> bool:
     """
