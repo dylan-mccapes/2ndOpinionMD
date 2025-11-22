@@ -179,7 +179,11 @@
 
     <div class="row">
       <label for="query">Clinical question</label>
-      <textarea id="query" class="input" placeholder="e.g. In a 52-year-old woman with long-standing seropositive RA and new HFrEF, summarize guideline-based RA therapy and map the key ICD-10/ICD-11/SNOMED/RxNorm codes."></textarea>
+      <textarea
+        id="query"
+        class="input"
+        placeholder="e.g. In a 32-year-old woman with seropositive RA, mild RA-ILD, and pregnancy plans in 1–2 years, summarize guideline-based csDMARD/biologic sequencing and map key ICD-10/ICD-11/SNOMED/LOINC/RxNorm codes."
+      ></textarea>
     </div>
 
     <div class="pill-row">
@@ -217,7 +221,7 @@
       <div class="panel">
         <h2>
           Context &amp; Matches
-          <span class="tag">retrieval</span>
+          <span class="tag">retrieval &amp; routing</span>
         </h2>
         <div id="matches" class="pre">No results yet.</div>
       </div>
@@ -242,14 +246,12 @@
 
   <script>
     // === CONFIG: point UI at the real backend ============================
-    // For external site through nginx:
     const API_BASE = "https://2ndopinionmd.ai";
-    // If you want a fully local loop instead, comment the line above and use:
     // const API_BASE = "http://localhost:8000";
 
-    const runBtn   = document.getElementById("run-btn");
-    const clearBtn = document.getElementById("clear-btn");
-    const queryEl  = document.getElementById("query");
+    const runBtn    = document.getElementById("run-btn");
+    const clearBtn  = document.getElementById("clear-btn");
+    const queryEl   = document.getElementById("query");
     const matchesEl = document.getElementById("matches");
     const answerEl  = document.getElementById("answer");
     const statusDot = document.getElementById("status-dot");
@@ -292,6 +294,13 @@
       metaTable.style.display = "none";
     }
 
+    function appendMatchesBlock(block) {
+      const existing = matchesEl.textContent === "No results yet."
+        ? ""
+        : matchesEl.textContent + "\n\n";
+      matchesEl.textContent = existing + block;
+    }
+
     clearBtn.addEventListener("click", () => {
       queryEl.value = "";
       resetOutput();
@@ -313,36 +322,119 @@
         ? "/api/rag/coding_stream"
         : "/api/rag/ask_stream";
 
+      const isGuideline = mode === "guideline";
+
+      // IMPORTANT: send explicit "0"/"1" strings and zero out valyu_k for coding.
+      const useValyuFlag = isGuideline ? "1" : "0";
+      const valyuK       = isGuideline ? "5" : "0";
+      const valyuMode    = isGuideline ? "search" : "answer";
+
       const params = new URLSearchParams({
         q,
         limit: "8",
         ctx_k: "24",
-        valyu_k: "5",
+        valyu_k: valyuK,
         with_llm: "1",
         llm_mode: "chunk",
-        use_valyu: "1",
-        valyu_mode: "answer",
+        use_valyu: useValyuFlag,
+        valyu_mode: valyuMode,
         valyu_raw: "0",
       });
 
-      // IMPORTANT: full URL to FastAPI backend, not the static server
       const url = `${API_BASE}${endpoint}?${params.toString()}`;
-
       const es = new EventSource(url);
 
       let fusedSeen = false;
       let answerText = "";
 
       es.onmessage = (ev) => {
-        // For safety: not using the generic handler; we use explicit named events below.
+        // Intentionally unused; using named events below.
       };
+
+      // ---- Core trace events shared by /ask_stream and /coding_stream ----
 
       es.addEventListener("start", (ev) => {
         try {
           const data = JSON.parse(ev.data);
+          const srcs = Array.isArray(data.sources) ? data.sources.join(", ") : "(not specified)";
           matchesEl.textContent =
-            `Query: ${data.q}\nSources: ${data.sources.join(", ")}\n\nAwaiting matches…`;
-        } catch { /* ignore */ }
+            `Query: ${data.q}\nSources: ${srcs}\n\nAwaiting matches…`;
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("warning", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          let msgs = data.messages || data.warning || [];
+          if (!Array.isArray(msgs)) msgs = [String(msgs)];
+          if (!msgs.length) return;
+          appendMatchesBlock(
+            "Warning:\n" + msgs.map(m => `  - ${m}`).join("\n")
+          );
+          setStatus("Warning: " + msgs[0], "live");
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("code_terms", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const terms = data.terms || [];
+          const expansions = data.expansions || {};
+          if (!terms.length && !Object.keys(expansions).length) return;
+
+          const lines = [];
+          if (terms.length) {
+            lines.push("Terms: " + terms.join(", "));
+          }
+          const expKeys = Object.keys(expansions);
+          if (expKeys.length) {
+            lines.push("Expansions:");
+            expKeys.forEach(k => {
+              const vals = expansions[k] || [];
+              if (vals.length) {
+                lines.push(`  - ${k}: ${vals.join(", ")}`);
+              }
+            });
+          }
+
+          appendMatchesBlock("Extracted code/clinical terms\n" + lines.join("\n"));
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("router", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const taskType = data.task_type || "(unknown)";
+          const selected = Array.isArray(data.selected_sources)
+            ? data.selected_sources.join(", ")
+            : "(none)";
+          const reasoning = data.reasoning || "";
+          appendMatchesBlock(
+            "Router plan\n" +
+            `  Task type: ${taskType}\n` +
+            `  Selected sources: ${selected}\n` +
+            (reasoning ? `  Reasoning:\n${reasoning}` : "")
+          );
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("gating", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          appendMatchesBlock(
+            "Gating summary\n" + JSON.stringify(data, null, 2)
+          );
+        } catch {
+          // ignore
+        }
       });
 
       es.addEventListener("matches", (ev) => {
@@ -362,15 +454,11 @@
               : null;
 
           const idPart = idLabel ? `  (${idLabel})` : "";
-
-          return `  [${idx + 1}] ${r.source} :: ${r.title || "(no title)"}${idPart} (score=${(r.score ?? 0).toFixed(3)})`;
+          const scoreVal = typeof r.score === "number" ? r.score : 0;
+          return `  [${idx + 1}] ${r.source} :: ${r.title || "(no title)"}${idPart} (score=${scoreVal.toFixed(3)})`;
         });
 
-        const existing = matchesEl.textContent === "No results yet."
-          ? ""
-          : matchesEl.textContent + "\n\n";
-
-        matchesEl.textContent = existing + header + "\n" + lines.join("\n");
+        appendMatchesBlock(header + "\n" + lines.join("\n"));
 
         if (phase === "fused") {
           fusedSeen = true;
@@ -380,15 +468,24 @@
 
       es.addEventListener("llm_chunk", (ev) => {
         const data = JSON.parse(ev.data);
-        answerText += data.text;
+        answerText += data.text || "";
+        answerEl.textContent = answerText;
+        setStatus("Streaming answer…", "live");
+      });
+
+      es.addEventListener("llm_delta", (ev) => {
+        const data = JSON.parse(ev.data);
+        answerText += data.text || "";
         answerEl.textContent = answerText;
         setStatus("Streaming answer…", "live");
       });
 
       es.addEventListener("llm_done", (ev) => {
         const data = JSON.parse(ev.data);
-        answerText = data.text;
-        answerEl.textContent = answerText;
+        if (data.text) {
+          answerText = data.text;
+          answerEl.textContent = answerText;
+        }
       });
 
       es.addEventListener("citations", (ev) => {
@@ -426,11 +523,43 @@
 
       es.addEventListener("status", (ev) => {
         const data = JSON.parse(ev.data);
-        if (data.status === "embedding_query") setStatus("Embedding query…", "live");
-        if (data.status === "retrieving_candidates") setStatus("Retrieving candidates…", "live");
-        if (data.status === "fusing_context") setStatus("Fusing context…", "live");
-        if (data.status === "generating_answer") setStatus("Generating answer…", "live");
-        if (data.status === "done_no_llm") setStatus("Done (retrieval only).", null);
+        const s = data.status;
+        switch (s) {
+          case "embedding_query":
+            setStatus("Embedding query…", "live");
+            break;
+          case "extracting_code_terms":
+            setStatus("Extracting code terms…", "live");
+            break;
+          case "routing_sources":
+            setStatus("Routing coding sources…", "live");
+            break;
+          case "retrieving_candidates":
+            setStatus("Retrieving candidates…", "live");
+            break;
+          case "valyu_fetch":
+          case "valyu_retrieving":
+            setStatus("Fetching Valyu evidence…", "live");
+            break;
+          case "fusing_context":
+            setStatus("Fusing context…", "live");
+            break;
+          case "generating_answer":
+          case "answering":
+            setStatus("Generating answer…", "live");
+            break;
+          case "extracting_terms":
+            setStatus("Extracting terms…", "live");
+            break;
+          case "retrieving_mkg":
+            setStatus("Retrieving MKG…", "live");
+            break;
+          case "done_no_llm":
+            setStatus("Done (retrieval only).", null);
+            break;
+          default:
+            break;
+        }
       });
 
       es.addEventListener("error", (ev) => {

@@ -27,7 +27,6 @@ from .stream_config import (
     EMBED_MODEL,
     MAX_CONTEXT_CHARS,
     ETHOS_SOURCE_NAME,
-    is_ra_query,
 )
 
 from .stream_gating import apply_code_row_filter, apply_source_gating
@@ -257,6 +256,352 @@ def _is_guideline_source(src: str) -> bool:
     if s in _GUIDELINE_EXACT:
         return True
     return any(s.startswith(pfx) for pfx in _GUIDELINE_PREFIXES)
+
+# ---------------------------------------------------------------------------
+# Coding prepass: ledger, grader, gap retrieval, pinning
+# ---------------------------------------------------------------------------
+
+CODING_GRADER_SYSTEM_PROMPT = """
+You are a medical coding auditor for a retrieval-augmented system.
+
+You receive:
+- A clinical question.
+- A thin ledger of retrieved codes from ICD-10-CM, ICD-11, SNOMED CT, LOINC, and RxNorm.
+
+Your goals:
+1. Decide which retrieved codes are clinically appropriate and relevant to the question.
+2. Identify IMPORTANT missing "slots" where the question clearly implies a code that is not present.
+
+Definitions:
+- "Keep codes" = codes that are clearly correct and relevant to the question.
+- "Missing slot" = an axis where a code is expected but not present, e.g.
+    - ICD-10-CM lupus nephritis
+    - SNOMED kidney biopsy
+    - LOINC protein/creatinine ratio
+    - RxNorm mycophenolate mofetil, prednisone
+    - etc.
+
+Rules:
+- NEVER invent codes. You can only keep codes that appear in the ledger.
+- You MAY mark missing slots even if you do not know the exact code.
+- Missing slots should be specific enough to guide a follow-up search:
+    - Include vocabulary name (icd10cm, icd11, snomed, loinc, rxnorm).
+    - Include a short human-readable label, e.g. "lupus nephritis", "kidney biopsy".
+    - Include a list of 1–4 search terms to use for retrieval.
+
+Output STRICT JSON with this exact shape:
+{
+  "keep": {
+    "icd10cm": ["CODE1", "CODE2"],
+    "icd11": ["..."],
+    "snomed": ["..."],
+    "loinc": ["..."],
+    "rxnorm": ["..."]
+  },
+  "missing_slots": [
+    {
+      "vocabulary": "icd10cm",
+      "slot_label": "lupus nephritis",
+      "search_terms": ["lupus nephritis", "renal involvement in SLE"]
+    }
+  ]
+}
+
+Notes:
+- You do NOT need to fill every vocabulary.
+- If a vocabulary is not relevant, just leave it empty or omit it in "keep".
+- Be conservative: only keep codes that clearly match the question.
+""".strip()
+
+
+def build_coding_ledger(
+    results_by_source: Dict[str, List[Dict[str, Any]]]
+) -> Dict[str, Any]:
+    """
+    Build a thin, LLM-friendly ledger of retrieved codes per source.
+
+    Shape:
+      {
+        "sources": {
+          "icd10cm": [
+            {"code": "M3210", "title": "...", "score": 0.812},
+            ...
+          ],
+          "icd11": [...],
+          ...
+        }
+      }
+    """
+    ledger_sources: Dict[str, List[Dict[str, Any]]] = {}
+
+    for src, rows in results_by_source.items():
+        items: List[Dict[str, Any]] = []
+        for r in rows:
+            code = r.get("source_id") or r.get("id")
+            if not code:
+                continue
+            title = (r.get("title") or "").strip()
+            score = float(r.get("score") or 0.0)
+            items.append(
+                {
+                    "code": str(code),
+                    "title": title,
+                    "score": score,
+                }
+            )
+        if items:
+            # Sort high → low score for readability
+            items.sort(key=lambda x: x["score"], reverse=True)
+            ledger_sources[src] = items
+
+    return {"sources": ledger_sources}
+
+
+def summarize_coding_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Produce a compact summary for SSE traces:
+      {
+        "source_counts": {"icd10cm": 12, "icd11": 8, ...},
+        "total_codes": 34
+      }
+    """
+    sources = ledger.get("sources", {}) or {}
+    source_counts = {src: len(items) for src, items in sources.items()}
+    total_codes = sum(source_counts.values())
+    return {
+        "source_counts": source_counts,
+        "total_codes": total_codes,
+    }
+
+
+async def run_coding_grader(
+    q: str,
+    ledger: Dict[str, Any],
+    pass_id: int,
+    *,
+    model: str = CHAT_MODEL,
+) -> Dict[str, Any]:
+    """
+    Call the coding grader LLM once.
+
+    Returns:
+      {
+        "keep": {"icd10cm": ["..."], "icd11": [...], ...},
+        "missing_slots": [
+          {"vocabulary": "icd10cm", "slot_label": "...", "search_terms": ["..."]},
+          ...
+        ]
+      }
+    On failure, returns empty structures.
+    """
+    messages = [
+        {
+            "role": "system",
+            "content": CODING_GRADER_SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": (
+                f"PASS {pass_id}.\n\n"
+                "Clinical question:\n"
+                f"{q.strip()}\n\n"
+                "Retrieved code ledger (per vocabulary):\n"
+                f"{json.dumps(ledger, indent=2)}\n\n"
+                "Return STRICT JSON ONLY, using the schema described in the system prompt."
+            ),
+        },
+    ]
+
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        logger.exception("run_coding_grader: OpenAI call failed")
+        return {"keep": {}, "missing_slots": [], "error": str(e)}
+
+    content = completion.choices[0].message.content or "{}"
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning("run_coding_grader: JSON parse failed: %r", content[:500])
+        return {"keep": {}, "missing_slots": [], "error": f"json_parse_failed: {e}"}
+
+    keep = data.get("keep") or {}
+    missing_slots = data.get("missing_slots") or []
+
+    # Basic sanitization
+    clean_keep: Dict[str, List[str]] = {}
+    if isinstance(keep, dict):
+        for src, codes in keep.items():
+            if not isinstance(codes, list):
+                continue
+            cleaned: List[str] = []
+            for c in codes:
+                if not isinstance(c, str):
+                    continue
+                c_clean = c.strip()
+                if c_clean:
+                    cleaned.append(c_clean)
+            if cleaned:
+                clean_keep[str(src).lower()] = cleaned
+
+    clean_missing: List[Dict[str, Any]] = []
+    if isinstance(missing_slots, list):
+        for slot in missing_slots:
+            if not isinstance(slot, dict):
+                continue
+            vocab = str(slot.get("vocabulary", "")).strip().lower()
+            if not vocab:
+                continue
+            label = str(slot.get("slot_label", "")).strip()
+            terms_raw = slot.get("search_terms") or []
+            terms: List[str] = []
+            if isinstance(terms_raw, list):
+                for t in terms_raw:
+                    if not isinstance(t, str):
+                        continue
+                    t_clean = t.strip()
+                    if t_clean:
+                        terms.append(t_clean)
+            if not terms and label:
+                terms = [label]
+            clean_missing.append(
+                {
+                    "vocabulary": vocab,
+                    "slot_label": label,
+                    "search_terms": terms,
+                }
+            )
+
+    return {"keep": clean_keep, "missing_slots": clean_missing}
+
+
+async def fill_coding_gaps(
+    q: str,
+    missing_slots: List[Dict[str, Any]],
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    pool: asyncpg.Pool,
+    per_slot_limit: int = 16,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    For each missing slot, run an extra TS pass with focused search terms
+    and merge any new matches into results_by_source.
+
+    Returns the updated results_by_source.
+    """
+    if not missing_slots:
+        return results_by_source
+
+    for slot in missing_slots:
+        vocab = slot.get("vocabulary", "").lower()
+        terms = slot.get("search_terms") or []
+        label = slot.get("slot_label") or ""
+
+        if vocab not in CODING_SOURCES:
+            # Only code vocabularies are supported here
+            continue
+
+        search_terms = [t for t in terms if isinstance(t, str) and t.strip()]
+        if not search_terms and label:
+            search_terms = [label]
+
+        if not search_terms:
+            continue
+
+        try:
+            extra_rows = await search_source_ts_for_terms(
+                pool=pool,
+                source=vocab,
+                terms=search_terms,
+                limit=per_slot_limit,
+            )
+        except Exception:
+            logger.exception(
+                "fill_coding_gaps: TS_for_terms failed for vocab=%s terms=%r",
+                vocab,
+                search_terms,
+            )
+            continue
+
+        if not extra_rows:
+            continue
+
+        existing = results_by_source.get(vocab, [])
+        combined: Dict[Any, Dict[str, Any]] = {}
+
+        # seed with existing
+        for r in existing:
+            key = r.get("id")
+            combined[key] = r
+
+        # add new
+        for r in extra_rows:
+            norm = normalize_row(r, source=vocab)
+            key = norm["id"]
+            if key not in combined:
+                combined[key] = norm
+
+        # Sort by score high → low for downstream
+        merged_rows = list(combined.values())
+        merged_rows.sort(key=lambda r: float(r.get("score", 0.0) or 0.0), reverse=True)
+        results_by_source[vocab] = merged_rows
+
+    return results_by_source
+
+
+def pin_coding_rows_from_keep_map(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    keep_map: Dict[str, List[str]],
+) -> Dict[str, int]:
+    """
+    Mark rows as pinned based on the grader's keep_map.
+
+    keep_map like:
+      {"icd10cm": ["M3210", "M3219"], "loinc": ["2890-2"], ...}
+
+    Returns a dict of {source: pinned_count}.
+    """
+    pinned_counts: Dict[str, int] = {}
+
+    # Normalize keep_map keys and values to strings for comparison
+    norm_keep: Dict[str, set[str]] = {}
+    for src, codes in keep_map.items():
+        src_norm = str(src).lower()
+        code_set: set[str] = set()
+        if not isinstance(codes, list):
+            continue
+        for c in codes:
+            if not isinstance(c, str):
+                continue
+            c_clean = c.strip()
+            if c_clean:
+                code_set.add(c_clean)
+        if code_set:
+            norm_keep[src_norm] = code_set
+
+    for src, rows in results_by_source.items():
+        src_norm = str(src).lower()
+        wanted = norm_keep.get(src_norm)
+        if not wanted:
+            continue
+
+        count = 0
+        for r in rows:
+            sid = r.get("source_id") or r.get("id")
+            sid_str = str(sid).strip() if sid is not None else ""
+            if sid_str and sid_str in wanted:
+                if not r.get("pinned"):
+                    r["pinned"] = True
+                count += 1
+
+        if count:
+            pinned_counts[src] = count
+
+    return pinned_counts
 
 
 def _classify_internal_source(src: str) -> str:
@@ -917,6 +1262,331 @@ Rules:
 - Output STRICT JSON, no comments or trailing commas.
 """
 
+# ---------------------------------------------------------------------------
+# Valyu-informed guideline second pass (topics + reweighting)
+# ---------------------------------------------------------------------------
+
+
+async def extract_valyu_topics_from_pubs(
+    pubs: List[Dict[str, Any]],
+    *,
+    model: str = CHAT_MODEL,
+    max_pubs: int = 8,
+) -> Dict[str, Any]:
+    """
+    Use the chat model to extract high-level clinical topics / key phrases
+    from a small set of Valyu publications.
+
+    Returns:
+      {
+        "topics": ["GLP-1 receptor agonists", "SGLT2 inhibitors", ...],
+        "key_phrases": ["weight loss", "heart failure outcomes", ...]
+      }
+    """
+    if not pubs:
+        return {"topics": [], "key_phrases": []}
+
+    # Build a compact text summary of the top Valyu pubs
+    lines: List[str] = []
+    for i, p in enumerate(pubs[:max_pubs], start=1):
+        title = (p.get("title") or "").strip()
+        year = str(p.get("year") or "").strip()
+        journal = (p.get("journal") or "").strip()
+        snippet = (p.get("abstract_snippet") or "")[:600].strip()
+
+        header_parts = [f"[{i}]"]
+        if title:
+            header_parts.append(title)
+        if journal:
+            header_parts.append(journal)
+        if year:
+            header_parts.append(year)
+
+        lines.append(" - ".join(header_parts))
+        if snippet:
+            lines.append(f"Snippet: {snippet}")
+        lines.append("")  # blank line
+
+    pubs_text = "\n".join(lines)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a clinical topic extractor.\n"
+                "Given a set of publication titles and short abstract snippets, "
+                "you identify the key clinical topics and a few short key phrases.\n\n"
+                "Rules:\n"
+                "- Return ONLY JSON.\n"
+                "- JSON MUST have keys 'topics' and 'key_phrases'.\n"
+                "- 'topics' = 3–15 succinct high-level topics (e.g., "
+                "  'GLP-1 receptor agonists in heart failure', "
+                "  'SGLT2 inhibitors for HFrEF').\n"
+                "- 'key_phrases' = short phrases/terms (2–6 words) that are "
+                "  useful for text search (e.g., 'GLP-1 receptor agonist', "
+                "  'SGLT2 inhibitor', 'heart failure hospitalization').\n"
+                "- Do NOT include boilerplate like 'randomized controlled trial'."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Here are Valyu publications:\n\n"
+                f"{pubs_text}\n\n"
+                "Return JSON of the form:\n"
+                "{\n"
+                '  \"topics\": [\"...\"],\n'
+                '  \"key_phrases\": [\"...\"]\n'
+                "}"
+            ),
+        },
+    ]
+
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        logger.exception("extract_valyu_topics_from_pubs: OpenAI call failed")
+        return {"topics": [], "key_phrases": [], "error": str(e)}
+
+    content = completion.choices[0].message.content or "{}"
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "extract_valyu_topics_from_pubs: JSON parse failed: %r", content[:500]
+        )
+        return {"topics": [], "key_phrases": [], "error": f"json_parse_failed: {e}"}
+
+    topics_raw = data.get("topics") or []
+    key_phrases_raw = data.get("key_phrases") or []
+
+    def _clean_list(xs: Any, max_len: int = 32) -> List[str]:
+        if not isinstance(xs, list):
+            return []
+        out: List[str] = []
+        seen: set[str] = set()
+        for x in xs:
+            if not isinstance(x, str):
+                continue
+            s = x.strip()
+            if not s:
+                continue
+            s_norm = s.lower()
+            if s_norm in seen:
+                continue
+            seen.add(s_norm)
+            out.append(s)
+            if len(out) >= max_len:
+                break
+        return out
+
+    topics = _clean_list(topics_raw, max_len=24)
+    key_phrases = _clean_list(key_phrases_raw, max_len=48)
+
+    return {
+        "topics": topics,
+        "key_phrases": key_phrases,
+    }
+
+
+def reweight_guideline_rows_with_topics(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    topics: List[str],
+    *,
+    base_boost: float = 0.15,
+    max_boost: float = 0.75,
+) -> Dict[str, Any]:
+    """
+    Light heuristic reweighting for guideline-ish sources based on Valyu topics.
+
+    For each guideline row:
+      - Count how many topics/key phrases appear in (title + text).
+      - Increase score += base_boost * matches (capped by max_boost).
+
+    Returns a summary dict for SSE plus modifies results_by_source in-place.
+    """
+    if not topics:
+        return {
+            "topics": [],
+            "per_source": {},
+        }
+
+    topics_norm = [t.lower() for t in topics if isinstance(t, str) and t.strip()]
+    per_source_summary: Dict[str, Dict[str, Any]] = {}
+
+    for src, rows in results_by_source.items():
+        if not _is_guideline_source(src):
+            continue
+
+        updated = 0
+        max_delta = 0.0
+        for r in rows:
+            title = (r.get("title") or "").lower()
+            text = (r.get("text") or "").lower()
+            haystack = f"{title} {text}"
+
+            matches = 0
+            for t in topics_norm:
+                if len(t) < 3:
+                    continue
+                if t in haystack:
+                    matches += 1
+
+            if matches <= 0:
+                continue
+
+            delta = min(max_boost, base_boost * float(matches))
+            old_score = float(r.get("score", 0.0) or 0.0)
+            new_score = old_score + delta
+            r["score"] = new_score
+            updated += 1
+            if delta > max_delta:
+                max_delta = delta
+
+        per_source_summary[src] = {
+            "rows_reweighted": updated,
+            "max_delta": max_delta,
+        }
+
+    return {
+        "topics": topics,
+        "per_source": per_source_summary,
+    }
+
+
+async def valyu_guideline_second_pass(
+    q: str,
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    *,
+    pool: asyncpg.Pool,
+    valyu_k: int,
+    db_sources: List[str],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """
+    Valyu-informed second pass for guideline retrieval.
+
+    Steps:
+      1. Call Valyu (via retrieve_valyu_pubs) on the ORIGINAL question.
+      2. Extract clinical topics/key phrases from those pubs.
+      3. For guideline sources, run targeted TS passes using those phrases.
+      4. Merge any new rows into results_by_source.
+      5. Reweight guideline rows by topic overlap.
+
+    Returns:
+      (updated_results_by_source, sse_summary)
+    """
+    # 1) Retrieve Valyu pubs for topic extraction (small k)
+    k_pubs = max(1, min(valyu_k or 4, 4))
+    pubs = await retrieve_valyu_pubs(q, k=k_pubs, mode="evidence")
+
+    if not pubs:
+        return results_by_source, {
+            "n_pubs": 0,
+            "topics": [],
+            "key_phrases": [],
+            "guideline_sources_touched": [],
+            "added_rows": {},
+            "reweight": {"topics": [], "per_source": {}},
+        }
+
+    # 2) Extract high-level topics / key phrases from Valyu pubs
+    topic_data = await extract_valyu_topics_from_pubs(pubs)
+    topics = topic_data.get("topics") or []
+    key_phrases = topic_data.get("key_phrases") or []
+
+    # Use both topics and key_phrases as TS terms
+    ts_terms: List[str] = []
+    seen_terms: set[str] = set()
+    for t in topics + key_phrases:
+        if not isinstance(t, str):
+            continue
+        s = t.strip()
+        if not s:
+            continue
+        s_norm = s.lower()
+        if s_norm in seen_terms:
+            continue
+        seen_terms.add(s_norm)
+        ts_terms.append(s)
+
+    # If the LLM gave us nothing useful, just do reweighting with empty topics
+    if not ts_terms:
+        reweight_summary = reweight_guideline_rows_with_topics(results_by_source, topics)
+        return results_by_source, {
+            "n_pubs": len(pubs),
+            "topics": topics,
+            "key_phrases": key_phrases,
+            "guideline_sources_touched": [],
+            "added_rows": {},
+            "reweight": reweight_summary,
+        }
+
+    # 3) Second-pass TS retrieval for guideline sources using topic phrases
+    guideline_sources: List[str] = []
+    for s in db_sources:
+        if _is_guideline_source(s):
+            guideline_sources.append(s)
+
+    added_counts: Dict[str, int] = {}
+    for src in guideline_sources:
+        try:
+            extra_rows = await search_source_ts_for_terms(
+                pool=pool,
+                source=src,
+                terms=ts_terms,
+                limit=16,
+            )
+        except Exception:
+            logger.exception("valyu_guideline_second_pass: TS_for_terms failed for %s", src)
+            continue
+
+        if not extra_rows:
+            continue
+
+        existing = results_by_source.get(src, [])
+        combined: Dict[Any, Dict[str, Any]] = {}
+
+        # Seed with existing
+        for r in existing:
+            key = r.get("id")
+            combined[key] = r
+
+        # Add new
+        added_for_src = 0
+        for r in extra_rows:
+            norm = normalize_row(r, source=src)
+            key = norm["id"]
+            if key not in combined:
+                combined[key] = norm
+                added_for_src += 1
+
+        if added_for_src > 0:
+            merged_rows = list(combined.values())
+            merged_rows.sort(
+                key=lambda r: float(r.get("score", 0.0) or 0.0),
+                reverse=True,
+            )
+            results_by_source[src] = merged_rows
+            added_counts[src] = added_for_src
+
+    # 4) Reweight guideline rows by topic overlap
+    reweight_summary = reweight_guideline_rows_with_topics(results_by_source, ts_terms)
+
+    sse_summary = {
+        "n_pubs": len(pubs),
+        "topics": topics,
+        "key_phrases": key_phrases,
+        "guideline_sources_touched": sorted(guideline_sources),
+        "added_rows": added_counts,
+        "reweight": reweight_summary,
+    }
+
+    return results_by_source, sse_summary
 
 async def extract_query_terms(
     q: str,
@@ -1494,6 +2164,216 @@ def stream_llm_events(
     full_text = "".join(full_pieces).strip()
     yield sse("llm_done", {"text": full_text})
 
+def build_fused_context(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+    k: int,
+    coding_mode: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Fuse internal sources for final context using 3 groups, with light pinning.
+
+    In coding_mode:
+      - ALL pinned rows are preserved, even if they exceed k.
+      - Non-pinned rows are still limited by k (for guidelines/rest).
+      - Final truncation happens by MAX_CONTEXT_CHARS in format_context_for_llm.
+
+    In non-coding mode:
+      - Behavior is unchanged: pinned rows get priority, but global k still applies.
+    """
+    if not results_by_source:
+        return []
+
+    # Effective cap: in coding_mode, allow many more rows; rely on char limit later.
+    if coding_mode:
+        k_effective = max(k, 10_000)
+    else:
+        k_effective = k
+
+    # ---------- 1) Flatten + gather pinned rows ----------------------------
+    all_rows: List[Dict[str, Any]] = []
+    for rows in results_by_source.values():
+        all_rows.extend(rows)
+
+    pinned_rows = [r for r in all_rows if r.get("pinned")]
+    non_pinned_rows = [r for r in all_rows if not r.get("pinned")]
+
+    def _sort_by_score(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(
+            rows,
+            key=lambda r: float(r.get("score", 0.0) or 0.0),
+            reverse=True,
+        )
+
+    pinned_code: List[Dict[str, Any]] = []
+    pinned_guideline: List[Dict[str, Any]] = []
+    pinned_rest: List[Dict[str, Any]] = []
+
+    for r in pinned_rows:
+        src = r.get("source") or ""
+        kind = _classify_internal_source(src)
+        if kind == "code":
+            pinned_code.append(r)
+        elif kind == "guideline":
+            pinned_guideline.append(r)
+        else:
+            pinned_rest.append(r)
+
+    pinned_ordered: List[Dict[str, Any]] = (
+        _sort_by_score(pinned_code)
+        + _sort_by_score(pinned_guideline)
+        + _sort_by_score(pinned_rest)
+    )
+
+    # ---------- 2) Rebuild results_by_source without pinned rows -----------
+    remaining_by_source: Dict[str, List[Dict[str, Any]]] = {}
+    for src, rows in results_by_source.items():
+        remaining = [r for r in rows if not r.get("pinned")]
+        if remaining:
+            remaining_by_source[src] = remaining
+
+    # ---------- 3) Legacy group fusion on non-pinned rows ------------------
+    if not remaining_by_source:
+        # All rows were pinned; DO NOT truncate in coding_mode.
+        final: List[Dict[str, Any]] = []
+        seen: set[Tuple[str, Any]] = set()
+        for r in pinned_ordered:
+            key = ((r.get("source") or ""), r.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            final.append(r)
+            if not coding_mode and len(final) >= k_effective:
+                break
+
+        code_ct = sum(
+            1 for r in final
+            if _classify_internal_source(r.get("source") or "") == "code"
+        )
+        guide_ct = sum(
+            1 for r in final
+            if _classify_internal_source(r.get("source") or "") == "guideline"
+        )
+        rest_ct = len(final) - code_ct - guide_ct
+
+        logger.info(
+            "FUSED_CONTEXT sizes (all_pinned): codes=%d, guidelines=%d, rest=%d, total=%d (coding_mode=%s)",
+            code_ct,
+            guide_ct,
+            rest_ct,
+            len(final),
+            coding_mode,
+        )
+        return final
+
+    code_by_source: Dict[str, List[Dict[str, Any]]] = {}
+    guideline_by_source: Dict[str, List[Dict[str, Any]]] = {}
+    rest_by_source: Dict[str, List[Dict[str, Any]]] = {}
+
+    for src, rows in remaining_by_source.items():
+        kind = _classify_internal_source(src)
+        if kind == "code":
+            code_by_source[src] = rows
+        elif kind == "guideline":
+            guideline_by_source[src] = rows
+        else:
+            rest_by_source[src] = rows
+
+    k_codes = max(0, CODE_K_DEFAULT)
+    k_guidelines = max(0, GUIDE_K_DEFAULT)
+    k_rest = max(0, k_effective)
+
+    fused_codes: List[Dict[str, Any]] = []
+    fused_guidelines: List[Dict[str, Any]] = []
+    fused_rest: List[Dict[str, Any]] = []
+
+    # --- CODE GROUP --------------------------------------------------------
+    if USE_CODE_SOURCES and code_by_source:
+        if coding_mode:
+            per_source_rows: List[Dict[str, Any]] = []
+            for src, rows in code_by_source.items():
+                src_norm = (src or "").lower()
+                src_rows = sorted(
+                    rows,
+                    key=lambda r: float(r.get("score", 0.0) or 0.0),
+                    reverse=True,
+                )
+                min_keep = CODE_MIN_PER_SOURCE_CTX.get(src_norm, 0)
+                keep_n = min(len(src_rows), CODE_MAX_PER_SOURCE_CTX)
+                keep_n = max(min_keep, keep_n)
+                if keep_n <= 0:
+                    continue
+                per_source_rows.extend(src_rows[:keep_n])
+
+            if per_source_rows:
+                per_source_rows.sort(
+                    key=lambda r: float(r.get("score", 0.0) or 0.0),
+                    reverse=True,
+                )
+                # In coding_mode we do NOT hard-cap by k_effective; we keep all these.
+                fused_codes = per_source_rows
+            else:
+                fused_codes = []
+        else:
+            fused_codes = rrf_fuse(code_by_source, k=k_codes)
+
+    # --- GUIDELINE GROUP ---------------------------------------------------
+    if USE_GUIDELINE_SOURCES and guideline_by_source:
+        fused_guidelines = rrf_fuse(guideline_by_source, k=k_guidelines)
+
+    # --- REST GROUP --------------------------------------------------------
+    if USE_REST_SOURCES and rest_by_source and k_rest > 0:
+        fused_rest = rrf_fuse(rest_by_source, k=k_rest)
+
+    fused_non_pinned = fused_codes + fused_guidelines + fused_rest
+
+    # ---------- 4) Combine pinned + non-pinned, dedupe, truncate -----------
+    final: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, Any]] = set()
+
+    # 4a) First, add ALL pinned rows (no cap in coding_mode)
+    for r in pinned_ordered:
+        key = ((r.get("source") or ""), r.get("id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        final.append(r)
+        # In non-coding mode, we still respect k_effective
+        if not coding_mode and len(final) >= k_effective:
+            break
+
+    # 4b) Add non-pinned rows — but NEVER remove pinned rows
+    for r in fused_non_pinned:
+        key = ((r.get("source") or ""), r.get("id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        final.append(r)
+        if not coding_mode and len(final) >= k_effective:
+            break
+
+    code_ct = sum(
+        1 for r in final
+        if _classify_internal_source(r.get("source") or "") == "code"
+    )
+    guide_ct = sum(
+        1 for r in final
+        if _classify_internal_source(r.get("source") or "") == "guideline"
+    )
+    rest_ct = len(final) - code_ct - guide_ct
+    pinned_ct = sum(1 for r in final if r.get("pinned"))
+
+    logger.info(
+        "FUSED_CONTEXT sizes: codes=%d, guidelines=%d, rest=%d, total=%d, pinned=%d (coding_mode=%s)",
+        code_ct,
+        guide_ct,
+        rest_ct,
+        len(final),
+        pinned_ct,
+        coding_mode,
+    )
+
+    return final
+
 
 # ---------------------------------------------------------------------------
 # Citations helpers
@@ -1681,13 +2561,6 @@ async def _event_generator(
         # Non-coding path: keep the trace shape but don't actually use code_terms.
         yield sse("code_terms", {"terms": []})
 
-    # RA-aware heuristic
-    try:
-        is_ra = is_ra_query(q)
-    except Exception:
-        logger.exception("is_ra_query failed; defaulting to False")
-        is_ra = False
-
     # 1.2) In coding_mode, optionally narrow sources via router LLM
     router_plan: CodingRouterPlan | None = None
     effective_sources: List[str] = list(db_sources)
@@ -1723,6 +2596,34 @@ async def _event_generator(
 
     if await request.is_disconnected():
         return
+    
+    yield sse("event_router_summary", {
+        "mode": "coding" if coding_mode else "ask_stream",
+        "using_router": router_plan is not None,
+        "effective_sources": effective_sources,
+    })
+    
+    # 1.2b) Optional unified router for guidelines & QA (non-coding)
+    unified_route_plan = None
+    if not coding_mode:
+        try:
+            unified_route_plan = await route_coding_sources(
+                q=q,
+                code_terms=[],
+                candidate_sources=db_sources,
+            )
+            if unified_route_plan and unified_route_plan.selected_sources:
+                effective_sources = sorted(unified_route_plan.selected_sources)
+                yield sse("router", {
+                    "task_type": unified_route_plan.task_type,
+                    "selected_sources": effective_sources,
+                    "reasoning": unified_route_plan.reasoning,
+                })
+            else:
+                effective_sources = list(db_sources)
+        except Exception as e:
+            logger.exception("unified router failed")
+            effective_sources = list(db_sources)
 
     # 2) Retrieve per source (TS + ANN)
     yield sse("status", {"status": "retrieving_candidates"})
@@ -1747,18 +2648,6 @@ async def _event_generator(
                         pool,
                         source=src,
                         terms=code_terms,
-                        limit=per_source_limit,
-                    )
-                elif is_ra:
-                    ra_terms = [
-                        "rheumatoid arthritis",
-                        "rheumatoid",
-                        "arthritis",
-                    ]
-                    ts_rows = await search_source_ts_for_terms(
-                        pool,
-                        source=src,
-                        terms=ra_terms,
                         limit=per_source_limit,
                     )
                 else:
@@ -1848,6 +2737,116 @@ async def _event_generator(
 
         results_by_source[src] = combined_rows
 
+    # -----------------------------------------------------------------------
+    # NEW: Coding prepass (Option A with second grader pass)
+    # -----------------------------------------------------------------------
+    if coding_mode:
+        # PASS 1: Build ledger and run grader
+        ledger1 = build_coding_ledger(results_by_source)
+        ledger1_summary = summarize_coding_ledger(ledger1)
+        yield sse(
+            "coding_ledger",
+            {
+                "pass": 1,
+                "summary": ledger1_summary,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        grader1 = await run_coding_grader(q, ledger1, pass_id=1)
+        keep1 = grader1.get("keep") or {}
+        missing1 = grader1.get("missing_slots") or []
+
+        yield sse(
+            "coding_grader",
+            {
+                "pass": 1,
+                "keep_map": keep1,
+                "missing_slots": missing1,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        # If we have missing slots, run a targeted gap-retrieval pass
+        if missing1:
+            yield sse(
+                "status",
+                {"status": "coding_gap_retrieval"},
+            )
+
+            results_by_source = await fill_coding_gaps(
+                q=q,
+                missing_slots=missing1,
+                results_by_source=results_by_source,
+                pool=pool,
+                per_slot_limit=max(limit, 16),
+            )
+
+            # Emit a summary after gap retrieval
+            ledger_gap = build_coding_ledger(results_by_source)
+            ledger_gap_summary = summarize_coding_ledger(ledger_gap)
+            yield sse(
+                "coding_gap_retrieval",
+                {
+                    "missing_slots": missing1,
+                    "post_gap_summary": ledger_gap_summary,
+                },
+            )
+
+            if await request.is_disconnected():
+                return
+
+        # PASS 2: Rebuild ledger and run grader again over enriched codes
+        ledger2 = build_coding_ledger(results_by_source)
+        ledger2_summary = summarize_coding_ledger(ledger2)
+        yield sse(
+            "coding_ledger",
+            {
+                "pass": 2,
+                "summary": ledger2_summary,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        grader2 = await run_coding_grader(q, ledger2, pass_id=2)
+        keep2 = grader2.get("keep") or {}
+        missing2 = grader2.get("missing_slots") or []
+
+        yield sse(
+            "coding_grader",
+            {
+                "pass": 2,
+                "keep_map": keep2,
+                "missing_slots": missing2,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        # Pin all rows selected by the second grader.
+        pinned_counts = pin_coding_rows_from_keep_map(results_by_source, keep2)
+        yield sse(
+            "coding_pinned",
+            {
+                "pinned_counts": pinned_counts,
+                "note": (
+                    "All pinned codes from pass=2 are guaranteed to survive "
+                    "fusion in coding_mode (subject only to MAX_CONTEXT_CHARS "
+                    "later in format_context_for_llm)."
+                ),
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
     raw_source_count = len(results_by_source)
 
     # 3) Heuristic source gating, with optional Ethos + Code force-keep.
@@ -1874,6 +2873,8 @@ async def _event_generator(
 
     if await request.is_disconnected():
         return
+
+    valyu_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
     # 4) Valyu (optional, guaranteed tail, hard-capped by valyu_k <= 4)
     if use_valyu_bool and valyu_k > 0:
@@ -1918,6 +2919,36 @@ async def _event_generator(
                     ],
                 },
             )
+
+            if await request.is_disconnected():
+                return
+    
+        # 4.5) Optional Valyu-informed second pass for guideline sources (ask_stream only)
+        valyu_guideline_info: Optional[Dict[str, Any]] = None
+        if (not coding_mode) and use_valyu_bool and valyu_k > 0:
+            yield sse("status", {"status": "valyu_guideline_second_pass"})
+            try:
+                gated_results_by_source, valyu_guideline_info = await valyu_guideline_second_pass(
+                    q=q,
+                    results_by_source=gated_results_by_source,
+                    pool=pool,
+                    valyu_k=valyu_k,
+                    db_sources=db_sources,
+                )
+            except Exception as e:
+                logger.exception("valyu_guideline_second_pass failed")
+                yield sse(
+                    "status",
+                    {
+                        "status": "valyu_guideline_second_pass_error",
+                        "detail": str(e),
+                    },
+                )
+                valyu_guideline_info = None
+
+            if valyu_guideline_info is not None:
+                # 🔔 This is the event you asked for
+                yield sse("valyu_guideline_reweight", valyu_guideline_info)
 
             if await request.is_disconnected():
                 return
