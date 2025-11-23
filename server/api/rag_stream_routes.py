@@ -903,6 +903,9 @@ def format_context_for_llm(
 
     In non-coding mode:
       - Rows keep their incoming order; we still enforce MAX_CONTEXT_CHARS.
+      - Each block is tagged as kind=INTERNAL_MKG (internal/guideline/MKG)
+        or kind=VALYU_LIT (Valyu literature), so the LLM can prefer
+        guidelines/internal MKG while still using Valyu evidence.
     """
     from .stream_config import CODE_SOURCES as _CODE_SOURCES
 
@@ -932,10 +935,11 @@ def format_context_for_llm(
     max_chars = MAX_CONTEXT_CHARS
 
     for i, row in enumerate(ordered_rows, start=1):
-        src = row.get("source", "unknown")
+        src = row.get("source") or "unknown"
         title = row.get("title") or ""
         text = (row.get("text") or "").strip()
         source_id = row.get("source_id")
+        method = (row.get("method") or "").lower()  # <-- FIX: define method
 
         source_id_str = f" ({source_id})" if source_id else ""
 
@@ -962,7 +966,11 @@ def format_context_for_llm(
                 f"{title} | {text}"
             )
         else:
-            block = f"[{i}] {src}{source_id_str} | {title} | {text}"
+            # Non-coding mode: distinguish Valyu vs internal MKG for the prompt
+            is_valyu = src.startswith("valyu") or method == "valyu"
+            kind = "VALYU_LIT" if is_valyu else "INTERNAL_MKG"
+
+            block = f"[{i}] kind={kind} {src}{source_id_str} | {title} | {text}"
 
         # +2 for the separating "\n\n"
         if total_len + len(block) + 2 > max_chars:
@@ -974,7 +982,7 @@ def format_context_for_llm(
 
     context_str = "\n\n".join(blocks)
 
-    # Debug logging to confirm RxNorm / codes really made it in
+    # Debug logging to confirm context size + tail
     logger.info("LLM CONTEXT FINAL LEN=%s", len(context_str))
     logger.info(
         "LLM CONTEXT FINAL TAIL:\n%s",
@@ -1077,7 +1085,7 @@ async def search_source_ts_for_terms(
     limit: int,
 ) -> List[Dict[str, Any]]:
     """
-    Variant of text-search retrieval for code sources.
+    Term augmented text-search retrieval.
 
     Instead of plainto_tsquery(full_question), we run several smaller
     tsqueries (one per term) and then merge + re-rank results.
@@ -1177,6 +1185,15 @@ async def search_source_ann(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Valyu integration
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Valyu integration
+# ---------------------------------------------------------------------------
+
 async def fetch_valyu_results(
     q: str,
     mode: str,
@@ -1192,9 +1209,13 @@ async def fetch_valyu_results(
     - limit: how many results to retrieve from Valyu
     - raw: if true, ask Valyu to include full contents (when supported)
     - sources: optional CSV like "valyu/valyu-pubmed,valyu/another-set"
-    - boost: currently unused here, but kept in signature for future tuning
+    - boost: currently unused, kept for future tuning
+
+    When raw=True we try to:
+      - request full contents from Valyu (return_contents=True)
+      - stash any full text in meta["full_text"]
+      - still use snippet for row["text"] to keep context compact
     """
-    # Parse included_sources into the shape valyu_client expects
     included_sources: Optional[List[str]] = None
     if sources:
         included_sources = [s.strip() for s in sources.split(",") if s.strip()]
@@ -1205,15 +1226,13 @@ async def fetch_valyu_results(
             q=q,
             k=limit,
             included_sources=included_sources,
-            # These map onto the valyu_client.search / answer options
-            return_contents=bool(raw),
+            return_contents=bool(raw),     # 🔑 ask Valyu for full text when raw=1
             fast_mode=(mode == "search"),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Valyu call failed")
         return {}
 
-    # valyu_client._post already normalizes errors into {"success": False, ...}
     if not vy.get("success"):
         logger.warning("Valyu returned error payload: %r", vy)
         return {}
@@ -1228,12 +1247,29 @@ async def fetch_valyu_results(
     for h in hits:
         src_key = "valyu_pubmed"
 
+        # Try to capture full text when raw=True; different keys depending on backend
+        full_text = None
+        if raw:
+            full_text = (
+                h.get("contents")
+                or h.get("content")
+                or h.get("fulltext")
+                or h.get("full_text")
+            )
+
+        snippet = h.get("snippet") or ""
+
+        # Clone original hit as meta and augment it
+        meta = dict(h)
+        if raw and isinstance(full_text, str) and full_text.strip():
+            meta["full_text"] = full_text  # 🔑 this will flow into citations + fulltext SSE
+
         base = {
             "id": h.get("id"),
             "source": src_key,
             "title": h.get("title") or "",
-            "text": h.get("snippet") or "",
-            "meta": h,
+            "text": snippet,  # keep snippet as context body for the LLM
+            "meta": meta,
             "score": float(h.get("score", 0.0) or 0.0),
         }
 
@@ -1515,6 +1551,37 @@ async def extract_code_terms(q: str) -> List[str]:
     logger.info("extract_code_terms: %s", terms)
     return terms
 
+# ---------------------------------------------------------------------------
+# Query-term extraction for /ask_stream (Q&A)
+# ---------------------------------------------------------------------------
+
+async def extract_qna_terms(
+    q: str,
+    *,
+    model: str = CHAT_MODEL,
+    max_terms: int = 20,
+) -> Dict[str, Any]:
+    """
+    Extract canonical query terms and expansions for general Q&A (not just coding).
+
+    Returns:
+        {
+          "terms": [...],
+          "expansions": {...},
+          "all_terms": [...],  # flattened canonical + expansions
+        }
+
+    On failure, returns all empty/[] but the caller can fall back to [q].
+    """
+    term_data = await extract_query_terms(q=q, model=model, max_terms=max_terms)
+    all_terms = build_all_terms(term_data)
+
+    return {
+        "terms": term_data.get("terms", []) or [],
+        "expansions": term_data.get("expansions", {}) or {},
+        "all_terms": all_terms or [],
+    }
+
 def build_llm_messages(
     q: str,
     ctx_str: str,
@@ -1568,12 +1635,37 @@ def build_llm_messages(
             {"role": "user", "content": user_content},
         ]
 
-    # ------------------ non-coding mode (unchanged) -------------------------
+    # ------------------ non-coding mode (guidelines-first) ------------------
     system_content = (
-                "You are 2ndOpinionMD's retrieval-augmented medical assistant. "
-                "Use ONLY the provided context to answer, citing sections by index "
-                "like [1], [2], etc. If the answer is not clearly supported, say "
-                "you don't know and suggest follow-up questions or tests."
+        "You are 2ndOpinionMD's retrieval-augmented medical assistant.\n"
+        "The context you receive contains two kinds of evidence, marked in each "
+        "block as kind=INTERNAL_MKG or kind=VALYU_LIT.\n\n"
+        "INTERNAL_MKG:\n"
+        "- Curated internal corpora such as guidelines (NICE, ACR, KDIGO, WHO, VA), "
+        "  ontologies, and other 2ndOpinionMD knowledge-graph sources.\n\n"
+        "VALYU_LIT:\n"
+        "- External literature snippets retrieved via Valyu, typically PubMed "
+        "  articles (clinical trials, meta-analyses, cohort studies, etc.).\n\n"
+        "When answering:\n"
+        "- Prefer INTERNAL_MKG guideline content **only when it directly addresses the "
+        "  clinical problem in the question** (for example, mentions pneumonia/CAP and "
+        "  outpatient antibiotic choices in this case).\n"
+        "- If INTERNAL_MKG passages are clearly about unrelated topics (for example, "
+        "  diabetes management or opioid prescribing when the question is about "
+        "  pneumonia treatment), you should ignore them.\n"
+        "- Use VALYU_LIT to:\n"
+        "    * Fill gaps where INTERNAL_MKG is silent or off-topic.\n"
+        "    * Provide additional details (e.g., comparative effectiveness, safety, "
+        "      resistance patterns, or dosing nuances).\n"
+        "- If INTERNAL_MKG does not answer the question at all, it is acceptable to "
+        "  base your answer primarily on VALYU_LIT, making clear that your answer is "
+        "  derived from PubMed literature rather than formal guidelines.\n"
+        "- If INTERNAL_MKG and VALYU_LIT appear to disagree, prioritize INTERNAL_MKG "
+        "  recommendations, but you may briefly note important newer evidence from "
+        "  VALYU_LIT.\n\n"
+        "Use ONLY the provided context to answer, citing sections by index like [1], [2], etc. "
+        "If the answer is not clearly supported by either INTERNAL_MKG or VALYU_LIT, say you "
+        "do not know and suggest useful follow-up guidelines or literature to consult."
     )
     return [
         {"role": "system", "content": system_content},
@@ -2230,11 +2322,36 @@ async def _event_generator(
 
     if await request.is_disconnected():
         return
+        # 1.0) Extract Q&A-oriented query terms (always on, regardless of coding_mode)
+    qna_terms: Dict[str, Any] = {"terms": [], "expansions": {}, "all_terms": []}
+    all_terms: List[str] = []
+
+    yield sse("status", {"status": "extracting_query_terms"})
+    try:
+        qna_terms = await extract_qna_terms(q)
+        all_terms = qna_terms.get("all_terms", []) or []
+        yield sse("query_terms", qna_terms)
+    except Exception as e:
+        logger.exception("query term extraction crashed; continuing with raw query")
+        yield sse(
+            "query_terms",
+            {
+                "terms": [],
+                "expansions": {},
+                "all_terms": [],
+                "error": "query_term_extraction_failed",
+                "detail": str(e),
+            },
+        )
+        all_terms = []
+
+    if await request.is_disconnected():
+        return
 
     # 1.1) Extract code-oriented terms (status always, actual work only in coding_mode)
     code_terms: List[str] = []
-    yield sse("status", {"status": "extracting_code_terms"})
     if coding_mode:
+        yield sse("status", {"status": "extracting_code_terms"})
         try:
             code_terms = await extract_code_terms(q)
             yield sse("code_terms", {"terms": code_terms})
@@ -2249,9 +2366,6 @@ async def _event_generator(
                 },
             )
             code_terms = []
-    else:
-        # Non-coding path: keep the trace shape but don't actually use code_terms.
-        yield sse("code_terms", {"terms": []})
 
     if await request.is_disconnected():
         return
@@ -2269,7 +2383,7 @@ async def _event_generator(
                 q=q,
                 mode=valyu_mode,
                 limit=valyu_k,
-                raw=valyu_raw_bool,
+                raw=valyu_raw_bool,   # 🔑 when true, fetch_valyu_results should stash meta["full_text"]
                 sources=valyu_sources,
                 boost=valyu_boost,
             )
@@ -2286,7 +2400,7 @@ async def _event_generator(
         for v_src, rows in (valyu_by_source or {}).items():
             flat_valyu.extend(rows)
 
-        # SSE: expose Valyu matches immediately
+        # SSE: expose Valyu matches immediately (summary)
         if flat_valyu:
             valyu_matches = flat_valyu[:valyu_k]
             yield sse(
@@ -2296,8 +2410,8 @@ async def _event_generator(
                     "source": "valyu",
                     "matches": [
                         {
-                            "id": r["id"],
-                            "source": r["source"],
+                            "id": r.get("id"),
+                            "source": r.get("source"),
                             "title": r.get("title", ""),
                             "score": r.get("score", 0.0),
                             "method": r.get("method", "valyu"),
@@ -2306,6 +2420,38 @@ async def _event_generator(
                     ],
                 },
             )
+
+            # If caller requested raw Valyu payload, also emit full text where available
+            if valyu_raw_bool:
+                fulltext_rows: List[Dict[str, Any]] = []
+                for r in valyu_matches:
+                    meta = r.get("meta") or {}
+                    if not isinstance(meta, dict):
+                        continue
+                    full_text = meta.get("full_text")
+                    if not full_text:
+                        continue
+
+                    fulltext_rows.append(
+                        {
+                            "id": r.get("id"),
+                            "source": r.get("source"),
+                            "title": r.get("title", ""),
+                            "url": meta.get("url"),
+                            "full_text": full_text,
+                        }
+                    )
+
+                if fulltext_rows:
+                    # 🔑 New event with full text for debugging / graders / UI
+                    yield sse(
+                        "valyu_fulltext",
+                        {
+                            "rows": fulltext_rows,
+                            "k": len(fulltext_rows),
+                            "mode": valyu_mode,
+                        },
+                    )
 
     if await request.is_disconnected():
         return
@@ -2376,6 +2522,7 @@ async def _event_generator(
         yield sse("phase_start", {"source": src, "method": "ts"})
         try:
             if coding_mode and src in CODING_SOURCES:
+                # Coding mode: prefer focused code_terms, fall back to all_terms, then raw q
                 if code_terms:
                     ts_rows = await search_source_ts_for_terms(
                         pool,
@@ -2383,10 +2530,36 @@ async def _event_generator(
                         terms=code_terms,
                         limit=per_source_limit,
                     )
+                elif all_terms:
+                    ts_rows = await search_source_ts_for_terms(
+                        pool,
+                        source=src,
+                        terms=all_terms,
+                        limit=per_source_limit,
+                    )
                 else:
-                    ts_rows = await search_source_ts(pool, src, q, per_source_limit)
+                    ts_rows = await search_source_ts(
+                        pool,
+                        source=src,
+                        q=q,
+                        limit=per_source_limit,
+                    )
             else:
-                ts_rows = await search_source_ts(pool, src, q, per_source_limit)
+                # Non-coding mode (guidelines/rest): always try LLM-expanded terms first
+                if all_terms:
+                    ts_rows = await search_source_ts_for_terms(
+                        pool,
+                        source=src,
+                        terms=all_terms,
+                        limit=per_source_limit,
+                    )
+                else:
+                    ts_rows = await search_source_ts(
+                        pool,
+                        source=src,
+                        q=q,
+                        limit=per_source_limit,
+                    )
         except Exception as e:
             logger.exception("TS search failed for source=%s", src)
             yield sse(
@@ -2582,6 +2755,249 @@ async def _event_generator(
 
     raw_source_count = len(results_by_source)
 
+    # ---------------------------------------------------------------------------
+    # QA prepass (non-coding): source-level grading / pruning
+    # ---------------------------------------------------------------------------
+
+    QA_GRADER_SYSTEM_PROMPT = """
+    You are a source selection auditor for a medical retrieval-augmented system.
+
+    You receive:
+    - A clinical question.
+    - A compact "ledger" summarizing the retrieved sources, with:
+        - number of rows per source
+        - max retrieval score per source
+        - a few titles/snippets
+
+    Your goals:
+    1. Decide which sources are clearly useful for answering the question.
+    2. Optionally identify sources that are probably not useful (off-topic or very low signal).
+
+    Rules:
+    - Think in terms of sources (guidelines, terminology sets, EHR notes, etc.), not individual rows.
+    - Be conservative about dropping sources: only drop ones that are clearly irrelevant.
+    - NEVER invent new source names. You may only choose from the sources in the ledger.
+    - Always keep at least one source.
+
+    Output STRICT JSON with this shape:
+    {
+    "keep_sources": ["source1", "source2"],
+    "drop_sources": ["source3"],
+    "reasoning": {
+        "source1": "why keep",
+        "source2": "why keep",
+        "source3": "why drop"
+    }
+    }
+    """.strip()
+
+
+    def build_qa_ledger(
+        results_by_source: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """
+        Build a lightweight ledger for QA grading.
+
+        Shape:
+        {
+            "sources": {
+            "acr_ra_2021": {
+                "n_rows": 10,
+                "max_score": 0.82,
+                "titles": [...],
+                "snippets": [...]
+            },
+            ...
+            }
+        }
+        """
+        ledger: Dict[str, Any] = {"sources": {}}
+
+        for src, rows in results_by_source.items():
+            if not rows:
+                continue
+
+            # sort high → low for readability
+            sorted_rows = sorted(
+                rows,
+                key=lambda r: float(r.get("score", 0.0) or 0.0),
+                reverse=True,
+            )
+
+            titles: List[str] = []
+            snippets: List[str] = []
+
+            for r in sorted_rows[:8]:
+                title = (r.get("title") or "").strip()
+                if title:
+                    titles.append(title[:160])
+
+            for r in sorted_rows[:4]:
+                txt = (r.get("text") or "").strip()
+                if txt:
+                    snippets.append(txt[:240])
+
+            ledger["sources"][src] = {
+                "n_rows": len(rows),
+                "max_score": float(sorted_rows[0].get("score", 0.0) or 0.0),
+                "titles": titles,
+                "snippets": snippets,
+            }
+
+        return ledger
+
+
+    def summarize_qa_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Tiny summary for SSE traces.
+        """
+        srcs = ledger.get("sources") or {}
+        counts = {src: v.get("n_rows", 0) for src, v in srcs.items()}
+        return {
+            "source_counts": counts,
+            "total_sources": len(srcs),
+        }
+
+
+    async def run_qa_grader(
+        q: str,
+        ledger: Dict[str, Any],
+        *,
+        model: str = CHAT_MODEL,
+    ) -> Dict[str, Any]:
+        """
+        Call the QA source grader LLM once.
+
+        Returns:
+        {
+            "keep_sources": [...],
+            "drop_sources": [...],
+            "reasoning": {...},
+            "error": "...",  # optional
+        }
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": QA_GRADER_SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Clinical question:\n"
+                    f"{q.strip()}\n\n"
+                    "Retrieved source ledger:\n"
+                    f"{json.dumps(ledger, indent=2)}\n\n"
+                    "Return STRICT JSON ONLY, using the schema described in the system prompt."
+                ),
+            },
+        ]
+
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+        except Exception as e:
+            logger.exception("run_qa_grader: OpenAI call failed")
+            return {
+                "keep_sources": [],
+                "drop_sources": [],
+                "reasoning": {},
+                "error": str(e),
+            }
+
+        content = completion.choices[0].message.content or "{}"
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.warning("run_qa_grader: JSON parse failed: %r", content[:500])
+            return {
+                "keep_sources": [],
+                "drop_sources": [],
+                "reasoning": {},
+                "error": f"json_parse_failed: {e}",
+            }
+
+        keep_sources = data.get("keep_sources") or []
+        drop_sources = data.get("drop_sources") or []
+        reasoning = data.get("reasoning") or {}
+
+        clean_keep: List[str] = []
+        if isinstance(keep_sources, list):
+            for s in keep_sources:
+                if isinstance(s, str) and s.strip():
+                    clean_keep.append(s.strip())
+
+        clean_drop: List[str] = []
+        if isinstance(drop_sources, list):
+            for s in drop_sources:
+                if isinstance(s, str) and s.strip():
+                    clean_drop.append(s.strip())
+
+        if not clean_keep:
+            # Safety: never return an empty keep set
+            clean_keep = list(ledger.get("sources", {}).keys())
+
+        if reasoning is None or not isinstance(reasoning, dict):
+            reasoning = {}
+
+        return {
+            "keep_sources": clean_keep,
+            "drop_sources": clean_drop,
+            "reasoning": reasoning,
+        }
+
+    # -----------------------------------------------------------------------
+    # 3.5) QA grading (non-coding mode): source-level pruning via LLM
+    # -----------------------------------------------------------------------
+    if (not coding_mode) and results_by_source:
+        qa_ledger = build_qa_ledger(results_by_source)
+        qa_summary = summarize_qa_ledger(qa_ledger)
+
+        # Emit ledger summary
+        yield sse(
+            "qa_ledger",
+            {
+                "summary": qa_summary,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        qa_result = await run_qa_grader(q, qa_ledger)
+
+        keep_sources = qa_result.get("keep_sources") or []
+        drop_sources = qa_result.get("drop_sources") or []
+        reasoning = qa_result.get("reasoning") or {}
+        error = qa_result.get("error")
+
+        yield sse(
+            "qa_grader",
+            {
+                "keep_sources": keep_sources,
+                "drop_sources": drop_sources,
+                "reasoning": reasoning,
+                "error": error,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        # Apply the keep filter at the source level; this is LLM-driven
+        # and disease-agnostic (RA, lupus, PH, HF, etc.).
+        if keep_sources:
+            keep_set = set(keep_sources)
+            results_by_source = {
+                src: rows
+                for src, rows in results_by_source.items()
+                if src in keep_set
+            }
+
     # -----------------------------------------------------------------------
     # 4) Heuristic source gating, with optional Ethos + Code force-keep.
     # -----------------------------------------------------------------------
@@ -2613,6 +3029,19 @@ async def _event_generator(
     # 5) Fuse internal contexts and append Valyu tail (from EARLY fetch)
     # -----------------------------------------------------------------------
     yield sse("status", {"status": "fusing_context"})
+    # Optional: row-level trimming on score, post-gating
+    ROW_ABS_MIN_SCORE = 0.05  # tune this or env it
+
+    for src, rows in list(gated_results_by_source.items()):
+        # keep only rows with some minimal signal
+        trimmed = [r for r in rows if float(r.get("score", 0.0) or 0.0) >= ROW_ABS_MIN_SCORE]
+        if not trimmed:
+            # if everything drops, fall back to original rows so we don't
+            # accidentally wipe out a source that gating already approved
+            trimmed = rows
+        # sort high → low for fusion sanity
+        trimmed.sort(key=lambda r: float(r.get("score", 0.0) or 0.0), reverse=True)
+        gated_results_by_source[src] = trimmed
 
     internal_ctx = build_fused_context(
         gated_results_by_source,

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
+import json
 
 from .stream_config import CHAT_MODEL
 

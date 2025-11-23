@@ -45,7 +45,7 @@ def _send_large_request_warning(q: str, sources: List[str], limit: int):
 
 
 # ---------------------------------------------------------------------------
-# /ask_stream — now uses the shared _event_generator (non-coding mode)
+# /ask_stream — uses the shared _event_generator (non-coding mode)
 # ---------------------------------------------------------------------------
 
 
@@ -85,7 +85,10 @@ async def ask_stream(
     ),
     valyu_raw: int = Query(
         0,
-        description="1=include raw Valyu payload in SSE (when supported)",
+        description=(
+            "1=request full contents from Valyu (stored in meta.full_text when "
+            "supported); context still uses snippets."
+        ),
     ),
     valyu_sources: Optional[str] = Query(
         None,
@@ -104,12 +107,12 @@ async def ask_stream(
     """
     Streamed clinical QA with MKG RAG plus optional Valyu evidence.
 
-    This now shares the same retrieval + fusion pipeline as /coding_stream
+    This shares the same retrieval + fusion pipeline as /coding_stream
     via _event_generator, but with:
 
       - coding_mode=False
       - Default sources = guideline-ish ASK_STREAM_DEFAULT_SOURCES
-      - Optional Valyu tail (same events as coding_stream)
+      - Optional Valyu tail
     """
 
     # Parse sources list
@@ -143,11 +146,11 @@ async def ask_stream(
             llm_mode=llm_mode,
             use_valyu_bool=bool(use_valyu),
             valyu_mode=valyu_mode,
-            valyu_raw_bool=bool(valyu_raw),
+            valyu_raw_bool=bool(valyu_raw),   # <-- passes through as bool
             valyu_sources=valyu_sources,
             valyu_boost=valyu_boost,
             pool=pool,
-            coding_mode=False,            # 🔑 non-coding mode
+            coding_mode=False,                 # 🔑 non-coding mode
             use_ethos_bool=bool(use_ethos),
         ):
             yield ev
@@ -284,7 +287,7 @@ async def coding_stream(
             valyu_sources=valyu_sources,
             valyu_boost=valyu_boost,
             pool=pool,
-            coding_mode=True,              # 🔑 this is the important bit
+            coding_mode=True,              # 🔑 coding mode
             use_ethos_bool=bool(use_ethos),
         ):
             yield ev
