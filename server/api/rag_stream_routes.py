@@ -1315,6 +1315,33 @@ Rules:
 - Output STRICT JSON, no comments or trailing commas.
 """
 
+VALYU_EVIDENCE_SYSTEM_PROMPT = """
+You are 2ndOpinionMD's literature synthesis assistant.
+
+You will receive a clinical question and a context consisting ONLY of
+peer-reviewed publications (typically PubMed articles) retrieved via Valyu.
+
+Your job:
+- Summarize the BEST AVAILABLE EVIDENCE from these studies.
+- Focus on:
+    - study types (RCTs, cohort studies, meta-analyses, etc.)
+    - populations and inclusion/exclusion criteria
+    - interventions and comparators
+    - key efficacy outcomes (effect sizes when available)
+    - key safety outcomes / adverse events
+    - major limitations or uncertainties
+
+Rules:
+- Base your answer STRICTLY on the provided Valyu context (VALYU_LIT); do NOT hallucinate.
+- If evidence is sparse or conflicting, say so explicitly.
+- When studies disagree, explain the disagreement (e.g., sample size, endpoints, follow-up).
+- Do NOT re-state guideline recommendations here; this pass is for evidence only.
+- Use plain language and short paragraphs, but preserve important clinical details.
+- When you mention specific findings, tie them to article indices [VALYU-1], [VALYU-2], etc.
+- If the context does not adequately answer the question, say so and suggest what type of
+  further study or guideline would be needed.
+""".strip()
+
 
 async def extract_query_terms(
     q: str,
@@ -1560,9 +1587,14 @@ async def extract_qna_terms(
     *,
     model: str = CHAT_MODEL,
     max_terms: int = 20,
+    extra_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Extract canonical query terms and expansions for general Q&A (not just coding).
+
+    If extra_context is provided (e.g., short Valyu snippets), we append it
+    to the question so that the term extractor can see additional medically
+    relevant vocabulary without changing the core question intent.
 
     Returns:
         {
@@ -1573,7 +1605,20 @@ async def extract_qna_terms(
 
     On failure, returns all empty/[] but the caller can fall back to [q].
     """
-    term_data = await extract_query_terms(q=q, model=model, max_terms=max_terms)
+    if extra_context:
+        augmented_q = (
+            f"{q}\n\n"
+            "Additional context from related abstracts/titles:\n"
+            f"{extra_context[:2000]}"
+        )
+    else:
+        augmented_q = q
+
+    term_data = await extract_query_terms(
+        q=augmented_q,
+        model=model,
+        max_terms=max_terms,
+    )
     all_terms = build_all_terms(term_data)
 
     return {
@@ -1586,16 +1631,21 @@ def build_llm_messages(
     q: str,
     ctx_str: str,
     coding_mode: bool = False,
+    *,
+    answer_mode: str = "guideline",  # 'guideline' | 'valyu'
 ) -> List[Dict[str, Any]]:
     """
     Build messages for the chat model.
 
-    - coding_mode=False → general guideline/QA RAG prompt
-    - coding_mode=True  → strict coding prompt (only use codes in context,
-                          never mix systems, etc.)
+    Modes:
+      - coding_mode=True                → strict coding prompt (unchanged).
+      - coding_mode=False, answer_mode='guideline'
+            → guideline/MKG-first QA prompt (existing behavior).
+      - coding_mode=False, answer_mode='valyu'
+            → Valyu literature synthesis prompt (peer-reviewed evidence only).
     """
     if coding_mode:
-        # Extend the base coding system prompt with a few extra guardrails
+        # ------------------ coding mode (unchanged) ------------------
         system_content = (
             CODING_SYSTEM_PROMPT
             + "\n\n"
@@ -1635,7 +1685,28 @@ def build_llm_messages(
             {"role": "user", "content": user_content},
         ]
 
-    # ------------------ non-coding mode (guidelines-first) ------------------
+    # ------------------ non-coding mode ------------------
+    answer_mode = (answer_mode or "guideline").lower()
+
+    if answer_mode == "valyu":
+        # ---- Valyu / peer-reviewed evidence synthesis ----
+        system_content = VALYU_EVIDENCE_SYSTEM_PROMPT
+        return [
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": (
+                    "Clinical question:\n"
+                    f"{q.strip()}\n\n"
+                    "Here are peer-reviewed articles retrieved for this question. "
+                    "Each block is a Valyu literature snippet with index labels like [VALYU-1], [VALYU-2], etc.:\n\n"
+                    f"{ctx_str}\n\n"
+                    "Now synthesize the evidence strictly from these articles, following the instructions."
+                ),
+            },
+        ]
+
+    # ---- Default: guideline/MKG-first QA (existing behavior) ----
     system_content = (
         "You are 2ndOpinionMD's retrieval-augmented medical assistant.\n"
         "The context you receive contains two kinds of evidence, marked in each "
@@ -1648,15 +1719,9 @@ def build_llm_messages(
         "  articles (clinical trials, meta-analyses, cohort studies, etc.).\n\n"
         "When answering:\n"
         "- Prefer INTERNAL_MKG guideline content **only when it directly addresses the "
-        "  clinical problem in the question** (for example, mentions pneumonia/CAP and "
-        "  outpatient antibiotic choices in this case).\n"
-        "- If INTERNAL_MKG passages are clearly about unrelated topics (for example, "
-        "  diabetes management or opioid prescribing when the question is about "
-        "  pneumonia treatment), you should ignore them.\n"
-        "- Use VALYU_LIT to:\n"
-        "    * Fill gaps where INTERNAL_MKG is silent or off-topic.\n"
-        "    * Provide additional details (e.g., comparative effectiveness, safety, "
-        "      resistance patterns, or dosing nuances).\n"
+        "  clinical problem in the question**.\n"
+        "- If INTERNAL_MKG passages are clearly about unrelated topics, ignore them.\n"
+        "- Use VALYU_LIT to fill gaps and add detail, but keep the backbone aligned with guidelines.\n"
         "- If INTERNAL_MKG does not answer the question at all, it is acceptable to "
         "  base your answer primarily on VALYU_LIT, making clear that your answer is "
         "  derived from PubMed literature rather than formal guidelines.\n"
@@ -1865,21 +1930,34 @@ def stream_llm_events(
     context_items: List[Dict[str, Any]],
     llm_mode: str,
     coding_mode: bool = False,
+    *,
+    event_prefix: str = "llm",
+    answer_mode: str = "guideline",
 ) -> Iterable[Dict[str, str]]:
     """
     Stream LLM output as SSE events.
 
     Modes:
       - llm_mode == "delta":
-          event: llm_delta  { "text": "<small token-ish piece>" }
+          event: <event_prefix>_delta  { "text": "<small token-ish piece>" }
       - llm_mode == "chunk" (default):
-          event: llm_chunk  { "text": "<sentence-ish chunk>" }
+          event: <event_prefix>_chunk  { "text": "<sentence-ish chunk>" }
 
     In BOTH modes, we also emit:
-      event: llm_done { "text": "<full answer>" }
+      event: <event_prefix>_done { "text": "<full answer>" }
+
+    answer_mode:
+      - 'guideline' → guideline/MKG-first QA
+      - 'valyu'     → peer-reviewed evidence synthesis
+      - ignored when coding_mode=True
     """
     ctx_str = format_context_for_llm(context_items, coding_mode=coding_mode)
-    messages = build_llm_messages(q, ctx_str, coding_mode=coding_mode)
+    messages = build_llm_messages(
+        q,
+        ctx_str,
+        coding_mode=coding_mode,
+        answer_mode=answer_mode,
+    )
 
     mode = (llm_mode or "chunk").lower()
     if mode not in ("chunk", "delta"):
@@ -1898,7 +1976,7 @@ def stream_llm_events(
         nonlocal buf
         text = buf.strip()
         if text:
-            yield sse("llm_chunk", {"text": text})
+            yield sse(f"{event_prefix}_chunk", {"text": text})
         buf = ""
 
     for chunk in stream:
@@ -1908,11 +1986,9 @@ def stream_llm_events(
         if not content:
             continue
 
-        # In current OpenAI client, content is usually a string
         if isinstance(content, str):
             text_piece = content
         else:
-            # Fallback if content is a list of parts
             text_piece = ""
             try:
                 for part in content:
@@ -1928,10 +2004,8 @@ def stream_llm_events(
         full_pieces.append(text_piece)
 
         if mode == "delta":
-            # Token-ish streaming
-            yield sse("llm_delta", {"text": text_piece})
+            yield sse(f"{event_prefix}_delta", {"text": text_piece})
         else:
-            # Sentence-ish streaming
             buf += text_piece
             if any(
                 buf.endswith(end)
@@ -1940,223 +2014,12 @@ def stream_llm_events(
                 for ev in flush_chunk():
                     yield ev
 
-    # Flush any remainder in chunk mode
     if mode == "chunk" and buf.strip():
         for ev in flush_chunk():
             yield ev
 
     full_text = "".join(full_pieces).strip()
-    yield sse("llm_done", {"text": full_text})
-
-def build_fused_context(
-    results_by_source: Dict[str, List[Dict[str, Any]]],
-    k: int,
-    coding_mode: bool = False,
-) -> List[Dict[str, Any]]:
-    """
-    Fuse internal sources for final context using 3 groups, with light pinning.
-
-    In coding_mode:
-      - ALL pinned rows are preserved, even if they exceed k.
-      - Non-pinned rows are still limited by k (for guidelines/rest).
-      - Final truncation happens by MAX_CONTEXT_CHARS in format_context_for_llm.
-
-    In non-coding mode:
-      - Behavior is unchanged: pinned rows get priority, but global k still applies.
-    """
-    if not results_by_source:
-        return []
-
-    # Effective cap: in coding_mode, allow many more rows; rely on char limit later.
-    if coding_mode:
-        k_effective = max(k, 10_000)
-    else:
-        k_effective = k
-
-    # ---------- 1) Flatten + gather pinned rows ----------------------------
-    all_rows: List[Dict[str, Any]] = []
-    for rows in results_by_source.values():
-        all_rows.extend(rows)
-
-    pinned_rows = [r for r in all_rows if r.get("pinned")]
-    non_pinned_rows = [r for r in all_rows if not r.get("pinned")]
-
-    def _sort_by_score(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return sorted(
-            rows,
-            key=lambda r: float(r.get("score", 0.0) or 0.0),
-            reverse=True,
-        )
-
-    pinned_code: List[Dict[str, Any]] = []
-    pinned_guideline: List[Dict[str, Any]] = []
-    pinned_rest: List[Dict[str, Any]] = []
-
-    for r in pinned_rows:
-        src = r.get("source") or ""
-        kind = _classify_internal_source(src)
-        if kind == "code":
-            pinned_code.append(r)
-        elif kind == "guideline":
-            pinned_guideline.append(r)
-        else:
-            pinned_rest.append(r)
-
-    pinned_ordered: List[Dict[str, Any]] = (
-        _sort_by_score(pinned_code)
-        + _sort_by_score(pinned_guideline)
-        + _sort_by_score(pinned_rest)
-    )
-
-    # ---------- 2) Rebuild results_by_source without pinned rows -----------
-    remaining_by_source: Dict[str, List[Dict[str, Any]]] = {}
-    for src, rows in results_by_source.items():
-        remaining = [r for r in rows if not r.get("pinned")]
-        if remaining:
-            remaining_by_source[src] = remaining
-
-    # ---------- 3) Legacy group fusion on non-pinned rows ------------------
-    if not remaining_by_source:
-        # All rows were pinned; DO NOT truncate in coding_mode.
-        final: List[Dict[str, Any]] = []
-        seen: set[Tuple[str, Any]] = set()
-        for r in pinned_ordered:
-            key = ((r.get("source") or ""), r.get("id"))
-            if key in seen:
-                continue
-            seen.add(key)
-            final.append(r)
-            if not coding_mode and len(final) >= k_effective:
-                break
-
-        code_ct = sum(
-            1 for r in final
-            if _classify_internal_source(r.get("source") or "") == "code"
-        )
-        guide_ct = sum(
-            1 for r in final
-            if _classify_internal_source(r.get("source") or "") == "guideline"
-        )
-        rest_ct = len(final) - code_ct - guide_ct
-
-        logger.info(
-            "FUSED_CONTEXT sizes (all_pinned): codes=%d, guidelines=%d, rest=%d, total=%d (coding_mode=%s)",
-            code_ct,
-            guide_ct,
-            rest_ct,
-            len(final),
-            coding_mode,
-        )
-        return final
-
-    code_by_source: Dict[str, List[Dict[str, Any]]] = {}
-    guideline_by_source: Dict[str, List[Dict[str, Any]]] = {}
-    rest_by_source: Dict[str, List[Dict[str, Any]]] = {}
-
-    for src, rows in remaining_by_source.items():
-        kind = _classify_internal_source(src)
-        if kind == "code":
-            code_by_source[src] = rows
-        elif kind == "guideline":
-            guideline_by_source[src] = rows
-        else:
-            rest_by_source[src] = rows
-
-    k_codes = max(0, CODE_K_DEFAULT)
-    k_guidelines = max(0, GUIDE_K_DEFAULT)
-    k_rest = max(0, k_effective)
-
-    fused_codes: List[Dict[str, Any]] = []
-    fused_guidelines: List[Dict[str, Any]] = []
-    fused_rest: List[Dict[str, Any]] = []
-
-    # --- CODE GROUP --------------------------------------------------------
-    if USE_CODE_SOURCES and code_by_source:
-        if coding_mode:
-            per_source_rows: List[Dict[str, Any]] = []
-            for src, rows in code_by_source.items():
-                src_norm = (src or "").lower()
-                src_rows = sorted(
-                    rows,
-                    key=lambda r: float(r.get("score", 0.0) or 0.0),
-                    reverse=True,
-                )
-                min_keep = CODE_MIN_PER_SOURCE_CTX.get(src_norm, 0)
-                keep_n = min(len(src_rows), CODE_MAX_PER_SOURCE_CTX)
-                keep_n = max(min_keep, keep_n)
-                if keep_n <= 0:
-                    continue
-                per_source_rows.extend(src_rows[:keep_n])
-
-            if per_source_rows:
-                per_source_rows.sort(
-                    key=lambda r: float(r.get("score", 0.0) or 0.0),
-                    reverse=True,
-                )
-                # In coding_mode we do NOT hard-cap by k_effective; we keep all these.
-                fused_codes = per_source_rows
-            else:
-                fused_codes = []
-        else:
-            fused_codes = rrf_fuse(code_by_source, k=k_codes)
-
-    # --- GUIDELINE GROUP ---------------------------------------------------
-    if USE_GUIDELINE_SOURCES and guideline_by_source:
-        fused_guidelines = rrf_fuse(guideline_by_source, k=k_guidelines)
-
-    # --- REST GROUP --------------------------------------------------------
-    if USE_REST_SOURCES and rest_by_source and k_rest > 0:
-        fused_rest = rrf_fuse(rest_by_source, k=k_rest)
-
-    fused_non_pinned = fused_codes + fused_guidelines + fused_rest
-
-    # ---------- 4) Combine pinned + non-pinned, dedupe, truncate -----------
-    final: List[Dict[str, Any]] = []
-    seen: set[Tuple[str, Any]] = set()
-
-    # 4a) First, add ALL pinned rows (no cap in coding_mode)
-    for r in pinned_ordered:
-        key = ((r.get("source") or ""), r.get("id"))
-        if key in seen:
-            continue
-        seen.add(key)
-        final.append(r)
-        # In non-coding mode, we still respect k_effective
-        if not coding_mode and len(final) >= k_effective:
-            break
-
-    # 4b) Add non-pinned rows — but NEVER remove pinned rows
-    for r in fused_non_pinned:
-        key = ((r.get("source") or ""), r.get("id"))
-        if key in seen:
-            continue
-        seen.add(key)
-        final.append(r)
-        if not coding_mode and len(final) >= k_effective:
-            break
-
-    code_ct = sum(
-        1 for r in final
-        if _classify_internal_source(r.get("source") or "") == "code"
-    )
-    guide_ct = sum(
-        1 for r in final
-        if _classify_internal_source(r.get("source") or "") == "guideline"
-    )
-    rest_ct = len(final) - code_ct - guide_ct
-    pinned_ct = sum(1 for r in final if r.get("pinned"))
-
-    logger.info(
-        "FUSED_CONTEXT sizes: codes=%d, guidelines=%d, rest=%d, total=%d, pinned=%d (coding_mode=%s)",
-        code_ct,
-        guide_ct,
-        rest_ct,
-        len(final),
-        pinned_ct,
-        coding_mode,
-    )
-
-    return final
+    yield sse(f"{event_prefix}_done", {"text": full_text})
 
 
 # ---------------------------------------------------------------------------
@@ -2320,34 +2183,6 @@ async def _event_generator(
         )
         return
 
-    if await request.is_disconnected():
-        return
-        # 1.0) Extract Q&A-oriented query terms (always on, regardless of coding_mode)
-    qna_terms: Dict[str, Any] = {"terms": [], "expansions": {}, "all_terms": []}
-    all_terms: List[str] = []
-
-    yield sse("status", {"status": "extracting_query_terms"})
-    try:
-        qna_terms = await extract_qna_terms(q)
-        all_terms = qna_terms.get("all_terms", []) or []
-        yield sse("query_terms", qna_terms)
-    except Exception as e:
-        logger.exception("query term extraction crashed; continuing with raw query")
-        yield sse(
-            "query_terms",
-            {
-                "terms": [],
-                "expansions": {},
-                "all_terms": [],
-                "error": "query_term_extraction_failed",
-                "detail": str(e),
-            },
-        )
-        all_terms = []
-
-    if await request.is_disconnected():
-        return
-
     # 1.1) Extract code-oriented terms (status always, actual work only in coding_mode)
     code_terms: List[str] = []
     if coding_mode:
@@ -2452,6 +2287,50 @@ async def _event_generator(
                             "mode": valyu_mode,
                         },
                     )
+
+    if await request.is_disconnected():
+        return
+
+    # 1.3) Extract Q&A-oriented query terms (always on, regardless of coding_mode),
+    # optionally using Valyu snippets as extra context in non-coding mode.
+    qna_terms: Dict[str, Any] = {"terms": [], "expansions": {}, "all_terms": []}
+    all_terms: List[str] = []
+
+    # Build a small Valyu snippet bundle for term extraction (non-coding only)
+    valyu_snippets_for_terms = ""
+    if (not coding_mode) and valyu_matches:
+        bits: List[str] = []
+        # Just a few top hits to keep it tight
+        for r in valyu_matches[:3]:
+            title = (r.get("title") or "").strip()
+            snippet = (r.get("text") or "").strip()
+            if title:
+                bits.append(f"Title: {title}")
+            if snippet:
+                bits.append(f"Snippet: {snippet[:400]}")
+        valyu_snippets_for_terms = "\n\n".join(bits)
+
+    yield sse("status", {"status": "extracting_query_terms"})
+    try:
+        qna_terms = await extract_qna_terms(
+            q,
+            extra_context=valyu_snippets_for_terms or None,
+        )
+        all_terms = qna_terms.get("all_terms", []) or []
+        yield sse("query_terms", qna_terms)
+    except Exception as e:
+        logger.exception("query term extraction crashed; continuing with raw query")
+        yield sse(
+            "query_terms",
+            {
+                "terms": [],
+                "expansions": {},
+                "all_terms": [],
+                "error": "query_term_extraction_failed",
+                "detail": str(e),
+            },
+        )
+        all_terms = []
 
     if await request.is_disconnected():
         return
@@ -3049,14 +2928,16 @@ async def _event_generator(
         coding_mode=coding_mode,
     )
 
-    # Valyu tail: reuse EARLY results; NO second Valyu API call
-    if (not coding_mode) and use_valyu_bool and valyu_k > 0 and valyu_matches:
-        valyu_tail = valyu_matches[:valyu_k]
-    else:
-        valyu_tail = []
+    # For the FIRST LLM call, we now use ONLY internal MKG/guideline context.
+    # Valyu is kept completely out of this fused context.
+    final_ctx = internal_ctx
 
-    final_ctx = internal_ctx + valyu_tail
-    valyu_ctx_count = len(valyu_tail)
+    # We still track how many Valyu docs we have (for the second LLM call),
+    # but they are NOT included in final_ctx.
+    if (not coding_mode) and use_valyu_bool and valyu_k > 0 and valyu_matches:
+        valyu_ctx_count = len(valyu_matches[:valyu_k])
+    else:
+        valyu_ctx_count = 0
 
     yield sse(
         "matches",
@@ -3163,4 +3044,77 @@ async def _event_generator(
             }
         },
     )
+
+    # -----------------------------------------------------------------------
+    # 7b) Second LLM pass (Valyu-only, full text when available)
+    # -----------------------------------------------------------------------
+    valyu_fulltext_ctx: List[Dict[str, Any]] = []
+
+    if (not coding_mode) and use_valyu_bool and valyu_matches:
+        for r in valyu_matches:
+            meta = r.get("meta") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+
+            full_text = meta.get("full_text")
+            # fall back to snippet if full_text is missing
+            body = full_text if isinstance(full_text, str) and full_text.strip() else r.get("text") or ""
+
+            # Rebuild a row with body as the primary text.
+            valyu_fulltext_ctx.append(
+                {
+                    "id": r.get("id"),
+                    "source": r.get("source") or "valyu_pubmed",
+                    "source_id": r.get("source_id"),
+                    "title": r.get("title") or "",
+                    "text": body,           # <-- full article text here
+                    "meta": meta,
+                    "score": r.get("score", 0.0),
+                    "method": r.get("method", "valyu_fulltext"),
+                }
+            )
+
+         # Optional: emit a debug SSE to prove we have full text in the Valyu LLM context
+        rows_with_full = [
+            {
+                "id": x["id"],
+                "title": x["title"],
+                "has_fulltext": bool((x.get("text") or "").strip()),
+                "len_text": len(x.get("text") or ""),
+            }
+            for x in valyu_fulltext_ctx
+        ]
+        yield sse(
+            "valyu_fulltext_ctx",
+            {
+                "rows": rows_with_full,
+                "k": len(valyu_fulltext_ctx),
+                "mode": valyu_mode,
+            },
+        )
+
+        # Now call the Valyu-specific LLM pass
+        yield sse("phase_start", {"source": "valyu", "method": "llm"})
+        yield sse("status", {"status": "generating_valyu_answer"})
+
+        try:
+            for ev in stream_llm_events(
+                q,
+                valyu_fulltext_ctx,
+                llm_mode,
+                coding_mode=False,
+                event_prefix="valyu_llm",
+                answer_mode="valyu",
+            ):
+                if await request.is_disconnected():
+                    return
+                yield ev
+        except Exception as e:
+            logger.exception("Error during Valyu LLM streaming")
+            yield sse(
+                "error",
+                {"error": "valyu_llm_failed", "detail": str(e)},
+            )
+
+        yield sse("phase_end", {"source": "valyu", "method": "llm"})
     
