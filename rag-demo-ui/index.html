@@ -324,21 +324,22 @@
 
       const isGuideline = mode === "guideline";
 
-      // IMPORTANT: send explicit "0"/"1" strings and zero out valyu_k for coding.
+      // For guideline Q&A, we enable Valyu; for coding we turn it off.
       const useValyuFlag = isGuideline ? "1" : "0";
-      const valyuK       = isGuideline ? "5" : "0";
+      const valyuK       = isGuideline ? "3" : "0";
       const valyuMode    = isGuideline ? "search" : "answer";
+      const valyuRaw     = isGuideline ? "1" : "0";
 
       const params = new URLSearchParams({
         q,
         limit: "8",
         ctx_k: "24",
-        valyu_k: valyuK,
         with_llm: "1",
         llm_mode: "chunk",
         use_valyu: useValyuFlag,
+        valyu_k: valyuK,
         valyu_mode: valyuMode,
-        valyu_raw: "0",
+        valyu_raw: valyuRaw,
       });
 
       const url = `${API_BASE}${endpoint}?${params.toString()}`;
@@ -348,7 +349,7 @@
       let answerText = "";
 
       es.onmessage = (ev) => {
-        // Intentionally unused; using named events below.
+        // Using named events below.
       };
 
       // ---- Core trace events shared by /ask_stream and /coding_stream ----
@@ -379,12 +380,15 @@
         }
       });
 
-      es.addEventListener("code_terms", (ev) => {
+      // --- Term extraction: support both query_terms and code_terms ---
+      function handleTermsEvent(ev, label) {
         try {
           const data = JSON.parse(ev.data);
           const terms = data.terms || [];
           const expansions = data.expansions || {};
-          if (!terms.length && !Object.keys(expansions).length) return;
+          const allTerms = data.all_terms || [];
+
+          if (!terms.length && !Object.keys(expansions).length && !allTerms.length) return;
 
           const lines = [];
           if (terms.length) {
@@ -400,12 +404,18 @@
               }
             });
           }
+          if (allTerms.length) {
+            lines.push("All terms: " + allTerms.join(", "));
+          }
 
-          appendMatchesBlock("Extracted code/clinical terms\n" + lines.join("\n"));
+          appendMatchesBlock(label + "\n" + lines.join("\n"));
         } catch {
           // ignore
         }
-      });
+      }
+
+      es.addEventListener("query_terms", (ev) => handleTermsEvent(ev, "Extracted query terms"));
+      es.addEventListener("code_terms", (ev) => handleTermsEvent(ev, "Extracted code/clinical terms"));
 
       es.addEventListener("router", (ev) => {
         try {
@@ -426,6 +436,45 @@
         }
       });
 
+      es.addEventListener("event_router_summary", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const mode = data.mode || "";
+          const effective = Array.isArray(data.effective_sources)
+            ? data.effective_sources.join(", ")
+            : "(none)";
+          appendMatchesBlock(
+            "Router summary\n" +
+            `  Mode: ${mode}\n` +
+            `  Effective sources: ${effective}`
+          );
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("qa_ledger", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          appendMatchesBlock(
+            "QA ledger\n" + JSON.stringify(data.summary || data, null, 2)
+          );
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("qa_grader", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          appendMatchesBlock(
+            "QA grader\n" + JSON.stringify(data, null, 2)
+          );
+        } catch {
+          // ignore
+        }
+      });
+
       es.addEventListener("gating", (ev) => {
         try {
           const data = JSON.parse(ev.data);
@@ -437,13 +486,40 @@
         }
       });
 
+      es.addEventListener("phase_start", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const src = data.source || "(unknown)";
+          const method = data.method || "(unknown)";
+          appendMatchesBlock(
+            `Phase start · source=${src}, method=${method}`
+          );
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("phase_end", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const src = data.source || "(unknown)";
+          const method = data.method || "(unknown)";
+          appendMatchesBlock(
+            `Phase end   · source=${src}, method=${method}`
+          );
+        } catch {
+          // ignore
+        }
+      });
+
       es.addEventListener("matches", (ev) => {
         const data = JSON.parse(ev.data);
         const phase  = data.phase;
         const rows   = data.matches || [];
+        const src    = data.source || "(unknown)";
         currentSourceStats[phase] = (currentSourceStats[phase] || 0) + rows.length;
 
-        const header = `Phase: ${phase.toUpperCase()} · Source: ${data.source}`;
+        const header = `Phase: ${phase.toUpperCase()} · Source: ${src}`;
         const lines = rows.map((r, idx) => {
           const hasId = r.source_id && r.source_id !== "";
           const idLabel =
@@ -466,6 +542,7 @@
         }
       });
 
+      // --- Main guideline / coding answer stream ---
       es.addEventListener("llm_chunk", (ev) => {
         const data = JSON.parse(ev.data);
         answerText += data.text || "";
@@ -473,6 +550,7 @@
         setStatus("Streaming answer…", "live");
       });
 
+      // Backwards-compat: some builds may emit llm_delta
       es.addEventListener("llm_delta", (ev) => {
         const data = JSON.parse(ev.data);
         answerText += data.text || "";
@@ -485,6 +563,47 @@
         if (data.text) {
           answerText = data.text;
           answerEl.textContent = answerText;
+        }
+      });
+
+      // --- Valyu fulltext context + LLM explanation ---
+      es.addEventListener("valyu_fulltext_ctx", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const rows = data.rows || [];
+          const k = data.k;
+          const mode = data.mode;
+          const lines = rows.map((r, idx) => {
+            return `  [${idx + 1}] ${r.title || r.id} (len=${r.len_text}, has_fulltext=${r.has_fulltext})`;
+          });
+          appendMatchesBlock(
+            "Valyu fulltext context\n" +
+            `  k=${k}, mode=${mode}\n` +
+            lines.join("\n")
+          );
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("valyu_llm_chunk", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const text = data.text || "";
+          appendMatchesBlock("Valyu evidence summary (chunk)\n" + text);
+          setStatus("Streaming Valyu evidence…", "live");
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener("valyu_llm_done", (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const text = data.text || "";
+          appendMatchesBlock("Valyu evidence summary (final)\n" + text);
+        } catch {
+          // ignore
         }
       });
 
@@ -528,14 +647,21 @@
           case "embedding_query":
             setStatus("Embedding query…", "live");
             break;
+          case "extracting_query_terms":
+          case "extracting_terms":
+            setStatus("Extracting terms…", "live");
+            break;
           case "extracting_code_terms":
             setStatus("Extracting code terms…", "live");
             break;
           case "routing_sources":
-            setStatus("Routing coding sources…", "live");
+            setStatus("Routing sources…", "live");
             break;
           case "retrieving_candidates":
             setStatus("Retrieving candidates…", "live");
+            break;
+          case "retrieving_mkg":
+            setStatus("Retrieving MKG…", "live");
             break;
           case "valyu_fetch":
           case "valyu_retrieving":
@@ -548,11 +674,8 @@
           case "answering":
             setStatus("Generating answer…", "live");
             break;
-          case "extracting_terms":
-            setStatus("Extracting terms…", "live");
-            break;
-          case "retrieving_mkg":
-            setStatus("Retrieving MKG…", "live");
+          case "generating_valyu_answer":
+            setStatus("Generating Valyu evidence summary…", "live");
             break;
           case "done_no_llm":
             setStatus("Done (retrieval only).", null);

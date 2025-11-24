@@ -1,0 +1,123 @@
+A patient (chinese, 74 y/o, 110 pounds) 
+
+Known malignancy: Splenic marginal zone B-cell lymphoma
+
+Current lymphoma therapy: Zanubrutinib (BTK inhibitor)
+
+Other chronic conditions:
+
+Massive splenomegaly
+
+Chronic hepatitis B (on entecavir)
+
+Pancytopenia and neutropenia
+
+Severe protein-calorie malnutrition
+
+Gastric ulcer and prior gastrointestinal bleeding
+
+Cancer of vertebra (likely related to lymphoma/osteodiscitis sequelae)
+
+History of DVT in pregnancy
+
+Chronic back pain, cough
+
+Current prophylactic/supportive meds:
+
+Entecavir
+
+Atovaquone
+
+Acyclovir
+
+Fluconazole
+
+Folic acid
+
+Topical clotrimazole–betamethasone
+
+CBC / cytopenia pattern (recent years):
+
+WBC persistently low ~1.6 – 2.5 ×10³/µL (normal 3.8 – 10.8)
+
+Absolute neutrophils chronically low ~0.7 – 1.4 ×10³/µL (low)
+
+Absolute lymphocytes persistently low (~0.7 – 0.8 ×10³/µL)
+
+Platelets chronically 50–70 ×10³/µL (low)
+
+Hemoglobin mildly reduced ~11–12 g/dL with high RDW and low-normal MCHC
+
+Immature granulocytes slightly elevated on recent labs
+
+Iron panel trend:
+
+Historical iron deficiency with low iron, transferrin, TIBC and %saturation in 2022
+
+Improved but still borderline iron status by 2025 (TSAT 17%, iron 65 µg/dL, transferrin 310 mg/dL, TIBC 388 µg/dL)
+
+Metabolic / organ function:
+
+LDH chronically elevated 270–390 U/L (above upper limit of normal)
+
+eGFR mildly reduced ~58–60 mL/min/1.73m² on recent labs
+
+Liver panel:
+
+AST intermittently mildly high (up to ~53 U/L)
+
+ALT in normal range
+
+Alkaline phosphatase normal
+
+Albumin normal (~4.3–4.7 g/dL)
+
+Total bilirubin normal to mildly high but currently within range
+
+Electrolytes (Na, K, Cl, CO₂, Ca) largely normal
+
+Glucose mostly normal with one mildly elevated value (112 mg/dL fasting/unknown context)
+
+Smear review / morphology trends (2022–2025):
+
+Platelet estimate persistently decreased or markedly decreased across all time points
+
+RBC morphology repeatedly reported as “present” (abnormal) rather than normal
+
+Anisocytosis 2+ (moderate) on almost every smear
+
+Macrocytes repeatedly reported as abnormal/present
+
+No specific malignant blasts or explicit schistocytes reported in the trend summary
+
+Imaging (most recent PET-CT):
+
+No new FDG-avid lymphadenopathy
+
+Persistent massive splenomegaly (≈19.8 cm cranio-caudal) with low uptake
+
+Mildly FDG-avid thyroiditis improving
+
+No abnormal focal marrow uptake beyond background
+
+Overall Deauville score ~2 (continued metabolic response of lymphoma)
+
+Current clinical concern:
+
+Chronic, multi-year pancytopenia with macrocytic, anisocytic RBC morphology
+
+Persistent thrombocytopenia and neutropenia while on zanubrutinib
+
+Elevated LDH and massive splenomegaly despite PET-defined metabolic response
+
+Based on current hematology/oncology and hepatology guidelines, how should we evaluate and manage this patient’s chronic pancytopenia and macrocytosis in the setting of splenic marginal zone B-cell lymphoma on zanubrutinib, massive splenomegaly, chronic hepatitis B, and long-standing abnormal smear findings?
+
+Specifically, what do guidelines recommend to:
+
+Differentiate BTK-inhibitor–related cytopenias from lymphoma relapse/progression, hypersplenism, autoimmune cytopenias, marrow infiltration, nutritional deficiency, or viral/hepatic causes?
+
+Determine indications for bone marrow biopsy, change or interruption of zanubrutinib, treatment of hypersplenism (e.g., splenectomy or splenic irradiation), or initiation of growth factors/IVIG/steroids or transfusion support?
+
+Monitor and stratify future flare or relapse risk in this patient (including LDH trends, cytopenia trajectories, spleen size, and smear changes) and set recommended follow-up intervals and labs?
+
+Please provide a concise guideline-based workup and management plan, including recommended labs/imaging, thresholds for escalation, and key red-flag features that should trigger urgent hematology/oncology review.
