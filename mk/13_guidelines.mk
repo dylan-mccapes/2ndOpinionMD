@@ -302,3 +302,17 @@ guidelines-sleln2025-embed:
 
 guidelines-sleln2025-stats:
 	psql -d 2ndopinionmd -c "SELECT source, COUNT(*) AS n, COUNT(*) FILTER (WHERE embedding IS NULL) AS no_emb FROM rag_corpus WHERE source='eular_sle_nephritis_2025' GROUP BY source;"
+
+guidelines-esmo-mzl2020-ingest:
+	python server/scripts/ingest_guideline_pdf.py \
+	  --pdf-path data/guidelines/esmo_mzl_2020.pdf \
+	  --source esmo_mzl_2020 \
+	  --guideline-title "ESMO 2020 Marginal Zone Lymphoma Guidelines" \
+	  --base-url "https://www.esmo.org/guidelines/haematological-malignancies/marginal-zone-lymphomas" \
+	  --year 2020 \
+	  --topic marginal_zone_lymphoma \
+	  --disease SMZL \
+	  --society ESMO
+
+guidelines-esmo-mzl2020-embed:
+	python server/scripts/embed_rag_source_async.py --source esmo_mzl_2020
