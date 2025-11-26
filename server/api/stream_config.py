@@ -316,17 +316,214 @@ RA_GUIDELINE_SOURCES: Set[str] = {
     "eular_ra_2022",
 }
 
-GUIDELINE_SOURCES: Set[str] = {
-    # Core disease-specific guidelines
+# Existing imports / config...
+GUIDELINE_SOURCES = [
+    "acc_aha_hfsa_hf_2022",
+    "aha_asa_stroke_2019_acute",
+    "aha_asa_stroke_2023",
     "acr_ra_2021",
-    "eular_ra_2022",
     "acr_ild_2023",
-    "esc_ers_ph_2022",
+    "eular_ra_2022",
+    "eular_acr_sle_2019",
+    "eular_sle_nephritis_2025",
     "kdigo_gn_ln_2021",
-    "nice",
-    "nice_ta397_belimumab",
+    "kdigo_ckd_2024",
+    "kdigo_anemia_ckd_2023",
+    "gold_copd_2024",
+    "esc_ers_ph_2022",
+    "esmo_cll_2020",
+    "esmo_dlbcl_2020",
+    "esmo_fl_2025",
+    "esmo_mzl_2020",
+    "ssc_sepsis_2021",
+    "idsa_cap_2022",
+    "idsa_hap_vap_2016",
+    "idsa_opat_2018",
+    "idsa_candidiasis_2016_2018",
+    "idsa_cdi_2016_2018",
     "va_guidelines",
-    "who_committee",
+    "nice",
+]
+
+GUIDELINE_SOURCE_META: dict[str, dict[str, object]] = {
+    "acc_aha_hfsa_hf_2022": {
+        "title": "2022 ACC/AHA/HFSA Guideline for the Management of Heart Failure",
+        "society": "ACC/AHA/HFSA",
+        "year": 2022,
+        "domain": "cardiology",
+        "condition": "heart_failure",
+        "summary": (
+            "Diagnosis, staging (NYHA, ACC/AHA stages), guideline-directed medical "
+            "therapy (ARNI, beta blockers, MRA, SGLT2i), devices, and advanced HF."
+        ),
+    },
+    "acr_ra_2021": {
+        "title": "2021 ACR Guideline for the Treatment of Rheumatoid Arthritis",
+        "society": "ACR",
+        "year": 2021,
+        "domain": "rheumatology",
+        "condition": "rheumatoid_arthritis",
+        "summary": (
+            "csDMARD, biologic and targeted synthetic DMARD choice and sequencing; "
+            "special situations including ILD, pregnancy, and comorbidities."
+        ),
+    },
+    "acr_ild_2023": {
+        "title": "2023 ACR Guideline for the Management of Rheumatoid Arthritis–Associated ILD",
+        "society": "ACR",
+        "year": 2023,
+        "domain": "rheumatology_pulmonology",
+        "condition": "ra_associated_ild",
+        "summary": (
+            "When to screen and treat RA-associated ILD, preferred immunosuppressants, "
+            "and drugs to avoid in ILD (e.g., leflunomide in some contexts)."
+        ),
+    },
+    "eular_sle_nephritis_2025": {
+        "title": "2025 EULAR Recommendations for Lupus Nephritis",
+        "society": "EULAR",
+        "year": 2025,
+        "domain": "rheumatology_nephrology",
+        "condition": "lupus_nephritis",
+        "summary": (
+            "Workup and biopsy indications, histologic classification, induction and "
+            "maintenance regimens, repeat biopsy, and response definitions."
+        ),
+    },
+    "kdigo_gn_ln_2021": {
+        "title": "KDIGO 2021 Glomerular Diseases Guideline (including Lupus Nephritis)",
+        "society": "KDIGO",
+        "year": 2021,
+        "domain": "nephrology",
+        "condition": "glomerular_disease_lupus_nephritis",
+        "summary": (
+            "Diagnostic approach and biopsy, immunosuppressive regimens, monitoring, "
+            "and treatment targets for GN and lupus nephritis."
+        ),
+    },
+    "kdigo_ckd_2024": {
+        "title": "KDIGO 2024 Chronic Kidney Disease Guideline",
+        "society": "KDIGO",
+        "year": 2024,
+        "domain": "nephrology",
+        "condition": "chronic_kidney_disease",
+        "summary": (
+            "Definition, staging, risk prediction, ACEi/ARB/SGLT2i/finerenone, and "
+            "CKD complication management."
+        ),
+    },
+    "kdigo_anemia_ckd_2023": {
+        "title": "KDIGO 2023 Guideline for Anemia in CKD",
+        "society": "KDIGO",
+        "year": 2023,
+        "domain": "nephrology",
+        "condition": "anemia_in_ckd",
+        "summary": (
+            "Evaluation of anemia in CKD, iron targets, ESA and HIF-PHI initiation and "
+            "dosing, transfusion, and special populations (dialysis vs non-dialysis)."
+        ),
+    },
+    "gold_copd_2024": {
+        "title": "GOLD 2024 Global Initiative for Chronic Obstructive Lung Disease Report",
+        "society": "GOLD",
+        "year": 2024,
+        "domain": "pulmonology",
+        "condition": "copd",
+        "summary": (
+            "Diagnosis, ABE assessment, pharmacologic and non-pharmacologic treatment, "
+            "exacerbation prevention, and follow-up in COPD."
+        ),
+    },
+    "esc_ers_ph_2022": {
+        "title": "2022 ESC/ERS Pulmonary Hypertension Guidelines",
+        "society": "ESC/ERS",
+        "year": 2022,
+        "domain": "cardiology_pulmonology",
+        "condition": "pulmonary_hypertension",
+        "summary": (
+            "Workup, hemodynamic definitions, risk stratification, and PAH-targeted "
+            "therapies for pulmonary hypertension."
+        ),
+    },
+    "idsa_cap_2022": {
+        "title": "IDSA/ATS 2019–2022 Community-Acquired Pneumonia Guideline (AAFP reprint)",
+        "society": "IDSA/ATS",
+        "year": 2022,
+        "domain": "infectious_disease_pulmonology",
+        "condition": "community_acquired_pneumonia",
+        "summary": (
+            "Diagnosis and severity scoring (e.g., PSI, CURB-65), site-of-care "
+            "decisions, and empiric antibiotic choices for outpatient, inpatient, "
+            "and ICU CAP in adults."
+        ),
+    },
+    "idsa_hap_vap_2016": {
+        "title": "IDSA/ATS 2016 Hospital-Acquired and Ventilator-Associated Pneumonia Guideline",
+        "society": "IDSA/ATS",
+        "year": 2016,
+        "domain": "infectious_disease_critical_care",
+        "condition": "hap_vap",
+        "summary": (
+            "Diagnosis and empiric therapy of HAP/VAP in hospitalized adults, including "
+            "when to cover MRSA and Pseudomonas and how to de-escalate based on cultures."
+        ),
+    },
+    "idsa_opat_2018": {
+        "title": "IDSA 2018 Guideline for Outpatient Parenteral Antimicrobial Therapy (OPAT)",
+        "society": "IDSA",
+        "year": 2018,
+        "domain": "infectious_disease",
+        "condition": "outpatient_iv_antibiotics",
+        "summary": (
+            "Patient selection, vascular access, monitoring, and antimicrobial choices "
+            "for IV antibiotics in the outpatient setting."
+        ),
+    },
+    "idsa_candidiasis_2016_2018": {
+        "title": "IDSA 2016 Guideline for the Management of Candidiasis (updated 2018)",
+        "society": "IDSA",
+        "year": 2018,
+        "domain": "infectious_disease",
+        "condition": "invasive_candidiasis",
+        "summary": (
+            "Diagnosis and treatment of invasive candidiasis, including candidemia, "
+            "deep-seated infection, and management by host status and site of infection."
+        ),
+    },
+    "idsa_cdi_2016_2018": {
+        "title": "IDSA/SHEA Guideline for Clostridioides difficile Infection (2016, updated 2018)",
+        "society": "IDSA/SHEA",
+        "year": 2018,
+        "domain": "infectious_disease",
+        "condition": "c_difficile_infection",
+        "summary": (
+            "Diagnosis and risk stratification of CDI, initial and recurrent treatment "
+            "options (e.g., vancomycin, fidaxomicin), FMT, and infection control."
+        ),
+    },
+    "va_guidelines": {
+        "title": "VA/DoD Clinical Practice Guidelines (multi-condition corpus)",
+        "society": "VA/DoD",
+        "year": None,
+        "domain": "multi",
+        "condition": "multi",
+        "summary": (
+            "Mixed VA/DoD guidelines covering depression, PTSD, chronic pain, opioid "
+            "therapy, and other conditions; not infection-specific."
+        ),
+    },
+    "nice": {
+        "title": "NICE Guidelines (subset: diabetes, HF, etc.)",
+        "society": "NICE",
+        "year": None,
+        "domain": "multi",
+        "condition": "multi",
+        "summary": (
+            "Subset of NICE guidance (e.g., type 2 diabetes, heart failure) currently "
+            "loaded; not focused on acute infections."
+        ),
+    },
+    # ...fill in remaining AHA stroke, EULAR RA, ESMO lymphomas as needed...
 }
 
 CODING_DEFAULT_SOURCES = [

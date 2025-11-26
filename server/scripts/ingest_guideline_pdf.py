@@ -24,6 +24,15 @@ from typing import Any, Dict, Iterator
 from pypdf import PdfReader
 import psycopg
 
+def _clean_text(s: str | None) -> str:
+    """
+    Normalize text for Postgres:
+    - replace NUL (\x00) bytes which Postgres TEXT cannot store
+    - strip leading/trailing whitespace
+    """
+    if s is None:
+        return ""
+    return s.replace("\x00", "").strip()
 
 def extract_pages(
     pdf_path: Path,
@@ -38,6 +47,7 @@ def extract_pages(
 
     for idx, page in enumerate(reader.pages, start=1):
         text = (page.extract_text() or "").strip()
+        text = _clean_text(text)
         if not text:
             print(f"[GUIDE_INGEST] Skipping page {idx}: no extractable text")
             continue

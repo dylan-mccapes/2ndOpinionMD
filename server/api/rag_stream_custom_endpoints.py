@@ -18,6 +18,7 @@ from .rag_stream_routes import (
     resolve_pg_pool,
     _event_generator,
     MAX_CODING_SOURCES,
+    discover_all_guideline_sources,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,9 @@ async def ask_stream(
     sources: Optional[str] = Query(
         None,
         description=(
-            "Comma-separated internal sources. If omitted, guideline-ish "
-            "ASK_STREAM_DEFAULT_SOURCES are used."
+            "Comma-separated internal sources. If omitted, all known "
+            "guideline-ish sources (ACR/EULAR/NICE/ESMO/KDIGO/WHO/etc.) "
+            "are used, discovered dynamically from the MKG."
         ),
     ),
     limit: int = Query(12, ge=1, le=64),
@@ -126,7 +128,27 @@ async def ask_stream(
                 seen.add(s)
                 db_sources.append(s)
     else:
-        db_sources = list(ASK_STREAM_DEFAULT_SOURCES)
+        # No explicit ?sources= → use all known guideline-ish sources.
+        # Start with the baseline GUIDELINE_SOURCES from stream_config,
+        # then extend with anything discovered in rag_corpus (e.g. esmo_*, kdigo_*).
+        discovered = await discover_all_guideline_sources(pool)
+
+        merged: List[str] = []
+        seen: set[str] = set()
+
+        # 1) baseline config guidelines (ASK_STREAM_DEFAULT_SOURCES)
+        for s in ASK_STREAM_DEFAULT_SOURCES:
+            if s not in seen:
+                seen.add(s)
+                merged.append(s)
+
+        # 2) dynamically discovered guideline-ish sources (esmo_, kdigo_, etc.)
+        for s in discovered:
+            if s not in seen:
+                seen.add(s)
+                merged.append(s)
+
+        db_sources = merged
 
     warning = _send_large_request_warning(q, db_sources, limit)
 

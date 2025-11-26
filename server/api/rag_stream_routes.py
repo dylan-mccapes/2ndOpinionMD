@@ -71,7 +71,6 @@ CODE_MAX_PER_SOURCE_CTX = int(os.getenv("RAG_CODE_MAX_PER_SOURCE_CTX", "16"))
 # Max number of DB sources we'll actually hit for /coding_stream to avoid huge fan-out.
 MAX_CODING_SOURCES = 8
 
-# Very light-weight heuristic for guideline sources
 _GUIDELINE_EXACT = {
     "acr_ra_2021",
     "acr_ild_2023",
@@ -81,7 +80,16 @@ _GUIDELINE_EXACT = {
     "who_eml",
     "who_committee",
 }
-_GUIDELINE_PREFIXES = ("acr_", "eular_", "nice_", "who_", "guideline_")
+
+_GUIDELINE_PREFIXES = (
+    "acr_",
+    "eular_",
+    "nice_",
+    "who_",
+    "guideline_",
+    "esmo_",
+    "kdigo_",
+)
 
 
 @dataclass
@@ -256,6 +264,26 @@ def _is_guideline_source(src: str) -> bool:
     if s in _GUIDELINE_EXACT:
         return True
     return any(s.startswith(pfx) for pfx in _GUIDELINE_PREFIXES)
+
+async def discover_all_guideline_sources(pool: asyncpg.Pool) -> List[str]:
+    """
+    Automatically discover all DB sources that match guideline prefixes
+    (acr_, eular_, esmo_, kdigo_, etc). Eliminates the need to hard-code.
+    """
+    sql = """
+        SELECT DISTINCT source
+        FROM rag_corpus
+        WHERE source IS NOT NULL;
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql)
+
+    out = []
+    for r in rows:
+        src = r["source"]
+        if src and _is_guideline_source(src):
+            out.append(src)
+    return sorted(set(out))
 
 # ---------------------------------------------------------------------------
 # Coding prepass: ledger, grader, gap retrieval, pinning

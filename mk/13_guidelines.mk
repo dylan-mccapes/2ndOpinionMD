@@ -316,3 +316,6 @@ guidelines-esmo-mzl2020-ingest:
 
 guidelines-esmo-mzl2020-embed:
 	python server/scripts/embed_rag_source_async.py --source esmo_mzl_2020
+
+guidelines-esmo-cll2020-embed:
+	python server/scripts/embed_rag_source_async.py --source esmo_cll_2020

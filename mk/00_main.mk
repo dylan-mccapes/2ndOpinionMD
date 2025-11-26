@@ -145,6 +145,30 @@ rag-backfill-meta:
 rag-backfill-meta-dry:
 	@$(PY) server/scripts/rag_backfill_meta.py --dry-run
 
+DB ?= 2ndopinionmd
+
+.PHONY: check-rag-sources
+check-rag-sources:
+	psql -d $(DB) -v ON_ERROR_STOP=1 -c "\
+	  SELECT source, \
+	         COUNT(*) AS n_rows, \
+	         COUNT(*) FILTER (WHERE embedding IS NULL) AS no_embedding \
+	  FROM rag_corpus \
+	  GROUP BY source \
+	  ORDER BY source;"
+
+.PHONY: check-rag-guideline-sources
+check-rag-guideline-sources:
+	psql -d $(DB) -v ON_ERROR_STOP=1 -c "\
+	  SELECT g.guideline_source AS source, \
+	         COUNT(c.*) AS n_rows, \
+	         COUNT(c.*) FILTER (WHERE c.embedding IS NULL) AS no_embedding \
+	  FROM guideline_registry g \
+	  LEFT JOIN rag_corpus c \
+	    ON c.source = g.guideline_source \
+	  GROUP BY g.guideline_source \
+	  ORDER BY g.guideline_source;"
+
 # =========================
 # Include per-domain targets (single fan-out point)
 # =========================
