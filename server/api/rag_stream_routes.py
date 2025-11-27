@@ -25,8 +25,10 @@ from .stream_config import (
     CODING_MAX_PER_SOURCE,
     CODING_SYSTEM_PROMPT,
     EMBED_MODEL,
+    GUIDELINE_SOURCES,
     MAX_CONTEXT_CHARS,
     ETHOS_SOURCE_NAME,
+    EOH_SYSTEM_PROMPT
 )
 
 from .stream_gating import apply_code_row_filter, apply_source_gating
@@ -90,6 +92,163 @@ _GUIDELINE_PREFIXES = (
     "esmo_",
     "kdigo_",
 )
+
+# ---------------------------------------------------------------------------
+# Slot satisfaction heuristics for coding
+# ---------------------------------------------------------------------------
+
+# Small curated rules for treating some "missing_slots" as satisfied when
+# the ledger already contains obviously correct codes (especially LOINC
+# labs and RxNorm meds).
+#
+# This is deliberately narrow and easy to audit.
+SLOT_SATISFACTION_RULES: dict[str, list[dict[str, Any]]] = {
+    "loinc": [
+        {
+            # Urine albumin/creatinine ratio (UACR) – HEDIS & typical LOINCs
+            "slot_regex": re.compile(
+                r"(urine\s+albumin.*creatinine|albumin/creatinine\s+ratio|uacr)",
+                re.IGNORECASE,
+            ),
+            "title_substrings": [
+                "albumin/creat",
+                "alb/creat",
+                "microalbumin/creat",
+            ],
+            # Max codes we'll accept for this slot to keep things tidy
+            "max_codes": 4,
+        },
+        {
+            # Basic metabolic panel / BMP / Chem-7
+            "slot_regex": re.compile(
+                r"(basic\s+metabolic\s+panel|\bBMP\b|chem[-\s]?7)",
+                re.IGNORECASE,
+            ),
+            "title_substrings": [
+                "basic metabolic panel",
+                "bas metab pnl",
+                "metabolic panel",
+            ],
+            "max_codes": 3,
+        },
+    ],
+    "rxnorm": [
+        {
+            # Metformin oral meds
+            "slot_regex": re.compile(r"\bmetformin\b", re.IGNORECASE),
+            "title_substrings": [
+                "metformin",
+            ],
+            "max_codes": 6,
+        }
+    ],
+}
+
+
+def _apply_slot_satisfaction_heuristics(
+    *,
+    ledger: Dict[str, Any],
+    keep_map: Dict[str, List[str]],
+    missing_slots: List[Dict[str, Any]],
+) -> tuple[Dict[str, List[str]], List[Dict[str, Any]]]:
+    """
+    Heuristically treat some 'missing_slots' as satisfied when the ledger
+    already contains obviously relevant codes.
+
+    - Looks at ledger["sources"][vocab] titles.
+    - If a slot_label matches one of SLOT_SATISFACTION_RULES[vocab]['slot_regex']
+      AND we find titles containing one of the configured substrings
+      (e.g. 'Albumin/Creat Ur-Rto', 'Microalbumin/Creat', 'Metformin'),
+      we add those codes to keep_map[vocab] and drop the slot from
+      missing_slots.
+
+    Returns (new_keep_map, new_missing_slots).
+    """
+    sources = (ledger.get("sources") or {}) if isinstance(ledger, dict) else {}
+
+    # Normalize keep_map into mutable sets per vocab
+    norm_keep: dict[str, set[str]] = {}
+    for src, codes in (keep_map or {}).items():
+        if not isinstance(codes, list):
+            continue
+        src_norm = str(src).lower()
+        bucket = norm_keep.setdefault(src_norm, set())
+        for c in codes:
+            if not isinstance(c, str):
+                continue
+            c_clean = c.strip()
+            if c_clean:
+                bucket.add(c_clean)
+
+    new_missing: List[Dict[str, Any]] = []
+
+    for slot in missing_slots or []:
+        if not isinstance(slot, dict):
+            new_missing.append(slot)
+            continue
+
+        vocab = str(slot.get("vocabulary", "")).lower().strip()
+        label = str(slot.get("slot_label", "")).strip()
+        if not vocab or not label:
+            new_missing.append(slot)
+            continue
+
+        rules = SLOT_SATISFACTION_RULES.get(vocab)
+        if not rules:
+            # No heuristics for this vocab
+            new_missing.append(slot)
+            continue
+
+        ledger_items = sources.get(vocab) or []
+        if not isinstance(ledger_items, list) or not ledger_items:
+            new_missing.append(slot)
+            continue
+
+        satisfied_codes: set[str] = set()
+
+        for rule in rules:
+            slot_rx = rule.get("slot_regex")
+            substrings = rule.get("title_substrings") or []
+            max_codes = int(rule.get("max_codes") or 0) or 10
+
+            if not slot_rx or not hasattr(slot_rx, "search"):
+                continue
+            if not slot_rx.search(label):
+                # This rule doesn't apply to this slot_label
+                continue
+
+            for item in ledger_items:
+                code = str(item.get("code") or "").strip()
+                if not code:
+                    continue
+                title = str(item.get("title") or "").lower()
+                if not title:
+                    continue
+
+                for sub in substrings:
+                    sub_l = str(sub).lower()
+                    if sub_l and sub_l in title:
+                        satisfied_codes.add(code)
+                        break  # don't re-check other substrings for this item
+
+                if len(satisfied_codes) >= max_codes:
+                    break
+
+        if satisfied_codes:
+            bucket = norm_keep.setdefault(vocab, set())
+            bucket |= satisfied_codes
+            # Slot is now considered satisfied → DO NOT carry it forward
+        else:
+            # Still genuinely missing
+            new_missing.append(slot)
+
+    # Convert norm_keep back to list[str]
+    new_keep: Dict[str, List[str]] = {}
+    for src, codes in norm_keep.items():
+        if codes:
+            new_keep[src] = sorted(codes)
+
+    return new_keep, new_missing
 
 
 @dataclass
@@ -312,6 +471,9 @@ Definitions:
 Rules:
 - NEVER invent codes. You can only keep codes that appear in the ledger.
 - You MAY mark missing slots even if you do not know the exact code.
+- For combination conditions (e.g., diabetes with chronic kidney disease, heart failure with reduced ejection fraction,
+  systemic lupus erythematosus with renal involvement), it is appropriate to keep **more than one** ICD-10-CM or ICD-11
+  code when they are clearly relevant (for example, a systemic disease code plus an organ/renal code).
 - Missing slots should be specific enough to guide a follow-up search:
     - Include vocabulary name (icd10cm, icd11, snomed, loinc, rxnorm).
     - Include a short human-readable label, e.g. "lupus nephritis", "kidney biopsy".
@@ -1660,17 +1822,20 @@ def build_llm_messages(
     ctx_str: str,
     coding_mode: bool = False,
     *,
-    answer_mode: str = "guideline",  # 'guideline' | 'valyu'
+    answer_mode: str = "guideline",  # 'guideline' | 'valyu' | 'eoh'
 ) -> List[Dict[str, Any]]:
     """
     Build messages for the chat model.
 
     Modes:
-      - coding_mode=True                → strict coding prompt (unchanged).
+      - coding_mode=True
+            → strict coding prompt (unchanged).
       - coding_mode=False, answer_mode='guideline'
             → guideline/MKG-first QA prompt (existing behavior).
       - coding_mode=False, answer_mode='valyu'
             → Valyu literature synthesis prompt (peer-reviewed evidence only).
+      - coding_mode=False, answer_mode='eoh'
+            → Ethos-of-Health reasoning prompt over EoH/MKG context.
     """
     if coding_mode:
         # ------------------ coding mode (unchanged) ------------------
@@ -1716,8 +1881,8 @@ def build_llm_messages(
     # ------------------ non-coding mode ------------------
     answer_mode = (answer_mode or "guideline").lower()
 
+    # ---- Valyu / peer-reviewed evidence synthesis ----
     if answer_mode == "valyu":
-        # ---- Valyu / peer-reviewed evidence synthesis ----
         system_content = VALYU_EVIDENCE_SYSTEM_PROMPT
         return [
             {"role": "system", "content": system_content},
@@ -1730,6 +1895,26 @@ def build_llm_messages(
                     "Each block is a Valyu literature snippet with index labels like [VALYU-1], [VALYU-2], etc.:\n\n"
                     f"{ctx_str}\n\n"
                     "Now synthesize the evidence strictly from these articles, following the instructions."
+                ),
+            },
+        ]
+
+    # ---- NEW: Ethos-of-Health reasoning mode ----
+    if answer_mode == "eoh":
+        system_content = EOH_SYSTEM_PROMPT
+        return [
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": (
+                    "Ethos-of-Health (EoH) question:\n"
+                    f"{q.strip()}\n\n"
+                    "Here is the retrieved EoH / MKG context. Blocks may include EoH rules, "
+                    "stability bands, stack levels, safeguards, drift logic, and example cases:\n\n"
+                    f"{ctx_str}\n\n"
+                    "Interpret the patient’s situation using ONLY this context. "
+                    "Focus on stack level, stability band, drift detection, safety alerts, "
+                    "and when a clinician should review."
                 ),
             },
         ]
@@ -2158,6 +2343,7 @@ async def _event_generator(
     pool: Any,
     coding_mode: bool = False,
     use_ethos_bool: bool = False,
+    answer_mode: str = "guideline",
 ) -> AsyncIterator[Dict[str, str]]:
     # Hard cap on Valyu context size
     VALYU_K_MAX = 4
@@ -2177,6 +2363,7 @@ async def _event_generator(
             "valyu_k": valyu_k,
             "valyu_k_requested": requested_valyu_k,
             "use_ethos": use_ethos_bool,
+            "answer_mode": (answer_mode or "guideline"),
         },
     )
 
@@ -2428,45 +2615,64 @@ async def _event_generator(
         # TS phase
         yield sse("phase_start", {"source": src, "method": "ts"})
         try:
+            # ---------------------------
+            # Union code_terms + all_terms for code vocabularies
+            # ---------------------------
             if coding_mode and src in CODING_SOURCES:
-                # Coding mode: prefer focused code_terms, fall back to all_terms, then raw q
-                if code_terms:
+                # Build an effective term set from both code_terms and all_terms
+                term_set: set[str] = set()
+
+                for t in (code_terms or []):
+                    if not isinstance(t, str):
+                        continue
+                    t_clean = t.strip()
+                    if t_clean:
+                        term_set.add(t_clean)
+
+                for t in (all_terms or []):
+                    if not isinstance(t, str):
+                        continue
+                    t_clean = t.strip()
+                    if t_clean:
+                        term_set.add(t_clean)
+
+                effective_terms: List[str] = sorted(term_set)
+
+                if effective_terms:
                     ts_rows = await search_source_ts_for_terms(
-                        pool,
+                        pool=pool,
                         source=src,
-                        terms=code_terms,
-                        limit=per_source_limit,
-                    )
-                elif all_terms:
-                    ts_rows = await search_source_ts_for_terms(
-                        pool,
-                        source=src,
-                        terms=all_terms,
+                        terms=effective_terms,
                         limit=per_source_limit,
                     )
                 else:
+                    # Fallback: plain-text TS if term extraction totally failed
                     ts_rows = await search_source_ts(
-                        pool,
+                        pool=pool,
                         source=src,
                         q=q,
                         limit=per_source_limit,
                     )
+
+            # ---------------------------
+            # Non-coding or non-code sources: original behavior
+            # ---------------------------
             else:
-                # Non-coding mode (guidelines/rest): always try LLM-expanded terms first
                 if all_terms:
                     ts_rows = await search_source_ts_for_terms(
-                        pool,
+                        pool=pool,
                         source=src,
                         terms=all_terms,
                         limit=per_source_limit,
                     )
                 else:
                     ts_rows = await search_source_ts(
-                        pool,
+                        pool=pool,
                         source=src,
                         q=q,
                         limit=per_source_limit,
                     )
+
         except Exception as e:
             logger.exception("TS search failed for source=%s", src)
             yield sse(
@@ -2501,37 +2707,69 @@ async def _event_generator(
             return
 
         # ANN phase
-        yield sse("phase_start", {"source": src, "method": "ann"})
-        try:
-            ann_rows = await search_source_ann(pool, src, q_vec_literal, per_source_limit)
-        except Exception as e:
-            logger.exception("ANN search failed for source=%s", src)
+        # In coding_mode, we run TS-only for code vocabularies (icd10cm, icd11, snomed,
+        # loinc, rxnorm). ANN stays enabled for non-code sources (e.g., mimic4_note,
+        # guidelines, etc).
+        if coding_mode and src in CODING_SOURCES:
+            # Explicitly emit a "skipped" phase so traces stay readable.
+            yield sse(
+                "phase_start",
+                {"source": src, "method": "ann", "skipped": True, "reason": "ts_only_coding"},
+            )
             yield sse(
                 "status",
-                {"status": "ann_error", "source": src, "detail": str(e)},
-            )
-            ann_rows = []
-        yield sse("phase_end", {"source": src, "method": "ann"})
-
-        if ann_rows:
-            yield sse(
-                "matches",
                 {
-                    "phase": "ann",
+                    "status": "ann_skipped",
                     "source": src,
-                    "matches": [
-                        {
-                            "id": r["id"],
-                            "source": r["source"],
-                            "source_id": r.get("source_id"),
-                            "title": r.get("title", ""),
-                            "score": r.get("score", 0.0),
-                            "method": r.get("method", "ann"),
-                        }
-                        for r in ann_rows
-                    ],
+                    "reason": "ts_only_coding_for_code_source",
                 },
             )
+            yield sse(
+                "phase_end",
+                {"source": src, "method": "ann", "skipped": True, "reason": "ts_only_coding"},
+            )
+            ann_rows: List[Dict[str, Any]] = []
+        else:
+            yield sse("phase_start", {"source": src, "method": "ann"})
+            try:
+                ann_rows = await search_source_ann(
+                    pool,
+                    src,
+                    q_vec_literal,
+                    per_source_limit,
+                )
+            except Exception as e:
+                logger.exception("ANN search failed for source=%s", src)
+                yield sse(
+                    "status",
+                    {
+                        "status": "ann_error",
+                        "source": src,
+                        "detail": str(e),
+                    },
+                )
+                ann_rows = []
+            yield sse("phase_end", {"source": src, "method": "ann"})
+
+            if ann_rows:
+                yield sse(
+                    "matches",
+                    {
+                        "phase": "ann",
+                        "source": src,
+                        "matches": [
+                            {
+                                "id": r["id"],
+                                "source": r["source"],
+                                "source_id": r.get("source_id"),
+                                "title": r.get("title", ""),
+                                "score": r.get("score", 0.0),
+                                "method": r.get("method", "ann"),
+                            }
+                            for r in ann_rows
+                        ],
+                    },
+                )
 
         if await request.is_disconnected():
             return
@@ -2571,6 +2809,16 @@ async def _event_generator(
         grader1 = await run_coding_grader(q, ledger1, pass_id=1)
         keep1 = grader1.get("keep") or {}
         missing1 = grader1.get("missing_slots") or []
+
+        # Heuristic slot satisfaction pass (LOINC/RxNorm lab/med synonyms, etc.)
+        try:
+            keep1, missing1 = _apply_slot_satisfaction_heuristics(
+                ledger=ledger1,
+                keep_map=keep1,
+                missing_slots=missing1,
+            )
+        except Exception:
+            logger.exception("_apply_slot_satisfaction_heuristics failed on pass 1")
 
         yield sse(
             "coding_grader",
@@ -2630,6 +2878,18 @@ async def _event_generator(
         grader2 = await run_coding_grader(q, ledger2, pass_id=2)
         keep2 = grader2.get("keep") or {}
         missing2 = grader2.get("missing_slots") or []
+
+        # Second-pass heuristic cleanup: if the ledger clearly contains
+        # UACR/BMP/metformin codes, treat those slots as satisfied and
+        # add the codes into keep_map so they get pinned.
+        try:
+            keep2, missing2 = _apply_slot_satisfaction_heuristics(
+                ledger=ledger2,
+                keep_map=keep2,
+                missing_slots=missing2,
+            )
+        except Exception:
+            logger.exception("_apply_slot_satisfaction_heuristics failed on pass 2")
 
         yield sse(
             "coding_grader",
@@ -3031,6 +3291,7 @@ async def _event_generator(
                     "valyu_k": valyu_k,
                     "with_llm": with_llm,
                     "use_ethos": use_ethos_bool,
+                    "answer_mode": answer_mode,
                 }
             },
         )
@@ -3043,7 +3304,13 @@ async def _event_generator(
     yield sse("status", {"status": "generating_answer"})
 
     try:
-        for ev in stream_llm_events(q, final_ctx, llm_mode, coding_mode=coding_mode):
+        for ev in stream_llm_events(
+            q,
+            final_ctx,
+            llm_mode,
+            coding_mode=coding_mode,
+            answer_mode=answer_mode,  # 🔥 pass through 'guideline' | 'eoh' | etc.
+        ):
             if await request.is_disconnected():
                 return
             yield ev
@@ -3069,6 +3336,7 @@ async def _event_generator(
                 "valyu_k": valyu_k,
                 "with_llm": with_llm,
                 "use_ethos": use_ethos_bool,
+                "answer_mode": answer_mode,
             }
         },
     )

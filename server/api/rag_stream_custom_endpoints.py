@@ -11,6 +11,7 @@ from .stream_config import (
     ETHOS_SOURCE_NAME,
     CODING_DEFAULT_SOURCES,
     BASE_RRF_K,
+    EOH_STREAM_DEFAULT_SOURCES
 )
 
 from .rag_stream_routes import (
@@ -311,6 +312,135 @@ async def coding_stream(
             pool=pool,
             coding_mode=True,              # 🔑 coding mode
             use_ethos_bool=bool(use_ethos),
+        ):
+            yield ev
+
+    return EventSourceResponse(event_gen(), media_type="text/event-stream")
+
+@router.get("/eoh_stream")
+async def eoh_stream(
+    request: Request,
+    q: str = Query(..., description="EoH / Ethos-of-Health grading/QA query"),
+    sources: Optional[str] = Query(
+        None,
+        description=(
+            "Comma-separated internal sources. If omitted, uses guideline-ish "
+            "sources plus the Ethos/EoH source."
+        ),
+    ),
+    limit: int = Query(12, ge=1, le=64),
+    ctx_k: int = Query(24, ge=1, le=128),
+    valyu_k: int = Query(
+        0,
+        ge=0,
+        le=16,
+        description="Default 0 for EoH mode (no Valyu); can be overridden."
+    ),
+    with_llm: int = Query(
+        1,
+        ge=0,
+        le=1,
+        description="1=run LLM, 0=return context only",
+    ),
+    llm_mode: str = Query(
+        "chunk",
+        description="chunk=stream chunks, delta=tiny tokens (llm_delta), ctx=only context",
+    ),
+    use_valyu: int = Query(
+        0,
+        ge=0,
+        le=1,
+        description="1=include Valyu matches, 0=disable (default for EoH).",
+    ),
+    valyu_mode: str = Query(
+        "search",
+        description="Valyu mode: 'search' (evidence) or 'answer'.",
+    ),
+    valyu_raw: int = Query(
+        0,
+        description=(
+            "1=request full contents from Valyu (stored in meta.full_text when "
+            "supported); context still uses snippets."
+        ),
+    ),
+    valyu_sources: Optional[str] = Query(
+        None,
+        description="Optional CSV of Valyu sources (e.g. 'valyu/valyu-pubmed')",
+    ),
+    valyu_boost: float = Query(
+        1.0,
+        description="Reserved for future tuning of Valyu weighting",
+    ),
+    # NOTE: we *ignore* external use_ethos here; we always force Ethos on.
+    pool: Any = Depends(resolve_pg_pool),
+) -> EventSourceResponse:
+    """
+    EoH / Ethos-of-Health mode.
+
+    - Same retrieval + fusion pipeline as /ask_stream.
+    - Forces Ethos/EoH source into context via use_ethos_bool=True.
+    - Defaults to guideline-ish sources + ETHOS_SOURCE_NAME.
+    - Designed so graders can treat (q, answer) the same way as other modes.
+    """
+
+    # Parse sources list
+    if sources:
+        raw_sources = [s.strip() for s in sources.split(",") if s.strip()]
+        seen = set()
+        db_sources: List[str] = []
+        for s in raw_sources:
+            if s not in seen:
+                seen.add(s)
+                db_sources.append(s)
+    else:
+        # No explicit ?sources= → use EoH defaults (guidelines + Ethos)
+        discovered = await discover_all_guideline_sources(pool)
+
+        merged: List[str] = []
+        seen: set[str] = set()
+
+        # 1) baseline EoH defaults (guidelines + ETHOS_SOURCE_NAME)
+        for s in EOH_STREAM_DEFAULT_SOURCES:
+            if s not in seen:
+                seen.add(s)
+                merged.append(s)
+
+        # 2) dynamically discovered guideline-ish sources
+        for s in discovered:
+            if s not in seen:
+                seen.add(s)
+                merged.append(s)
+
+        db_sources = merged
+
+    warning = _send_large_request_warning(q, db_sources, limit)
+
+    async def event_gen() -> AsyncIterator[Dict[str, str]]:
+        # Optional warning before the shared pipeline
+        if warning:
+            yield sse("warning", warning)
+
+    db_sources = list(EOH_STREAM_DEFAULT_SOURCES)  # example
+
+    async def event_gen():
+        async for ev in _event_generator(
+            request=request,
+            q=q,
+            db_sources=db_sources,
+            limit=limit,
+            ctx_k=ctx_k,
+            valyu_k=0,
+            with_llm=bool(with_llm),
+            llm_mode=llm_mode,
+            use_valyu_bool=False,
+            valyu_mode="answer",
+            valyu_raw_bool=False,
+            valyu_sources=None,
+            valyu_boost=1.0,
+            pool=pool,
+            coding_mode=False,
+            use_ethos_bool=True,      # 🔥 force Ethos keep
+            answer_mode="eoh",        # 🔥 use EoH system prompt
         ):
             yield ev
 

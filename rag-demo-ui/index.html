@@ -179,11 +179,7 @@
 
     <div class="row">
       <label for="query">Clinical question</label>
-      <textarea
-        id="query"
-        class="input"
-        placeholder="e.g. In a 32-year-old woman with seropositive RA, mild RA-ILD, and pregnancy plans in 1–2 years, summarize guideline-based csDMARD/biologic sequencing and map key ICD-10/ICD-11/SNOMED/LOINC/RxNorm codes."
-      ></textarea>
+      <textarea id="query" class="input" placeholder="e.g. In a 32-year-old woman with newly diagnosed seropositive RA and mild RA-ILD who wishes to conceive, summarize guideline-based RA therapy and map key codes."></textarea>
     </div>
 
     <div class="pill-row">
@@ -194,6 +190,10 @@
       <button id="mode-coding" class="pill" type="button">
         <span class="mode-label">Coding / Abstraction</span>
         <small>/coding_stream</small>
+      </button>
+      <button id="mode-eoh" class="pill" type="button">
+        <span class="mode-label">EoH Mode</span>
+        <small>/eoh_stream</small>
       </button>
 
       <span class="badge">
@@ -221,7 +221,7 @@
       <div class="panel">
         <h2>
           Context &amp; Matches
-          <span class="tag">retrieval &amp; routing</span>
+          <span class="tag">retrieval</span>
         </h2>
         <div id="matches" class="pre">No results yet.</div>
       </div>
@@ -242,42 +242,85 @@
         </table>
       </div>
     </div>
+
+    <!-- NEW: full trace/debug panel -->
+    <div class="panel" style="margin-top:0.75rem; max-height:260px; overflow:auto;">
+      <h2>
+        Trace
+        <span class="tag">debug</span>
+      </h2>
+      <div id="trace" class="pre">No events yet.</div>
+    </div>
   </div>
 
   <script>
     // === CONFIG: point UI at the real backend ============================
     const API_BASE = "https://2ndopinionmd.ai";
+    // For local dev:
     // const API_BASE = "http://localhost:8000";
 
-    const runBtn    = document.getElementById("run-btn");
-    const clearBtn  = document.getElementById("clear-btn");
-    const queryEl   = document.getElementById("query");
+    const runBtn   = document.getElementById("run-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const queryEl  = document.getElementById("query");
     const matchesEl = document.getElementById("matches");
     const answerEl  = document.getElementById("answer");
     const statusDot = document.getElementById("status-dot");
     const statusText = document.getElementById("status-text");
     const metaTable = document.getElementById("meta-table");
     const metaBody  = document.getElementById("meta-body");
+    const traceEl   = document.getElementById("trace");
 
     const modeGuidelineBtn = document.getElementById("mode-guideline");
     const modeCodingBtn    = document.getElementById("mode-coding");
+    const modeEohBtn       = document.getElementById("mode-eoh");
 
     let mode = "guideline";  // "guideline" or "coding"
     let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
+    let valyuAnswerText = "";
+
+    function safeParse(json, fallback = {}) {
+      try {
+        return JSON.parse(json);
+      } catch {
+        return fallback;
+      }
+    }
+
+    function nowTime() {
+      const d = new Date();
+      return d.toISOString().split("T")[1].replace("Z", "");
+    }
+
+    function appendTrace(eventName, payload) {
+      const line = `[${nowTime()}] ${eventName}:\n` +
+        (typeof payload === "string" ? payload : JSON.stringify(payload, null, 2));
+      if (traceEl.textContent === "No events yet.") {
+        traceEl.textContent = line;
+      } else {
+        traceEl.textContent += "\n\n" + line;
+      }
+      traceEl.scrollTop = traceEl.scrollHeight;
+    }
 
     function setMode(newMode) {
       mode = newMode;
+
+      modeGuidelineBtn.classList.remove("active");
+      modeCodingBtn.classList.remove("active");
+      modeEohBtn.classList.remove("active");
+
       if (mode === "guideline") {
         modeGuidelineBtn.classList.add("active");
-        modeCodingBtn.classList.remove("active");
-      } else {
-        modeGuidelineBtn.classList.remove("active");
+      } else if (mode === "coding") {
         modeCodingBtn.classList.add("active");
+      } else if (mode === "eoh") {
+        modeEohBtn.classList.add("active");
       }
     }
 
     modeGuidelineBtn.addEventListener("click", () => setMode("guideline"));
-    modeCodingBtn.addEventListener("click", () => setMode("coding"));
+    modeCodingBtn.addEventListener("click",    () => setMode("coding"));
+    modeEohBtn.addEventListener("click",       () => setMode("eoh"));
 
     function setStatus(text, state) {
       statusText.textContent = text;
@@ -289,16 +332,11 @@
     function resetOutput() {
       matchesEl.textContent = "No results yet.";
       answerEl.textContent = "No answer yet.";
+      valyuAnswerText = "";
       currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
       metaBody.innerHTML = "";
       metaTable.style.display = "none";
-    }
-
-    function appendMatchesBlock(block) {
-      const existing = matchesEl.textContent === "No results yet."
-        ? ""
-        : matchesEl.textContent + "\n\n";
-      matchesEl.textContent = existing + block;
+      traceEl.textContent = "No events yet.";
     }
 
     clearBtn.addEventListener("click", () => {
@@ -318,208 +356,132 @@
       runBtn.disabled = true;
       setStatus("Embedding & retrieving…", "live");
 
-      const endpoint = mode === "coding"
-        ? "/api/rag/coding_stream"
-        : "/api/rag/ask_stream";
-
-      const isGuideline = mode === "guideline";
-
-      // For guideline Q&A, we enable Valyu; for coding we turn it off.
-      const useValyuFlag = isGuideline ? "1" : "0";
-      const valyuK       = isGuideline ? "3" : "0";
-      const valyuMode    = isGuideline ? "search" : "answer";
-      const valyuRaw     = isGuideline ? "1" : "0";
+      const endpoint = (
+        mode === "coding"
+          ? "/api/rag/coding_stream"
+          : mode === "eoh"
+            ? "/api/rag/eoh_stream"
+            : "/api/rag/ask_stream"
+      );
 
       const params = new URLSearchParams({
         q,
-        limit: "8",
-        ctx_k: "24",
+        limit: "10",
+        ctx_k: "32",
+        valyu_k: mode === "eoh" ? "0" : "5",   // default: no Valyu in EoH mode
         with_llm: "1",
         llm_mode: "chunk",
-        use_valyu: useValyuFlag,
-        valyu_k: valyuK,
-        valyu_mode: valyuMode,
-        valyu_raw: valyuRaw,
+        use_valyu: mode === "eoh" ? "0" : "0", // keep 0; easy to toggle later
+        valyu_mode: "answer",
+        valyu_raw: "0",
       });
+
+      // EoH mode → force Ethos on (server-side ignores, but safe)
+      if (mode === "eoh") {
+        params.set("use_ethos", "1");
+      }
 
       const url = `${API_BASE}${endpoint}?${params.toString()}`;
       const es = new EventSource(url);
 
-      let fusedSeen = false;
       let answerText = "";
 
-      es.onmessage = (ev) => {
-        // Using named events below.
-      };
-
-      // ---- Core trace events shared by /ask_stream and /coding_stream ----
-
-      es.addEventListener("start", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const srcs = Array.isArray(data.sources) ? data.sources.join(", ") : "(not specified)";
-          matchesEl.textContent =
-            `Query: ${data.q}\nSources: ${srcs}\n\nAwaiting matches…`;
-        } catch {
-          // ignore
-        }
-      });
+      // --- Core events ---------------------------------------------------
 
       es.addEventListener("warning", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("warning", data);
+      });
+
+      es.addEventListener("start", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("start", data);
         try {
-          const data = JSON.parse(ev.data);
-          let msgs = data.messages || data.warning || [];
-          if (!Array.isArray(msgs)) msgs = [String(msgs)];
-          if (!msgs.length) return;
-          appendMatchesBlock(
-            "Warning:\n" + msgs.map(m => `  - ${m}`).join("\n")
-          );
-          setStatus("Warning: " + msgs[0], "live");
+          matchesEl.textContent =
+            `Query: ${data.q}\nSources: ${(data.sources || []).join(", ")}\n\nAwaiting matches…`;
         } catch {
           // ignore
         }
       });
 
-      // --- Term extraction: support both query_terms and code_terms ---
-      function handleTermsEvent(ev, label) {
-        try {
-          const data = JSON.parse(ev.data);
-          const terms = data.terms || [];
-          const expansions = data.expansions || {};
-          const allTerms = data.all_terms || [];
-
-          if (!terms.length && !Object.keys(expansions).length && !allTerms.length) return;
-
-          const lines = [];
-          if (terms.length) {
-            lines.push("Terms: " + terms.join(", "));
-          }
-          const expKeys = Object.keys(expansions);
-          if (expKeys.length) {
-            lines.push("Expansions:");
-            expKeys.forEach(k => {
-              const vals = expansions[k] || [];
-              if (vals.length) {
-                lines.push(`  - ${k}: ${vals.join(", ")}`);
-              }
-            });
-          }
-          if (allTerms.length) {
-            lines.push("All terms: " + allTerms.join(", "));
-          }
-
-          appendMatchesBlock(label + "\n" + lines.join("\n"));
-        } catch {
-          // ignore
+      es.addEventListener("status", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("status", data);
+        switch (data.status) {
+          case "embedding_query":
+            setStatus("Embedding query…", "live"); break;
+          case "extracting_query_terms":
+            setStatus("Extracting query terms…", "live"); break;
+          case "extracting_code_terms":
+            setStatus("Extracting coding terms…", "live"); break;
+          case "routing_sources":
+            setStatus("Routing sources…", "live"); break;
+          case "retrieving_candidates":
+          case "coding_gap_retrieval":
+            setStatus("Retrieving candidates…", "live"); break;
+          case "valyu_fetch":
+            setStatus("Fetching Valyu evidence…", "live"); break;
+          case "fusing_context":
+            setStatus("Fusing context…", "live"); break;
+          case "generating_answer":
+            setStatus("Generating answer…", "live"); break;
+          case "generating_valyu_answer":
+            setStatus("Generating Valyu answer…", "live"); break;
+          case "done_no_llm":
+            setStatus("Done (retrieval only).", null); break;
+          case "ts_error":
+          case "ann_error":
+          case "valyu_error":
+            setStatus(`Error: ${data.status}`, "error"); break;
+          default:
+            // leave status as-is
+            break;
         }
-      }
+      });
 
-      es.addEventListener("query_terms", (ev) => handleTermsEvent(ev, "Extracted query terms"));
-      es.addEventListener("code_terms", (ev) => handleTermsEvent(ev, "Extracted code/clinical terms"));
+      es.addEventListener("query_terms", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("query_terms", data);
+      });
+
+      es.addEventListener("code_terms", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("code_terms", data);
+      });
 
       es.addEventListener("router", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const taskType = data.task_type || "(unknown)";
-          const selected = Array.isArray(data.selected_sources)
-            ? data.selected_sources.join(", ")
-            : "(none)";
-          const reasoning = data.reasoning || "";
-          appendMatchesBlock(
-            "Router plan\n" +
-            `  Task type: ${taskType}\n` +
-            `  Selected sources: ${selected}\n` +
-            (reasoning ? `  Reasoning:\n${reasoning}` : "")
-          );
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("router", data);
       });
 
       es.addEventListener("event_router_summary", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const mode = data.mode || "";
-          const effective = Array.isArray(data.effective_sources)
-            ? data.effective_sources.join(", ")
-            : "(none)";
-          appendMatchesBlock(
-            "Router summary\n" +
-            `  Mode: ${mode}\n` +
-            `  Effective sources: ${effective}`
-          );
-        } catch {
-          // ignore
-        }
-      });
-
-      es.addEventListener("qa_ledger", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          appendMatchesBlock(
-            "QA ledger\n" + JSON.stringify(data.summary || data, null, 2)
-          );
-        } catch {
-          // ignore
-        }
-      });
-
-      es.addEventListener("qa_grader", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          appendMatchesBlock(
-            "QA grader\n" + JSON.stringify(data, null, 2)
-          );
-        } catch {
-          // ignore
-        }
-      });
-
-      es.addEventListener("gating", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          appendMatchesBlock(
-            "Gating summary\n" + JSON.stringify(data, null, 2)
-          );
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("event_router_summary", data);
       });
 
       es.addEventListener("phase_start", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const src = data.source || "(unknown)";
-          const method = data.method || "(unknown)";
-          appendMatchesBlock(
-            `Phase start · source=${src}, method=${method}`
-          );
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("phase_start", data);
       });
 
       es.addEventListener("phase_end", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const src = data.source || "(unknown)";
-          const method = data.method || "(unknown)";
-          appendMatchesBlock(
-            `Phase end   · source=${src}, method=${method}`
-          );
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("phase_end", data);
       });
 
       es.addEventListener("matches", (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = safeParse(ev.data, {});
+        appendTrace(`matches:${data.phase || "unknown"}`, data);
+
         const phase  = data.phase;
         const rows   = data.matches || [];
-        const src    = data.source || "(unknown)";
-        currentSourceStats[phase] = (currentSourceStats[phase] || 0) + rows.length;
+        const src    = data.source;
 
-        const header = `Phase: ${phase.toUpperCase()} · Source: ${src}`;
+        if (phase && currentSourceStats.hasOwnProperty(phase)) {
+          currentSourceStats[phase] += rows.length;
+        }
+
+        const header = `Phase: ${phase ? phase.toUpperCase() : "UNKNOWN"} · Source: ${src || "?"}`;
         const lines = rows.map((r, idx) => {
           const hasId = r.source_id && r.source_id !== "";
           const idLabel =
@@ -530,91 +492,131 @@
               : null;
 
           const idPart = idLabel ? `  (${idLabel})` : "";
-          const scoreVal = typeof r.score === "number" ? r.score : 0;
-          return `  [${idx + 1}] ${r.source} :: ${r.title || "(no title)"}${idPart} (score=${scoreVal.toFixed(3)})`;
+          const score = typeof r.score === "number" ? r.score.toFixed(3) : "0.000";
+
+          return `  [${idx + 1}] ${r.source} :: ${r.title || "(no title)"}${idPart} (score=${score})`;
         });
 
-        appendMatchesBlock(header + "\n" + lines.join("\n"));
+        const existing = matchesEl.textContent === "No results yet."
+          ? ""
+          : matchesEl.textContent + "\n\n";
 
-        if (phase === "fused") {
-          fusedSeen = true;
-          setStatus("Fused context ready · waiting on LLM…", "live");
-        }
+        matchesEl.textContent = existing + header + "\n" + lines.join("\n");
       });
 
-      // --- Main guideline / coding answer stream ---
+      es.addEventListener("gating", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("gating", data);
+      });
+
+      es.addEventListener("qa_ledger", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("qa_ledger", data);
+      });
+
+      es.addEventListener("qa_grader", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("qa_grader", data);
+      });
+
+      es.addEventListener("coding_ledger", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("coding_ledger", data);
+      });
+
+      es.addEventListener("coding_grader", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("coding_grader", data);
+      });
+
+      es.addEventListener("coding_gap_retrieval", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("coding_gap_retrieval", data);
+      });
+
+      es.addEventListener("coding_pinned", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("coding_pinned", data);
+      });
+
+      // --- Main LLM answer -----------------------------------------------
+
       es.addEventListener("llm_chunk", (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = safeParse(ev.data, {});
+        appendTrace("llm_chunk", data);
         answerText += data.text || "";
-        answerEl.textContent = answerText;
+        answerEl.textContent = answerText || "(no text)";
         setStatus("Streaming answer…", "live");
       });
 
-      // Backwards-compat: some builds may emit llm_delta
       es.addEventListener("llm_delta", (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = safeParse(ev.data, {});
+        appendTrace("llm_delta", data);
         answerText += data.text || "";
-        answerEl.textContent = answerText;
+        answerEl.textContent = answerText || "(no text)";
         setStatus("Streaming answer…", "live");
       });
 
       es.addEventListener("llm_done", (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = safeParse(ev.data, {});
+        appendTrace("llm_done", data);
         if (data.text) {
           answerText = data.text;
-          answerEl.textContent = answerText;
         }
+        answerEl.textContent = answerText || "(no text)";
       });
 
-      // --- Valyu fulltext context + LLM explanation ---
+      // --- Valyu fulltext / second-pass LLM ------------------------------
+
+      es.addEventListener("valyu_fulltext", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("valyu_fulltext", data);
+      });
+
       es.addEventListener("valyu_fulltext_ctx", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const rows = data.rows || [];
-          const k = data.k;
-          const mode = data.mode;
-          const lines = rows.map((r, idx) => {
-            return `  [${idx + 1}] ${r.title || r.id} (len=${r.len_text}, has_fulltext=${r.has_fulltext})`;
-          });
-          appendMatchesBlock(
-            "Valyu fulltext context\n" +
-            `  k=${k}, mode=${mode}\n` +
-            lines.join("\n")
-          );
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("valyu_fulltext_ctx", data);
       });
 
       es.addEventListener("valyu_llm_chunk", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const text = data.text || "";
-          appendMatchesBlock("Valyu evidence summary (chunk)\n" + text);
-          setStatus("Streaming Valyu evidence…", "live");
-        } catch {
-          // ignore
-        }
+        const data = safeParse(ev.data, {});
+        appendTrace("valyu_llm_chunk", data);
+        valyuAnswerText += data.text || "";
+      });
+
+      es.addEventListener("valyu_llm_delta", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("valyu_llm_delta", data);
+        valyuAnswerText += data.text || "";
       });
 
       es.addEventListener("valyu_llm_done", (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          const text = data.text || "";
-          appendMatchesBlock("Valyu evidence summary (final)\n" + text);
-        } catch {
-          // ignore
+        const data = safeParse(ev.data, {});
+        appendTrace("valyu_llm_done", data);
+        if (data.text) {
+          valyuAnswerText = data.text;
+        }
+        if (valyuAnswerText) {
+          answerEl.textContent =
+            (answerText || "") +
+            "\n\n---\n[Valyu evidence synthesis]\n" +
+            valyuAnswerText;
         }
       });
 
+      // --- Citations / Meta / End / Error --------------------------------
+
       es.addEventListener("citations", (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = safeParse(ev.data, {});
+        appendTrace("citations", data);
         const cits = data.citations || [];
         if (!cits.length) return;
 
         metaBody.innerHTML = "";
         const groups = { valyu: 0, ethos: 0, guideline: 0 };
-        cits.forEach(c => { groups[c.kind] = (groups[c.kind] || 0) + 1; });
+        cits.forEach(c => {
+          groups[c.kind] = (groups[c.kind] || 0) + 1;
+        });
 
         const rows = [
           ["Valyu citations", groups.valyu || 0],
@@ -640,63 +642,38 @@
         metaTable.style.display = "";
       });
 
-      es.addEventListener("status", (ev) => {
-        const data = JSON.parse(ev.data);
-        const s = data.status;
-        switch (s) {
-          case "embedding_query":
-            setStatus("Embedding query…", "live");
-            break;
-          case "extracting_query_terms":
-          case "extracting_terms":
-            setStatus("Extracting terms…", "live");
-            break;
-          case "extracting_code_terms":
-            setStatus("Extracting code terms…", "live");
-            break;
-          case "routing_sources":
-            setStatus("Routing sources…", "live");
-            break;
-          case "retrieving_candidates":
-            setStatus("Retrieving candidates…", "live");
-            break;
-          case "retrieving_mkg":
-            setStatus("Retrieving MKG…", "live");
-            break;
-          case "valyu_fetch":
-          case "valyu_retrieving":
-            setStatus("Fetching Valyu evidence…", "live");
-            break;
-          case "fusing_context":
-            setStatus("Fusing context…", "live");
-            break;
-          case "generating_answer":
-          case "answering":
-            setStatus("Generating answer…", "live");
-            break;
-          case "generating_valyu_answer":
-            setStatus("Generating Valyu evidence summary…", "live");
-            break;
-          case "done_no_llm":
-            setStatus("Done (retrieval only).", null);
-            break;
-          default:
-            break;
-        }
-      });
-
-      es.addEventListener("error", (ev) => {
-        setStatus("Error during streaming (see console).", "error");
-        console.error("RAG stream error:", ev);
-        es.close();
-        runBtn.disabled = false;
-      });
-
       es.addEventListener("end", (ev) => {
+        const data = safeParse(ev.data, {});
+        appendTrace("end", data);
         setStatus("Completed.", null);
         es.close();
         runBtn.disabled = false;
       });
+
+      es.addEventListener("error", (ev) => {
+        // NOTE: this is your custom SSE "error" event, not EventSource.onerror
+        let payload;
+        try {
+          payload = safeParse(ev.data, {});
+        } catch {
+          payload = { raw: ev.data };
+        }
+        appendTrace("error", payload);
+        setStatus("Error during streaming (see trace).", "error");
+        console.error("RAG stream error event:", payload);
+        es.close();
+        runBtn.disabled = false;
+      });
+
+      // Network/connection-level errors:
+      es.onerror = (ev) => {
+        appendTrace("eventsource_error", "Connection error or stream closed.");
+        if (statusDot.classList.contains("live")) {
+          setStatus("Connection error.", "error");
+        }
+        es.close();
+        runBtn.disabled = false;
+      };
     });
   </script>
 </body>

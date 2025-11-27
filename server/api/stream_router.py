@@ -18,6 +18,19 @@ client = OpenAI()
 
 SOURCE_META: Dict[str, Dict[str, Any]] = {
     # ----------------------- Guidelines & practice docs --------------------
+    "eoh_2025": {
+        "kind": "guideline",
+        "title": "Ethos of Health Gold Standard v2 (2025)",
+        "society": "Internal_EOH",
+        "domain": "computational chronic disease management",
+        "condition": "chronic multisystem and autoimmune disease",
+        "summary": (
+            "Internal multi-module guideline defining a computational framework for chronic illness. "
+            "Introduces Stack Levels, Stability Bands, Chronic Baseline Mode (CBM), reflex suppression "
+            "governance, psychosomatic analysis (PSI), escalation routing, trend and prognostic engines, "
+            "and FHIR-native interoperability for long-term tracking of complex autoimmune and multisystem disease."
+        ),
+    },
     "acc_aha_hfsa_hf_2022": {
         "kind": "guideline",
         "title": "2022 ACC/AHA/HFSA Guideline for the Management of Heart Failure",
@@ -740,6 +753,66 @@ SOURCE_META: Dict[str, Dict[str, Any]] = {
             "Use of SGLT2 inhibitors, RAS blockade, GLP-1 receptor agonists, and "
             "other therapies for glycemic and kidney protection in patients "
             "with diabetes and CKD."
+        ),
+    },
+        "idsa_ssti_2014": {
+        "kind": "guideline",
+        "title": "Practice Guidelines for the Diagnosis and Management of Skin and Soft Tissue Infections: 2014 Update",
+        "society": "IDSA",
+        "domain": "infectious_disease",
+        "condition": "skin_and_soft_tissue_infections",
+        "summary": (
+            "Evaluation and classification of SSTIs (purulent vs nonpurulent, "
+            "mild–severe), indications for incision and drainage, empiric "
+            "antibiotic choices including MRSA coverage, and duration of therapy."
+        ),
+    },
+    "idsa_vertebral_osteomyelitis_2015": {
+        "kind": "guideline",
+        "title": "2015 IDSA Guideline for the Diagnosis and Treatment of Native Vertebral Osteomyelitis in Adults",
+        "society": "IDSA",
+        "domain": "infectious_disease",
+        "condition": "vertebral_osteomyelitis",
+        "summary": (
+            "Recommended diagnostic workup (MRI, blood cultures, biopsy), "
+            "indications for empiric vs targeted antibiotics, treatment duration, "
+            "and when to consider surgical intervention."
+        ),
+    },
+    "acg_pancreatitis_2013": {
+        "kind": "guideline",
+        "title": "ACG Clinical Guideline: Management of Acute Pancreatitis",
+        "society": "ACG",
+        "domain": "gastroenterology",
+        "condition": "acute_pancreatitis",
+        "summary": (
+            "Initial risk stratification, fluid resuscitation, nutritional "
+            "support, timing of imaging, and indications for ERCP and "
+            "intervention in acute pancreatitis."
+        ),
+    },
+    "aasld_portal_hypertension_2024": {
+        "kind": "guideline",
+        "title": "AASLD Practice Guidance on Risk Stratification and Management of Portal Hypertension in Cirrhosis",
+        "society": "AASLD",
+        "domain": "hepatology",
+        "condition": "portal_hypertension_cirrhosis",
+        "summary": (
+            "Screening and surveillance for esophageal varices, primary and "
+            "secondary prophylaxis with nonselective beta blockers or band "
+            "ligation, and acute management of variceal bleeding in cirrhosis."
+        ),
+    },
+    "eular_axspa_2022": {
+        "kind": "guideline",
+        "title": "2022 ASAS–EULAR Recommendations for the Management of Axial Spondyloarthritis",
+        "society": "ASAS/EULAR",
+        "domain": "rheumatology",
+        "condition": "axial_spondyloarthritis",
+        "summary": (
+            "Treat-to-target approach in axial SpA including NSAID trials, "
+            "indications for biologic therapy (TNF and IL-17 inhibitors), and "
+            "monitoring and comorbidity management."
         ),
     },
     "idsa_hap_vap_2016": {
