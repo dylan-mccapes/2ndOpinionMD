@@ -3332,7 +3332,16 @@ def sse(event: str, payload: Dict[str, Any]) -> Dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Core event generator (used by /ask_stream and /coding_stream)
+# ---------------------------------------------------------------------------
+# DEPRECATED: _event_generator
+# ---------------------------------------------------------------------------
+# This monolithic event generator has been decomposed into explicit per-endpoint
+# generators in rag_stream_custom_endpoints.py:
+#   - ask_stream_event_generator() for /ask_stream and /eoh_stream
+#   - coding_stream_event_generator() for /coding_stream
+#
+# This function is kept for reference but is no longer used by any endpoints.
+# It can be removed in a future cleanup once the new generators are verified.
 # ---------------------------------------------------------------------------
 
 
