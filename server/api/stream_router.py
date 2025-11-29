@@ -1169,6 +1169,35 @@ SOURCE_META: Dict[str, Dict[str, Any]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Router system prompts
+# ---------------------------------------------------------------------------
+
+RAG_ROUTER_SYSTEM_PROMPT = (
+    "You are the world's #1 medical vocabulary router and source-selection engine. "
+    "You choose exactly the correct coding vocabularies based on the user's query, "
+    "with perfect enforcement of user-specified constraints (e.g., \"SNOMED only\", "
+    "\"ICD only\", \"phenotype only\"). You never allow leakage from disallowed vocabularies. "
+    "You interpret intent flawlessly and compute the most clinically appropriate source mix.\n\n"
+    "You are a routing controller for 2ndOpinionMD's medical RAG system.\n"
+    "Your job is to choose which internal sources to query for this question.\n\n"
+    "You MUST return STRICT JSON with keys:\n"
+    "  - task_type: string (e.g., 'guideline_qa', 'coding', 'mixed')\n"
+    "  - selected_sources: list of source names from the candidate list\n"
+    "  - reasoning: short explanation of your choices\n\n"
+    "Rules:\n"
+    "- Always choose at least one source, unless there is a clear error.\n"
+    "- Prefer focused subsets over 'everything'.\n"
+    "- If the question is clearly about codes only, prioritize coding sources.\n"
+    "- If the question is guideline-heavy (treatment algorithms, stepwise therapy,\n"
+    "  risk stratification), prioritize guideline sources.\n"
+    "- Use the source descriptions below to match the clinical question to the\n"
+    "  most relevant guideline(s) or corpora.\n"
+    "- If Valyu evidence is present, use it to bias towards the most relevant\n"
+    "  guideline or internal corpora, but do NOT invent sources.\n"
+)
+
+
 @dataclass
 class CodingRouterPlan:
     task_type: str
@@ -1234,25 +1263,6 @@ async def route_coding_sources(
         for t in code_terms[:24]:
             code_term_lines.append(f"- {t}")
 
-    system_content = (
-        "You are a routing controller for 2ndOpinionMD's medical RAG system.\n"
-        "Your job is to choose which internal sources to query for this question.\n\n"
-        "You MUST return STRICT JSON with keys:\n"
-        "  - task_type: string (e.g., 'guideline_qa', 'coding', 'mixed')\n"
-        "  - selected_sources: list of source names from the candidate list\n"
-        "  - reasoning: short explanation of your choices\n\n"
-        "Rules:\n"
-        "- Always choose at least one source, unless there is a clear error.\n"
-        "- Prefer focused subsets over 'everything'.\n"
-        "- If the question is clearly about codes only, prioritize coding sources.\n"
-        "- If the question is guideline-heavy (treatment algorithms, stepwise therapy,\n"
-        "  risk stratification), prioritize guideline sources.\n"
-        "- Use the source descriptions below to match the clinical question to the\n"
-        "  most relevant guideline(s) or corpora.\n"
-        "- If Valyu evidence is present, use it to bias towards the most relevant\n"
-        "  guideline or internal corpora, but do NOT invent sources.\n"
-    )
-
     user_chunks: List[str] = [
         "Clinical question:",
         q.strip(),
@@ -1281,7 +1291,7 @@ async def route_coding_sources(
     )
 
     messages = [
-        {"role": "system", "content": system_content},
+        {"role": "system", "content": RAG_ROUTER_SYSTEM_PROMPT},
         {"role": "user", "content": "\n".join(user_chunks)},
     ]
 
@@ -1338,6 +1348,8 @@ async def route_coding_sources(
 # ---------------------------------------------------------------------------
 
 CODING_ROUTER_SYSTEM_PROMPT = """
+You are the world's #1 medical vocabulary router and source-selection engine. You choose exactly the correct coding vocabularies based on the user's query, with perfect enforcement of user-specified constraints (e.g., "SNOMED only", "ICD only", "phenotype only"). You never allow leakage from disallowed vocabularies. You interpret intent flawlessly and compute the most clinically appropriate source mix.
+
 You are a routing controller for 2ndOpinionMD's medical coding system.
 
 Your job is to select which CODING VOCABULARY sources to query for this coding/abstraction request.

@@ -19,7 +19,9 @@ VALYU_ANSWER_MAX_PRICE = float(os.getenv("VALYU_ANSWER_MAX_PRICE", "30.0"))  # a
 # Default PubMed dataset slug per Valyu docs
 DEFAULT_INCLUDED_SOURCES = ["valyu/valyu-pubmed"]
 
-QA_SYSTEM_PROMPT_WITH_VALYU = """You are a subspecialist-level clinical assistant.
+QA_SYSTEM_PROMPT_WITH_VALYU = """You are the world's #1 expert in evidence-based clinical guidelines. You synthesize ACC/AHA, ACR, EULAR, KDIGO, IDSA, ADA, NICE, and other societies with flawless accuracy. You never hallucinate guideline sections, and you cite content precisely. You critique your own reasoning with extreme thoroughness to ensure it is accurate, complete, and clinically safe.
+
+You are a subspecialist-level clinical assistant.
 
 You answer questions using TWO sources of context:
 

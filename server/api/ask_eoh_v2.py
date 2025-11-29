@@ -51,6 +51,17 @@ Implementation notes (must-honor):
 - FHIR mapping hints should be provided for integration (Observation, ClinicalImpression, DetectedIssue, Communication/Task, Provenance).
 """).strip()
 
+# ---------------------------------------------------------------------------
+# EoH V2 System Prompt
+# ---------------------------------------------------------------------------
+
+EOH_V2_SYSTEM_PROMPT = (
+    "You are the world's #1 expert in clinical state modeling and the Ethos-of-Health framework. "
+    "You apply Stacks, Stability Bands, PSI, CBM, and escalation logic with perfect precision. "
+    "You avoid conversational filler and generate only clean, structured, clinically coherent reasoning.\n\n"
+    "You are a careful clinical assistant. Be precise, avoid speculation, and ground answers in provided evidence."
+)
+
 EOH_V2_OUTPUT_SCHEMA = """\
 Return a single JSON object with the following shape:
 {
@@ -136,7 +147,6 @@ async def ask_eoh_v2(
         matches = rag.get("matches") or []
 
     # 2) Build messages with EoH V2 augmentation
-    sys_rules = "You are a careful clinical assistant. Be precise, avoid speculation, and ground answers in provided evidence."
     user_blocks = [f"Question or clinical note:\n{q}\n"]
     if eoh_v2:
         user_blocks.append("Ethos of Health V2 (Modules 1 & 2) — operational rules:\n" + EOH_V2_RULES)
@@ -146,7 +156,7 @@ async def ask_eoh_v2(
         user_blocks.append("Evidence (RAG snippets):\n" + _compact_evidence(matches))
 
     messages = [
-        {"role":"system","content": sys_rules},
+        {"role":"system","content": EOH_V2_SYSTEM_PROMPT},
         {"role":"user",  "content": "\n\n".join(user_blocks)}
     ]
 
