@@ -608,6 +608,23 @@ CODING_SOURCES = [
     "chv",
 ]
 
+# Strict code-only sources for /coding_stream (no guidelines, no EHR, no misc)
+# These are the ONLY sources that /coding_stream will query
+STRICT_CODE_SOURCES: set[str] = {
+    "icd10cm",
+    "icd11",
+    "snomed",
+    "loinc",
+    "rxnorm",
+    "hpo",
+    "chv",
+}
+
+
+def is_strict_code_source(src: str) -> bool:
+    """Check if a source is a strict coding vocabulary source."""
+    return (src or "").lower() in STRICT_CODE_SOURCES
+
 # How many items to keep per source for coding (no global fusion)
 CODING_TS_K = 16       # top N TS hits per source
 CODING_ANN_K = 16      # top N ANN hits per source

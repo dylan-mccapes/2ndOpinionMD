@@ -1009,6 +1009,416 @@ async def run_coding_grader(
     return {"keep": clean_keep, "missing_slots": clean_missing}
 
 
+# ---------------------------------------------------------------------------
+# Concept clustering for near-identical codes (LLM-based)
+# ---------------------------------------------------------------------------
+
+CONCEPT_CLUSTERING_SYSTEM_PROMPT = """
+You are a medical coding expert specializing in grouping near-identical or closely related codes.
+
+Your task is to cluster codes that represent essentially the same clinical concept or are closely related "siblings" where only one or two should be surfaced to the user.
+
+For each cluster:
+1. Pick one or a small set of canonical representatives (the most specific/appropriate codes)
+2. Provide a short natural-language label for the cluster
+
+Examples of codes that should be clustered:
+- Multiple LOINCs for the same lab test (e.g., CRP in serum vs plasma)
+- ICD codes with different specificity levels (e.g., M32.10 vs M32.19)
+- SNOMED codes representing the same condition with different granularity
+
+Return STRICT JSON with this schema:
+{
+  "clusters": [
+    {
+      "cluster_id": "unique_slug",
+      "label": "Human-readable cluster label",
+      "members": [
+        {"source": "source_name", "code": "code_value", "title": "code_title"}
+      ],
+      "canonical_members": [
+        {"source": "source_name", "code": "code_value", "title": "code_title"}
+      ]
+    }
+  ]
+}
+
+Rules:
+- Group codes that represent the same clinical concept
+- canonical_members should contain the most specific/appropriate code(s) for each source
+- Keep cluster labels concise but descriptive
+- If a code is unique and doesn't cluster with others, it becomes its own single-member cluster
+- Prefer more specific codes as canonical representatives
+"""
+
+
+async def cluster_coding_concepts(
+    ledger: Dict[str, Any],
+    q: str,
+    *,
+    model: str = CHAT_MODEL,
+) -> Dict[str, Any]:
+    """
+    Use LLM to cluster near-identical codes in the ledger into concept groups.
+    
+    This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP,
+    multiple ICD-11 codes for RA variants) by grouping them into clusters
+    with canonical representatives.
+    
+    Args:
+        ledger: The coding ledger with sources and codes
+        q: The clinical query for context
+        model: The LLM model to use
+    
+    Returns:
+        {
+            "clusters": [
+                {
+                    "cluster_id": "crp_lab",
+                    "label": "C-reactive protein (CRP) lab tests",
+                    "members": [...],
+                    "canonical_members": [...]
+                },
+                ...
+            ],
+            "source_cluster_map": {
+                "loinc": {"30522-7": "crp_lab", ...},
+                ...
+            }
+        }
+    """
+    sources = ledger.get("sources", {}) or {}
+    
+    # Build a compact representation for the LLM
+    codes_for_clustering: List[Dict[str, Any]] = []
+    for src, items in sources.items():
+        for item in items:
+            codes_for_clustering.append({
+                "source": src,
+                "code": item.get("code", ""),
+                "title": item.get("title", ""),
+            })
+    
+    if not codes_for_clustering:
+        return {"clusters": [], "source_cluster_map": {}}
+    
+    # If very few codes, skip clustering
+    if len(codes_for_clustering) <= 3:
+        # Create single-member clusters for each code
+        clusters = []
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
+        for i, code_info in enumerate(codes_for_clustering):
+            cluster_id = f"single_{i}"
+            clusters.append({
+                "cluster_id": cluster_id,
+                "label": code_info["title"] or code_info["code"],
+                "members": [code_info],
+                "canonical_members": [code_info],
+            })
+            src = code_info["source"]
+            if src not in source_cluster_map:
+                source_cluster_map[src] = {}
+            source_cluster_map[src][code_info["code"]] = cluster_id
+        return {"clusters": clusters, "source_cluster_map": source_cluster_map}
+    
+    messages = [
+        {
+            "role": "system",
+            "content": CONCEPT_CLUSTERING_SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Clinical question:\n{q.strip()}\n\n"
+                f"Codes to cluster:\n{json.dumps(codes_for_clustering, indent=2)}\n\n"
+                "Return STRICT JSON with clusters as described in the system prompt."
+            ),
+        },
+    ]
+    
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        logger.exception("cluster_coding_concepts: OpenAI call failed")
+        # Fallback: create single-member clusters
+        clusters = []
+        source_cluster_map = {}
+        for i, code_info in enumerate(codes_for_clustering):
+            cluster_id = f"fallback_{i}"
+            clusters.append({
+                "cluster_id": cluster_id,
+                "label": code_info["title"] or code_info["code"],
+                "members": [code_info],
+                "canonical_members": [code_info],
+            })
+            src = code_info["source"]
+            if src not in source_cluster_map:
+                source_cluster_map[src] = {}
+            source_cluster_map[src][code_info["code"]] = cluster_id
+        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": str(e)}
+    
+    content = completion.choices[0].message.content or "{}"
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning("cluster_coding_concepts: JSON parse failed: %r", content[:500])
+        # Fallback: create single-member clusters
+        clusters = []
+        source_cluster_map = {}
+        for i, code_info in enumerate(codes_for_clustering):
+            cluster_id = f"parse_error_{i}"
+            clusters.append({
+                "cluster_id": cluster_id,
+                "label": code_info["title"] or code_info["code"],
+                "members": [code_info],
+                "canonical_members": [code_info],
+            })
+            src = code_info["source"]
+            if src not in source_cluster_map:
+                source_cluster_map[src] = {}
+            source_cluster_map[src][code_info["code"]] = cluster_id
+        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": f"json_parse_failed: {e}"}
+    
+    # Parse and validate clusters
+    raw_clusters = data.get("clusters") or []
+    clusters = []
+    source_cluster_map = {}
+    
+    for cluster in raw_clusters:
+        if not isinstance(cluster, dict):
+            continue
+        
+        cluster_id = str(cluster.get("cluster_id", "")).strip()
+        if not cluster_id:
+            continue
+        
+        label = str(cluster.get("label", "")).strip() or cluster_id
+        members = cluster.get("members") or []
+        canonical_members = cluster.get("canonical_members") or []
+        
+        # Validate members
+        valid_members = []
+        for m in members:
+            if isinstance(m, dict) and m.get("code"):
+                valid_members.append({
+                    "source": str(m.get("source", "")).lower(),
+                    "code": str(m.get("code", "")),
+                    "title": str(m.get("title", "")),
+                })
+        
+        # Validate canonical members
+        valid_canonical = []
+        for m in canonical_members:
+            if isinstance(m, dict) and m.get("code"):
+                valid_canonical.append({
+                    "source": str(m.get("source", "")).lower(),
+                    "code": str(m.get("code", "")),
+                    "title": str(m.get("title", "")),
+                })
+        
+        # If no canonical members, use first member
+        if not valid_canonical and valid_members:
+            valid_canonical = [valid_members[0]]
+        
+        if valid_members:
+            clusters.append({
+                "cluster_id": cluster_id,
+                "label": label,
+                "members": valid_members,
+                "canonical_members": valid_canonical,
+            })
+            
+            # Build source_cluster_map
+            for m in valid_members:
+                src = m["source"]
+                code = m["code"]
+                if src not in source_cluster_map:
+                    source_cluster_map[src] = {}
+                source_cluster_map[src][code] = cluster_id
+    
+    return {"clusters": clusters, "source_cluster_map": source_cluster_map}
+
+
+def build_canonical_keep_map(
+    keep_map: Dict[str, List[str]],
+    concept_clusters: Dict[str, Any],
+) -> Dict[str, List[str]]:
+    """
+    Build a canonical keep map by filtering keep_map to only include canonical codes.
+    
+    For each code in keep_map, look up its cluster via source_cluster_map.
+    Within that cluster, only keep the canonical_members for that source.
+    
+    Args:
+        keep_map: Original grader keep map {source: [codes]}
+        concept_clusters: Result from cluster_coding_concepts() with clusters and source_cluster_map
+    
+    Returns:
+        canonical_keep_map: Filtered keep map with only canonical codes per source
+    """
+    clusters = concept_clusters.get("clusters") or []
+    source_cluster_map = concept_clusters.get("source_cluster_map") or {}
+    
+    # If no clusters, return original keep_map
+    if not clusters:
+        return keep_map
+    
+    # Build a lookup: cluster_id -> set of canonical codes per source
+    # canonical_by_cluster[cluster_id][source] = set of canonical codes
+    canonical_by_cluster: Dict[str, Dict[str, set]] = {}
+    for cluster in clusters:
+        cluster_id = cluster.get("cluster_id", "")
+        if not cluster_id:
+            continue
+        canonical_members = cluster.get("canonical_members") or []
+        canonical_by_cluster[cluster_id] = {}
+        for m in canonical_members:
+            src = str(m.get("source", "")).lower()
+            code = str(m.get("code", "")).upper().strip()
+            if src and code:
+                if src not in canonical_by_cluster[cluster_id]:
+                    canonical_by_cluster[cluster_id][src] = set()
+                canonical_by_cluster[cluster_id][src].add(code)
+    
+    # Build canonical_keep_map
+    canonical_keep_map: Dict[str, List[str]] = {}
+    
+    for src, codes in keep_map.items():
+        src_norm = str(src).lower()
+        src_cluster_map = source_cluster_map.get(src_norm, {})
+        
+        canonical_codes_for_source: set[str] = set()
+        
+        for code in codes:
+            code_norm = str(code).upper().strip()
+            
+            # Look up which cluster this code belongs to
+            cluster_id = src_cluster_map.get(code_norm) or src_cluster_map.get(code)
+            
+            if cluster_id and cluster_id in canonical_by_cluster:
+                # Get canonical codes for this source from this cluster
+                canonical_for_src = canonical_by_cluster[cluster_id].get(src_norm, set())
+                if canonical_for_src:
+                    canonical_codes_for_source.update(canonical_for_src)
+                else:
+                    # No canonical for this source in cluster, keep original
+                    canonical_codes_for_source.add(code_norm)
+            else:
+                # Code not in any cluster, keep it as-is
+                canonical_codes_for_source.add(code_norm)
+        
+        if canonical_codes_for_source:
+            canonical_keep_map[src_norm] = sorted(canonical_codes_for_source)
+    
+    return canonical_keep_map
+
+
+def build_ledger_only_citations(
+    context_items: List[Dict[str, Any]],
+    keep_map: Dict[str, List[str]],
+    source_cluster_map: Optional[Dict[str, Dict[str, str]]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Build citations that are constrained to only include codes from the ledger (keep_map).
+    
+    This ensures that citations in the final response only reference codes that were
+    actually selected into the coding_result, not stray low-score matches.
+    
+    Args:
+        context_items: The full context items list
+        keep_map: The grader's keep map with selected codes per source
+        source_cluster_map: Optional mapping from (source, code) -> cluster_id
+    
+    Returns:
+        List of citation dicts, filtered to only include ledger codes.
+        Each citation includes a cluster_id if source_cluster_map is provided.
+    """
+    # Normalize keep_map for comparison
+    norm_keep: Dict[str, set[str]] = {}
+    for src, codes in keep_map.items():
+        src_norm = str(src).lower()
+        norm_keep[src_norm] = {str(c).upper().strip() for c in codes}
+    
+    raw_citations: List[Dict[str, Any]] = []
+    
+    for i, row in enumerate(context_items, start=1):
+        src = str(row.get("source", "unknown")).lower()
+        meta = row.get("meta") or {}
+        method = row.get("method")
+        
+        # Special handling for coding_result synthetic document
+        if src == "coding_result":
+            raw_citations.append({
+                "index": i,
+                "kind": "coding_result",
+                "source": src,
+                "key": "coding_result",
+                "title": row.get("title") or "Final coding result",
+                "extra": {
+                    "method": method,
+                    "meta": meta,
+                },
+            })
+            continue
+        
+        # For code sources, check if the code is in the keep_map
+        code = (
+            row.get("source_id")
+            or row.get("code")
+            or row.get("id")
+            or ""
+        )
+        code_norm = str(code).upper().strip()
+        
+        # Check if this source is in keep_map and if the code is selected
+        if src in norm_keep:
+            if code_norm not in norm_keep[src]:
+                # Skip this citation - not in the ledger
+                continue
+        
+        kind = _classify_citation_kind(row)
+        key = f"{src}:{row.get('id')}"
+        
+        # Look up cluster_id if source_cluster_map is provided
+        cluster_id = None
+        if source_cluster_map:
+            src_map = source_cluster_map.get(src, {})
+            cluster_id = src_map.get(code_norm) or src_map.get(code)
+        
+        citation: Dict[str, Any] = {
+            "index": i,
+            "kind": kind,
+            "source": src,
+            "key": str(key),
+            "title": row.get("title") or "",
+            "code": code_norm,
+            "extra": {
+                "method": method,
+                "meta": meta,
+            },
+        }
+        
+        if cluster_id:
+            citation["cluster_id"] = cluster_id
+        
+        raw_citations.append(citation)
+    
+    # Sort: coding_result first, then by kind, then by index
+    kind_order = {"coding_result": 0, "valyu": 1, "ethos": 2, "guideline": 3}
+    raw_citations.sort(key=lambda c: (kind_order.get(c["kind"], 99), c["index"]))
+    
+    # Re-index after filtering
+    for i, cit in enumerate(raw_citations, start=1):
+        cit["index"] = i
+    
+    return raw_citations
+
+
 async def fill_coding_gaps(
     q: str,
     missing_slots: List[Dict[str, Any]],
