@@ -4,9 +4,10 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple, Set
 from dataclasses import dataclass
 import re
+import difflib
 
 import asyncpg
 import httpx
@@ -28,7 +29,9 @@ from .stream_config import (
     GUIDELINE_SOURCES,
     MAX_CONTEXT_CHARS,
     ETHOS_SOURCE_NAME,
-    EOH_SYSTEM_PROMPT
+    EOH_SYSTEM_PROMPT,
+    CODING_GRADER_SYSTEM_PROMPT,
+    CODING_USER_PROMPT_TEMPLATE,
 )
 
 from .stream_gating import apply_code_row_filter, apply_source_gating
@@ -41,7 +44,7 @@ CODE_MIN_LIMIT = int(os.getenv("CODE_MIN_LIMIT", "32"))
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rag", tags=["rag-stream"])
 
-client = OpenAI()
+client = OpenAI(timeout=60.0)
 
 # ---------------------------------------------------------------------------
 # Group toggles and defaults
@@ -92,6 +95,292 @@ _GUIDELINE_PREFIXES = (
     "esmo_",
     "kdigo_",
 )
+
+# ---------------------------------------------------------------------------
+# Generic concept similarity helpers for slot satisfaction
+# ---------------------------------------------------------------------------
+
+# Very small, generic stopword list – *not* disease-specific.
+_CONCEPT_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "in", "on", "with", "without",
+    "to", "for", "by", "at", "from", "using", "use", "via", "as", "is",
+    "are", "be", "being", "been", "versus", "vs", "vs.",
+}
+
+
+def _concept_tokens(text: str) -> set[str]:
+    """
+    Normalize a short clinical phrase into a set of "meaningful" tokens.
+
+    - Lowercase
+    - Strip punctuation
+    - Remove very short tokens / obvious stopwords
+    - No disease-class-specific specials (pure lexical).
+    """
+    if not text:
+        return set()
+
+    text = text.lower()
+    # Split on non-alphanumeric
+    raw = re.split(r"[^a-z0-9]+", text)
+    out: set[str] = set()
+    for tok in raw:
+        tok = tok.strip()
+        if not tok:
+            continue
+        if tok in _CONCEPT_STOPWORDS:
+            continue
+        if len(tok) <= 2:
+            continue
+        out.add(tok)
+    return out
+
+
+def _concept_similarity(
+    slot_label: str,
+    title: str,
+    search_terms: list[str] | None = None,
+) -> float:
+    """
+    Compute a coarse "concept similarity" score between a missing-slot label
+    (plus optional search terms) and a ledger code title.
+
+    This is intentionally generic and disease-agnostic:
+      - token overlap
+      - plus a loose SequenceMatcher ratio
+
+    Returns a float in [0, 1]; higher = more similar.
+    """
+    slot_tokens = _concept_tokens(slot_label)
+    if search_terms:
+        for t in search_terms:
+            slot_tokens |= _concept_tokens(t)
+
+    title_tokens = _concept_tokens(title)
+
+    if not slot_tokens or not title_tokens:
+        return 0.0
+
+    overlap = slot_tokens & title_tokens
+    union = slot_tokens | title_tokens
+
+    # Basic Jaccard
+    jaccard = len(overlap) / max(1, len(union))
+
+    # Sequence-based similarity on raw strings (helps with acronyms, etc.)
+    ratio = difflib.SequenceMatcher(
+        None,
+        slot_label.lower(),
+        title.lower(),
+    ).ratio()
+
+    # Combine with a simple weighted average
+    # (tuneable; keep it simple and transparent)
+    sim = 0.6 * jaccard + 0.4 * ratio
+    return sim
+
+
+def _norm_term_key(t: str) -> str:
+    """Normalize a term for dictionary lookup."""
+    return re.sub(r"\s+", " ", t.strip().lower())
+
+
+# ICD-10–oriented phrase-level synonyms.
+# Keys and values should be *normalized phrases* (lowercase, no weird spacing),
+# aiming to bridge natural-language → ICD-10-CM wording.
+ICD10_SYNONYM_MAP: Dict[str, List[str]] = {
+    # Abscess / intra-abdominal
+    "pelvic abscess": [
+        "peritoneal abscess",
+        "intra-abdominal abscess",
+        "intraperitoneal abscess",
+    ],
+    "pelvic fluid collection": [
+        "peritoneal abscess",
+        "intra-abdominal abscess",
+    ],
+    "intraabdominal abscess": [
+        "intra-abdominal abscess",
+        "peritoneal abscess",
+    ],
+
+    # Cardiovascular
+    "heart attack": [
+        "acute myocardial infarction",
+        "myocardial infarction",
+        "ami",
+        "stemi",
+        "nstemi",
+    ],
+    "stemi": [
+        "acute myocardial infarction",
+        "myocardial infarction",
+    ],
+    "nstemi": [
+        "acute myocardial infarction",
+        "myocardial infarction",
+    ],
+    "chf": [
+        "congestive heart failure",
+        "heart failure",
+    ],
+    "congestive heart failure": [
+        "heart failure",
+    ],
+    "blood clot in leg": [
+        "deep vein thrombosis",
+        "venous thrombosis",
+    ],
+    "dvt": [
+        "deep vein thrombosis",
+    ],
+    "pe": [
+        "pulmonary embolism",
+        "pulmonary thromboembolism",
+    ],
+    "lung clot": [
+        "pulmonary embolism",
+    ],
+
+    # Diabetes
+    "type 2 diabetes": [
+        "diabetes mellitus type 2",
+        "type ii diabetes mellitus",
+        "t2dm",
+    ],
+    "type 1 diabetes": [
+        "diabetes mellitus type 1",
+        "type i diabetes mellitus",
+        "t1dm",
+    ],
+    "diabetic ketoacidosis": [
+        "dka",
+    ],
+
+    # Renal
+    "kidney failure": [
+        "renal failure",
+        "acute renal failure",
+        "acute kidney failure",
+    ],
+    "chronic kidney disease": [
+        "chronic renal failure",
+        "chronic renal insufficiency",
+        "ckd",
+    ],
+    "end stage renal disease": [
+        "end-stage renal disease",
+        "esrd",
+    ],
+    "esrd": [
+        "end-stage renal disease",
+        "chronic kidney disease",
+    ],
+
+    # Infection / sepsis
+    "uti": [
+        "urinary tract infection",
+    ],
+    "urine infection": [
+        "urinary tract infection",
+    ],
+    "bladder infection": [
+        "cystitis",
+        "urinary tract infection",
+    ],
+    "urosepsis": [
+        "sepsis",
+        "septicemia",
+    ],
+    "septicemia": [
+        "sepsis",
+    ],
+    "blood infection": [
+        "sepsis",
+        "septicemia",
+    ],
+
+    # Respiratory
+    "pna": [
+        "pneumonia",
+    ],
+    "lung infection": [
+        "pneumonia",
+    ],
+    "chest infection": [
+        "pneumonia",
+    ],
+
+    # Neuro
+    "stroke": [
+        "cerebrovascular accident",
+        "cva",
+        "cerebral infarction",
+    ],
+    "cva": [
+        "cerebrovascular accident",
+        "cerebral infarction",
+    ],
+}
+
+
+# Generic short-hand → long medical phrases that are often useful across codes
+GENERIC_MED_SYNONYM_MAP: Dict[str, List[str]] = {
+    "htn": ["hypertension", "high blood pressure"],
+    "high blood pressure": ["hypertension"],
+    "afib": ["atrial fibrillation"],
+    "mi": ["myocardial infarction", "acute myocardial infarction"],
+    "copd": ["chronic obstructive pulmonary disease"],
+    "rhf": ["right heart failure"],
+    "lhf": ["left heart failure"],
+    "ckd": ["chronic kidney disease"],
+}
+
+
+def _find_semantic_matches_for_slot(
+    slot: dict,
+    ledger_items: list[dict],
+    *,
+    min_similarity: float = 0.35,
+    max_codes: int = 6,
+) -> set[str]:
+    """
+    Given a single missing slot and all ledger items for its vocabulary,
+    return a set of codes that are *conceptually close enough* to treat
+    this slot as satisfied.
+
+    - Uses only lexical similarity; no disease-class hardcoding.
+    - If no items clear the min_similarity threshold, returns empty set.
+    """
+    label = str(slot.get("slot_label", "") or "")
+    terms = slot.get("search_terms") or []
+    search_terms: list[str] = []
+    if isinstance(terms, list):
+        for t in terms:
+            if isinstance(t, str) and t.strip():
+                search_terms.append(t.strip())
+
+    satisfied_codes: set[str] = set()
+    if not ledger_items or not label.strip():
+        return satisfied_codes
+
+    for item in ledger_items:
+        code = str(item.get("code") or "").strip()
+        if not code:
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+
+        sim = _concept_similarity(label, title, search_terms)
+        if sim < min_similarity:
+            continue
+
+        satisfied_codes.add(code)
+        if len(satisfied_codes) >= max_codes:
+            break
+
+    return satisfied_codes
 
 # ---------------------------------------------------------------------------
 # Slot satisfaction heuristics for coding
@@ -153,16 +442,23 @@ def _apply_slot_satisfaction_heuristics(
 ) -> tuple[Dict[str, List[str]], List[Dict[str, Any]]]:
     """
     Heuristically treat some 'missing_slots' as satisfied when the ledger
-    already contains obviously relevant codes.
+    already contains codes that are *conceptually very close* to the slot.
 
-    - Looks at ledger["sources"][vocab] titles.
-    - If a slot_label matches one of SLOT_SATISFACTION_RULES[vocab]['slot_regex']
-      AND we find titles containing one of the configured substrings
-      (e.g. 'Albumin/Creat Ur-Rto', 'Microalbumin/Creat', 'Metformin'),
-      we add those codes to keep_map[vocab] and drop the slot from
-      missing_slots.
+    Two layers, both vocabulary-agnostic wrt disease class:
 
-    Returns (new_keep_map, new_missing_slots).
+      1) Generic semantic similarity
+         - Compare slot_label + search_terms to ledger titles for that vocab.
+         - If similarity is high enough, we:
+             * add those codes to keep_map[vocab]
+             * drop the slot from missing_slots
+
+      2) Optional narrow rules in SLOT_SATISFACTION_RULES
+         - For things like lab panels / drug names with very consistent titles
+           (e.g., UACR, BMP, metformin).
+         - Still not tied to a specific disease (RA, lupus, etc.).
+
+    Returns:
+      (new_keep_map, new_missing_slots)
     """
     sources = (ledger.get("sources") or {}) if isinstance(ledger, dict) else {}
 
@@ -193,46 +489,61 @@ def _apply_slot_satisfaction_heuristics(
             new_missing.append(slot)
             continue
 
-        rules = SLOT_SATISFACTION_RULES.get(vocab)
-        if not rules:
-            # No heuristics for this vocab
-            new_missing.append(slot)
-            continue
-
         ledger_items = sources.get(vocab) or []
         if not isinstance(ledger_items, list) or not ledger_items:
             new_missing.append(slot)
             continue
 
+        # -------------------------------------------------------------------
+        # 1) Generic concept similarity: disease-agnostic and vocabulary-agnostic.
+        #    If the ledger already has codes whose titles are conceptually close
+        #    to this slot_label, treat the slot as satisfied.
+        # -------------------------------------------------------------------
+        generic_matches = _find_semantic_matches_for_slot(
+            slot,
+            ledger_items,
+            min_similarity=0.35,  # tuneable threshold
+            max_codes=6,
+        )
+
+        # -------------------------------------------------------------------
+        # 2) Optional narrow per-vocab rules (e.g., UACR, BMP, metformin).
+        #    These are still not tied to a specific disease class.
+        # -------------------------------------------------------------------
+        rule_matches: set[str] = set()
+        rules = SLOT_SATISFACTION_RULES.get(vocab)
+        if rules:
+            for rule in rules:
+                slot_rx = rule.get("slot_regex")
+                substrings = rule.get("title_substrings") or []
+                max_codes = int(rule.get("max_codes") or 0) or 10
+
+                if not slot_rx or not hasattr(slot_rx, "search"):
+                    continue
+                if not slot_rx.search(label):
+                    # This rule doesn't apply to this slot_label
+                    continue
+
+                for item in ledger_items:
+                    code = str(item.get("code") or "").strip()
+                    if not code:
+                        continue
+                    title = str(item.get("title") or "").lower()
+                    if not title:
+                        continue
+
+                    for sub in substrings:
+                        sub_l = str(sub).lower()
+                        if sub_l and sub_l in title:
+                            rule_matches.add(code)
+                            break  # don't re-check other substrings for this item
+
+                    if len(rule_matches) >= max_codes:
+                        break
+
         satisfied_codes: set[str] = set()
-
-        for rule in rules:
-            slot_rx = rule.get("slot_regex")
-            substrings = rule.get("title_substrings") or []
-            max_codes = int(rule.get("max_codes") or 0) or 10
-
-            if not slot_rx or not hasattr(slot_rx, "search"):
-                continue
-            if not slot_rx.search(label):
-                # This rule doesn't apply to this slot_label
-                continue
-
-            for item in ledger_items:
-                code = str(item.get("code") or "").strip()
-                if not code:
-                    continue
-                title = str(item.get("title") or "").lower()
-                if not title:
-                    continue
-
-                for sub in substrings:
-                    sub_l = str(sub).lower()
-                    if sub_l and sub_l in title:
-                        satisfied_codes.add(code)
-                        break  # don't re-check other substrings for this item
-
-                if len(satisfied_codes) >= max_codes:
-                    break
+        satisfied_codes |= generic_matches
+        satisfied_codes |= rule_matches
 
         if satisfied_codes:
             bucket = norm_keep.setdefault(vocab, set())
@@ -270,6 +581,90 @@ class SourceMatches:
             seen.add(key)
             deduped.append(m)
         return deduped[:CODING_MAX_PER_SOURCE]
+
+
+def extract_final_icd_codes_for_sse(
+    results_by_source: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """
+    Build a very simple, eval-friendly structure of ICD codes from the
+    post-grading / post-pinning coding results.
+
+    Convention:
+      - For icd9cm: version = 9
+      - For icd10cm: version = 10
+
+    We look at rows in CODING_SOURCES and pull code from `source_id`
+    (or `id` as a fallback). If you have a dedicated `code` field, you
+    can swap that in instead.
+    """
+    icd9_codes: list[dict] = []
+    icd10_codes: list[dict] = []
+
+    for src, rows in results_by_source.items():
+        if src not in CODING_SOURCES:
+            continue
+
+        # Infer version from source name; adjust if you use different identifiers.
+        if "icd10" in src:
+            version = 10
+        elif "icd9" in src:
+            version = 9
+        else:
+            # snomed, loinc, rxnorm, etc. are not ICD; skip for this eval.
+            continue
+
+        for r in rows:
+            # If your pin logic tags rows, you can filter here, e.g.:
+            # if not r.get("pinned", False): continue
+            code = (r.get("source_id") or r.get("id") or "").strip()
+            if not code:
+                continue
+
+            entry = {"code": code, "version": version}
+            if version == 9:
+                icd9_codes.append(entry)
+            else:
+                icd10_codes.append(entry)
+
+    # Deduplicate while preserving order
+    def dedupe(seq: list[dict]) -> list[dict]:
+        seen = set()
+        out = []
+        for item in seq:
+            key = (item["code"], item["version"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+        return out
+
+    return {
+        "icd9": dedupe(icd9_codes),
+        "icd10cm": dedupe(icd10_codes),
+        # Optional combined convenience:
+        "codes": dedupe(icd9_codes + icd10_codes),
+    }
+
+def build_coding_result_from_keep_map(keep_map: Dict[str, List[str]]) -> Dict[str, Any]:
+    """
+    Build the final coding_result payload directly from the grader's keep_map.
+
+    - Only uses codes that survived pass-2 grading.
+    - Currently we expose ICD-10-CM; you can extend to ICD-9/ICD-11 later.
+    """
+    icd10_codes = [
+        {"code": code, "version": 10}
+        for code in (keep_map.get("icd10cm") or [])
+        if isinstance(code, str) and code.strip()
+    ]
+
+    # You can keep icd9 as an empty list for now
+    return {
+        "icd9": [],
+        "icd10cm": icd10_codes,
+        "codes": list(icd10_codes),
+    }
 
 async def retrieve_coding_matches_by_source(
     pool: asyncpg.Pool,
@@ -448,62 +843,6 @@ async def discover_all_guideline_sources(pool: asyncpg.Pool) -> List[str]:
 # Coding prepass: ledger, grader, gap retrieval, pinning
 # ---------------------------------------------------------------------------
 
-CODING_GRADER_SYSTEM_PROMPT = """
-You are a medical coding auditor for a retrieval-augmented system.
-
-You receive:
-- A clinical question.
-- A thin ledger of retrieved codes from ICD-10-CM, ICD-11, SNOMED CT, LOINC, and RxNorm.
-
-Your goals:
-1. Decide which retrieved codes are clinically appropriate and relevant to the question.
-2. Identify IMPORTANT missing "slots" where the question clearly implies a code that is not present.
-
-Definitions:
-- "Keep codes" = codes that are clearly correct and relevant to the question.
-- "Missing slot" = an axis where a code is expected but not present, e.g.
-    - ICD-10-CM lupus nephritis
-    - SNOMED kidney biopsy
-    - LOINC protein/creatinine ratio
-    - RxNorm mycophenolate mofetil, prednisone
-    - etc.
-
-Rules:
-- NEVER invent codes. You can only keep codes that appear in the ledger.
-- You MAY mark missing slots even if you do not know the exact code.
-- For combination conditions (e.g., diabetes with chronic kidney disease, heart failure with reduced ejection fraction,
-  systemic lupus erythematosus with renal involvement), it is appropriate to keep **more than one** ICD-10-CM or ICD-11
-  code when they are clearly relevant (for example, a systemic disease code plus an organ/renal code).
-- Missing slots should be specific enough to guide a follow-up search:
-    - Include vocabulary name (icd10cm, icd11, snomed, loinc, rxnorm).
-    - Include a short human-readable label, e.g. "lupus nephritis", "kidney biopsy".
-    - Include a list of 1–4 search terms to use for retrieval.
-
-Output STRICT JSON with this exact shape:
-{
-  "keep": {
-    "icd10cm": ["CODE1", "CODE2"],
-    "icd11": ["..."],
-    "snomed": ["..."],
-    "loinc": ["..."],
-    "rxnorm": ["..."]
-  },
-  "missing_slots": [
-    {
-      "vocabulary": "icd10cm",
-      "slot_label": "lupus nephritis",
-      "search_terms": ["lupus nephritis", "renal involvement in SLE"]
-    }
-  ]
-}
-
-Notes:
-- You do NOT need to fill every vocabulary.
-- If a vocabulary is not relevant, just leave it empty or omit it in "keep".
-- Be conservative: only keep codes that clearly match the question.
-""".strip()
-
-
 def build_coding_ledger(
     results_by_source: Dict[str, List[Dict[str, Any]]]
 ) -> Dict[str, Any]:
@@ -678,27 +1017,22 @@ async def fill_coding_gaps(
     per_slot_limit: int = 16,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
-    For each missing slot, run an extra TS pass with focused search terms
-    and merge any new matches into results_by_source.
-
-    Returns the updated results_by_source.
+    For each missing slot, run an extra TS pass with the slot's search_terms
+    (which should already include LLM-expanded phrases).
     """
     if not missing_slots:
         return results_by_source
 
     for slot in missing_slots:
-        vocab = slot.get("vocabulary", "").lower()
-        terms = slot.get("search_terms") or []
-        label = slot.get("slot_label") or ""
-
+        vocab = (slot.get("vocabulary") or "").lower()
         if vocab not in CODING_SOURCES:
-            # Only code vocabularies are supported here
             continue
 
-        search_terms = [t for t in terms if isinstance(t, str) and t.strip()]
-        if not search_terms and label:
-            search_terms = [label]
-
+        terms = slot.get("search_terms") or []
+        search_terms = [
+            t for t in terms
+            if isinstance(t, str) and t.strip()
+        ]
         if not search_terms:
             continue
 
@@ -735,9 +1069,11 @@ async def fill_coding_gaps(
             if key not in combined:
                 combined[key] = norm
 
-        # Sort by score high → low for downstream
         merged_rows = list(combined.values())
-        merged_rows.sort(key=lambda r: float(r.get("score", 0.0) or 0.0), reverse=True)
+        merged_rows.sort(
+            key=lambda r: float(r.get("score", 0.0) or 0.0),
+            reverse=True,
+        )
         results_by_source[vocab] = merged_rows
 
     return results_by_source
@@ -865,6 +1201,73 @@ def rrf_fuse(
         reverse=True,
     )
     return fused[:k]
+
+
+def build_icd10_rows_from_crosswalk(
+    edges: List[Dict[str, Any]],
+    *,
+    base_score: float = 0.35,
+) -> List[Dict[str, Any]]:
+    """
+    Turn SNOMED→ICD-10-CM crosswalk edges into pseudo rag_corpus-style rows
+    for the icd10cm source.
+
+    These are "virtual" rows used only in coding_mode to enrich the ledger.
+    """
+    rows: List[Dict[str, Any]] = []
+
+    for e in edges:
+        code_norm = (e.get("icd10cm_code_norm") or "").strip()
+        code_raw = (e.get("icd10cm_code_raw") or "").strip()
+        code = code_norm or code_raw
+        if not code:
+            continue
+
+        title_long = (e.get("icd10cm_title_long") or "").strip()
+        title_short = (e.get("icd10cm_title_short") or "").strip()
+        snomed_id = str(e.get("snomed_id") or "").strip()
+        snomed_term = (e.get("snomed_term") or "").strip()
+
+        title_parts = [code]
+        if title_long:
+            title_parts.append("— " + title_long)
+        elif title_short:
+            title_parts.append("— " + title_short)
+        title = " ".join(title_parts).strip()
+
+        text_parts: List[str] = []
+        if snomed_term:
+            text_parts.append(f"SNOMED: {snomed_term} ({snomed_id})")
+        map_rule = (e.get("map_rule") or "").strip()
+        map_advice = (e.get("map_advice") or "").strip()
+        if map_rule:
+            text_parts.append(f"Rule: {map_rule}")
+        if map_advice:
+            text_parts.append(f"Advice: {map_advice}")
+        text = "\n".join(text_parts)
+
+        row_id = f"crosswalk_icd10cm:{snomed_id}:{code}"
+
+        rows.append(
+            {
+                "id": row_id,
+                "source": "icd10cm",
+                "source_id": code,
+                "title": title,
+                "text": text,
+                "meta": {
+                    **e,
+                    "from_crosswalk": True,
+                    "crosswalk_source": "kg.snomed_icd10cm_crosswalk",
+                },
+                # Give these a decent score so they show up in the ledger but
+                # don’t completely swamp true ts/ann hits.
+                "score": base_score,
+                "method": "snomed_crosswalk",
+            }
+        )
+
+    return rows
 
 
 def build_fused_context(
@@ -1226,6 +1629,82 @@ async def resolve_pg_pool() -> asyncpg.Pool:
 
 
 # ---------------------------------------------------------------------------
+# Crosswalk helpers (SNOMED → ICD-10-CM)
+# ---------------------------------------------------------------------------
+
+
+async def fetch_snomed_icd10_edges(
+    pool: asyncpg.Pool,
+    snomed_ids: List[str],
+    max_edges_per_snomed: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Lookup SNOMED → ICD-10-CM edges from kg.snomed_icd10cm_crosswalk.
+
+    snomed_ids are SNOMED concept IDs as strings; we coerce to BIGINT.
+    """
+    # SNOMED IDs should be numeric; filter/coerce defensively.
+    numeric_ids: List[int] = []
+    for sid in snomed_ids:
+        s = (sid or "").strip()
+        if not s:
+            continue
+        try:
+            numeric_ids.append(int(s))
+        except ValueError:
+            # If you ever store non-numeric SNOMED IDs, you can extend this.
+            continue
+
+    if not numeric_ids:
+        return []
+
+    sql = """
+        SELECT
+            snomed_id,
+            snomed_term,
+            icd10cm_code_raw,
+            icd10cm_code_norm,
+            icd10cm_title_long,
+            icd10cm_title_short,
+            map_group,
+            map_priority,
+            map_rule,
+            map_advice,
+            map_category_id,
+            effective_time,
+            active
+        FROM kg.snomed_icd10cm_crosswalk
+        WHERE snomed_id = ANY($1::bigint[])
+          AND active
+        ORDER BY snomed_id, map_group, map_priority
+        LIMIT $2;
+    """
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, numeric_ids, max_edges_per_snomed * max(1, len(numeric_ids)))
+
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "snomed_id": str(r["snomed_id"]),
+                "snomed_term": r["snomed_term"],
+                "icd10cm_code_raw": r["icd10cm_code_raw"],
+                "icd10cm_code_norm": r["icd10cm_code_norm"],
+                "icd10cm_title_long": r["icd10cm_title_long"],
+                "icd10cm_title_short": r["icd10cm_title_short"],
+                "map_group": r["map_group"],
+                "map_priority": r["map_priority"],
+                "map_rule": r["map_rule"],
+                "map_advice": r["map_advice"],
+                "map_category_id": r["map_category_id"],
+                "effective_time": r["effective_time"],
+                "active": r["active"],
+            }
+        )
+    return out
+
+# ---------------------------------------------------------------------------
 # DB Search Helpers (TS + ANN)
 # ---------------------------------------------------------------------------
 
@@ -1267,6 +1746,329 @@ async def search_source_ts(
             }
         )
     return out
+
+async def _llm_expand_terms_for_slot(
+    q: str,
+    slot: Dict[str, Any],
+    base_terms: List[str],
+    model: str = CHAT_MODEL,
+) -> List[str]:
+    """
+    Use the chat model to reason about better search terms for a coding slot.
+
+    We give it:
+      - the full clinical question (q)
+      - the coding slot metadata (vocabulary, slot_label)
+      - the grader's base_terms
+
+    It returns a short list of additional phrases that might capture the
+    underlying condition (e.g. map "pelvic abscess" -> "peritoneal abscess").
+    """
+    # De-dup and normalize
+    all_terms = list(
+        dict.fromkeys(
+            t.strip()
+            for t in (base_terms)
+            if isinstance(t, str) and t.strip()
+        )
+    )
+    if not all_terms:
+        return []
+
+    vocab = (slot.get("vocabulary") or "").lower()
+    slot_label = slot.get("slot_label") or ""
+
+    system_msg = (
+        "You expand search phrases for clinical coding searches. "
+        "Given a coding vocabulary, a slot label, and some search terms, you must infer "
+        "what underlying condition or concept is being described and propose additional "
+        "short search phrases that would help find the correct code row. "
+        "If a term includes a body part or region plus a condition"
+        ", consider that the code may live under the condition "
+        "category alone. "
+        "Prefer concise medical phrases, not long sentences. "
+        "Never invent implausible rare diseases; keep to realistic clinical language. "
+        "If ANY search term contains the word 'abscess', you MUST include "
+        "'peritoneal abscess' in your expanded_terms unless it would clearly contradict "
+        "the clinical note. "
+        "Always return STRICT JSON with an 'expanded_terms' array."
+    )
+
+    user_msg = f"""Clinical question:
+    {q}
+
+    Vocabulary: {vocab}
+    Slot label: {slot_label}
+
+    Base search terms from the grader:
+    - """ + "\n- ".join(all_terms) + f"""
+
+    Task:
+    1. Infer the underlying condition or concept you think the code will be under.
+    2. Propose 3–10 additional short search phrases that would help find the code row
+       in this vocabulary. Focus on the condition/disease name, not the body region alone.
+    3. Return ONLY JSON of the form:
+       {{"expanded_terms": ["term1", "term2", "..."]}}.
+
+    Remember:
+    - You are not choosing the final code, only better search phrases.
+    - Keep each term under ~6 words.
+    """
+
+    loop = asyncio.get_event_loop()
+    try:
+        resp = await loop.run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model=model,
+                temperature=0.0,  # <-- make this deterministic for coding gaps
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+            ),
+        )
+        content = resp.choices[0].message.content or ""
+
+        # Be robust to any extra text around the JSON.
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return []
+
+        obj = json.loads(content[start : end + 1])
+        terms = obj.get("expanded_terms") or []
+        terms = [
+            t.strip()
+            for t in terms
+            if isinstance(t, str) and t.strip()
+        ]
+
+        # ---- HARD-CODED ABSCESS FALLBACK ---------------------------------
+        # If any base term contains "abscess", force-add "peritoneal abscess"
+        # unless it's already present.
+        # lower_all = {t.lower() for t in (all_terms + terms)}
+        # if any("abscess" in t for t in lower_all):
+        #     if "peritoneal abscess" not in lower_all:
+        #         terms.append("peritoneal abscess")
+        # -------------------------------------------------------------------
+
+        # Final de-dup preserving order
+        seen: set[str] = set()
+        out: List[str] = []
+        for t in terms:
+            key = t.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        return out
+
+    except Exception:
+        logger.exception("_llm_expand_terms_for_slot failed")
+        return []
+
+async def find_coding_gap_terms(
+    q: str,
+    missing_slots: List[Dict[str, Any]],
+    model: str = CHAT_MODEL,
+) -> List[Dict[str, Any]]:
+    """
+    For each missing coding slot, call the LLM to expand search terms.
+
+    Returns a new list of slot dicts with:
+      - vocabulary
+      - slot_label
+      - base_terms
+      - search_terms (base + LLM-expanded, deduped)
+    """
+    out_slots: List[Dict[str, Any]] = []
+
+    for slot in missing_slots:
+        if not isinstance(slot, dict):
+            continue
+
+        vocab = (slot.get("vocabulary") or "").lower()
+        if vocab not in CODING_SOURCES:
+            continue
+
+        label = (slot.get("slot_label") or "").strip()
+        base_terms: List[str] = []
+
+        if label:
+            base_terms.append(label)
+
+        for t in slot.get("search_terms") or []:
+            if isinstance(t, str) and t.strip():
+                base_terms.append(t.strip())
+
+        # De-dup base_terms
+        seen: set[str] = set()
+        base_terms = [
+            t for t in base_terms
+            if not (t.lower() in seen or seen.add(t.lower()))
+        ]
+
+        if not base_terms:
+            continue
+
+        # Call the LLM expander (with abscess fallback baked in)
+        expanded = await _llm_expand_terms_for_slot(
+            q=q,
+            slot=slot,
+            base_terms=base_terms,
+            model=model,
+        )
+
+        # Combine base + expanded, dedup
+        combined: List[str] = []
+        seen = set()
+        for t in [*base_terms, *expanded]:
+            key = t.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(t)
+
+        out_slots.append(
+            {
+                "vocabulary": vocab,
+                "slot_label": label,
+                "base_terms": base_terms,
+                "search_terms": combined,
+            }
+        )
+
+    return out_slots
+    
+async def find_coding_gaps(
+    q: str,
+    missing_slots: List[Dict[str, Any]],
+    model: str = CHAT_MODEL,
+) -> List[Dict[str, Any]]:
+    """
+    For each missing coding slot, ask the LLM for better search phrases.
+
+    Returns a list of entries:
+      {
+        "slot": slot_dict,
+        "vocabulary": vocab,
+        "slot_label": slot_label,
+        "base_terms": [...],
+        "search_terms": [...],   # base + LLM-expanded, deduped
+      }
+
+    These search_terms are what you then feed into TS (search_source_ts_for_terms).
+    """
+    gap_entries: List[Dict[str, Any]] = []
+
+    for slot in missing_slots:
+        if not isinstance(slot, dict):
+            continue
+
+        vocab = (slot.get("vocabulary") or "").lower()
+        if vocab not in CODING_SOURCES:
+            # Only run this for code vocabularies
+            continue
+
+        slot_label = (slot.get("slot_label") or "").strip()
+
+        # Seed base_terms from grader search_terms + slot_label
+        base_terms: List[str] = []
+        terms = slot.get("search_terms") or []
+        if isinstance(terms, list):
+            for t in terms:
+                if isinstance(t, str) and t.strip():
+                    base_terms.append(t.strip())
+
+        if slot_label and slot_label not in base_terms:
+            base_terms.append(slot_label)
+
+        # Dedup + normalize
+        seen: set[str] = set()
+        base_terms = [
+            t for t in base_terms
+            if not (t.lower() in seen or seen.add(t.lower()))
+        ]
+
+        if not base_terms:
+            continue
+
+        # Ask LLM for expansions (this is the function you already debugged)
+        expanded_terms: List[str] = await _llm_expand_terms_for_slot(
+            q=q,
+            slot=slot,
+            base_terms=base_terms,
+            model=model,
+        )
+
+        # Combine base + expanded, dedup
+        combined_seen: set[str] = set()
+        combined_terms: List[str] = []
+        for t in [*base_terms, *(expanded_terms or [])]:
+            if not isinstance(t, str):
+                continue
+            t_norm = t.strip()
+            if not t_norm:
+                continue
+            key = t_norm.lower()
+            if key in combined_seen:
+                continue
+            combined_seen.add(key)
+            combined_terms.append(t_norm)
+
+        if not combined_terms:
+            continue
+
+        gap_entries.append(
+            {
+                "slot": slot,
+                "vocabulary": vocab,
+                "slot_label": slot_label,
+                "base_terms": base_terms,
+                "search_terms": combined_terms,
+            }
+        )
+
+    return gap_entries
+
+
+def _expand_terms_with_icd10_synonyms(terms: Iterable[str]) -> List[str]:
+    """
+    Expand a list of terms using ICD10_SYNONYM_MAP.
+    - Preserves original terms.
+    - Adds any configured synonyms.
+    - De-duplicates by normalized form.
+    """
+    seen: Set[str] = set()
+    expanded: List[str] = []
+
+    for t in terms:
+        if not t:
+            continue
+        norm = _norm_term_key(t)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        expanded.append(t)
+
+        # ICD-10 specific synonyms
+        for syn in ICD10_SYNONYM_MAP.get(norm, []):
+            syn_norm = _norm_term_key(syn)
+            if syn_norm in seen:
+                continue
+            seen.add(syn_norm)
+            expanded.append(syn)
+
+        # Optional: generic medical shortcuts → full phrases
+        for syn in GENERIC_MED_SYNONYM_MAP.get(norm, []):
+            syn_norm = _norm_term_key(syn)
+            if syn_norm in seen:
+                continue
+            seen.add(syn_norm)
+            expanded.append(syn)
+
+    return expanded
 
 async def search_source_ts_for_terms(
     pool: asyncpg.Pool,
@@ -1369,17 +2171,6 @@ async def search_source_ann(
         )
     return out
 
-
-# ---------------------------------------------------------------------------
-# Valyu integration
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Valyu integration
-# ---------------------------------------------------------------------------
-
-
 # ---------------------------------------------------------------------------
 # Valyu integration
 # ---------------------------------------------------------------------------
@@ -1475,9 +2266,170 @@ async def fetch_valyu_results(
 
 
 # ---------------------------------------------------------------------------
-# LLM helpers
+# Match helpers
 # ---------------------------------------------------------------------------
 
+def dedupe_matches(matches: list[dict]) -> list[dict]:
+    """
+    Deduplicate matches by (source, id). Keep the first occurrence.
+    This keeps traces clean and avoids inflating pinned_counts.
+    """
+    seen = set()
+    out = []
+    for m in matches:
+        key = (m.get("source"), m.get("id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(m)
+    return out
+
+
+async def run_icd10cm_crosswalk_phase(
+    send: callable,
+    pool: asyncpg.Pool,
+    coding_rows: list[dict],
+) -> list[dict]:
+    """
+    Expand SNOMED coding rows to ICD-10-CM via kg.snomed_icd10cm_crosswalk.
+
+    - Emits:
+        status: coding_crosswalk_expansion
+        phase_start (source=icd10cm, method=edges)
+        phase_end   (source=icd10cm, method=edges)
+        matches     (phase=edges, source=icd10cm)
+    - Returns list of ICD-10-CM match rows, deduped by (source, id).
+    """
+    # Informational status, just like before
+    await send(sse("status", {"status": "coding_crosswalk_expansion"}))
+
+    # Start phase
+    await send(
+        sse(
+            "phase_start",
+            {
+                "source": "icd10cm",
+                "method": "edges",
+            },
+        )
+    )
+
+    # --- build list of SNOMED ids to expand ---
+    # Expect coding_rows from previous phases with source="snomed"
+    snomed_ids = {
+        r["id"]
+        for r in coding_rows
+        if r.get("source") == "snomed" and isinstance(r.get("id"), (int, str))
+    }
+
+    if not snomed_ids:
+        # No SNOMED inputs, cleanly end phase and return
+        await send(
+            sse(
+                "phase_end",
+                {
+                    "source": "icd10cm",
+                    "method": "edges",
+                },
+            )
+        )
+        return []
+
+    # --- fetch crosswalk rows in one shot ---
+    # You already created kg.snomed_icd10cm_crosswalk
+    # snomed_id, icd10cm_code_norm, icd10cm_title_long, icd10cm_title_short, ...
+    rows = []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+              snomed_id,
+              snomed_term,
+              icd10cm_code_norm,
+              icd10cm_code_raw,
+              icd10cm_title_long,
+              icd10cm_title_short,
+              map_group,
+              map_priority,
+              map_rule,
+              map_advice,
+              map_category_id,
+              effective_time,
+              active
+            FROM kg.snomed_icd10cm_crosswalk
+            WHERE snomed_id = ANY($1::bigint[])
+              AND active = TRUE
+            """,
+            list({int(s) for s in snomed_ids if str(s).isdigit()}),
+        )
+
+    # --- convert to match objects ---
+    crosswalk_matches: list[dict] = []
+    for row in rows:
+        icd_code = row["icd10cm_code_norm"]
+        if not icd_code:
+            continue
+
+        match_id = f"crosswalk_icd10cm:{row['snomed_id']}:{icd_code}"
+
+        # NOTE: score is arbitrary here; you can tune later or
+        # make it relative to ts/ann scores if you want
+        crosswalk_matches.append(
+            {
+                "source": "icd10cm",
+                "id": match_id,
+                "code": icd_code,
+                "score": 0.55,  # moderate baseline, tweak as needed
+                "text": row["icd10cm_title_long"] or row["icd10cm_title_short"] or icd_code,
+                "meta": {
+                    "kind": "coding_crosswalk",
+                    "snomed_id": row["snomed_id"],
+                    "snomed_term": row["snomed_term"],
+                    "icd10cm_code_raw": row["icd10cm_code_raw"],
+                    "icd10cm_title_long": row["icd10cm_title_long"],
+                    "icd10cm_title_short": row["icd10cm_title_short"],
+                    "map_group": row["map_group"],
+                    "map_priority": row["map_priority"],
+                    "map_rule": row["map_rule"],
+                    "map_advice": row["map_advice"],
+                    "map_category_id": row["map_category_id"],
+                    "effective_time": row["effective_time"].isoformat()
+                    if row["effective_time"]
+                    else None,
+                },
+            }
+        )
+
+    # --- dedupe by (source, id) so trace & fusion stay clean ---
+    crosswalk_matches = dedupe_matches(crosswalk_matches)
+
+    # End phase *before* emitting matches, to mirror ts/ann
+    await send(
+        sse(
+            "phase_end",
+            {
+                "source": "icd10cm",
+                "method": "edges",
+            },
+        )
+    )
+
+    # Emit matches event (single consolidated batch)
+    if crosswalk_matches:
+        await send(
+            sse(
+                "matches",
+                {
+                    "phase": "edges",
+                    "source": "icd10cm",
+                    "matches": crosswalk_matches,
+                },
+            )
+        )
+
+    return crosswalk_matches
+
+    
 # ---------------------------------------------------------------------------
 # Term extraction (coding + QA) with expansions
 # ---------------------------------------------------------------------------
@@ -1665,20 +2617,22 @@ def build_all_terms(term_data: Dict[str, Any]) -> List[str]:
 
 async def extract_code_terms(q: str) -> List[str]:
     """
-    Use the chat model to extract focused search phrases for code-oriented retrieval.
+    Use the chat model to extract focused search phrases AND candidate codes
+    for code-oriented retrieval.
 
     The model should:
-      - Identify disease/condition phrases (e.g., 'systemic lupus erythematosus',
-        'lupus nephritis', 'nephrotic syndrome').
-      - Identify procedure phrases (e.g., 'kidney biopsy').
-      - Identify lab analytes / test names (e.g., 'protein/creatinine ratio',
-        'creatinine', 'complement levels', 'anti-dsDNA').
-      - Identify medication names (e.g., 'mycophenolate mofetil', 'prednisone').
+      - Identify disease/condition phrases.
+      - Identify procedure phrases.
+      - Identify lab analytes / test names.
+      - Identify medication names.
+      - When possible, propose *candidate* codes for ICD-10-CM, ICD-11,
+        SNOMED CT, LOINC, and RxNorm based on the question text.
 
-    Returns a deduplicated list of short phrases that will be used as TS
-    queries across ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, etc.
+    Returns:
+      - A deduplicated list of short phrases and code strings that will be
+        used as TS queries across ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm.
+      - Candidate codes are also logged separately for downstream validation.
     """
-    # We reuse CHAT_MODEL so behavior is aligned with the main coding LLM.
     try:
         resp = client.chat.completions.create(
             model=CHAT_MODEL,
@@ -1687,41 +2641,85 @@ async def extract_code_terms(q: str) -> List[str]:
                 {
                     "role": "system",
                     "content": (
-                        "You are a medical coding term extractor for a RAG system.\n"
-                        "Given a clinical question that asks for ICD-10-CM, ICD-11, "
-                        "SNOMED CT, LOINC, and/or RxNorm codes, your job is to output "
-                        "a small set of focused search phrases that will be used to "
-                        "query each coding vocabulary.\n\n"
-                        "Rules:\n"
+                        "You are a medical coding term and code-candidate extractor "
+                        "for a retrieval-augmented coding system.\n\n"
+                        "Given a clinical question or discharge summary that asks for "
+                        "ICD-10-CM, ICD-11, SNOMED CT, LOINC, and/or RxNorm codes, "
+                        "your job is to output:\n"
+                        "  1) A small set of focused search phrases.\n"
+                        "  2) A small set of *candidate* codes per vocabulary.\n\n"
+                        "General rules:\n"
                         "- Return ONLY a JSON object.\n"
                         "- The JSON MUST have a key 'terms' whose value is a list of strings.\n"
-                        "- Each string should be a short, code-like phrase (2–6 words), "
-                        "  suitable for text search.\n"
+                        "- The JSON MAY have a key 'code_candidates' whose value is a list "
+                        "  of objects.\n\n"
+                        "For 'terms':\n"
+                        "- Each term should be a short phrase (2–6 words) suitable for text search.\n"
                         "- Include:\n"
-                        "    * disease/condition names (e.g., 'systemic lupus erythematosus', "
-                        "      'lupus nephritis', 'nephrotic syndrome')\n"
+                        "    * disease/condition names (e.g., 'heart failure with reduced "
+                        "       ejection fraction', 'chronic kidney disease stage 3b', "
+                        "       'type 2 diabetes mellitus with peripheral neuropathy')\n"
                         "    * relevant organ or syndrome qualifiers when they meaningfully "
-                        "      constrain the code (e.g., 'class iv lupus nephritis' is ok, but "
-                        "      'biopsy-proven class iv lupus nephritis in an adult' is too long)\n"
-                        "    * procedures (e.g., 'kidney biopsy')\n"
-                        "    * lab tests/analytes (e.g., 'protein/creatinine ratio', "
-                        "      'creatinine', 'complement levels', 'anti-dsDNA')\n"
-                        "    * medication names (e.g., 'mycophenolate mofetil', 'prednisone')\n"
+                        "      constrain the code (e.g., 'acute on chronic systolic heart failure')\n"
+                        "    * procedures (e.g., 'IV diuresis', 'kidney biopsy')\n"
+                        "    * lab tests/analytes (e.g., 'ejection fraction', "
+                        "       'apixaban level', 'creatinine')\n"
+                        "    * medication names (e.g., 'apixaban', 'metoprolol', 'lisinopril')\n"
                         "- Do NOT include generic context words like 'adult', 'treated', "
                         "  'please provide', 'codes for', etc.\n"
                         "- Aim for roughly 5–20 terms depending on question complexity.\n"
-                        "- Avoid duplicates; normalize obvious variants to a single phrase "
-                        "  (e.g., prefer 'protein/creatinine ratio' over multiple similar forms).\n"
+                        "- Avoid duplicates; normalize obvious variants to a single phrase.\n\n"
+                        "For 'code_candidates':\n"
+                        "- Use this shape for each candidate:\n"
+                        "  {\n"
+                        '    \"vocabulary\": \"icd10cm\" | \"icd11\" | \"snomed\" | \"loinc\" | \"rxnorm\",\n'
+                        '    \"code\": \"string\",\n'
+                        '    \"display\": \"human-readable title for the code\",\n'
+                        '    \"reason\": \"1–2 sentence justification based on the text\",\n'
+                        '    \"confidence\": \"high\" | \"medium\" | \"low\"\n'
+                        "  }\n"
+                        "- Only propose a code when the clinical description gives a strong\n"
+                        "  signal that the code is plausible (e.g., explicit disease name, "
+                        "  stage/severity, clear medication mention).\n"
+                        "- Prefer a *small* set of high-yield candidates over many guesses.\n"
+                        "- For 'high' confidence:\n"
+                        "    * The text closely matches the official code title or a very\n"
+                        "      common synonym.\n"
+                        "- For 'medium' confidence:\n"
+                        "    * The mapping is plausible but details (e.g., exact subtype,\n"
+                        "      laterality, or complication) are not fully specified.\n"
+                        "- For 'low' confidence:\n"
+                        "    * Only include if the question clearly asks for codes and the\n"
+                        "      best you can do is a reasonable educated guess.\n"
+                        "- Never invent obviously impossible codes (e.g., wrong format for\n"
+                        "  the vocabulary).\n\n"
+                        "Output STRICT JSON only, with this top-level structure:\n"
+                        "{\n"
+                        "  \"terms\": [\"term1\", \"term2\", ...],\n"
+                        "  \"code_candidates\": [\n"
+                        "    {\n"
+                        "      \"vocabulary\": \"icd10cm\",\n"
+                        "      \"code\": \"I50.23\",\n"
+                        "      \"display\": \"Acute on chronic systolic (congestive) heart failure\",\n"
+                        "      \"reason\": \"The note states acute on chronic systolic HF exacerbation.\",\n"
+                        "      \"confidence\": \"high\"\n"
+                        "    }\n"
+                        "    // ... more candidates\n"
+                        "  ]\n"
+                        "}\n"
+                        "If you are unsure about codes, you may return an empty "
+                        "'code_candidates' list, but you should still return strong 'terms'.\n"
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Clinical question:\n"
+                        "Clinical question or summary:\n"
                         f"{q.strip()}\n\n"
                         "Respond ONLY with JSON of the form:\n"
                         "{\n"
-                        '  \"terms\": [\"term1\", \"term2\", ...]\n'
+                        '  \"terms\": [\"term1\", \"term2\", ...],\n'
+                        '  \"code_candidates\": [ { ... } ]\n'
                         "}\n"
                     ),
                 },
@@ -1731,7 +2729,6 @@ async def extract_code_terms(q: str) -> List[str]:
         logger.exception("extract_code_terms: OpenAI chat call failed")
         return []
 
-    # Parse JSON content safely
     try:
         content = resp.choices[0].message.content or ""
     except Exception:
@@ -1745,27 +2742,66 @@ async def extract_code_terms(q: str) -> List[str]:
         return []
 
     raw_terms = data.get("terms") or data.get("code_terms") or []
+    raw_code_candidates = data.get("code_candidates") or []
+
     if not isinstance(raw_terms, list):
         logger.warning("extract_code_terms: 'terms' not a list: %r", type(raw_terms))
-        return []
+        raw_terms = []
+
+    if not isinstance(raw_code_candidates, list):
+        logger.warning(
+            "extract_code_terms: 'code_candidates' not a list: %r",
+            type(raw_code_candidates),
+        )
+        raw_code_candidates = []
 
     # Clean / normalize / dedupe
     terms_set: set[str] = set()
+
+    # 1) Natural language terms
     for t in raw_terms:
         if not isinstance(t, str):
             continue
         t_clean = t.strip()
         if not t_clean:
             continue
-        # Drop very short noise tokens
         if len(t_clean) < 3:
             continue
-        # Normalize whitespace
         t_clean = re.sub(r"\s+", " ", t_clean)
         terms_set.add(t_clean)
 
+    # 2) Also fold in raw code strings as terms so TS can directly hit them.
+    code_candidates_clean: list[dict[str, Any]] = []
+    for cand in raw_code_candidates:
+        if not isinstance(cand, dict):
+            continue
+        vocab = str(cand.get("vocabulary") or "").strip().lower()
+        code = str(cand.get("code") or "").strip().upper()
+        display = str(cand.get("display") or "").strip()
+        confidence = str(cand.get("confidence") or "").strip().lower() or "medium"
+        reason = str(cand.get("reason") or "").strip()
+
+        if not vocab or not code:
+            continue
+
+        code_candidates_clean.append(
+            {
+                "vocabulary": vocab,
+                "code": code,
+                "display": display,
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+
+        # Add the raw code string as a TS term (e.g., 'I50.23', 'E11.40').
+        terms_set.add(code)
+
+    if code_candidates_clean:
+        logger.info("extract_code_terms: code_candidates=%s", code_candidates_clean)
+
     terms = sorted(terms_set)
-    logger.info("extract_code_terms: %s", terms)
+    logger.info("extract_code_terms: terms=%s", terms)
     return terms
 
 # ---------------------------------------------------------------------------
@@ -1829,7 +2865,7 @@ def build_llm_messages(
 
     Modes:
       - coding_mode=True
-            → strict coding prompt (unchanged).
+            → strict coding prompt (enhanced for completeness).
       - coding_mode=False, answer_mode='guideline'
             → guideline/MKG-first QA prompt (existing behavior).
       - coding_mode=False, answer_mode='valyu'
@@ -1838,39 +2874,11 @@ def build_llm_messages(
             → Ethos-of-Health reasoning prompt over EoH/MKG context.
     """
     if coding_mode:
-        # ------------------ coding mode (unchanged) ------------------
-        system_content = (
-            CODING_SYSTEM_PROMPT
-            + "\n\n"
-            + "Additional guardrails:\n"
-            + "- You must only emit codes that appear in the provided context.\n"
-            + "- For each vocabulary (ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm), "
-            + "  only use codes explicitly labeled for that system in the context.\n"
-            + "- If the context clearly contains relevant candidate codes for a requested "
-            + "  category (e.g., 'kidney biopsy', 'protein/creatinine ratio', "
-            + "  'creatinine', 'complement levels', 'anti-dsDNA', 'mycophenolate ' "
-            + "  or 'prednisone'), you must choose one or more of those codes instead "
-            + "  of saying that no codes are present.\n"
-            + "- If no candidates are present for a requested category, say "
-            + "  'none_found' for that category instead of inventing codes.\n"
-            + "- Do not substitute across vocabularies (e.g., do not answer a SNOMED CT "
-            + "  request with a LOINC code).\n"
-            + "- For systemic diseases with organ involvement (for example, lupus nephritis), "
-            + "  prefer a combination of a systemic disease code (e.g., SLE) plus an "
-            + "  organ/renal code when both are available in the context."
-        )
+        system_content = CODING_SYSTEM_PROMPT
 
-        user_content = (
-            "Clinical coding / abstraction request:\n"
-            f"{q.strip()}\n\n"
-            "Here is the retrieved coding context (codes and related clinical snippets). "
-            "Rows are labeled CODE_CONTEXT when they are code systems (ICD-10-CM, ICD-11, "
-            "SNOMED CT, LOINC, RxNorm) and CLINICAL_CONTEXT when they are supporting "
-            "clinical text:\n\n"
-            f"{ctx_str}\n\n"
-            "Follow the coding instructions exactly. Use only codes from the context, "
-            "and for each requested coding system, either select one or more codes "
-            "or explicitly return 'none_found' for that system."
+        user_content = CODING_USER_PROMPT_TEMPLATE.format(
+            question=q.strip(),
+            context=ctx_str,
         )
 
         return [
@@ -1960,6 +2968,7 @@ def build_llm_messages(
             ),
         },
     ]
+
 
 # ---------------------------------------------------------------------------
 # MKG + Valyu formatting helpers
@@ -2146,6 +3155,7 @@ def stream_llm_events(
     *,
     event_prefix: str = "llm",
     answer_mode: str = "guideline",
+    
 ) -> Iterable[Dict[str, str]]:
     """
     Stream LLM output as SSE events.
@@ -2350,6 +3360,15 @@ async def _event_generator(
     requested_valyu_k = valyu_k
     valyu_k = max(0, min(valyu_k, VALYU_K_MAX))
 
+    # Decide effective answer mode
+    effective_answer_mode = answer_mode or "guideline"
+    if coding_mode:
+        effective_answer_mode = "coding"
+    
+    term_expansions: Dict[str, List[str]] = {}
+
+    coding_result: Optional[Dict[str, Any]] = None
+
     # 0) Initial event
     yield sse(
         "start",
@@ -2363,7 +3382,7 @@ async def _event_generator(
             "valyu_k": valyu_k,
             "valyu_k_requested": requested_valyu_k,
             "use_ethos": use_ethos_bool,
-            "answer_mode": (answer_mode or "guideline"),
+            "answer_mode": effective_answer_mode,
         },
     )
 
@@ -2404,7 +3423,12 @@ async def _event_generator(
         yield sse("status", {"status": "extracting_code_terms"})
         try:
             code_terms = await extract_code_terms(q)
-            yield sse("code_terms", {"terms": code_terms})
+            yield sse(
+                "code_terms",
+                {
+                    "terms": code_terms,
+                },
+            )
         except Exception as e:
             logger.exception("extract_code_terms crashed; continuing without code_terms")
             yield sse(
@@ -2524,28 +3548,29 @@ async def _event_generator(
             if snippet:
                 bits.append(f"Snippet: {snippet[:400]}")
         valyu_snippets_for_terms = "\n\n".join(bits)
-
-    yield sse("status", {"status": "extracting_query_terms"})
-    try:
-        qna_terms = await extract_qna_terms(
-            q,
-            extra_context=valyu_snippets_for_terms or None,
-        )
-        all_terms = qna_terms.get("all_terms", []) or []
-        yield sse("query_terms", qna_terms)
-    except Exception as e:
-        logger.exception("query term extraction crashed; continuing with raw query")
-        yield sse(
-            "query_terms",
-            {
-                "terms": [],
-                "expansions": {},
-                "all_terms": [],
-                "error": "query_term_extraction_failed",
-                "detail": str(e),
-            },
-        )
-        all_terms = []
+    if not coding_mode:
+        yield sse("status", {"status": "extracting_query_terms"})
+        try:
+            qna_terms = await extract_qna_terms(
+                q,
+                extra_context=valyu_snippets_for_terms or None,
+            )
+            all_terms = qna_terms.get("all_terms", []) or []
+            term_expansions = qna_terms.get("expansions") or {}
+            yield sse("query_terms", qna_terms)
+        except Exception as e:
+            logger.exception("query term extraction crashed; continuing with raw query")
+            yield sse(
+                "query_terms",
+                {
+                    "terms": [],
+                    "expansions": term_expansions,
+                    "all_terms": [],
+                    "error": "query_term_extraction_failed",
+                    "detail": str(e),
+                },
+            )
+            all_terms = []
 
     if await request.is_disconnected():
         return
@@ -2553,19 +3578,21 @@ async def _event_generator(
     # -----------------------------------------------------------------------
     # 1.3) Routing (single pass, Valyu-aware in non-coding mode)
     # -----------------------------------------------------------------------
+    # coding doesn't route anymore. tech debt to remove this.
     router_plan: CodingRouterPlan | None = None
     effective_sources: List[str] = list(db_sources)
 
     yield sse("status", {"status": "routing_sources"})
 
     try:
-        router_plan = await route_coding_sources(
-            q=q,
-            code_terms=code_terms if coding_mode else [],
-            candidate_sources=db_sources,
-            # Non-coding mode: let router see Valyu context to bias guidelines
-            valyu_context=(valyu_matches if (not coding_mode and valyu_matches) else None),
-        )
+        if not coding_mode:
+            router_plan = await route_coding_sources(
+                q=q,
+                code_terms=code_terms if coding_mode else [],
+                candidate_sources=db_sources,
+                # Non-coding mode: let router see Valyu context to bias guidelines
+                valyu_context=(valyu_matches if (not coding_mode and valyu_matches) else None),
+            )
     except Exception as e:
         logger.exception("route_coding_sources failed; using all db_sources")
         router_plan = None
@@ -2618,41 +3645,13 @@ async def _event_generator(
             # ---------------------------
             # Union code_terms + all_terms for code vocabularies
             # ---------------------------
-            if coding_mode and src in CODING_SOURCES:
-                # Build an effective term set from both code_terms and all_terms
-                term_set: set[str] = set()
-
-                for t in (code_terms or []):
-                    if not isinstance(t, str):
-                        continue
-                    t_clean = t.strip()
-                    if t_clean:
-                        term_set.add(t_clean)
-
-                for t in (all_terms or []):
-                    if not isinstance(t, str):
-                        continue
-                    t_clean = t.strip()
-                    if t_clean:
-                        term_set.add(t_clean)
-
-                effective_terms: List[str] = sorted(term_set)
-
-                if effective_terms:
-                    ts_rows = await search_source_ts_for_terms(
-                        pool=pool,
-                        source=src,
-                        terms=effective_terms,
-                        limit=per_source_limit,
-                    )
-                else:
-                    # Fallback: plain-text TS if term extraction totally failed
-                    ts_rows = await search_source_ts(
-                        pool=pool,
-                        source=src,
-                        q=q,
-                        limit=per_source_limit,
-                    )
+            if coding_mode and code_terms:
+                ts_rows = await search_source_ts_for_terms(
+                    pool=pool,
+                    source=src,
+                    terms=code_terms,
+                    limit=per_source_limit,
+                )
 
             # ---------------------------
             # Non-coding or non-code sources: original behavior
@@ -2789,6 +3788,104 @@ async def _event_generator(
         results_by_source[src] = combined_rows
 
     # -----------------------------------------------------------------------
+    # 2.5) Edge expansion: SNOMED → ICD-10-CM crosswalk (coding_mode only)
+    # -----------------------------------------------------------------------
+    if coding_mode and "snomed" in results_by_source and "icd10cm" in effective_sources:
+        # Collect SNOMED concept IDs from the retrieved SNOMED rows
+        snomed_rows = results_by_source.get("snomed") or []
+        snomed_ids: List[str] = []
+        for r in snomed_rows:
+            sid = r.get("source_id") or r.get("id")
+            if not sid:
+                continue
+            sid_str = str(sid).strip()
+            if sid_str:
+                snomed_ids.append(sid_str)
+
+        # De-duplicate
+        snomed_ids = sorted(set(snomed_ids))
+
+        if snomed_ids:
+            yield sse(
+                "status",
+                {
+                    "status": "coding_crosswalk_expansion",
+                    "detail": f"snomed_ids={len(snomed_ids)}",
+                },
+            )
+
+            # Optional: mark phase start/end for traces
+            yield sse("phase_start", {"source": "icd10cm", "method": "edges"})
+            try:
+                edges = await fetch_snomed_icd10_edges(
+                    pool,
+                    snomed_ids,
+                    max_edges_per_snomed=8,
+                )
+            except Exception as e:
+                logger.exception("SNOMED→ICD-10-CM crosswalk expansion failed")
+                yield sse(
+                    "status",
+                    {
+                        "status": "crosswalk_error",
+                        "source": "icd10cm",
+                        "detail": str(e),
+                    },
+                )
+                edges = []
+            yield sse("phase_end", {"source": "icd10cm", "method": "edges"})
+
+            if edges:
+                edge_rows = build_icd10_rows_from_crosswalk(edges)
+
+                edge_rows = dedupe_matches(edge_rows)
+                # Merge edge-based rows into existing icd10cm results
+                existing_icd = results_by_source.get("icd10cm", [])
+                combined_icd: Dict[Any, Dict[str, Any]] = {}
+
+                for r in existing_icd:
+                    rid = r.get("id")
+                    if rid is not None:
+                        combined_icd[rid] = r
+
+                for r in edge_rows:
+                    rid = r.get("id")
+                    if rid is None:
+                        continue
+                    if rid not in combined_icd:
+                        combined_icd[rid] = r
+
+                merged_icd = list(combined_icd.values())
+                merged_icd.sort(
+                    key=lambda r: float(r.get("score", 0.0) or 0.0),
+                    reverse=True,
+                )
+                results_by_source["icd10cm"] = merged_icd
+
+                # Emit an SSE matches block so you can see them in the trace
+                yield sse(
+                    "matches",
+                    {
+                        "phase": "edges",
+                        "source": "icd10cm",
+                        "matches": [
+                            {
+                                "id": r["id"],
+                                "source": r["source"],
+                                "source_id": r.get("source_id") or "",
+                                "title": r.get("title", ""),
+                                "score": r.get("score", 0.0),
+                                "method": r.get("method", "snomed_crosswalk"),
+                            }
+                            for r in edge_rows
+                        ],
+                    },
+                )
+
+        if await request.is_disconnected():
+            return
+
+    # -----------------------------------------------------------------------
     # 3) Coding prepass (if coding_mode)
     # -----------------------------------------------------------------------
     if coding_mode:
@@ -2832,20 +3929,43 @@ async def _event_generator(
         if await request.is_disconnected():
             return
 
-        # If we have missing slots, run a targeted gap-retrieval pass
+        # If we have missing slots, run an LLM-only gap-retrieval pass
         if missing1:
-            yield sse(
-                "status",
-                {"status": "coding_gap_retrieval"},
-            )
+            yield sse("status", {"status": "coding_gap_retrieval"})
 
-            results_by_source = await fill_coding_gaps(
+            # 1) Ask LLM to reason about better search phrases per slot
+            gap_slots = await find_coding_gap_terms(
                 q=q,
                 missing_slots=missing1,
+                model=CHAT_MODEL,
+            )
+
+            # Optional: emit what we're about to do
+            if gap_slots:
+                yield sse("coding_gap_terms", {"slots": gap_slots})
+
+            # 2) Actually retrieve using these expanded terms
+            results_by_source = await fill_coding_gaps(
+                q=q,
+                missing_slots=gap_slots or missing1,  # fall back if LLM fails
                 results_by_source=results_by_source,
                 pool=pool,
                 per_slot_limit=max(limit, 16),
             )
+
+            # Emit a summary after gap retrieval
+            ledger_gap = build_coding_ledger(results_by_source)
+            ledger_gap_summary = summarize_coding_ledger(ledger_gap)
+            yield sse(
+                "coding_gap_retrieval",
+                {
+                    "missing_slots": missing1,
+                    "post_gap_summary": ledger_gap_summary,
+                },
+            )
+
+            if await request.is_disconnected():
+                return
 
             # Emit a summary after gap retrieval
             ledger_gap = build_coding_ledger(results_by_source)
@@ -2917,6 +4037,29 @@ async def _event_generator(
             },
         )
 
+        icd_keep = set((keep2.get("icd10cm") or []))
+
+        if icd_keep:
+            icd_rows = results_by_source.get("icd10cm") or []
+            filtered_icd_rows = []
+
+            for row in icd_rows:
+                # normalize code from row
+                code = (
+                    row.get("code")
+                    or row.get("id")
+                    or ""
+                )
+                code = str(code).upper().strip()
+                if code in icd_keep:
+                    filtered_icd_rows.append(row)
+
+            results_by_source["icd10cm"] = filtered_icd_rows
+
+        # Now build the final coding_result strictly from the filtered ICD rows
+        coding_result = build_coding_result_from_keep_map(keep2)
+        yield sse("coding_result", coding_result)
+
         if await request.is_disconnected():
             return
 
@@ -2927,26 +4070,29 @@ async def _event_generator(
     # ---------------------------------------------------------------------------
 
     QA_GRADER_SYSTEM_PROMPT = """
-    You are a source selection auditor for a medical retrieval-augmented system.
+    You are a source-selection auditor for a medical retrieval-augmented question-answering (QA) system.
 
     You receive:
     - A clinical question.
-    - A compact "ledger" summarizing the retrieved sources, with:
-        - number of rows per source
-        - max retrieval score per source
-        - a few titles/snippets
+    - A compact "ledger" summarizing retrieved sources, including:
+        • number of rows per source
+        • max retrieval score per source
+        • short titles/snippets that illustrate the source’s content
 
     Your goals:
     1. Decide which sources are clearly useful for answering the question.
-    2. Optionally identify sources that are probably not useful (off-topic or very low signal).
+    2. Optionally identify sources that are probably not useful (off-topic, extremely low signal, or irrelevant to the clinical task).
 
     Rules:
-    - Think in terms of sources (guidelines, terminology sets, EHR notes, etc.), not individual rows.
-    - Be conservative about dropping sources: only drop ones that are clearly irrelevant.
-    - NEVER invent new source names. You may only choose from the sources in the ledger.
-    - Always keep at least one source.
+    - Evaluate sources at the SOURCE level (e.g., guidelines, terminology sets, clinical notes, trials), not individual rows.
+    - Be conservative about dropping sources:
+        • Only drop a source if it is clearly irrelevant to the question.
+        • Consider whether the question requires guidelines, diagnostic vocabularies, labs, medications, or clinical narrative.
+    - NEVER invent new source names. Use only the sources appearing in the ledger.
+    - ALWAYS keep at least one source.
+    - The goal is to guide downstream reasoning by ensuring only relevant sources proceed.
 
-    Output STRICT JSON with this shape:
+    Output STRICT JSON with this exact shape:
     {
     "keep_sources": ["source1", "source2"],
     "drop_sources": ["source3"],
@@ -2956,7 +4102,7 @@ async def _event_generator(
         "source3": "why drop"
     }
     }
-    """.strip()
+    """
 
 
     def build_qa_ledger(
@@ -3216,6 +4362,30 @@ async def _event_generator(
         coding_mode=coding_mode,
     )
 
+    # If we are in coding_mode and have a final coding_result, inject it as a
+    # synthetic "document" at the top of the fused internal context so the LLM
+    # can see the graded codes directly.
+    if coding_mode and coding_result:
+        coding_summary_text = json.dumps(coding_result, indent=2)
+
+        coding_ctx_row: Dict[str, Any] = {
+            "id": "coding_result",
+            "source": "coding_result",  # pseudo-source name
+            "source_id": None,
+            "title": "Final coding result (ICD/LOINC/RxNorm/SNOMED ledger)",
+            "text": coding_summary_text,
+            "meta": {
+                "kind": "coding_result",
+            },
+            # High score so it is not filtered out by any downstream scoring
+            # logic and appears early in fusion.
+            "score": 1.0,
+            "method": "coding_result",
+        }
+
+        # Prepend so it’s the first thing in context
+        internal_ctx = [coding_ctx_row, *internal_ctx]
+
     # For the FIRST LLM call, we now use ONLY internal MKG/guideline context.
     # Valyu is kept completely out of this fused context.
     final_ctx = internal_ctx
@@ -3224,10 +4394,7 @@ async def _event_generator(
     # but they are NOT included in final_ctx.
     if (not coding_mode) and use_valyu_bool and valyu_k > 0 and valyu_matches:
         valyu_ctx_count = len(valyu_matches[:valyu_k])
-    else:
-        valyu_ctx_count = 0
-
-    yield sse(
+        yield sse(
         "matches",
         {
             "phase": "fused",
@@ -3245,6 +4412,8 @@ async def _event_generator(
             ],
         },
     )
+    else:
+        valyu_ctx_count = 0
 
     if await request.is_disconnected():
         return
@@ -3309,7 +4478,7 @@ async def _event_generator(
             final_ctx,
             llm_mode,
             coding_mode=coding_mode,
-            answer_mode=answer_mode,  # 🔥 pass through 'guideline' | 'eoh' | etc.
+            answer_mode=answer_mode,
         ):
             if await request.is_disconnected():
                 return
@@ -3336,7 +4505,7 @@ async def _event_generator(
                 "valyu_k": valyu_k,
                 "with_llm": with_llm,
                 "use_ethos": use_ethos_bool,
-                "answer_mode": answer_mode,
+                "answer_mode": effective_answer_mode,
             }
         },
     )

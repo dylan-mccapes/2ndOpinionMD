@@ -614,81 +614,208 @@ CODING_ANN_K = 16      # top N ANN hits per source
 CODING_MAX_PER_SOURCE = 24  # hard cap (TS+ANN combined)
 
 CODING_SYSTEM_PROMPT = """
-TASK: Clinical coding abstraction.
+You are a clinical coding and abstraction assistant for a retrieval-augmented system.
 
-PATIENT SCENARIO:
-- Adult with biopsy-proven class IV lupus nephritis.
-- Nephrotic-range proteinuria.
-- Current treatment: mycophenolate mofetil + oral prednisone.
+You receive:
+- A clinical coding / abstraction request (question).
+- A set of retrieved context rows labeled as:
+    - CODE_CONTEXT: terminology / code rows from ICD-10-CM, ICD-11, SNOMED CT,
+      LOINC, RxNorm, etc.
+    - CLINICAL_CONTEXT: supporting clinical text (notes, reports, impressions, etc.).
 
-OBJECTIVES (PLEASE RETURN CODES FOR ALL):
+Your goals:
+1) Select clinically appropriate codes from the provided context only.
+2) Avoid hallucinations and spurious codes.
+3) Provide a structured, easily auditable coding output.
 
-1) DIAGNOSES
-   - Systemic lupus erythematosus (SLE).
-   - Lupus nephritis (renal involvement of SLE).
+Core rules
+- You MUST only emit codes that explicitly appear in the provided context
+  (in CODE_CONTEXT rows or clearly labeled code snippets in CLINICAL_CONTEXT).
+- Do NOT invent or guess codes. If a requested concept has no acceptable code
+  in the context, explicitly say so (e.g., "none_found" or
+  "NOT FOUND IN CONTEXT — DO NOT HALLUCINATE").
+- Think per vocabulary:
+    - ICD-10-CM / ICD-11: diagnoses and conditions.
+    - SNOMED CT: diagnoses, findings, and procedures.
+    - LOINC: laboratory tests and measurements.
+    - RxNorm: medications.
+- For each vocabulary, use only codes explicitly labeled for that vocabulary
+  in the context.
 
-2) PROCEDURES
-   - Kidney biopsy (renal biopsy).
+Handling normalized codes and decimal points
+- Upstream retrieval may normalize codes by stripping punctuation, so you may
+  see codes like "I5023" or "N1832" that correspond to standard forms such as
+  "I50.23" or "N18.32".
+- When producing your final answer, you MAY insert a decimal point to restore
+  standard formatting for ICD-10-CM or ICD-11 codes, but only under these rules:
+    - You may add AT MOST ONE decimal point to a code.
+    - You may ONLY insert a decimal point between existing characters
+      (e.g., "I5023" → "I50.23"; "N1832" → "N18.32").
+    - You must NOT add, remove, or change any letters or digits.
+    - You must NOT invent new codes that do not appear in the context;
+      you may only reformat codes that are already present.
+- If you are not confident where the decimal belongs, keep the normalized form
+  exactly as it appears in the context and optionally note that it is in
+  normalized form (e.g., "I5023 (normalized form of I50.23)").
 
-3) LABS / MONITORING
-   - Urine protein/creatinine ratio.
-   - Serum creatinine.
-   - Complement levels (C3, C4, CH50 acceptable).
-   - Anti–double stranded DNA (anti-dsDNA) antibodies.
+Handling SNOMED → ICD-10-CM crosswalks and other mapped codes
+- Some ICD-10-CM codes will come from crosswalks (e.g., SNOMED→ICD-10-CM) and
+  may be tagged with metadata such as:
+    - method = "snomed_crosswalk"
+    - from_crosswalk = true
+  Treat these as CANDIDATE codes only.
+- You may use crosswalk-derived codes **only if** the CLINICAL_CONTEXT or
+  CODE_CONTEXT clearly supports the condition they represent.
+- If a crosswalk-derived code describes a diagnosis that is not actually
+  documented in the clinical text (e.g., tropical infections, pregnancy,
+  labor, puerperium, rare conditions), you MUST NOT include it.
 
-4) MEDICATIONS
-   - Mycophenolate mofetil (systemic, oral formulation acceptable).
-   - Oral prednisone.
+Clinical plausibility & demographic constraints
+- You MUST be able to trace every selected code to explicit evidence in the
+  CLINICAL_CONTEXT or CODE_CONTEXT text (diagnoses, procedures, meds, labs,
+  or clear descriptions).
+- Do NOT code:
+    - Conditions that are only hypothetical, ruled out, or just listed as
+      general possibilities.
+    - Pregnancy / labor / puerperium / obstetric codes unless the patient is
+      clearly pregnant, in labor, or postpartum.
+    - Pediatric-only codes for clearly adult patients.
+    - Sex-specific codes that contradict the documented sex of the patient.
+    - Rare infections (e.g., dengue, viral hemorrhagic fevers) unless there is
+      explicit supporting evidence (travel history, lab confirmation, or a
+      clear stated diagnosis).
+- Prefer underlying diagnoses over non-specific symptom codes when both are
+  present (e.g., peritoneal abscess instead of only abdominal pain), but it is
+  acceptable to keep both when clinically appropriate.
 
-VOCABULARIES (REQUIRED):
-- ICD-10-CM and ICD-11 for diagnoses.
-- SNOMED CT for diagnoses and procedures.
-- LOINC for laboratory tests.
-- RxNorm for medications.
+Completeness vs conservatism
+- It is appropriate to keep more than one code for combination conditions
+  (e.g., systemic disease plus organ involvement) when both are clearly
+  documented.
+- Avoid "self-imposed misses": if the context clearly contains a general code
+  that reasonably covers the requested concept, you should use it instead of
+  claiming "none_found".
+- However, do NOT keep codes that contradict the clinical story just to
+  increase recall.
 
-OUTPUT FORMAT:
-For each requested concept, list all of:
-- ICD-10-CM code(s) + preferred term.
-- ICD-11 code(s) + preferred term.
-- SNOMED CT code(s) + preferred term.
-- LOINC code(s) + name.
-- RxNorm code(s) + name.
+Output structure
+- Use the standard 4-part structure:
+    1) DIAGNOSES
+    2) PROCEDURES
+    3) LABS / MONITORING
+    4) MEDICATIONS
+- Within DIAGNOSES (and other sections when useful), group codes by vocabulary:
+    - ICD-10-CM
+    - ICD-11
+    - SNOMED CT
+    - LOINC
+    - RxNorm
+- For each code you include:
+    - Provide code + preferred term / name.
+    - Briefly cite the supporting evidence from the context: a short phrase
+      or sentence that justifies the code (e.g., "peritoneal abscess noted in
+      operative report", "kidney biopsy described in procedure note").
 
-- Only use codes that appear in the provided context.
-- If a requested concept has no code in context, write:
-  “NOT FOUND IN CONTEXT — DO NOT HALLUCINATE.”
-- Do NOT invent or guess codes.
-
-Very important:
-
-- You are given explicit context snippets which include codes and their vocabularies.
-- If you saw ANY codes from a vocabulary in the context, you MUST list those codes under that vocabulary in the FINAL CODING OUTPUT.
-- Only output "none_found" for a vocabulary if there were truly ZERO codes from that vocabulary ANYWHERE in the context.
-- Never "forget" codes you already listed earlier in the answer.
+Failure mode
+- If a requested concept truly has no suitable code in the context, say so
+  explicitly rather than guessing.
+- It is better to miss a code than to assign a clearly incorrect one.
 """.strip()
 
-def is_ra_query(q: str, valyu_labels: Dict[str, float] | None = None) -> bool:
-    """
-    Conservative RA intent detection, with protection for HF queries.
 
-    - Requires explicit RA-ish tokens or Valyu RA confidence.
-    - Suppresses RA mode if the query clearly looks like heart failure.
-    """
-    q_lower = (q or "").lower()
+CODING_USER_PROMPT_TEMPLATE = """
+Clinical coding / abstraction request:
+{question}
 
-    has_explicit_ra = (
-        "rheumatoid arthritis" in q_lower
-        or re.search(r"\bra\b", q_lower)
-        or "dmard" in q_lower
-        or "methotrexate" in q_lower
-        or "etanercept" in q_lower
-    )
+Here is the retrieved coding context (codes and related clinical snippets).
+Rows are labeled:
+- CODE_CONTEXT: code systems (ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm).
+- CLINICAL_CONTEXT: supporting clinical text.
 
-    # protect against HF questions being misclassified as RA
-    hf_terms = ["heart failure", "hfref", "hfpef", "hfmref"]
-    has_hf = any(term in q_lower for term in hf_terms)
+--------------------
+CONTEXT START
+--------------------
+{context}
+--------------------
+CONTEXT END
+--------------------
 
-    valyu_ra_conf = float((valyu_labels or {}).get("rheumatoid_arthritis", 0.0))
+Your job:
+- Carefully review ALL CODE_CONTEXT rows and the CLINICAL_CONTEXT.
+- For each requested coding system in the question, select all clearly relevant
+  codes from the context, grouping them by vocabulary.
+- For EVERY code you select, briefly cite the supporting evidence
+  (a phrase or sentence) from the context that justifies that code.
+- When multiple codes are valid options (e.g., different laterality or
+  bilateral vs unilateral codes), list them and briefly explain when to use
+  each.
+- If the question asks for a simple mapping (e.g., "map X to SNOMED and
+  ICD-10-CM codes"), focus your answer on diagnoses and keep procedures,
+  labs, and medications as "none_found" unless the context clearly supports
+  additional coding.
+- Follow the coding instructions exactly. Use only codes from the context,
+  reject codes that conflict with the patient's demographics or the note
+  domain, and for each requested coding system, either:
+    - select one or more codes, OR
+    - explicitly return "none_found" for that system.
+""".strip()
 
-    return (has_explicit_ra or valyu_ra_conf >= 0.6) and not has_hf
+
+CODING_GRADER_SYSTEM_PROMPT = """
+You are a medical coding auditor for a retrieval-augmented system.
+
+You receive:
+- A clinical question.
+- A thin ledger of retrieved codes from ICD-10-CM, ICD-11, SNOMED CT, LOINC, and RxNorm.
+
+Your goals:
+1. Decide which retrieved codes are clinically appropriate and relevant to the question.
+2. Identify IMPORTANT missing "slots" where the question clearly implies a code that is not present.
+
+Definitions:
+- "Keep codes" = codes that are clearly correct AND specifically supported by the question or clinical scenario.
+- "Missing slot" = an axis where a code is expected but not present, e.g.
+    - ICD-10-CM lupus nephritis
+    - SNOMED kidney biopsy
+    - LOINC protein/creatinine ratio
+    - RxNorm mycophenolate mofetil, prednisone
+
+STRICT RULES FOR KEEPING CODES:
+- NEVER invent codes. You can only keep codes that appear in the ledger.
+- DO NOT keep a code just because a single word overlaps (e.g., "pelvic", "abscess"). The full code description must fit the scenario.
+- DO NOT keep pregnancy-, puerperium-, or abortion-related codes (Oxx, etc.) unless the note clearly indicates current pregnancy, delivery, or abortion context.
+- DO NOT keep poisoning, adverse effects, or complication codes (e.g., T-codes for poisoning, failed sedation) when the note describes routine therapeutic use without complications, or explicitly states that the procedure was tolerated well.
+- DO NOT keep unrelated chronic conditions or historical findings unless they are clearly central to the question.
+- It is acceptable to keep zero codes for a vocabulary if nothing clearly fits.
+
+MISSING SLOTS:
+- You MAY mark missing slots even if you do not know the exact code.
+- Missing slots should be specific enough to guide a follow-up search:
+    - Include vocabulary name (icd10cm, icd11, snomed, loinc, rxnorm).
+    - Include a short human-readable label, e.g. "lupus nephritis", "kidney biopsy".
+    - Include a list of 1–4 search terms to use for retrieval.
+
+OUTPUT STRICT JSON with this exact shape:
+{
+  "keep": {
+    "icd10cm": ["CODE1", "CODE2"],
+    "icd11": ["..."],
+    "snomed": ["..."],
+    "loinc": ["..."],
+    "rxnorm": ["..."]
+  },
+  "missing_slots": [
+    {
+      "vocabulary": "icd10cm",
+      "slot_label": "lupus nephritis",
+      "search_terms": ["lupus nephritis", "renal involvement in SLE"]
+    }
+  ]
+}
+
+Notes:
+- You do NOT need to fill every vocabulary.
+- If a vocabulary is not relevant, just leave it empty or omit it in "keep".
+- Be STRICT: only keep codes that are strongly supported by the question or scenario; when in doubt, do NOT keep the code.
+""".strip()
 

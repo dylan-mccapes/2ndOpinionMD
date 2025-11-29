@@ -312,6 +312,7 @@ async def coding_stream(
             pool=pool,
             coding_mode=True,              # 🔑 coding mode
             use_ethos_bool=bool(use_ethos),
+            answer_mode="coding",
         ):
             yield ev
 
