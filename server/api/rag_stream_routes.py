@@ -1244,9 +1244,84 @@ async def cluster_coding_concepts(
     return {"clusters": clusters, "source_cluster_map": source_cluster_map}
 
 
+def build_canonical_keep_map(
+    keep_map: Dict[str, List[str]],
+    concept_clusters: Dict[str, Any],
+) -> Dict[str, List[str]]:
+    """
+    Build a canonical keep map by filtering keep_map to only include canonical codes.
+    
+    For each code in keep_map, look up its cluster via source_cluster_map.
+    Within that cluster, only keep the canonical_members for that source.
+    
+    Args:
+        keep_map: Original grader keep map {source: [codes]}
+        concept_clusters: Result from cluster_coding_concepts() with clusters and source_cluster_map
+    
+    Returns:
+        canonical_keep_map: Filtered keep map with only canonical codes per source
+    """
+    clusters = concept_clusters.get("clusters") or []
+    source_cluster_map = concept_clusters.get("source_cluster_map") or {}
+    
+    # If no clusters, return original keep_map
+    if not clusters:
+        return keep_map
+    
+    # Build a lookup: cluster_id -> set of canonical codes per source
+    # canonical_by_cluster[cluster_id][source] = set of canonical codes
+    canonical_by_cluster: Dict[str, Dict[str, set]] = {}
+    for cluster in clusters:
+        cluster_id = cluster.get("cluster_id", "")
+        if not cluster_id:
+            continue
+        canonical_members = cluster.get("canonical_members") or []
+        canonical_by_cluster[cluster_id] = {}
+        for m in canonical_members:
+            src = str(m.get("source", "")).lower()
+            code = str(m.get("code", "")).upper().strip()
+            if src and code:
+                if src not in canonical_by_cluster[cluster_id]:
+                    canonical_by_cluster[cluster_id][src] = set()
+                canonical_by_cluster[cluster_id][src].add(code)
+    
+    # Build canonical_keep_map
+    canonical_keep_map: Dict[str, List[str]] = {}
+    
+    for src, codes in keep_map.items():
+        src_norm = str(src).lower()
+        src_cluster_map = source_cluster_map.get(src_norm, {})
+        
+        canonical_codes_for_source: set[str] = set()
+        
+        for code in codes:
+            code_norm = str(code).upper().strip()
+            
+            # Look up which cluster this code belongs to
+            cluster_id = src_cluster_map.get(code_norm) or src_cluster_map.get(code)
+            
+            if cluster_id and cluster_id in canonical_by_cluster:
+                # Get canonical codes for this source from this cluster
+                canonical_for_src = canonical_by_cluster[cluster_id].get(src_norm, set())
+                if canonical_for_src:
+                    canonical_codes_for_source.update(canonical_for_src)
+                else:
+                    # No canonical for this source in cluster, keep original
+                    canonical_codes_for_source.add(code_norm)
+            else:
+                # Code not in any cluster, keep it as-is
+                canonical_codes_for_source.add(code_norm)
+        
+        if canonical_codes_for_source:
+            canonical_keep_map[src_norm] = sorted(canonical_codes_for_source)
+    
+    return canonical_keep_map
+
+
 def build_ledger_only_citations(
     context_items: List[Dict[str, Any]],
     keep_map: Dict[str, List[str]],
+    source_cluster_map: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Build citations that are constrained to only include codes from the ledger (keep_map).
@@ -1257,9 +1332,11 @@ def build_ledger_only_citations(
     Args:
         context_items: The full context items list
         keep_map: The grader's keep map with selected codes per source
+        source_cluster_map: Optional mapping from (source, code) -> cluster_id
     
     Returns:
-        List of citation dicts, filtered to only include ledger codes
+        List of citation dicts, filtered to only include ledger codes.
+        Each citation includes a cluster_id if source_cluster_map is provided.
     """
     # Normalize keep_map for comparison
     norm_keep: Dict[str, set[str]] = {}
@@ -1307,7 +1384,13 @@ def build_ledger_only_citations(
         kind = _classify_citation_kind(row)
         key = f"{src}:{row.get('id')}"
         
-        raw_citations.append({
+        # Look up cluster_id if source_cluster_map is provided
+        cluster_id = None
+        if source_cluster_map:
+            src_map = source_cluster_map.get(src, {})
+            cluster_id = src_map.get(code_norm) or src_map.get(code)
+        
+        citation: Dict[str, Any] = {
             "index": i,
             "kind": kind,
             "source": src,
@@ -1318,7 +1401,12 @@ def build_ledger_only_citations(
                 "method": method,
                 "meta": meta,
             },
-        })
+        }
+        
+        if cluster_id:
+            citation["cluster_id"] = cluster_id
+        
+        raw_citations.append(citation)
     
     # Sort: coding_result first, then by kind, then by index
     kind_order = {"coding_result": 0, "valyu": 1, "ethos": 2, "guideline": 3}

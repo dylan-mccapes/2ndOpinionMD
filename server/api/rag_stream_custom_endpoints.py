@@ -52,6 +52,7 @@ from .rag_stream_routes import (
     _apply_slot_satisfaction_heuristics,
     CODE_MIN_LIMIT,
     cluster_coding_concepts,
+    build_canonical_keep_map,
     build_ledger_only_citations,
 )
 
@@ -921,11 +922,21 @@ async def coding_stream_event_generator(
 
     This generator handles:
     - Code term extraction
-    - Coding-only source routing (strict code sources only)
+    - Coding-only source routing via route_coding_sources_strict()
+      (filters to STRICT_CODE_SOURCES: icd10cm, icd11, snomed, loinc, rxnorm, hpo, chv)
     - TS-only retrieval (NO ANN/embedding retrieval)
     - SNOMED crosswalk expansion
     - Coding prepass (ledger/grader/gap retrieval)
-    - Ledger-only citations
+    - LLM-based concept clustering to group near-identical codes
+    - Canonical keep map construction (de-duplicates codes per cluster)
+    - Ledger-only citations with cluster_id attached
+
+    SSE Events emitted:
+    - start: Initial metadata including sources, retrieval_mode="ts_only"
+    - concept_clusters: Cluster info with n_clusters and cluster details
+    - canonical_keep_map: Original vs canonical keep maps
+    - coding_result: Final codes with concept_clusters field attached
+    - citations: Filtered to canonical codes only, with cluster_id
 
     It does NOT handle:
     - Valyu fetch
@@ -1359,33 +1370,9 @@ async def coding_stream_event_generator(
         },
     )
 
-    icd_keep = set((keep2.get("icd10cm") or []))
-
-    if icd_keep:
-        icd_rows = results_by_source.get("icd10cm") or []
-        filtered_icd_rows = []
-
-        for row in icd_rows:
-            code = (
-                row.get("code")
-                or row.get("id")
-                or ""
-            )
-            code = str(code).upper().strip()
-            if code in icd_keep:
-                filtered_icd_rows.append(row)
-
-        results_by_source["icd10cm"] = filtered_icd_rows
-
-    # Build the final coding_result strictly from the filtered ICD rows
-    coding_result = build_coding_result_from_keep_map(keep2)
-    yield sse("coding_result", coding_result)
-
-    if await request.is_disconnected():
-        return
-
     # 5.5) Concept clustering: group near-identical codes into clusters
     # This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP)
+    # NOTE: Clustering happens BEFORE building coding_result so we can use canonical codes
     yield sse("status", {"status": "clustering_concepts"})
     concept_clusters: Dict[str, Any] = {}
     
@@ -1414,6 +1401,50 @@ async def coding_stream_event_generator(
             },
         )
         concept_clusters = {"clusters": [], "source_cluster_map": {}}
+
+    if await request.is_disconnected():
+        return
+
+    # 5.6) Build canonical_keep_map from concept_clusters
+    # This filters keep2 to only include canonical codes from each cluster
+    canonical_keep_map = build_canonical_keep_map(keep2, concept_clusters)
+    
+    yield sse(
+        "canonical_keep_map",
+        {
+            "original_keep_map": keep2,
+            "canonical_keep_map": canonical_keep_map,
+            "n_clusters": len(concept_clusters.get("clusters", [])),
+        },
+    )
+
+    # Filter ICD rows to only include canonical codes
+    icd_keep = set((canonical_keep_map.get("icd10cm") or []))
+
+    if icd_keep:
+        icd_rows = results_by_source.get("icd10cm") or []
+        filtered_icd_rows = []
+
+        for row in icd_rows:
+            code = (
+                row.get("code")
+                or row.get("id")
+                or ""
+            )
+            code = str(code).upper().strip()
+            if code in icd_keep:
+                filtered_icd_rows.append(row)
+
+        results_by_source["icd10cm"] = filtered_icd_rows
+
+    # Build the final coding_result from canonical_keep_map (not keep2)
+    # This ensures only canonical codes appear in the final result
+    coding_result = build_coding_result_from_keep_map(canonical_keep_map)
+    
+    # Add concept_clusters to coding_result for downstream consumers
+    coding_result["concept_clusters"] = concept_clusters.get("clusters", [])
+    
+    yield sse("coding_result", coding_result)
 
     if await request.is_disconnected():
         return
@@ -1477,9 +1508,14 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # Build citations constrained to ledger codes only (Requirement 3)
-    # This ensures citations only reference codes in the final coding_result
-    citations = build_ledger_only_citations(final_ctx, keep2)
+    # Build citations constrained to canonical ledger codes only (Requirement 3)
+    # This ensures citations only reference canonical codes in the final coding_result
+    # Pass source_cluster_map to attach cluster_id to each citation
+    citations = build_ledger_only_citations(
+        final_ctx,
+        canonical_keep_map,
+        source_cluster_map=concept_clusters.get("source_cluster_map"),
+    )
 
     # 8) with_llm == False -> just metadata
     if not with_llm:
