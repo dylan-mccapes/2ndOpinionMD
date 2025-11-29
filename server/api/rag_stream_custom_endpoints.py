@@ -15,10 +15,12 @@ from .stream_config import (
     BASE_RRF_K,
     EOH_STREAM_DEFAULT_SOURCES,
     CHAT_MODEL,
+    STRICT_CODE_SOURCES,
+    is_strict_code_source,
 )
 
 from .stream_gating import apply_source_gating, apply_code_row_filter
-from .stream_router import route_coding_sources, CodingRouterPlan
+from .stream_router import route_coding_sources, route_coding_sources_strict, CodingRouterPlan
 
 from .rag_stream_routes import (
     sse,
@@ -49,6 +51,8 @@ from .rag_stream_routes import (
     dedupe_matches,
     _apply_slot_satisfaction_heuristics,
     CODE_MIN_LIMIT,
+    cluster_coding_concepts,
+    build_ledger_only_citations,
 )
 
 logger = logging.getLogger(__name__)
@@ -917,19 +921,32 @@ async def coding_stream_event_generator(
 
     This generator handles:
     - Code term extraction
+    - Coding-only source routing (strict code sources only)
+    - TS-only retrieval (NO ANN/embedding retrieval)
     - SNOMED crosswalk expansion
     - Coding prepass (ledger/grader/gap retrieval)
-    - Code source force-keep in gating
+    - Ledger-only citations
 
     It does NOT handle:
     - Valyu fetch
     - QnA term extraction
-    - Source routing
+    - ANN/embedding retrieval (TS-only for coding)
     - QA grading
     - Second Valyu LLM pass
     """
     effective_answer_mode = "coding"
     coding_result: Optional[Dict[str, Any]] = None
+
+    # Filter db_sources to only include strict coding sources
+    # This ensures no guideline or EHR sources sneak into /coding_stream
+    coding_only_sources = [s for s in db_sources if is_strict_code_source(s)]
+    
+    # If no coding sources provided, use all strict code sources
+    if not coding_only_sources:
+        coding_only_sources = list(STRICT_CODE_SOURCES)
+    
+    # Track filtered sources for logging
+    filtered_out_sources = [s for s in db_sources if not is_strict_code_source(s)]
 
     # 0) Initial event
     yield sse(
@@ -938,22 +955,29 @@ async def coding_stream_event_generator(
             "q": q,
             "limit": limit,
             "ctx_k": ctx_k,
-            "sources": db_sources,
+            "sources": coding_only_sources,
+            "sources_filtered_out": filtered_out_sources,
             "with_llm": with_llm,
             "use_valyu": False,
-            "valyu_k": valyu_k,
+            "valyu_k": 0,  # No Valyu in coding mode
             "valyu_k_requested": valyu_k,
             "use_ethos": False,
             "answer_mode": effective_answer_mode,
+            "retrieval_mode": "ts_only",  # Indicate TS-only retrieval
         },
     )
 
     # 0.1) Soft warnings
     warnings: List[str] = []
-    if len(db_sources) > 8:
+    if filtered_out_sources:
         warnings.append(
-            f"High number of sources requested ({len(db_sources)}). "
-            "This may dilute relevance; consider narrowing the 'sources=' list."
+            f"Non-coding sources filtered out: {filtered_out_sources}. "
+            "/coding_stream only uses coding vocabulary sources."
+        )
+    if len(coding_only_sources) > 8:
+        warnings.append(
+            f"High number of coding sources ({len(coding_only_sources)}). "
+            "This may dilute relevance."
         )
     if limit > 15:
         warnings.append(
@@ -966,20 +990,10 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # 1) Embed query
-    yield sse("status", {"status": "embedding_query"})
-    try:
-        q_emb = await embed_query(q)
-        q_vec_literal = embedding_to_vector_literal(q_emb)
-    except Exception as e:
-        logger.exception("Error embedding query")
-        yield sse(
-            "error",
-            {"error": "embedding_failed", "detail": str(e)},
-        )
-        return
+    # NOTE: No embedding_query creation - /coding_stream is TS-only
+    # This removes ANN/embedding retrieval entirely for coding mode
 
-    # 2) Extract code-oriented terms (coding mode specific)
+    # 1) Extract code-oriented terms (coding mode specific)
     code_terms: List[str] = []
     yield sse("status", {"status": "extracting_code_terms"})
     try:
@@ -1005,32 +1019,62 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # Skip routing in coding mode - use all db_sources directly
-    effective_sources: List[str] = list(db_sources)
+    # 2) Route coding sources using the strict coding-only router
+    yield sse("status", {"status": "routing_coding_sources"})
+    router_plan: CodingRouterPlan | None = None
+    
+    try:
+        router_plan = await route_coding_sources_strict(
+            q=q,
+            code_terms=code_terms,
+            candidate_sources=coding_only_sources,
+        )
+    except Exception as e:
+        logger.exception("route_coding_sources_strict failed; using all coding sources")
+        router_plan = None
+    
+    if router_plan and router_plan.selected_sources:
+        effective_sources = sorted(router_plan.selected_sources)
+    else:
+        effective_sources = coding_only_sources
+    
+    # Emit router result
+    if router_plan is not None:
+        yield sse(
+            "router",
+            {
+                "task_type": router_plan.task_type,
+                "selected_sources": effective_sources,
+                "reasoning": router_plan.reasoning,
+                "router_type": "coding_strict",
+            },
+        )
 
     yield sse(
         "event_router_summary",
         {
             "mode": "coding_stream",
-            "using_router": False,
+            "using_router": router_plan is not None,
+            "router_type": "coding_strict",
             "effective_sources": effective_sources,
+            "retrieval_mode": "ts_only",
         },
     )
 
-    # 3) Retrieve per source (TS + ANN)
-    yield sse("status", {"status": "retrieving_candidates"})
+    if await request.is_disconnected():
+        return
+
+    # 3) Retrieve per source (TS-ONLY - no ANN for coding_stream)
+    yield sse("status", {"status": "retrieving_candidates_ts_only"})
     results_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
     for src in effective_sources:
         # Deeper retrieval for code sources in coding_mode
-        per_source_limit = limit
-        if src in CODING_SOURCES:
-            per_source_limit = max(limit, CODE_MIN_LIMIT)
+        per_source_limit = max(limit, CODE_MIN_LIMIT)
 
         ts_rows: List[Dict[str, Any]] = []
-        ann_rows: List[Dict[str, Any]] = []
 
-        # TS phase
+        # TS phase (ONLY retrieval method for coding_stream)
         yield sse("phase_start", {"source": src, "method": "ts"})
         try:
             if code_terms:
@@ -1070,7 +1114,7 @@ async def coding_stream_event_generator(
                             "source_id": r.get("source_id") or "",
                             "title": r.get("title", ""),
                             "score": r.get("score", 0.0),
-                            "method": r.get("method", "ts"),
+                            "method": "ts",  # Always TS for coding_stream
                         }
                         for r in ts_rows
                     ],
@@ -1080,73 +1124,12 @@ async def coding_stream_event_generator(
         if await request.is_disconnected():
             return
 
-        # ANN phase - skip for code sources in coding mode
-        if src in CODING_SOURCES:
-            yield sse(
-                "phase_start",
-                {"source": src, "method": "ann", "skipped": True, "reason": "ts_only_coding"},
-            )
-            yield sse(
-                "status",
-                {
-                    "status": "ann_skipped",
-                    "source": src,
-                    "reason": "ts_only_coding_for_code_source",
-                },
-            )
-            yield sse(
-                "phase_end",
-                {"source": src, "method": "ann", "skipped": True, "reason": "ts_only_coding"},
-            )
-            ann_rows = []
-        else:
-            yield sse("phase_start", {"source": src, "method": "ann"})
-            try:
-                ann_rows = await search_source_ann(
-                    pool,
-                    src,
-                    q_vec_literal,
-                    per_source_limit,
-                )
-            except Exception as e:
-                logger.exception("ANN search failed for source=%s", src)
-                yield sse(
-                    "status",
-                    {
-                        "status": "ann_error",
-                        "source": src,
-                        "detail": str(e),
-                    },
-                )
-                ann_rows = []
-            yield sse("phase_end", {"source": src, "method": "ann"})
+        # NO ANN phase for coding_stream - TS-only retrieval
+        # This is intentional: /coding_stream uses pure text search
 
-            if ann_rows:
-                yield sse(
-                    "matches",
-                    {
-                        "phase": "ann",
-                        "source": src,
-                        "matches": [
-                            {
-                                "id": r["id"],
-                                "source": r["source"],
-                                "source_id": r.get("source_id"),
-                                "title": r.get("title", ""),
-                                "score": r.get("score", 0.0),
-                                "method": r.get("method", "ann"),
-                            }
-                            for r in ann_rows
-                        ],
-                    },
-                )
-
-        if await request.is_disconnected():
-            return
-
-        # Combine TS + ANN (normalized)
+        # Normalize TS rows (no ANN rows to combine)
         combined: Dict[Any, Dict[str, Any]] = {}
-        for r in ts_rows + ann_rows:
+        for r in ts_rows:
             norm = normalize_row(r, source=src)
             combined[norm["id"]] = norm
 
@@ -1401,6 +1384,40 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
+    # 5.5) Concept clustering: group near-identical codes into clusters
+    # This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP)
+    yield sse("status", {"status": "clustering_concepts"})
+    concept_clusters: Dict[str, Any] = {}
+    
+    try:
+        concept_clusters = await cluster_coding_concepts(
+            ledger=ledger2,
+            q=q,
+            model=CHAT_MODEL,
+        )
+        
+        if concept_clusters.get("clusters"):
+            yield sse(
+                "concept_clusters",
+                {
+                    "n_clusters": len(concept_clusters.get("clusters", [])),
+                    "clusters": concept_clusters.get("clusters", []),
+                },
+            )
+    except Exception as e:
+        logger.exception("cluster_coding_concepts failed; continuing without clustering")
+        yield sse(
+            "status",
+            {
+                "status": "clustering_error",
+                "detail": str(e),
+            },
+        )
+        concept_clusters = {"clusters": [], "source_cluster_map": {}}
+
+    if await request.is_disconnected():
+        return
+
     raw_source_count = len(results_by_source)
 
     # 6) Heuristic source gating with code sources force-kept
@@ -1460,7 +1477,9 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    citations = build_citations(final_ctx)
+    # Build citations constrained to ledger codes only (Requirement 3)
+    # This ensures citations only reference codes in the final coding_result
+    citations = build_ledger_only_citations(final_ctx, keep2)
 
     # 8) with_llm == False -> just metadata
     if not with_llm:
@@ -1544,6 +1563,8 @@ async def coding_stream_event_generator(
                 "with_llm": with_llm,
                 "use_ethos": False,
                 "answer_mode": effective_answer_mode,
+                "retrieval_mode": "ts_only",
+                "n_concept_clusters": len(concept_clusters.get("clusters", [])),
             }
         },
     )
