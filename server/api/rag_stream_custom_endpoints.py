@@ -1931,8 +1931,14 @@ Use this router plan to:
 2. Reference the appropriate modules when explaining your reasoning
 3. Stay within the scope of what the router plan suggests
 
-Do NOT hallucinate DB contents or module outputs that are not present in the context.
-The router plan is a guide for structuring your response, not a source of data.
+CRITICAL EPISTEMICS NOTE:
+When referring to EoH modules (M1-M25, etc.), you are reasoning about their intended
+behavior and schema, not reporting concrete numeric outputs unless those are explicitly
+present in the context. Use language like "would typically," "is designed to," or
+"in this framework," rather than asserting that the system actually produced a given
+probability or alert. Do NOT hallucinate DB contents, metrics, or module outputs that
+are not present in the context. The router plan is a guide for structuring your
+response, not a source of data.
 """
 
 
@@ -1958,6 +1964,7 @@ async def eoh_stream_event_generator(
     valyu_boost: float,
     pool: Any,
     patient_state: Optional[str] = None,
+    debug: bool = False,
 ) -> AsyncIterator[Dict[str, str]]:
     """
     Dedicated event generator for /eoh_stream with EoH LLM Router integration.
@@ -2077,6 +2084,19 @@ async def eoh_stream_event_generator(
         {
             "question_type": router_plan.get("question_type"),
             "doc_retrieval_plan": doc_plan_summary,
+        },
+    )
+
+    # Emit post-routing effective sources count
+    n_effective_modules = len(doc_plan_summary)
+    n_effective_handles = sum(len(item.get("handles", [])) for item in doc_plan_summary)
+    yield sse(
+        "status",
+        {
+            "status": "post_routing_sources",
+            "n_effective_modules": n_effective_modules,
+            "n_effective_handles": n_effective_handles,
+            "detail": f"Router narrowed to {n_effective_modules} modules with {n_effective_handles} doc handles.",
         },
     )
 
@@ -2436,6 +2456,9 @@ async def eoh_stream_event_generator(
     valyu_ctx_count = 0
     if use_valyu and valyu_k > 0 and valyu_matches:
         valyu_ctx_count = len(valyu_matches[:valyu_k])
+
+    # Always emit fused context matches for debugging (moved outside Valyu block)
+    if final_ctx:
         yield sse(
             "matches",
             {
@@ -2452,6 +2475,26 @@ async def eoh_stream_event_generator(
                     }
                     for r in final_ctx
                 ],
+            },
+        )
+
+    # Debug mode: emit full context text for deep debugging
+    if debug and final_ctx:
+        yield sse(
+            "context_fused",
+            {
+                "items": [
+                    {
+                        "id": r["id"],
+                        "source": r["source"],
+                        "source_id": r.get("source_id"),
+                        "title": r.get("title", "")[:200],
+                        "text": r.get("text", "")[:1000],  # hard cap to keep SSE sane
+                        "score": r.get("score", 0.0),
+                        "method": r.get("method", None),
+                    }
+                    for r in final_ctx
+                ]
             },
         )
 
@@ -2625,6 +2668,10 @@ async def eoh_stream(
         None,
         description="Optional JSON string with patient state summary for EoH router",
     ),
+    debug: bool = Query(
+        False,
+        description="Emit extra debug events including fused context text (context_fused)",
+    ),
     pool: Any = Depends(resolve_pg_pool),
 ) -> EventSourceResponse:
     """
@@ -2689,6 +2736,7 @@ async def eoh_stream(
             valyu_boost=valyu_boost,
             pool=pool,
             patient_state=patient_state,
+            debug=debug,
         ):
             yield ev
 
