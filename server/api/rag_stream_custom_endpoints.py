@@ -1411,17 +1411,20 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # 5.55) Compute slot satisfaction using the new comprehensive helper
+    # 5.55) Compute slot satisfaction using LLM-driven helper
     # This determines which missing_slots are truly unsatisfied after gap retrieval
+    # All semantic reasoning is done by the LLM, not Python heuristics
     yield sse("status", {"status": "computing_slot_satisfaction"})
     remaining_missing_slots: List[Dict[str, Any]] = missing2
     slot_status: Dict[str, Dict[str, Any]] = {}
     
     try:
-        remaining_missing_slots, slot_status = compute_slot_satisfaction(
+        remaining_missing_slots, slot_status = await compute_slot_satisfaction(
             ledger=ledger2,
             clusters=concept_clusters,
             missing_slots=missing2,
+            q=q,
+            model=CHAT_MODEL_UTIL,
         )
         
         # Emit slot satisfaction status for debugging/inspection
