@@ -771,6 +771,12 @@ Failure mode
 - If a requested concept truly has no suitable code in the context, say so
   explicitly rather than guessing.
 - It is better to miss a code than to assign a clearly incorrect one.
+
+When the question implies a set of clinically essential items (e.g., a syndrome defined by diagnostic criteria, a medication class, a lab panel), you must ensure all clinically essential elements are represented unless they do not exist in the corpus.
+
+If test variants differ only by method, specimen, or reporting format, treat them as clinically equivalent unless the question implies a specific constraint.
+
+If the question implies a clinically essential element by definition (e.g., major diagnostic criteria, core drug classes, canonical tests), ensure they appear unless the corpus truly lacks them.
 """.strip()
 
 
@@ -848,6 +854,10 @@ MISSING SLOTS:
     - Include a short human-readable label, e.g. "lupus nephritis", "kidney biopsy".
     - Include a list of 1–4 search terms to use for retrieval.
 
+A code is a valid match if its title is semantically equivalent, a broader/narrower synonym, or a clinically related expression of the same concept — not only exact phrasing of the slot_label.
+
+A slot may be satisfied by semantically equivalent codes even if the wording differs — do NOT require exact lexical match.
+
 OUTPUT STRICT JSON with this exact shape:
 {
   "keep": {
@@ -870,6 +880,8 @@ Notes:
 - You do NOT need to fill every vocabulary.
 - If a vocabulary is not relevant, just leave it empty or omit it in "keep".
 - Be STRICT: only keep codes that are strongly supported by the question or scenario; when in doubt, do NOT keep the code.
+
+Do NOT down-rank or exclude codes merely because they appear less frequently, are lower-confidence matches, or differ in specificity. Clinical correctness outweighs score.
 """.strip()
 
 
@@ -907,5 +919,7 @@ Notes:
 - Return one entry in "slots" for each input slot, using the same slot_id.
 - If satisfied is false, matched_codes should be an empty list [].
 - Do NOT include any text outside the JSON object.
+
+A slot may be satisfied by semantically equivalent codes even if the wording differs — do NOT require exact lexical match.
 """.strip()
 

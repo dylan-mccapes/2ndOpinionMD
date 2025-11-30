@@ -601,7 +601,7 @@ def _build_ledger_snapshot(
         snapshot_items: List[Dict[str, str]] = []
         for item in top_items:
             code = str(item.get("code", "")).strip()
-            title = str(item.get("title", ""))[:200].strip()  # Truncate long titles
+            title = str(item.get("title", ""))[:400].strip()  # Truncate long titles
             if not code:
                 continue
             
@@ -1357,6 +1357,12 @@ Rules:
 - If a code is unique and doesn't cluster with others, it becomes its own single-member cluster
 - Prefer more specific codes as canonical representatives
 - Be concise: avoid long explanations; output only the JSON requested above.
+
+Always aim for maximal clinically relevant code recall BEFORE clustering or canonicalization. Retrieve all codes that plausibly match the slot concept, then let the clustering step reduce redundancy. Do not filter out codes prematurely.
+
+Clustering reduces duplicates but must NEVER suppress clinically relevant variations. Always preserve at least one canonical representative per meaningful variation (diagnosis subtypes, procedure variants, test methods, medication formulations).
+
+Do NOT cluster codes together if they represent distinct clinically meaningful subtypes (e.g., anatomical variants, procedural intent, or medication formulation differences).
 """
 
 # Caps to keep clustering fast and under LLM timeout
