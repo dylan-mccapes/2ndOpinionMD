@@ -1371,6 +1371,314 @@ MAX_CLUSTER_CODES_PER_SOURCE = 25      # per-vocabulary cap
 MAX_CLUSTER_TITLE_CHARS = 160          # truncate titles to reduce token count
 
 
+def _build_single_member_clusters(
+    codes_for_clustering: List[Dict[str, Any]],
+    prefix: str = "single",
+) -> Dict[str, Any]:
+    """
+    Build single-member clusters as a fallback when LLM clustering is not needed or fails.
+    """
+    clusters: List[Dict[str, Any]] = []
+    source_cluster_map: Dict[str, Dict[str, str]] = {}
+    for i, code_info in enumerate(codes_for_clustering):
+        cluster_id = f"{prefix}_{i}"
+        clusters.append(
+            {
+                "cluster_id": cluster_id,
+                "label": code_info["title"] or code_info["code"],
+                "members": [code_info],
+                "canonical_members": [code_info],
+            }
+        )
+        src = code_info["source"]
+        source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+    return {"clusters": clusters, "source_cluster_map": source_cluster_map}
+
+
+def _parse_cluster_response(content: str) -> Dict[str, Any]:
+    """
+    Parse and validate the LLM clustering response JSON.
+    Returns the validated clusters and source_cluster_map.
+    """
+    data = json.loads(content)
+    raw_clusters = data.get("clusters") or []
+    clusters: List[Dict[str, Any]] = []
+    source_cluster_map: Dict[str, Dict[str, str]] = {}
+
+    for cluster in raw_clusters:
+        if not isinstance(cluster, dict):
+            continue
+
+        cluster_id = str(cluster.get("cluster_id", "")).strip()
+        if not cluster_id:
+            continue
+
+        label = str(cluster.get("label", "")).strip() or cluster_id
+        members = cluster.get("members") or []
+        canonical_members = cluster.get("canonical_members") or []
+
+        # Validate members
+        valid_members: List[Dict[str, str]] = []
+        for m in members:
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_members.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
+        # Validate canonical members
+        valid_canonical: List[Dict[str, str]] = []
+        for m in canonical_members:
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_canonical.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
+        # If no canonical members, use first member
+        if not valid_canonical and valid_members:
+            valid_canonical = [valid_members[0]]
+
+        if not valid_members:
+            continue
+
+        clusters.append(
+            {
+                "cluster_id": cluster_id,
+                "label": label,
+                "members": valid_members,
+                "canonical_members": valid_canonical,
+            }
+        )
+
+        # Build source_cluster_map
+        for m in valid_members:
+            src = m["source"]
+            code = m["code"]
+            source_cluster_map.setdefault(src, {})[code] = cluster_id
+
+    return {"clusters": clusters, "source_cluster_map": source_cluster_map}
+
+
+from typing import Callable, Awaitable
+
+
+async def cluster_coding_concepts_streaming(
+    ledger: Dict[str, Any],
+    q: str,
+    yield_func: Callable[[Dict[str, Any]], Awaitable[None]],
+    *,
+    model: str = CHAT_MODEL_UTIL,
+) -> Dict[str, Any]:
+    """
+    Use LLM to cluster near-identical codes in the ledger into concept groups,
+    with streaming output via coalesced SSE chunks.
+
+    This is the streaming version of cluster_coding_concepts. It emits
+    coalesced "llm_chunk" events with phase="concept_clustering" while
+    accumulating the full response, then parses JSON at the end.
+
+    STREAMING BEHAVIOR:
+    -------------------
+    This function implements coalesced (chunky) streaming to avoid noisy
+    per-token SSE spam. Deltas are buffered and only emitted when:
+    - A sentence boundary is detected (., ?, !, followed by space/newline)
+    - A paragraph boundary is detected (double newline)
+    - The buffer exceeds ~300 characters
+    - The stream is finishing
+
+    Args:
+        ledger: The coding ledger with sources and codes
+        q: The clinical query for context
+        yield_func: Async function to yield SSE events
+        model: The LLM model to use
+
+    Returns:
+        {
+            "clusters": [...],
+            "source_cluster_map": {...}
+        }
+    """
+    sources = ledger.get("sources", {}) or {}
+
+    # Build a compact representation for the LLM with caps
+    codes_for_clustering: List[Dict[str, Any]] = []
+    total = 0
+
+    for src, items in sources.items():
+        if not isinstance(items, list) or not items:
+            continue
+
+        # Cap per source to avoid huge clusters from one noisy vocab
+        per_source_count = 0
+
+        for item in items:
+            if per_source_count >= MAX_CLUSTER_CODES_PER_SOURCE:
+                break
+            if total >= MAX_CLUSTER_CODES_GLOBAL:
+                break
+
+            code = str(item.get("code") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if not code:
+                continue
+
+            # Truncate title to reduce token count and avoid timeouts
+            if len(title) > MAX_CLUSTER_TITLE_CHARS:
+                title = title[:MAX_CLUSTER_TITLE_CHARS].rstrip() + "..."
+
+            codes_for_clustering.append(
+                {
+                    "source": str(src).lower(),
+                    "code": code,
+                    "title": title,
+                }
+            )
+            per_source_count += 1
+            total += 1
+
+        if total >= MAX_CLUSTER_CODES_GLOBAL:
+            break
+
+    # Nothing to cluster
+    if not codes_for_clustering:
+        return {"clusters": [], "source_cluster_map": {}}
+
+    # If very few codes, or we had to cap aggressively, use cheap fallback
+    codes_original_count = sum(len(v) for v in sources.values())
+    if len(codes_for_clustering) <= 3 or codes_original_count > (MAX_CLUSTER_CODES_GLOBAL * 2):
+        return _build_single_member_clusters(codes_for_clustering, "single")
+
+    # Build LLM messages (compact JSON to save tokens)
+    codes_json = json.dumps(codes_for_clustering, separators=(",", ":"))
+
+    # Hard guard: if somehow this is still too large, bail to single-member clusters
+    if len(codes_json) > 20000:
+        result = _build_single_member_clusters(codes_for_clustering, "size_guard")
+        result["error"] = "cluster_input_too_large_guard"
+        return result
+
+    messages = [
+        {
+            "role": "system",
+            "content": CONCEPT_CLUSTERING_SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Clinical question:\n{q.strip()}\n\n"
+                "Codes to cluster (JSON array):\n"
+                f"{codes_json}\n\n"
+                "Return STRICT JSON with a single top-level object containing only the 'clusters' field as described in the system prompt."
+            ),
+        },
+    ]
+
+    # Coalescing thresholds for chunky streaming (not noisy per-token deltas)
+    CHUNK_CHAR_THRESHOLD = 300
+    SENTENCE_ENDINGS = (". ", ".\n", "? ", "?\n", "! ", "!\n")
+    PARAGRAPH_ENDINGS = ("\n\n",)
+
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+            stream=True,
+        )
+
+        full_pieces: List[str] = []
+        buf = ""
+
+        for chunk in stream:
+            choice = chunk.choices[0]
+            delta = choice.delta
+            content = getattr(delta, "content", None)
+            if not content:
+                continue
+
+            if isinstance(content, str):
+                text_piece = content
+            else:
+                text_piece = ""
+                try:
+                    for part in content:
+                        part_text = getattr(part, "text", None) or getattr(part, "value", None)
+                        if part_text:
+                            text_piece += part_text
+                except TypeError:
+                    continue
+
+            if not text_piece:
+                continue
+
+            full_pieces.append(text_piece)
+            buf += text_piece
+
+            # Coalescing logic: emit on sentence/paragraph boundary or size threshold
+            should_flush = False
+            if any(buf.endswith(end) for end in SENTENCE_ENDINGS):
+                should_flush = True
+            elif any(buf.endswith(end) for end in PARAGRAPH_ENDINGS):
+                should_flush = True
+            elif len(buf) > CHUNK_CHAR_THRESHOLD:
+                should_flush = True
+
+            if should_flush:
+                text = buf.strip()
+                if text:
+                    await yield_func(
+                        sse("llm_chunk", {"phase": "concept_clustering", "content": text})
+                    )
+                buf = ""
+
+        # Flush any remaining buffer
+        if buf.strip():
+            await yield_func(
+                sse("llm_chunk", {"phase": "concept_clustering", "content": buf.strip()})
+            )
+
+        # Parse the accumulated JSON response
+        full_content = "".join(full_pieces).strip() or "{}"
+
+    except Exception as e:
+        logger.exception("cluster_coding_concepts_streaming: OpenAI call failed")
+        result = _build_single_member_clusters(codes_for_clustering, "fallback")
+        result["error"] = str(e)
+        return result
+
+    # Parse JSON and validate clusters
+    try:
+        return _parse_cluster_response(full_content)
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "cluster_coding_concepts_streaming: JSON parse failed: %r",
+            full_content[:500],
+        )
+        result = _build_single_member_clusters(codes_for_clustering, "parse_error")
+        result["error"] = f"json_parse_failed: {e}"
+        return result
+
+
 async def cluster_coding_concepts(
     ledger: Dict[str, Any],
     q: str,
@@ -1379,6 +1687,9 @@ async def cluster_coding_concepts(
 ) -> Dict[str, Any]:
     """
     Use LLM to cluster near-identical codes in the ledger into concept groups.
+
+    This is the non-streaming version that maintains backward compatibility.
+    For streaming output, use cluster_coding_concepts_streaming() instead.
 
     This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP,
     multiple ICD-11 codes for RA variants) by grouping them into clusters
@@ -1457,57 +1768,18 @@ async def cluster_coding_concepts(
         return {"clusters": [], "source_cluster_map": {}}
 
     # If very few codes, or we had to cap aggressively, use cheap fallback
-    # to avoid blowing up token counts and timeouts.
-    #
-    # Heuristic:
-    #   - <= 3 codes: pointless to call LLM; single-member clusters.
-    #   - If original ledger had WAY more codes than we could include, it's
-    #     safer to skip LLM clustering than send a biased subset.
     codes_original_count = sum(len(v) for v in sources.values())
     if len(codes_for_clustering) <= 3 or codes_original_count > (MAX_CLUSTER_CODES_GLOBAL * 2):
-        clusters = []
-        source_cluster_map: Dict[str, Dict[str, str]] = {}
-        for i, code_info in enumerate(codes_for_clustering):
-            cluster_id = f"single_{i}"
-            clusters.append(
-                {
-                    "cluster_id": cluster_id,
-                    "label": code_info["title"] or code_info["code"],
-                    "members": [code_info],
-                    "canonical_members": [code_info],
-                }
-            )
-            src = code_info["source"]
-            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+        return _build_single_member_clusters(codes_for_clustering, "single")
 
-        return {"clusters": clusters, "source_cluster_map": source_cluster_map}
-
-    # Build LLM messages
-    # Keep JSON compact (no pretty-print) to save tokens.
+    # Build LLM messages (compact JSON to save tokens)
     codes_json = json.dumps(codes_for_clustering, separators=(",", ":"))
 
-    # Hard guard: if somehow this is still too large, bail to single-member clusters.
-    if len(codes_json) > 20000:  # ~20k chars is already large
-        clusters = []
-        source_cluster_map: Dict[str, Dict[str, str]] = {}
-        for i, code_info in enumerate(codes_for_clustering):
-            cluster_id = f"size_guard_{i}"
-            clusters.append(
-                {
-                    "cluster_id": cluster_id,
-                    "label": code_info["title"] or code_info["code"],
-                    "members": [code_info],
-                    "canonical_members": [code_info],
-                }
-            )
-            src = code_info["source"]
-            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
-
-        return {
-            "clusters": clusters,
-            "source_cluster_map": source_cluster_map,
-            "error": "cluster_input_too_large_guard",
-        }
+    # Hard guard: if somehow this is still too large, bail to single-member clusters
+    if len(codes_json) > 20000:
+        result = _build_single_member_clusters(codes_for_clustering, "size_guard")
+        result["error"] = "cluster_input_too_large_guard"
+        return result
 
     messages = [
         {
@@ -1534,134 +1806,21 @@ async def cluster_coding_concepts(
         )
     except Exception as e:
         logger.exception("cluster_coding_concepts: OpenAI call failed")
-        # Fallback: create single-member clusters
-        clusters = []
-        source_cluster_map: Dict[str, Dict[str, str]] = {}
-        for i, code_info in enumerate(codes_for_clustering):
-            cluster_id = f"fallback_{i}"
-            clusters.append(
-                {
-                    "cluster_id": cluster_id,
-                    "label": code_info["title"] or code_info["code"],
-                    "members": [code_info],
-                    "canonical_members": [code_info],
-                }
-            )
-            src = code_info["source"]
-            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
-
-        return {
-            "clusters": clusters,
-            "source_cluster_map": source_cluster_map,
-            "error": str(e),
-        }
+        result = _build_single_member_clusters(codes_for_clustering, "fallback")
+        result["error"] = str(e)
+        return result
 
     content = completion.choices[0].message.content or "{}"
     try:
-        data = json.loads(content)
+        return _parse_cluster_response(content)
     except json.JSONDecodeError as e:
         logger.warning(
             "cluster_coding_concepts: JSON parse failed: %r",
             content[:500],
         )
-        # Fallback: create single-member clusters
-        clusters = []
-        source_cluster_map: Dict[str, Dict[str, str]] = {}
-        for i, code_info in enumerate(codes_for_clustering):
-            cluster_id = f"parse_error_{i}"
-            clusters.append(
-                {
-                    "cluster_id": cluster_id,
-                    "label": code_info["title"] or code_info["code"],
-                    "members": [code_info],
-                    "canonical_members": [code_info],
-                }
-            )
-            src = code_info["source"]
-            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
-
-        return {
-            "clusters": clusters,
-            "source_cluster_map": source_cluster_map,
-            "error": f"json_parse_failed: {e}",
-        }
-
-    # Parse and validate clusters
-    raw_clusters = data.get("clusters") or []
-    clusters: List[Dict[str, Any]] = []
-    source_cluster_map: Dict[str, Dict[str, str]] = {}
-
-    for cluster in raw_clusters:
-        if not isinstance(cluster, dict):
-            continue
-
-        cluster_id = str(cluster.get("cluster_id", "")).strip()
-        if not cluster_id:
-            continue
-
-        label = str(cluster.get("label", "")).strip() or cluster_id
-        members = cluster.get("members") or []
-        canonical_members = cluster.get("canonical_members") or []
-
-        # Validate members
-        valid_members: List[Dict[str, str]] = []
-        for m in members:
-            if not isinstance(m, dict):
-                continue
-            code = str(m.get("code") or "").strip()
-            if not code:
-                continue
-            src = str(m.get("source") or "").lower().strip()
-            title = str(m.get("title") or "")
-            valid_members.append(
-                {
-                    "source": src,
-                    "code": code,
-                    "title": title,
-                }
-            )
-
-        # Validate canonical members
-        valid_canonical: List[Dict[str, str]] = []
-        for m in canonical_members:
-            if not isinstance(m, dict):
-                continue
-            code = str(m.get("code") or "").strip()
-            if not code:
-                continue
-            src = str(m.get("source") or "").lower().strip()
-            title = str(m.get("title") or "")
-            valid_canonical.append(
-                {
-                    "source": src,
-                    "code": code,
-                    "title": title,
-                }
-            )
-
-        # If no canonical members, use first member
-        if not valid_canonical and valid_members:
-            valid_canonical = [valid_members[0]]
-
-        if not valid_members:
-            continue
-
-        clusters.append(
-            {
-                "cluster_id": cluster_id,
-                "label": label,
-                "members": valid_members,
-                "canonical_members": valid_canonical,
-            }
-        )
-
-        # Build source_cluster_map
-        for m in valid_members:
-            src = m["source"]
-            code = m["code"]
-            source_cluster_map.setdefault(src, {})[code] = cluster_id
-
-    return {"clusters": clusters, "source_cluster_map": source_cluster_map}
+        result = _build_single_member_clusters(codes_for_clustering, "parse_error")
+        result["error"] = f"json_parse_failed: {e}"
+        return result
 
 
 def build_canonical_keep_map(
@@ -4022,41 +4181,106 @@ def stream_llm_events(
     llm_mode: str,
     coding_mode: bool = False,
     *,
+    chat_model: Optional[str] = None,
+    system_prompt: Optional[str] = None,
     event_prefix: str = "llm",
     answer_mode: str = "guideline",
-    
+    phase: str = "reasoning",
 ) -> Iterable[Dict[str, str]]:
     """
-    Stream LLM output as SSE events.
+    Stream LLM output as SSE events with coalesced (chunky) streaming.
+
+    SYSTEM PROMPT USAGE:
+    --------------------
+    The system prompt can be provided in two ways:
+    1. Explicitly via the `system_prompt` parameter (preferred for new code).
+    2. Implicitly via `coding_mode` and `answer_mode`, which select from:
+       - coding_mode=True → CODING_SYSTEM_PROMPT (from stream_config.py)
+       - answer_mode='valyu' → VALYU_EVIDENCE_SYSTEM_PROMPT
+       - answer_mode='eoh' → EOH_SYSTEM_PROMPT (from stream_config.py)
+       - default → GUIDELINE_QA_SYSTEM_PROMPT
+
+    If `system_prompt` is provided, it overrides the implicit selection.
+    Callers should migrate to explicit system_prompt for clarity.
+
+    STREAMING BEHAVIOR:
+    -------------------
+    This function implements coalesced (chunky) streaming to avoid noisy
+    per-token SSE spam. Deltas are buffered and only emitted when:
+    - A sentence boundary is detected (., ?, !, followed by space/newline)
+    - A paragraph boundary is detected (double newline)
+    - The buffer exceeds ~300 characters
+    - The stream is finishing
 
     Modes:
       - llm_mode == "delta":
-          event: <event_prefix>_delta  { "text": "<small token-ish piece>" }
+          event: <event_prefix>_delta  { "phase": ..., "content": "<small token-ish piece>" }
       - llm_mode == "chunk" (default):
-          event: <event_prefix>_chunk  { "text": "<sentence-ish chunk>" }
+          event: <event_prefix>_chunk  { "phase": ..., "content": "<sentence-ish chunk>" }
 
     In BOTH modes, we also emit:
       event: <event_prefix>_done { "text": "<full answer>" }
 
-    answer_mode:
-      - 'guideline' → guideline/MKG-first QA
-      - 'valyu'     → peer-reviewed evidence synthesis
-      - ignored when coding_mode=True
+    Args:
+        q: The clinical question/query
+        context_items: Retrieved context items for RAG
+        llm_mode: "chunk" (coalesced) or "delta" (per-token)
+        coding_mode: If True, use coding system prompt
+        chat_model: Explicit model name (e.g., CHAT_MODEL_GUIDELINES)
+        system_prompt: Explicit system prompt (overrides coding_mode/answer_mode)
+        event_prefix: Prefix for SSE event names
+        answer_mode: 'guideline' | 'valyu' | 'eoh' (ignored if system_prompt provided)
+        phase: Phase label for SSE payload (e.g., "reasoning", "concept_clustering")
     """
     ctx_str = format_context_for_llm(context_items, coding_mode=coding_mode)
-    messages = build_llm_messages(
-        q,
-        ctx_str,
-        coding_mode=coding_mode,
-        answer_mode=answer_mode,
-    )
+
+    # Build messages: use explicit system_prompt if provided, else fall back to
+    # the implicit selection based on coding_mode/answer_mode
+    if system_prompt is not None:
+        # Explicit system prompt provided - build messages manually
+        if coding_mode:
+            user_content = CODING_USER_PROMPT_TEMPLATE.format(
+                question=q.strip(),
+                context=ctx_str,
+            )
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ]
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"Question:\n{q.strip()}",
+                },
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Here is the retrieved context from medical corpora and guidelines:\n\n"
+                        f"{ctx_str}\n\n"
+                        "Now answer the question strictly based on this context."
+                    ),
+                },
+            ]
+    else:
+        # Fall back to implicit system prompt selection
+        messages = build_llm_messages(
+            q,
+            ctx_str,
+            coding_mode=coding_mode,
+            answer_mode=answer_mode,
+        )
 
     mode = (llm_mode or "chunk").lower()
     if mode not in ("chunk", "delta"):
         mode = "chunk"
 
+    # Use explicit chat_model if provided, else default to CHAT_MODEL_GUIDELINES
+    model_to_use = chat_model if chat_model is not None else CHAT_MODEL_GUIDELINES
+
     stream = client.chat.completions.create(
-        model=CHAT_MODEL_GUIDELINES,
+        model=model_to_use,
         messages=messages,
         stream=True,
     )
@@ -4064,11 +4288,16 @@ def stream_llm_events(
     full_pieces: List[str] = []
     buf = ""
 
+    # Coalescing thresholds for chunky streaming (not noisy per-token deltas)
+    CHUNK_CHAR_THRESHOLD = 300  # Emit when buffer exceeds this
+    SENTENCE_ENDINGS = (". ", ".\n", "? ", "?\n", "! ", "!\n")
+    PARAGRAPH_ENDINGS = ("\n\n",)
+
     def flush_chunk() -> Iterable[Dict[str, str]]:
         nonlocal buf
         text = buf.strip()
         if text:
-            yield sse(f"{event_prefix}_chunk", {"text": text})
+            yield sse(f"{event_prefix}_chunk", {"phase": phase, "content": text})
         buf = ""
 
     for chunk in stream:
@@ -4096,13 +4325,19 @@ def stream_llm_events(
         full_pieces.append(text_piece)
 
         if mode == "delta":
-            yield sse(f"{event_prefix}_delta", {"text": text_piece})
+            yield sse(f"{event_prefix}_delta", {"phase": phase, "content": text_piece})
         else:
             buf += text_piece
-            if any(
-                buf.endswith(end)
-                for end in [". ", ".\n", "?\n", "!\n", ".\n\n"]
-            ) or len(buf) > 600:
+            # Coalescing logic: emit on sentence/paragraph boundary or size threshold
+            should_flush = False
+            if any(buf.endswith(end) for end in SENTENCE_ENDINGS):
+                should_flush = True
+            elif any(buf.endswith(end) for end in PARAGRAPH_ENDINGS):
+                should_flush = True
+            elif len(buf) > CHUNK_CHAR_THRESHOLD:
+                should_flush = True
+
+            if should_flush:
                 for ev in flush_chunk():
                     yield ev
 

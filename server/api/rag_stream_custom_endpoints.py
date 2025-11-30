@@ -56,6 +56,7 @@ from .rag_stream_routes import (
     compute_slot_satisfaction,
     CODE_MIN_LIMIT,
     cluster_coding_concepts,
+    cluster_coding_concepts_streaming,
     build_canonical_keep_map,
     build_ledger_only_citations,
 )
@@ -806,7 +807,9 @@ async def ask_stream_event_generator(
             final_ctx,
             llm_mode,
             coding_mode=False,
+            chat_model=CHAT_MODEL_GUIDELINES,
             answer_mode=answer_mode,
+            phase="reasoning",
         ):
             if await request.is_disconnected():
                 return
@@ -890,8 +893,10 @@ async def ask_stream_event_generator(
                 valyu_fulltext_ctx,
                 llm_mode,
                 coding_mode=False,
+                chat_model=CHAT_MODEL_GUIDELINES,
                 event_prefix="valyu_llm",
                 answer_mode="valyu",
+                phase="valyu_synthesis",
             ):
                 if await request.is_disconnected():
                     return
@@ -1379,15 +1384,28 @@ async def coding_stream_event_generator(
     # 5.5) Concept clustering: group near-identical codes into clusters
     # This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP)
     # NOTE: Clustering happens BEFORE building coding_result so we can use canonical codes
+    # NOTE: Uses streaming LLM pattern with coalesced chunks (not noisy per-token deltas)
     yield sse("status", {"status": "clustering_concepts"})
     concept_clusters: Dict[str, Any] = {}
     
+    # Collect SSE events from streaming clustering to yield them
+    clustering_events: List[Dict[str, Any]] = []
+    
+    async def collect_clustering_event(event: Dict[str, Any]) -> None:
+        """Collect SSE events from streaming clustering for later yielding."""
+        clustering_events.append(event)
+    
     try:
-        concept_clusters = await cluster_coding_concepts(
+        concept_clusters = await cluster_coding_concepts_streaming(
             ledger=ledger2,
             q=q,
+            yield_func=collect_clustering_event,
             model=CHAT_MODEL_UTIL,
         )
+        
+        # Yield all collected streaming events (coalesced llm_chunk events)
+        for event in clustering_events:
+            yield event
         
         if concept_clusters.get("clusters"):
             yield sse(
@@ -1398,7 +1416,7 @@ async def coding_stream_event_generator(
                 },
             )
     except Exception as e:
-        logger.exception("cluster_coding_concepts failed; continuing without clustering")
+        logger.exception("cluster_coding_concepts_streaming failed; continuing without clustering")
         yield sse(
             "status",
             {
@@ -1628,7 +1646,9 @@ async def coding_stream_event_generator(
             final_ctx,
             llm_mode,
             coding_mode=True,
+            chat_model=CHAT_MODEL_CODING_CORE,
             answer_mode="coding",
+            phase="coding_reasoning",
         ):
             if await request.is_disconnected():
                 return
