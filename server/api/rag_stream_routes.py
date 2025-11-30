@@ -565,6 +565,282 @@ def _apply_slot_satisfaction_heuristics(
     return new_keep, new_missing
 
 
+# ---------------------------------------------------------------------------
+# compute_slot_satisfaction: comprehensive slot satisfaction helper
+# ---------------------------------------------------------------------------
+
+# Vocabulary-to-category mapping for slot satisfaction
+VOCAB_CATEGORY_MAP: Dict[str, str] = {
+    "icd10cm": "diagnosis",
+    "icd11": "diagnosis",
+    "snomed": "diagnosis",
+    "loinc": "lab",
+    "rxnorm": "medication",
+    "hpo": "phenotype",
+    "chv": "terminology",
+}
+
+# Slot label patterns for common clinical bundles
+# These help identify slots that should be satisfied by certain code types
+SLOT_BUNDLE_PATTERNS: Dict[str, List[re.Pattern]] = {
+    # Heart failure bundle (ARNI, MRA, BB, SGLT2i)
+    "hf_medication": [
+        re.compile(r"\b(arni|sacubitril|valsartan|entresto)\b", re.IGNORECASE),
+        re.compile(r"\b(mra|mineralocorticoid|spironolactone|eplerenone)\b", re.IGNORECASE),
+        re.compile(r"\b(beta.?blocker|bb|metoprolol|carvedilol|bisoprolol)\b", re.IGNORECASE),
+        re.compile(r"\b(sglt2|sglt-2|empagliflozin|dapagliflozin|canagliflozin)\b", re.IGNORECASE),
+    ],
+    # RA bundle (TNF inhibitors, DMARDs)
+    "ra_medication": [
+        re.compile(r"\b(tnf.?inhibitor|tnfi|anti.?tnf|adalimumab|etanercept|infliximab|certolizumab|golimumab)\b", re.IGNORECASE),
+        re.compile(r"\b(dmard|methotrexate|leflunomide|sulfasalazine|hydroxychloroquine)\b", re.IGNORECASE),
+        re.compile(r"\b(jak.?inhibitor|tofacitinib|baricitinib|upadacitinib)\b", re.IGNORECASE),
+    ],
+    # Neuro reflex panel / labs
+    "neuro_lab": [
+        re.compile(r"\b(neuro.*reflex|reflex.*panel|nerve.*conduction|emg|electromyograph)\b", re.IGNORECASE),
+        re.compile(r"\b(csf|cerebrospinal|lumbar.*puncture)\b", re.IGNORECASE),
+    ],
+    # Heart failure diagnosis
+    "hf_diagnosis": [
+        re.compile(r"\b(heart.*failure|hf|hfref|hfpef|hfmref|chf|congestive)\b", re.IGNORECASE),
+        re.compile(r"\b(cardiomyopathy|lvef|ejection.*fraction)\b", re.IGNORECASE),
+    ],
+    # RA diagnosis
+    "ra_diagnosis": [
+        re.compile(r"\b(rheumatoid.*arthritis|ra\b|seropositive|seronegative)\b", re.IGNORECASE),
+    ],
+}
+
+
+def _match_slot_to_bundle(slot_label: str, search_terms: List[str]) -> Optional[str]:
+    """
+    Check if a slot label or search terms match any known clinical bundle pattern.
+    Returns the bundle name if matched, None otherwise.
+    """
+    combined_text = f"{slot_label} {' '.join(search_terms)}"
+    
+    for bundle_name, patterns in SLOT_BUNDLE_PATTERNS.items():
+        for pattern in patterns:
+            if pattern.search(combined_text):
+                return bundle_name
+    
+    return None
+
+
+def _code_matches_bundle(
+    code: str,
+    title: str,
+    bundle_name: str,
+) -> bool:
+    """
+    Check if a code/title matches the expected pattern for a clinical bundle.
+    """
+    combined_text = f"{code} {title}"
+    
+    patterns = SLOT_BUNDLE_PATTERNS.get(bundle_name, [])
+    for pattern in patterns:
+        if pattern.search(combined_text):
+            return True
+    
+    return False
+
+
+def compute_slot_satisfaction(
+    ledger: Dict[str, Any],
+    clusters: Optional[Dict[str, Any]],
+    missing_slots: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    """
+    Given the current ledger, clusters, and the LLM-reported missing_slots,
+    return:
+      - remaining_missing_slots: slots that are STILL truly unsatisfied
+      - slot_status: mapping of slot_id -> {
+            "satisfied": bool,
+            "matched_codes": [...],
+            "satisfaction_method": str,
+        }
+
+    A slot is satisfied if appropriate codes are present in the ledger
+    (or in clusters) that match the slot's vocabulary and intent.
+
+    Satisfaction methods (in order of priority):
+    1. Direct vocabulary match with semantic similarity
+    2. Bundle pattern matching (HF, RA, neuro, etc.)
+    3. Cluster-based matching (if clusters provided)
+    """
+    sources = (ledger.get("sources") or {}) if isinstance(ledger, dict) else {}
+    source_cluster_map = (clusters.get("source_cluster_map") or {}) if clusters else {}
+    
+    remaining_missing_slots: List[Dict[str, Any]] = []
+    slot_status: Dict[str, Dict[str, Any]] = {}
+    
+    for idx, slot in enumerate(missing_slots or []):
+        if not isinstance(slot, dict):
+            remaining_missing_slots.append(slot)
+            continue
+        
+        vocab = str(slot.get("vocabulary", "")).lower().strip()
+        label = str(slot.get("slot_label", "")).strip()
+        terms_raw = slot.get("search_terms") or []
+        search_terms: List[str] = []
+        if isinstance(terms_raw, list):
+            for t in terms_raw:
+                if isinstance(t, str) and t.strip():
+                    search_terms.append(t.strip())
+        
+        # Generate a unique slot_id for tracking
+        slot_id = f"{vocab}_{label}_{idx}".replace(" ", "_").lower()
+        
+        if not vocab or not label:
+            remaining_missing_slots.append(slot)
+            slot_status[slot_id] = {
+                "satisfied": False,
+                "matched_codes": [],
+                "satisfaction_method": "invalid_slot",
+            }
+            continue
+        
+        ledger_items = sources.get(vocab) or []
+        if not isinstance(ledger_items, list):
+            ledger_items = []
+        
+        matched_codes: List[Dict[str, Any]] = []
+        satisfaction_method = "none"
+        
+        # Method 1: Direct semantic similarity matching
+        semantic_matches = _find_semantic_matches_for_slot(
+            slot,
+            ledger_items,
+            min_similarity=0.30,  # slightly lower threshold for broader matching
+            max_codes=8,
+        )
+        
+        if semantic_matches:
+            for code in semantic_matches:
+                # Find the title for this code
+                title = ""
+                for item in ledger_items:
+                    if str(item.get("code", "")).strip() == code:
+                        title = str(item.get("title", "")).strip()
+                        break
+                matched_codes.append({
+                    "code": code,
+                    "title": title,
+                    "source": vocab,
+                })
+            satisfaction_method = "semantic_similarity"
+        
+        # Method 2: Bundle pattern matching (if no semantic matches)
+        if not matched_codes:
+            bundle_name = _match_slot_to_bundle(label, search_terms)
+            if bundle_name:
+                # Look for codes in the ledger that match this bundle
+                for item in ledger_items:
+                    code = str(item.get("code", "")).strip()
+                    title = str(item.get("title", "")).strip()
+                    if not code:
+                        continue
+                    
+                    if _code_matches_bundle(code, title, bundle_name):
+                        matched_codes.append({
+                            "code": code,
+                            "title": title,
+                            "source": vocab,
+                        })
+                        if len(matched_codes) >= 6:
+                            break
+                
+                if matched_codes:
+                    satisfaction_method = f"bundle_match:{bundle_name}"
+        
+        # Method 3: Cross-vocabulary bundle matching
+        # For medication slots, also check rxnorm; for diagnosis slots, check icd10cm/snomed
+        if not matched_codes:
+            bundle_name = _match_slot_to_bundle(label, search_terms)
+            if bundle_name:
+                # Determine which vocabularies to check based on bundle type
+                cross_vocabs: List[str] = []
+                if "medication" in bundle_name:
+                    cross_vocabs = ["rxnorm"]
+                elif "diagnosis" in bundle_name:
+                    cross_vocabs = ["icd10cm", "icd11", "snomed"]
+                elif "lab" in bundle_name:
+                    cross_vocabs = ["loinc"]
+                
+                for cross_vocab in cross_vocabs:
+                    if cross_vocab == vocab:
+                        continue  # Already checked
+                    
+                    cross_items = sources.get(cross_vocab) or []
+                    if not isinstance(cross_items, list):
+                        continue
+                    
+                    for item in cross_items:
+                        code = str(item.get("code", "")).strip()
+                        title = str(item.get("title", "")).strip()
+                        if not code:
+                            continue
+                        
+                        if _code_matches_bundle(code, title, bundle_name):
+                            matched_codes.append({
+                                "code": code,
+                                "title": title,
+                                "source": cross_vocab,
+                            })
+                            if len(matched_codes) >= 6:
+                                break
+                    
+                    if matched_codes:
+                        satisfaction_method = f"cross_vocab_bundle:{bundle_name}:{cross_vocab}"
+                        break
+        
+        # Method 4: Cluster-based matching (if clusters provided)
+        if not matched_codes and source_cluster_map:
+            # Check if any cluster contains codes that match the slot
+            vocab_cluster_map = source_cluster_map.get(vocab) or {}
+            if isinstance(vocab_cluster_map, dict):
+                for code, cluster_id in vocab_cluster_map.items():
+                    # Find the title for this code
+                    title = ""
+                    for item in ledger_items:
+                        if str(item.get("code", "")).strip() == code:
+                            title = str(item.get("title", "")).strip()
+                            break
+                    
+                    # Check if this code's title is semantically similar to the slot
+                    if title:
+                        sim = _concept_similarity(label, title, search_terms)
+                        if sim >= 0.25:  # lower threshold for cluster matching
+                            matched_codes.append({
+                                "code": code,
+                                "title": title,
+                                "source": vocab,
+                                "cluster_id": cluster_id,
+                            })
+                            if len(matched_codes) >= 6:
+                                break
+                
+                if matched_codes:
+                    satisfaction_method = "cluster_match"
+        
+        # Determine if slot is satisfied
+        is_satisfied = len(matched_codes) > 0
+        
+        slot_status[slot_id] = {
+            "satisfied": is_satisfied,
+            "matched_codes": matched_codes,
+            "satisfaction_method": satisfaction_method,
+            "slot_label": label,
+            "vocabulary": vocab,
+        }
+        
+        if not is_satisfied:
+            remaining_missing_slots.append(slot)
+    
+    return remaining_missing_slots, slot_status
+
+
 @dataclass
 class SourceMatches:
     source: str

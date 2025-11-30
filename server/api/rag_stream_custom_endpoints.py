@@ -53,6 +53,7 @@ from .rag_stream_routes import (
     build_icd10_rows_from_crosswalk,
     dedupe_matches,
     _apply_slot_satisfaction_heuristics,
+    compute_slot_satisfaction,
     CODE_MIN_LIMIT,
     cluster_coding_concepts,
     build_canonical_keep_map,
@@ -1410,6 +1411,50 @@ async def coding_stream_event_generator(
     if await request.is_disconnected():
         return
 
+    # 5.55) Compute slot satisfaction using the new comprehensive helper
+    # This determines which missing_slots are truly unsatisfied after gap retrieval
+    yield sse("status", {"status": "computing_slot_satisfaction"})
+    remaining_missing_slots: List[Dict[str, Any]] = missing2
+    slot_status: Dict[str, Dict[str, Any]] = {}
+    
+    try:
+        remaining_missing_slots, slot_status = compute_slot_satisfaction(
+            ledger=ledger2,
+            clusters=concept_clusters,
+            missing_slots=missing2,
+        )
+        
+        # Emit slot satisfaction status for debugging/inspection
+        yield sse(
+            "slot_satisfaction",
+            {
+                "original_missing_count": len(missing2),
+                "remaining_missing_count": len(remaining_missing_slots),
+                "satisfied_count": len(missing2) - len(remaining_missing_slots),
+                "slot_status": slot_status,
+            },
+        )
+        
+        logger.debug(
+            "compute_slot_satisfaction: %d -> %d missing slots",
+            len(missing2),
+            len(remaining_missing_slots),
+        )
+    except Exception as e:
+        logger.exception("compute_slot_satisfaction failed; using original missing_slots")
+        yield sse(
+            "status",
+            {
+                "status": "slot_satisfaction_error",
+                "detail": str(e),
+            },
+        )
+        remaining_missing_slots = missing2
+        slot_status = {}
+
+    if await request.is_disconnected():
+        return
+
     # 5.6) Build canonical_keep_map from concept_clusters
     # This filters keep2 to only include canonical codes from each cluster
     canonical_keep_map = build_canonical_keep_map(keep2, concept_clusters)
@@ -1448,6 +1493,10 @@ async def coding_stream_event_generator(
     
     # Add concept_clusters to coding_result for downstream consumers
     coding_result["concept_clusters"] = concept_clusters.get("clusters", [])
+    
+    # Add remaining_missing_slots (truly unsatisfied) instead of raw missing_slots
+    # This ensures only genuinely missing slots are reported
+    coding_result["missing_slots"] = remaining_missing_slots
     
     yield sse("coding_result", coding_result)
 
