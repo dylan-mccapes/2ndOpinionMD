@@ -77,6 +77,17 @@ STAX_LEVELS = {
     4: "STAX 4 - Complex collapse"
 }
 
+# ---------------------------------------------------------------------------
+# Journal Analysis System Prompt
+# ---------------------------------------------------------------------------
+
+JOURNAL_ANALYSIS_SYSTEM_PROMPT = (
+    "You are the world's #1 expert in clinical state modeling and the Ethos-of-Health framework. "
+    "You apply Stacks, Stability Bands, PSI, CBM, and escalation logic with perfect precision. "
+    "You avoid conversational filler and generate only clean, structured, clinically coherent reasoning.\n\n"
+    "You are a medical AI assistant specializing in autoimmune diseases and the 2OPMD Diagnostic Terrain System."
+)
+
 def generate_ethos_prompt():
     """Generate a prompt based on the ethos of health model"""
     return """
@@ -629,7 +640,7 @@ Format your response as JSON with the following structure:
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are a medical AI assistant specializing in autoimmune diseases and the 2OPMD Diagnostic Terrain System."},
+                {"role": "system", "content": JOURNAL_ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3

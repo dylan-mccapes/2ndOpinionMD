@@ -9,7 +9,37 @@ from typing import Any, Dict, List, Set
 # ---------------------------------------------------------------------------
 
 EMBED_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4.1-mini"  # adjust as needed
+CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")  # legacy default
+
+# ---------------------------------------------------------------------------
+# Multi-Model Architecture
+# ---------------------------------------------------------------------------
+# Three model tiers for different task complexities:
+#
+# CHAT_MODEL_GUIDELINES (largest model):
+#   - Guideline reasoning (/rag/ask_stream)
+#   - Ethos-of-Health reasoning (/rag/eoh_stream)
+#   - Long-form clinical synthesis
+#   - Zero tolerance for hallucination
+#
+# CHAT_MODEL_CODING_CORE (mid-sized model):
+#   - code_terms extraction
+#   - Ledger-building LLM steps
+#   - Gap-retrieval verification (fallback from UTIL)
+#   - Clinically important coding inference
+#
+# CHAT_MODEL_UTIL (mini model):
+#   - coding_router
+#   - coding_grader
+#   - cluster_coding_concepts
+#   - Missing-slot detector
+#   - Short, JSON-only, token-light tasks
+#
+# Set these in .env to override defaults. If not set, falls back to CHAT_MODEL.
+
+CHAT_MODEL_GUIDELINES = os.getenv("CHAT_MODEL_GUIDELINES", CHAT_MODEL)
+CHAT_MODEL_CODING_CORE = os.getenv("CHAT_MODEL_CODING_CORE", CHAT_MODEL)
+CHAT_MODEL_UTIL = os.getenv("CHAT_MODEL_UTIL", CHAT_MODEL)
 
 # How many total internal context chunks to give the LLM
 BASE_RRF_K = 24
@@ -532,6 +562,8 @@ EOH_STREAM_DEFAULT_SOURCES = sorted(
 )
 
 EOH_SYSTEM_PROMPT = """
+You are the world's #1 expert in clinical state modeling and the Ethos-of-Health framework. You apply Stacks, Stability Bands, PSI, CBM, and escalation logic with perfect precision. You avoid conversational filler and generate only clean, structured, clinically coherent reasoning.
+
 You are the Ethos of Health (EoH) explainer and internal decision-support assistant
 for the 2ndOpinionMD Medical Knowledge Graph.
 
@@ -631,6 +663,8 @@ CODING_ANN_K = 16      # top N ANN hits per source
 CODING_MAX_PER_SOURCE = 24  # hard cap (TS+ANN combined)
 
 CODING_SYSTEM_PROMPT = """
+You are the world's #1 grand-master of medical coding and terminology retrieval. You detect every valid ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, HPO, and CHV code with perfect precision. You are brutally strict: you miss nothing, you hallucinate nothing, and you always return a complete, validated, canonical code set. You catch every omission, contradiction, and weak inference with the harshest technical critique.
+
 You are a clinical coding and abstraction assistant for a retrieval-augmented system.
 
 You receive:
@@ -779,6 +813,8 @@ Your job:
 
 
 CODING_GRADER_SYSTEM_PROMPT = """
+You are the world's #1 medical code auditor and correctness inspector. You examine every retrieved code with zero tolerance for errors, noise, mismatches, missing categories, or false positives. You rigorously evaluate whether the set of codes is complete, clinically coherent, deduplicated, and follows strict vocabulary constraints. You identify even microscopic mistakes with absolute precision.
+
 You are a medical coding auditor for a retrieval-augmented system.
 
 You receive:

@@ -15,6 +15,9 @@ from .stream_config import (
     BASE_RRF_K,
     EOH_STREAM_DEFAULT_SOURCES,
     CHAT_MODEL,
+    CHAT_MODEL_GUIDELINES,
+    CHAT_MODEL_CODING_CORE,
+    CHAT_MODEL_UTIL,
     STRICT_CODE_SOURCES,
     is_strict_code_source,
 )
@@ -85,6 +88,8 @@ def _send_large_request_warning(q: str, sources: List[str], limit: int):
 # ---------------------------------------------------------------------------
 
 QA_GRADER_SYSTEM_PROMPT = """
+You are the world's #1 medical vocabulary router and source-selection engine. You choose exactly the correct coding vocabularies based on the user's query, with perfect enforcement of user-specified constraints (e.g., "SNOMED only", "ICD only", "phenotype only"). You never allow leakage from disallowed vocabularies. You interpret intent flawlessly and compute the most clinically appropriate source mix.
+
 You are a source-selection auditor for a medical retrieval-augmented question-answering (QA) system.
 
 You receive:
@@ -181,7 +186,7 @@ async def _run_qa_grader(
     q: str,
     ledger: Dict[str, Any],
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Call the QA source grader LLM once.
@@ -1290,7 +1295,7 @@ async def coding_stream_event_generator(
         gap_slots = await find_coding_gap_terms(
             q=q,
             missing_slots=missing1,
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
         )
 
         if gap_slots:
@@ -1380,7 +1385,7 @@ async def coding_stream_event_generator(
         concept_clusters = await cluster_coding_concepts(
             ledger=ledger2,
             q=q,
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
         )
         
         if concept_clusters.get("clusters"):

@@ -19,6 +19,9 @@ from . import valyu_client
 from .stream_config import (
     BASE_RRF_K,
     CHAT_MODEL,
+    CHAT_MODEL_GUIDELINES,
+    CHAT_MODEL_CODING_CORE,
+    CHAT_MODEL_UTIL,
     CODING_DEFAULT_SOURCES,
     CODING_SOURCES,
     CODING_TS_K,
@@ -908,7 +911,7 @@ async def run_coding_grader(
     ledger: Dict[str, Any],
     pass_id: int,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Call the coding grader LLM once.
@@ -1014,7 +1017,7 @@ async def run_coding_grader(
 # ---------------------------------------------------------------------------
 
 CONCEPT_CLUSTERING_SYSTEM_PROMPT = """
-You are a medical coding expert specializing in grouping near-identical or closely related codes.
+You are the world's #1 medical concept clustering expert. You organize codes into precise clinical concepts, eliminate noise, canonicalize duplicates, and select exactly one representative code per concept when appropriate. You strictly separate diagnoses, phenotypes, labs, medications, and procedures, and have zero tolerance for contamination or cross-category mixing.
 
 Your task is to cluster codes that represent essentially the same clinical concept or are closely related "siblings" where only one or two should be surfaced to the user.
 
@@ -1027,7 +1030,7 @@ Examples of codes that should be clustered:
 - ICD codes with different specificity levels (e.g., M32.10 vs M32.19)
 - SNOMED codes representing the same condition with different granularity
 
-Return STRICT JSON with this schema:
+Return STRICT JSON with this schema and nothing else:
 {
   "clusters": [
     {
@@ -1049,27 +1052,38 @@ Rules:
 - Keep cluster labels concise but descriptive
 - If a code is unique and doesn't cluster with others, it becomes its own single-member cluster
 - Prefer more specific codes as canonical representatives
+- Be concise: avoid long explanations; output only the JSON requested above.
 """
+
+# Caps to keep clustering fast and under LLM timeout
+MAX_CLUSTER_CODES_GLOBAL = 80          # absolute max codes sent to LLM
+MAX_CLUSTER_CODES_PER_SOURCE = 25      # per-vocabulary cap
+MAX_CLUSTER_TITLE_CHARS = 160          # truncate titles to reduce token count
 
 
 async def cluster_coding_concepts(
     ledger: Dict[str, Any],
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Use LLM to cluster near-identical codes in the ledger into concept groups.
-    
+
     This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP,
     multiple ICD-11 codes for RA variants) by grouping them into clusters
     with canonical representatives.
-    
+
+    To avoid timeouts and giant prompts:
+      - We cap the total number of codes sent to the LLM.
+      - We also cap the number of codes per source.
+      - If still too many, we fall back to single-member clusters.
+
     Args:
         ledger: The coding ledger with sources and codes
         q: The clinical query for context
         model: The LLM model to use
-    
+
     Returns:
         {
             "clusters": [
@@ -1088,39 +1102,103 @@ async def cluster_coding_concepts(
         }
     """
     sources = ledger.get("sources", {}) or {}
-    
-    # Build a compact representation for the LLM
+
+    # Build a compact representation for the LLM with caps
     codes_for_clustering: List[Dict[str, Any]] = []
+    total = 0
+
     for src, items in sources.items():
+        if not isinstance(items, list) or not items:
+            continue
+
+        # Cap per source to avoid huge clusters from one noisy vocab
+        per_source_count = 0
+
         for item in items:
-            codes_for_clustering.append({
-                "source": src,
-                "code": item.get("code", ""),
-                "title": item.get("title", ""),
-            })
-    
+            if per_source_count >= MAX_CLUSTER_CODES_PER_SOURCE:
+                break
+            if total >= MAX_CLUSTER_CODES_GLOBAL:
+                break
+
+            code = str(item.get("code") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if not code:
+                continue
+
+            # Truncate title to reduce token count and avoid timeouts
+            if len(title) > MAX_CLUSTER_TITLE_CHARS:
+                title = title[:MAX_CLUSTER_TITLE_CHARS].rstrip() + "..."
+
+            codes_for_clustering.append(
+                {
+                    "source": str(src).lower(),
+                    "code": code,
+                    "title": title,
+                }
+            )
+            per_source_count += 1
+            total += 1
+
+        if total >= MAX_CLUSTER_CODES_GLOBAL:
+            break
+
+    # Nothing to cluster
     if not codes_for_clustering:
         return {"clusters": [], "source_cluster_map": {}}
-    
-    # If very few codes, skip clustering
-    if len(codes_for_clustering) <= 3:
-        # Create single-member clusters for each code
+
+    # If very few codes, or we had to cap aggressively, use cheap fallback
+    # to avoid blowing up token counts and timeouts.
+    #
+    # Heuristic:
+    #   - <= 3 codes: pointless to call LLM; single-member clusters.
+    #   - If original ledger had WAY more codes than we could include, it's
+    #     safer to skip LLM clustering than send a biased subset.
+    codes_original_count = sum(len(v) for v in sources.values())
+    if len(codes_for_clustering) <= 3 or codes_original_count > (MAX_CLUSTER_CODES_GLOBAL * 2):
         clusters = []
         source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"single_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
         return {"clusters": clusters, "source_cluster_map": source_cluster_map}
-    
+
+    # Build LLM messages
+    # Keep JSON compact (no pretty-print) to save tokens.
+    codes_json = json.dumps(codes_for_clustering, separators=(",", ":"))
+
+    # Hard guard: if somehow this is still too large, bail to single-member clusters.
+    if len(codes_json) > 20000:  # ~20k chars is already large
+        clusters = []
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
+        for i, code_info in enumerate(codes_for_clustering):
+            cluster_id = f"size_guard_{i}"
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
+            src = code_info["source"]
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": "cluster_input_too_large_guard",
+        }
+
     messages = [
         {
             "role": "system",
@@ -1130,12 +1208,13 @@ async def cluster_coding_concepts(
             "role": "user",
             "content": (
                 f"Clinical question:\n{q.strip()}\n\n"
-                f"Codes to cluster:\n{json.dumps(codes_for_clustering, indent=2)}\n\n"
-                "Return STRICT JSON with clusters as described in the system prompt."
+                "Codes to cluster (JSON array):\n"
+                f"{codes_json}\n\n"
+                "Return STRICT JSON with a single top-level object containing only the 'clusters' field as described in the system prompt."
             ),
         },
     ]
-    
+
     try:
         completion = client.chat.completions.create(
             model=model,
@@ -1147,100 +1226,131 @@ async def cluster_coding_concepts(
         logger.exception("cluster_coding_concepts: OpenAI call failed")
         # Fallback: create single-member clusters
         clusters = []
-        source_cluster_map = {}
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"fallback_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
-        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": str(e)}
-    
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": str(e),
+        }
+
     content = completion.choices[0].message.content or "{}"
     try:
         data = json.loads(content)
     except json.JSONDecodeError as e:
-        logger.warning("cluster_coding_concepts: JSON parse failed: %r", content[:500])
+        logger.warning(
+            "cluster_coding_concepts: JSON parse failed: %r",
+            content[:500],
+        )
         # Fallback: create single-member clusters
         clusters = []
-        source_cluster_map = {}
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"parse_error_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
-        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": f"json_parse_failed: {e}"}
-    
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": f"json_parse_failed: {e}",
+        }
+
     # Parse and validate clusters
     raw_clusters = data.get("clusters") or []
-    clusters = []
-    source_cluster_map = {}
-    
+    clusters: List[Dict[str, Any]] = []
+    source_cluster_map: Dict[str, Dict[str, str]] = {}
+
     for cluster in raw_clusters:
         if not isinstance(cluster, dict):
             continue
-        
+
         cluster_id = str(cluster.get("cluster_id", "")).strip()
         if not cluster_id:
             continue
-        
+
         label = str(cluster.get("label", "")).strip() or cluster_id
         members = cluster.get("members") or []
         canonical_members = cluster.get("canonical_members") or []
-        
+
         # Validate members
-        valid_members = []
+        valid_members: List[Dict[str, str]] = []
         for m in members:
-            if isinstance(m, dict) and m.get("code"):
-                valid_members.append({
-                    "source": str(m.get("source", "")).lower(),
-                    "code": str(m.get("code", "")),
-                    "title": str(m.get("title", "")),
-                })
-        
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_members.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
         # Validate canonical members
-        valid_canonical = []
+        valid_canonical: List[Dict[str, str]] = []
         for m in canonical_members:
-            if isinstance(m, dict) and m.get("code"):
-                valid_canonical.append({
-                    "source": str(m.get("source", "")).lower(),
-                    "code": str(m.get("code", "")),
-                    "title": str(m.get("title", "")),
-                })
-        
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_canonical.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
         # If no canonical members, use first member
         if not valid_canonical and valid_members:
             valid_canonical = [valid_members[0]]
-        
-        if valid_members:
-            clusters.append({
+
+        if not valid_members:
+            continue
+
+        clusters.append(
+            {
                 "cluster_id": cluster_id,
                 "label": label,
                 "members": valid_members,
                 "canonical_members": valid_canonical,
-            })
-            
-            # Build source_cluster_map
-            for m in valid_members:
-                src = m["source"]
-                code = m["code"]
-                if src not in source_cluster_map:
-                    source_cluster_map[src] = {}
-                source_cluster_map[src][code] = cluster_id
-    
+            }
+        )
+
+        # Build source_cluster_map
+        for m in valid_members:
+            src = m["source"]
+            code = m["code"]
+            source_cluster_map.setdefault(src, {})[code] = cluster_id
+
     return {"clusters": clusters, "source_cluster_map": source_cluster_map}
 
 
@@ -2157,11 +2267,37 @@ async def search_source_ts(
         )
     return out
 
+
+# ---------------------------------------------------------------------------
+# Gap Retrieval System Prompt
+# ---------------------------------------------------------------------------
+
+GAP_RETRIEVAL_SYSTEM_PROMPT = (
+    "You are the world's #1 medical gap-retrieval engine. When a necessary code is missing, "
+    "you aggressively and intelligently search for synonyms, related terms, broader/narrower "
+    "concepts, or alternate phrasings. You fill gaps with perfect completeness, and you return "
+    "\"none_found\" only when a code truly does not exist. You never invent codes.\n\n"
+    "You expand search phrases for clinical coding searches. "
+    "Given a coding vocabulary, a slot label, and some search terms, you must infer "
+    "what underlying condition or concept is being described and propose additional "
+    "short search phrases that would help find the correct code row. "
+    "If a term includes a body part or region plus a condition"
+    ", consider that the code may live under the condition "
+    "category alone. "
+    "Prefer concise medical phrases, not long sentences. "
+    "Never invent implausible rare diseases; keep to realistic clinical language. "
+    "If ANY search term contains the word 'abscess', you MUST include "
+    "'peritoneal abscess' in your expanded_terms unless it would clearly contradict "
+    "the clinical note. "
+    "Always return STRICT JSON with an 'expanded_terms' array."
+)
+
+
 async def _llm_expand_terms_for_slot(
     q: str,
     slot: Dict[str, Any],
     base_terms: List[str],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[str]:
     """
     Use the chat model to reason about better search terms for a coding slot.
@@ -2187,22 +2323,6 @@ async def _llm_expand_terms_for_slot(
 
     vocab = (slot.get("vocabulary") or "").lower()
     slot_label = slot.get("slot_label") or ""
-
-    system_msg = (
-        "You expand search phrases for clinical coding searches. "
-        "Given a coding vocabulary, a slot label, and some search terms, you must infer "
-        "what underlying condition or concept is being described and propose additional "
-        "short search phrases that would help find the correct code row. "
-        "If a term includes a body part or region plus a condition"
-        ", consider that the code may live under the condition "
-        "category alone. "
-        "Prefer concise medical phrases, not long sentences. "
-        "Never invent implausible rare diseases; keep to realistic clinical language. "
-        "If ANY search term contains the word 'abscess', you MUST include "
-        "'peritoneal abscess' in your expanded_terms unless it would clearly contradict "
-        "the clinical note. "
-        "Always return STRICT JSON with an 'expanded_terms' array."
-    )
 
     user_msg = f"""Clinical question:
     {q}
@@ -2233,7 +2353,7 @@ async def _llm_expand_terms_for_slot(
                 model=model,
                 temperature=0.0,  # <-- make this deterministic for coding gaps
                 messages=[
-                    {"role": "system", "content": system_msg},
+                    {"role": "system", "content": GAP_RETRIEVAL_SYSTEM_PROMPT},
                     {"role": "user", "content": user_msg},
                 ],
             ),
@@ -2281,7 +2401,7 @@ async def _llm_expand_terms_for_slot(
 async def find_coding_gap_terms(
     q: str,
     missing_slots: List[Dict[str, Any]],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[Dict[str, Any]]:
     """
     For each missing coding slot, call the LLM to expand search terms.
@@ -2354,7 +2474,7 @@ async def find_coding_gap_terms(
 async def find_coding_gaps(
     q: str,
     missing_slots: List[Dict[str, Any]],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[Dict[str, Any]]:
     """
     For each missing coding slot, ask the LLM for better search phrases.
@@ -2845,7 +2965,10 @@ async def run_icd10cm_crosswalk_phase(
 # ---------------------------------------------------------------------------
 
 
-TERM_EXTRACT_SYSTEM_PROMPT = """You extract coding-related medical concepts from a clinical question.
+TERM_EXTRACT_SYSTEM_PROMPT = """
+You are the world's #1 grand-master of medical coding and terminology retrieval. You detect every valid ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, HPO, and CHV code with perfect precision. You are brutally strict: you miss nothing, you hallucinate nothing, and you always return a complete, validated, canonical code set. You catch every omission, contradiction, and weak inference with the harshest technical critique.
+
+You extract coding-related medical concepts from a clinical question.
 
 Return:
 - "terms": 5–20 canonical concepts that appear or are clearly implied in the question
@@ -2868,6 +2991,8 @@ Rules:
 """
 
 VALYU_EVIDENCE_SYSTEM_PROMPT = """
+You are the world's #1 expert in evidence-based clinical guidelines. You synthesize ACC/AHA, ACR, EULAR, KDIGO, IDSA, ADA, NICE, and other societies with flawless accuracy. You never hallucinate guideline sections, and you cite content precisely. You critique your own reasoning with extreme thoroughness to ensure it is accurate, complete, and clinically safe.
+
 You are 2ndOpinionMD's literature synthesis assistant.
 
 You will receive a clinical question and a context consisting ONLY of
@@ -2898,7 +3023,7 @@ Rules:
 async def extract_query_terms(
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_CODING_CORE,
     max_terms: int = 20,
 ) -> Dict[str, Any]:
     """
@@ -3025,6 +3150,87 @@ def build_all_terms(term_data: Dict[str, Any]) -> List[str]:
     return all_terms
 
 
+# ---------------------------------------------------------------------------
+# Code Term Extraction System Prompt
+# ---------------------------------------------------------------------------
+
+CODE_TERM_EXTRACT_SYSTEM_PROMPT = (
+    "You are the world's #1 grand-master of medical coding and terminology retrieval. "
+    "You detect every valid ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, HPO, and CHV code "
+    "with perfect precision. You are brutally strict: you miss nothing, you hallucinate nothing, "
+    "and you always return a complete, validated, canonical code set. You catch every omission, "
+    "contradiction, and weak inference with the harshest technical critique.\n\n"
+    "You are a medical coding term and code-candidate extractor "
+    "for a retrieval-augmented coding system.\n\n"
+    "Given a clinical question or discharge summary that asks for "
+    "ICD-10-CM, ICD-11, SNOMED CT, LOINC, and/or RxNorm codes, "
+    "your job is to output:\n"
+    "  1) A small set of focused search phrases.\n"
+    "  2) A small set of *candidate* codes per vocabulary.\n\n"
+    "General rules:\n"
+    "- Return ONLY a JSON object.\n"
+    "- The JSON MUST have a key 'terms' whose value is a list of strings.\n"
+    "- The JSON MAY have a key 'code_candidates' whose value is a list "
+    "  of objects.\n\n"
+    "For 'terms':\n"
+    "- Each term should be a short phrase (2–6 words) suitable for text search.\n"
+    "- Include:\n"
+    "    * disease/condition names (e.g., 'heart failure with reduced "
+    "       ejection fraction', 'chronic kidney disease stage 3b', "
+    "       'type 2 diabetes mellitus with peripheral neuropathy')\n"
+    "    * relevant organ or syndrome qualifiers when they meaningfully "
+    "      constrain the code (e.g., 'acute on chronic systolic heart failure')\n"
+    "    * procedures (e.g., 'IV diuresis', 'kidney biopsy')\n"
+    "    * lab tests/analytes (e.g., 'ejection fraction', "
+    "       'apixaban level', 'creatinine')\n"
+    "    * medication names (e.g., 'apixaban', 'metoprolol', 'lisinopril')\n"
+    "- Do NOT include generic context words like 'adult', 'treated', "
+    "  'please provide', 'codes for', etc.\n"
+    "- Aim for roughly 5–20 terms depending on question complexity.\n"
+    "- Avoid duplicates; normalize obvious variants to a single phrase.\n\n"
+    "For 'code_candidates':\n"
+    "- Use this shape for each candidate:\n"
+    "  {\n"
+    '    \"vocabulary\": \"icd10cm\" | \"icd11\" | \"snomed\" | \"loinc\" | \"rxnorm\",\n'
+    '    \"code\": \"string\",\n'
+    '    \"display\": \"human-readable title for the code\",\n'
+    '    \"reason\": \"1–2 sentence justification based on the text\",\n'
+    '    \"confidence\": \"high\" | \"medium\" | \"low\"\n'
+    "  }\n"
+    "- Only propose a code when the clinical description gives a strong\n"
+    "  signal that the code is plausible (e.g., explicit disease name, "
+    "  stage/severity, clear medication mention).\n"
+    "- Prefer a *small* set of high-yield candidates over many guesses.\n"
+    "- For 'high' confidence:\n"
+    "    * The text closely matches the official code title or a very\n"
+    "      common synonym.\n"
+    "- For 'medium' confidence:\n"
+    "    * The mapping is plausible but details (e.g., exact subtype,\n"
+    "      laterality, or complication) are not fully specified.\n"
+    "- For 'low' confidence:\n"
+    "    * Only include if the question clearly asks for codes and the\n"
+    "      best you can do is a reasonable educated guess.\n"
+    "- Never invent obviously impossible codes (e.g., wrong format for\n"
+    "  the vocabulary).\n\n"
+    "Output STRICT JSON only, with this top-level structure:\n"
+    "{\n"
+    "  \"terms\": [\"term1\", \"term2\", ...],\n"
+    "  \"code_candidates\": [\n"
+    "    {\n"
+    "      \"vocabulary\": \"icd10cm\",\n"
+    "      \"code\": \"I50.23\",\n"
+    "      \"display\": \"Acute on chronic systolic (congestive) heart failure\",\n"
+    "      \"reason\": \"The note states acute on chronic systolic HF exacerbation.\",\n"
+    "      \"confidence\": \"high\"\n"
+    "    }\n"
+    "    // ... more candidates\n"
+    "  ]\n"
+    "}\n"
+    "If you are unsure about codes, you may return an empty "
+    "'code_candidates' list, but you should still return strong 'terms'.\n"
+)
+
+
 async def extract_code_terms(q: str) -> List[str]:
     """
     Use the chat model to extract focused search phrases AND candidate codes
@@ -3045,81 +3251,12 @@ async def extract_code_terms(q: str) -> List[str]:
     """
     try:
         resp = client.chat.completions.create(
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_CODING_CORE,
             response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are a medical coding term and code-candidate extractor "
-                        "for a retrieval-augmented coding system.\n\n"
-                        "Given a clinical question or discharge summary that asks for "
-                        "ICD-10-CM, ICD-11, SNOMED CT, LOINC, and/or RxNorm codes, "
-                        "your job is to output:\n"
-                        "  1) A small set of focused search phrases.\n"
-                        "  2) A small set of *candidate* codes per vocabulary.\n\n"
-                        "General rules:\n"
-                        "- Return ONLY a JSON object.\n"
-                        "- The JSON MUST have a key 'terms' whose value is a list of strings.\n"
-                        "- The JSON MAY have a key 'code_candidates' whose value is a list "
-                        "  of objects.\n\n"
-                        "For 'terms':\n"
-                        "- Each term should be a short phrase (2–6 words) suitable for text search.\n"
-                        "- Include:\n"
-                        "    * disease/condition names (e.g., 'heart failure with reduced "
-                        "       ejection fraction', 'chronic kidney disease stage 3b', "
-                        "       'type 2 diabetes mellitus with peripheral neuropathy')\n"
-                        "    * relevant organ or syndrome qualifiers when they meaningfully "
-                        "      constrain the code (e.g., 'acute on chronic systolic heart failure')\n"
-                        "    * procedures (e.g., 'IV diuresis', 'kidney biopsy')\n"
-                        "    * lab tests/analytes (e.g., 'ejection fraction', "
-                        "       'apixaban level', 'creatinine')\n"
-                        "    * medication names (e.g., 'apixaban', 'metoprolol', 'lisinopril')\n"
-                        "- Do NOT include generic context words like 'adult', 'treated', "
-                        "  'please provide', 'codes for', etc.\n"
-                        "- Aim for roughly 5–20 terms depending on question complexity.\n"
-                        "- Avoid duplicates; normalize obvious variants to a single phrase.\n\n"
-                        "For 'code_candidates':\n"
-                        "- Use this shape for each candidate:\n"
-                        "  {\n"
-                        '    \"vocabulary\": \"icd10cm\" | \"icd11\" | \"snomed\" | \"loinc\" | \"rxnorm\",\n'
-                        '    \"code\": \"string\",\n'
-                        '    \"display\": \"human-readable title for the code\",\n'
-                        '    \"reason\": \"1–2 sentence justification based on the text\",\n'
-                        '    \"confidence\": \"high\" | \"medium\" | \"low\"\n'
-                        "  }\n"
-                        "- Only propose a code when the clinical description gives a strong\n"
-                        "  signal that the code is plausible (e.g., explicit disease name, "
-                        "  stage/severity, clear medication mention).\n"
-                        "- Prefer a *small* set of high-yield candidates over many guesses.\n"
-                        "- For 'high' confidence:\n"
-                        "    * The text closely matches the official code title or a very\n"
-                        "      common synonym.\n"
-                        "- For 'medium' confidence:\n"
-                        "    * The mapping is plausible but details (e.g., exact subtype,\n"
-                        "      laterality, or complication) are not fully specified.\n"
-                        "- For 'low' confidence:\n"
-                        "    * Only include if the question clearly asks for codes and the\n"
-                        "      best you can do is a reasonable educated guess.\n"
-                        "- Never invent obviously impossible codes (e.g., wrong format for\n"
-                        "  the vocabulary).\n\n"
-                        "Output STRICT JSON only, with this top-level structure:\n"
-                        "{\n"
-                        "  \"terms\": [\"term1\", \"term2\", ...],\n"
-                        "  \"code_candidates\": [\n"
-                        "    {\n"
-                        "      \"vocabulary\": \"icd10cm\",\n"
-                        "      \"code\": \"I50.23\",\n"
-                        "      \"display\": \"Acute on chronic systolic (congestive) heart failure\",\n"
-                        "      \"reason\": \"The note states acute on chronic systolic HF exacerbation.\",\n"
-                        "      \"confidence\": \"high\"\n"
-                        "    }\n"
-                        "    // ... more candidates\n"
-                        "  ]\n"
-                        "}\n"
-                        "If you are unsure about codes, you may return an empty "
-                        "'code_candidates' list, but you should still return strong 'terms'.\n"
-                    ),
+                    "content": CODE_TERM_EXTRACT_SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
@@ -3221,7 +3358,7 @@ async def extract_code_terms(q: str) -> List[str]:
 async def extract_qna_terms(
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_CODING_CORE,
     max_terms: int = 20,
     extra_context: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -3262,6 +3399,43 @@ async def extract_qna_terms(
         "expansions": term_data.get("expansions", {}) or {},
         "all_terms": all_terms or [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Guideline QA System Prompt
+# ---------------------------------------------------------------------------
+
+GUIDELINE_QA_SYSTEM_PROMPT = (
+    "You are the world's #1 expert in evidence-based clinical guidelines. "
+    "You synthesize ACC/AHA, ACR, EULAR, KDIGO, IDSA, ADA, NICE, and other societies "
+    "with flawless accuracy. You never hallucinate guideline sections, and you cite "
+    "content precisely. You critique your own reasoning with extreme thoroughness to "
+    "ensure it is accurate, complete, and clinically safe.\n\n"
+    "You are 2ndOpinionMD's retrieval-augmented medical assistant.\n"
+    "The context you receive contains two kinds of evidence, marked in each "
+    "block as kind=INTERNAL_MKG or kind=VALYU_LIT.\n\n"
+    "INTERNAL_MKG:\n"
+    "- Curated internal corpora such as guidelines (NICE, ACR, KDIGO, WHO, VA), "
+    "  ontologies, and other 2ndOpinionMD knowledge-graph sources.\n\n"
+    "VALYU_LIT:\n"
+    "- External literature snippets retrieved via Valyu, typically PubMed "
+    "  articles (clinical trials, meta-analyses, cohort studies, etc.).\n\n"
+    "When answering:\n"
+    "- Prefer INTERNAL_MKG guideline content **only when it directly addresses the "
+    "  clinical problem in the question**.\n"
+    "- If INTERNAL_MKG passages are clearly about unrelated topics, ignore them.\n"
+    "- Use VALYU_LIT to fill gaps and add detail, but keep the backbone aligned with guidelines.\n"
+    "- If INTERNAL_MKG does not answer the question at all, it is acceptable to "
+    "  base your answer primarily on VALYU_LIT, making clear that your answer is "
+    "  derived from PubMed literature rather than formal guidelines.\n"
+    "- If INTERNAL_MKG and VALYU_LIT appear to disagree, prioritize INTERNAL_MKG "
+    "  recommendations, but you may briefly note important newer evidence from "
+    "  VALYU_LIT.\n\n"
+    "Use ONLY the provided context to answer, citing sections by index like [1], [2], etc. "
+    "If the answer is not clearly supported by either INTERNAL_MKG or VALYU_LIT, say you "
+    "do not know and suggest useful follow-up guidelines or literature to consult."
+)
+
 
 def build_llm_messages(
     q: str,
@@ -3338,33 +3512,8 @@ def build_llm_messages(
         ]
 
     # ---- Default: guideline/MKG-first QA (existing behavior) ----
-    system_content = (
-        "You are 2ndOpinionMD's retrieval-augmented medical assistant.\n"
-        "The context you receive contains two kinds of evidence, marked in each "
-        "block as kind=INTERNAL_MKG or kind=VALYU_LIT.\n\n"
-        "INTERNAL_MKG:\n"
-        "- Curated internal corpora such as guidelines (NICE, ACR, KDIGO, WHO, VA), "
-        "  ontologies, and other 2ndOpinionMD knowledge-graph sources.\n\n"
-        "VALYU_LIT:\n"
-        "- External literature snippets retrieved via Valyu, typically PubMed "
-        "  articles (clinical trials, meta-analyses, cohort studies, etc.).\n\n"
-        "When answering:\n"
-        "- Prefer INTERNAL_MKG guideline content **only when it directly addresses the "
-        "  clinical problem in the question**.\n"
-        "- If INTERNAL_MKG passages are clearly about unrelated topics, ignore them.\n"
-        "- Use VALYU_LIT to fill gaps and add detail, but keep the backbone aligned with guidelines.\n"
-        "- If INTERNAL_MKG does not answer the question at all, it is acceptable to "
-        "  base your answer primarily on VALYU_LIT, making clear that your answer is "
-        "  derived from PubMed literature rather than formal guidelines.\n"
-        "- If INTERNAL_MKG and VALYU_LIT appear to disagree, prioritize INTERNAL_MKG "
-        "  recommendations, but you may briefly note important newer evidence from "
-        "  VALYU_LIT.\n\n"
-        "Use ONLY the provided context to answer, citing sections by index like [1], [2], etc. "
-        "If the answer is not clearly supported by either INTERNAL_MKG or VALYU_LIT, say you "
-        "do not know and suggest useful follow-up guidelines or literature to consult."
-    )
     return [
-        {"role": "system", "content": system_content},
+        {"role": "system", "content": GUIDELINE_QA_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": f"Question:\n{q.strip()}",
@@ -3597,7 +3746,7 @@ def stream_llm_events(
         mode = "chunk"
 
     stream = client.chat.completions.create(
-        model=CHAT_MODEL,
+        model=CHAT_MODEL_GUIDELINES,
         messages=messages,
         stream=True,
     )
