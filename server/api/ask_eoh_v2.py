@@ -6,6 +6,8 @@ from fastapi import APIRouter, Body, Query, Request, HTTPException
 from fastapi.responses import Response
 from openai import OpenAI
 
+from .stream_config import CHAT_MODEL_GUIDELINES
+
 # Reuse your existing retriever
 try:
     from .rag_routes import _handle_rag_ask  # type: ignore
@@ -161,7 +163,7 @@ async def ask_eoh_v2(
     ]
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    model_used = CHAT_MODEL_GUIDELINES
 
     if format == "json":
         resp = client.chat.completions.create(

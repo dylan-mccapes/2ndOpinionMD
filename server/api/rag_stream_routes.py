@@ -19,6 +19,9 @@ from . import valyu_client
 from .stream_config import (
     BASE_RRF_K,
     CHAT_MODEL,
+    CHAT_MODEL_GUIDELINES,
+    CHAT_MODEL_CODING_CORE,
+    CHAT_MODEL_UTIL,
     CODING_DEFAULT_SOURCES,
     CODING_SOURCES,
     CODING_TS_K,
@@ -908,7 +911,7 @@ async def run_coding_grader(
     ledger: Dict[str, Any],
     pass_id: int,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Call the coding grader LLM once.
@@ -1055,13 +1058,14 @@ Rules:
 # Caps to keep clustering fast and under LLM timeout
 MAX_CLUSTER_CODES_GLOBAL = 80          # absolute max codes sent to LLM
 MAX_CLUSTER_CODES_PER_SOURCE = 25      # per-vocabulary cap
+MAX_CLUSTER_TITLE_CHARS = 160          # truncate titles to reduce token count
 
 
 async def cluster_coding_concepts(
     ledger: Dict[str, Any],
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Use LLM to cluster near-identical codes in the ledger into concept groups.
@@ -1120,6 +1124,10 @@ async def cluster_coding_concepts(
             title = str(item.get("title") or "").strip()
             if not code:
                 continue
+
+            # Truncate title to reduce token count and avoid timeouts
+            if len(title) > MAX_CLUSTER_TITLE_CHARS:
+                title = title[:MAX_CLUSTER_TITLE_CHARS].rstrip() + "..."
 
             codes_for_clustering.append(
                 {
@@ -2289,7 +2297,7 @@ async def _llm_expand_terms_for_slot(
     q: str,
     slot: Dict[str, Any],
     base_terms: List[str],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[str]:
     """
     Use the chat model to reason about better search terms for a coding slot.
@@ -2393,7 +2401,7 @@ async def _llm_expand_terms_for_slot(
 async def find_coding_gap_terms(
     q: str,
     missing_slots: List[Dict[str, Any]],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[Dict[str, Any]]:
     """
     For each missing coding slot, call the LLM to expand search terms.
@@ -2466,7 +2474,7 @@ async def find_coding_gap_terms(
 async def find_coding_gaps(
     q: str,
     missing_slots: List[Dict[str, Any]],
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> List[Dict[str, Any]]:
     """
     For each missing coding slot, ask the LLM for better search phrases.
@@ -3015,7 +3023,7 @@ Rules:
 async def extract_query_terms(
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_CODING_CORE,
     max_terms: int = 20,
 ) -> Dict[str, Any]:
     """
@@ -3243,7 +3251,7 @@ async def extract_code_terms(q: str) -> List[str]:
     """
     try:
         resp = client.chat.completions.create(
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_CODING_CORE,
             response_format={"type": "json_object"},
             messages=[
                 {
@@ -3350,7 +3358,7 @@ async def extract_code_terms(q: str) -> List[str]:
 async def extract_qna_terms(
     q: str,
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_CODING_CORE,
     max_terms: int = 20,
     extra_context: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -3738,7 +3746,7 @@ def stream_llm_events(
         mode = "chunk"
 
     stream = client.chat.completions.create(
-        model=CHAT_MODEL,
+        model=CHAT_MODEL_GUIDELINES,
         messages=messages,
         stream=True,
     )

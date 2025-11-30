@@ -15,6 +15,9 @@ from .stream_config import (
     BASE_RRF_K,
     EOH_STREAM_DEFAULT_SOURCES,
     CHAT_MODEL,
+    CHAT_MODEL_GUIDELINES,
+    CHAT_MODEL_CODING_CORE,
+    CHAT_MODEL_UTIL,
     STRICT_CODE_SOURCES,
     is_strict_code_source,
 )
@@ -183,7 +186,7 @@ async def _run_qa_grader(
     q: str,
     ledger: Dict[str, Any],
     *,
-    model: str = CHAT_MODEL,
+    model: str = CHAT_MODEL_UTIL,
 ) -> Dict[str, Any]:
     """
     Call the QA source grader LLM once.
@@ -1292,7 +1295,7 @@ async def coding_stream_event_generator(
         gap_slots = await find_coding_gap_terms(
             q=q,
             missing_slots=missing1,
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
         )
 
         if gap_slots:
@@ -1382,7 +1385,7 @@ async def coding_stream_event_generator(
         concept_clusters = await cluster_coding_concepts(
             ledger=ledger2,
             q=q,
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
         )
         
         if concept_clusters.get("clusters"):

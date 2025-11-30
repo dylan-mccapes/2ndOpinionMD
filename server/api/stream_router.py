@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 import json
 
-from .stream_config import CHAT_MODEL, STRICT_CODE_SOURCES, is_strict_code_source
+from .stream_config import CHAT_MODEL, CHAT_MODEL_UTIL, STRICT_CODE_SOURCES, is_strict_code_source
 
 client = OpenAI()
 
@@ -1297,7 +1297,7 @@ async def route_coding_sources(
 
     try:
         completion = client.chat.completions.create(
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
             messages=messages,
             temperature=0.0,
             response_format={"type": "json_object"},
@@ -1471,7 +1471,7 @@ async def route_coding_sources_strict(
     
     try:
         completion = client.chat.completions.create(
-            model=CHAT_MODEL,
+            model=CHAT_MODEL_UTIL,
             messages=messages,
             temperature=0.0,
             response_format={"type": "json_object"},

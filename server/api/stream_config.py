@@ -9,7 +9,37 @@ from typing import Any, Dict, List, Set
 # ---------------------------------------------------------------------------
 
 EMBED_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4.1-mini"  # adjust as needed
+CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")  # legacy default
+
+# ---------------------------------------------------------------------------
+# Multi-Model Architecture
+# ---------------------------------------------------------------------------
+# Three model tiers for different task complexities:
+#
+# CHAT_MODEL_GUIDELINES (largest model):
+#   - Guideline reasoning (/rag/ask_stream)
+#   - Ethos-of-Health reasoning (/rag/eoh_stream)
+#   - Long-form clinical synthesis
+#   - Zero tolerance for hallucination
+#
+# CHAT_MODEL_CODING_CORE (mid-sized model):
+#   - code_terms extraction
+#   - Ledger-building LLM steps
+#   - Gap-retrieval verification (fallback from UTIL)
+#   - Clinically important coding inference
+#
+# CHAT_MODEL_UTIL (mini model):
+#   - coding_router
+#   - coding_grader
+#   - cluster_coding_concepts
+#   - Missing-slot detector
+#   - Short, JSON-only, token-light tasks
+#
+# Set these in .env to override defaults. If not set, falls back to CHAT_MODEL.
+
+CHAT_MODEL_GUIDELINES = os.getenv("CHAT_MODEL_GUIDELINES", CHAT_MODEL)
+CHAT_MODEL_CODING_CORE = os.getenv("CHAT_MODEL_CODING_CORE", CHAT_MODEL)
+CHAT_MODEL_UTIL = os.getenv("CHAT_MODEL_UTIL", CHAT_MODEL)
 
 # How many total internal context chunks to give the LLM
 BASE_RRF_K = 24
