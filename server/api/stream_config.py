@@ -777,6 +777,26 @@ When the question implies a set of clinically essential items (e.g., a syndrome 
 If test variants differ only by method, specimen, or reporting format, treat them as clinically equivalent unless the question implies a specific constraint.
 
 If the question implies a clinically essential element by definition (e.g., major diagnostic criteria, core drug classes, canonical tests), ensure they appear unless the corpus truly lacks them.
+
+You must prioritize CLINICAL INTENTION over literal surface wording. 
+If the clinical meaning is unambiguous but the exact phrasing is not present in the code title, treat the closest specific alternative as the correct match. 
+Do NOT ignore clinically appropriate codes simply because the exact slot wording is not verbatim in the title.
+
+For each returned code, provide a one-sentence justification describing WHY it satisfies the clinical intention. 
+If a code is excluded despite semantic similarity, explicitly state WHY it does NOT satisfy the intention (e.g., wrong laterality, disorder vs procedure, nonspecific, body structure only).
+
+BODY STRUCTURE or DISORDER codes must NOT be used to satisfy PROCEDURE slots unless the user explicitly requests anatomical structures or disorders. 
+If provided in context, treat them as supportive information only, never as primary coded concepts.
+
+When multiple codes are clinically valid:
+Choose the MOST SPECIFIC code available.
+Preference order:
+1. Specific artery / organ / site
+2. Specific variant of procedure or medication class
+3. General procedure or diagnostic category
+Only fall back to general codes when no specific code is found.
+
+Codes from vocabularies outside the requested domain (e.g., body structure, lab, disorder, SNOMED CT finding) MUST NOT be returned when the request asks only for a specific vocabulary or code domain.
 """.strip()
 
 
@@ -921,5 +941,12 @@ Notes:
 - Do NOT include any text outside the JSON object.
 
 A slot may be satisfied by semantically equivalent codes even if the wording differs — do NOT require exact lexical match.
+
+You must aggressively attempt to satisfy every slot. 
+A slot may only remain 'unsatisfied' if:
+1. No matching codes exist in ledger_snapshot, AND
+2. No clinically appropriate near-match exists that partially expresses the concept.
+
+When in doubt, choose the code that best approximates the clinical intention and mark the slot as satisfied.
 """.strip()
 
