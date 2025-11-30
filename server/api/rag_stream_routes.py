@@ -1016,8 +1016,6 @@ async def run_coding_grader(
 CONCEPT_CLUSTERING_SYSTEM_PROMPT = """
 You are the world's #1 medical concept clustering expert. You organize codes into precise clinical concepts, eliminate noise, canonicalize duplicates, and select exactly one representative code per concept when appropriate. You strictly separate diagnoses, phenotypes, labs, medications, and procedures, and have zero tolerance for contamination or cross-category mixing.
 
-You are a medical coding expert specializing in grouping near-identical or closely related codes.
-
 Your task is to cluster codes that represent essentially the same clinical concept or are closely related "siblings" where only one or two should be surfaced to the user.
 
 For each cluster:
@@ -1029,7 +1027,7 @@ Examples of codes that should be clustered:
 - ICD codes with different specificity levels (e.g., M32.10 vs M32.19)
 - SNOMED codes representing the same condition with different granularity
 
-Return STRICT JSON with this schema:
+Return STRICT JSON with this schema and nothing else:
 {
   "clusters": [
     {
@@ -1051,7 +1049,12 @@ Rules:
 - Keep cluster labels concise but descriptive
 - If a code is unique and doesn't cluster with others, it becomes its own single-member cluster
 - Prefer more specific codes as canonical representatives
+- Be concise: avoid long explanations; output only the JSON requested above.
 """
+
+# Caps to keep clustering fast and under LLM timeout
+MAX_CLUSTER_CODES_GLOBAL = 80          # absolute max codes sent to LLM
+MAX_CLUSTER_CODES_PER_SOURCE = 25      # per-vocabulary cap
 
 
 async def cluster_coding_concepts(
@@ -1062,16 +1065,21 @@ async def cluster_coding_concepts(
 ) -> Dict[str, Any]:
     """
     Use LLM to cluster near-identical codes in the ledger into concept groups.
-    
+
     This reduces noise from dense vocabularies (e.g., multiple LOINCs for CRP,
     multiple ICD-11 codes for RA variants) by grouping them into clusters
     with canonical representatives.
-    
+
+    To avoid timeouts and giant prompts:
+      - We cap the total number of codes sent to the LLM.
+      - We also cap the number of codes per source.
+      - If still too many, we fall back to single-member clusters.
+
     Args:
         ledger: The coding ledger with sources and codes
         q: The clinical query for context
         model: The LLM model to use
-    
+
     Returns:
         {
             "clusters": [
@@ -1090,39 +1098,99 @@ async def cluster_coding_concepts(
         }
     """
     sources = ledger.get("sources", {}) or {}
-    
-    # Build a compact representation for the LLM
+
+    # Build a compact representation for the LLM with caps
     codes_for_clustering: List[Dict[str, Any]] = []
+    total = 0
+
     for src, items in sources.items():
+        if not isinstance(items, list) or not items:
+            continue
+
+        # Cap per source to avoid huge clusters from one noisy vocab
+        per_source_count = 0
+
         for item in items:
-            codes_for_clustering.append({
-                "source": src,
-                "code": item.get("code", ""),
-                "title": item.get("title", ""),
-            })
-    
+            if per_source_count >= MAX_CLUSTER_CODES_PER_SOURCE:
+                break
+            if total >= MAX_CLUSTER_CODES_GLOBAL:
+                break
+
+            code = str(item.get("code") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if not code:
+                continue
+
+            codes_for_clustering.append(
+                {
+                    "source": str(src).lower(),
+                    "code": code,
+                    "title": title,
+                }
+            )
+            per_source_count += 1
+            total += 1
+
+        if total >= MAX_CLUSTER_CODES_GLOBAL:
+            break
+
+    # Nothing to cluster
     if not codes_for_clustering:
         return {"clusters": [], "source_cluster_map": {}}
-    
-    # If very few codes, skip clustering
-    if len(codes_for_clustering) <= 3:
-        # Create single-member clusters for each code
+
+    # If very few codes, or we had to cap aggressively, use cheap fallback
+    # to avoid blowing up token counts and timeouts.
+    #
+    # Heuristic:
+    #   - <= 3 codes: pointless to call LLM; single-member clusters.
+    #   - If original ledger had WAY more codes than we could include, it's
+    #     safer to skip LLM clustering than send a biased subset.
+    codes_original_count = sum(len(v) for v in sources.values())
+    if len(codes_for_clustering) <= 3 or codes_original_count > (MAX_CLUSTER_CODES_GLOBAL * 2):
         clusters = []
         source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"single_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
         return {"clusters": clusters, "source_cluster_map": source_cluster_map}
-    
+
+    # Build LLM messages
+    # Keep JSON compact (no pretty-print) to save tokens.
+    codes_json = json.dumps(codes_for_clustering, separators=(",", ":"))
+
+    # Hard guard: if somehow this is still too large, bail to single-member clusters.
+    if len(codes_json) > 20000:  # ~20k chars is already large
+        clusters = []
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
+        for i, code_info in enumerate(codes_for_clustering):
+            cluster_id = f"size_guard_{i}"
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
+            src = code_info["source"]
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": "cluster_input_too_large_guard",
+        }
+
     messages = [
         {
             "role": "system",
@@ -1132,12 +1200,13 @@ async def cluster_coding_concepts(
             "role": "user",
             "content": (
                 f"Clinical question:\n{q.strip()}\n\n"
-                f"Codes to cluster:\n{json.dumps(codes_for_clustering, indent=2)}\n\n"
-                "Return STRICT JSON with clusters as described in the system prompt."
+                "Codes to cluster (JSON array):\n"
+                f"{codes_json}\n\n"
+                "Return STRICT JSON with a single top-level object containing only the 'clusters' field as described in the system prompt."
             ),
         },
     ]
-    
+
     try:
         completion = client.chat.completions.create(
             model=model,
@@ -1149,100 +1218,131 @@ async def cluster_coding_concepts(
         logger.exception("cluster_coding_concepts: OpenAI call failed")
         # Fallback: create single-member clusters
         clusters = []
-        source_cluster_map = {}
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"fallback_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
-        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": str(e)}
-    
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": str(e),
+        }
+
     content = completion.choices[0].message.content or "{}"
     try:
         data = json.loads(content)
     except json.JSONDecodeError as e:
-        logger.warning("cluster_coding_concepts: JSON parse failed: %r", content[:500])
+        logger.warning(
+            "cluster_coding_concepts: JSON parse failed: %r",
+            content[:500],
+        )
         # Fallback: create single-member clusters
         clusters = []
-        source_cluster_map = {}
+        source_cluster_map: Dict[str, Dict[str, str]] = {}
         for i, code_info in enumerate(codes_for_clustering):
             cluster_id = f"parse_error_{i}"
-            clusters.append({
-                "cluster_id": cluster_id,
-                "label": code_info["title"] or code_info["code"],
-                "members": [code_info],
-                "canonical_members": [code_info],
-            })
+            clusters.append(
+                {
+                    "cluster_id": cluster_id,
+                    "label": code_info["title"] or code_info["code"],
+                    "members": [code_info],
+                    "canonical_members": [code_info],
+                }
+            )
             src = code_info["source"]
-            if src not in source_cluster_map:
-                source_cluster_map[src] = {}
-            source_cluster_map[src][code_info["code"]] = cluster_id
-        return {"clusters": clusters, "source_cluster_map": source_cluster_map, "error": f"json_parse_failed: {e}"}
-    
+            source_cluster_map.setdefault(src, {})[code_info["code"]] = cluster_id
+
+        return {
+            "clusters": clusters,
+            "source_cluster_map": source_cluster_map,
+            "error": f"json_parse_failed: {e}",
+        }
+
     # Parse and validate clusters
     raw_clusters = data.get("clusters") or []
-    clusters = []
-    source_cluster_map = {}
-    
+    clusters: List[Dict[str, Any]] = []
+    source_cluster_map: Dict[str, Dict[str, str]] = {}
+
     for cluster in raw_clusters:
         if not isinstance(cluster, dict):
             continue
-        
+
         cluster_id = str(cluster.get("cluster_id", "")).strip()
         if not cluster_id:
             continue
-        
+
         label = str(cluster.get("label", "")).strip() or cluster_id
         members = cluster.get("members") or []
         canonical_members = cluster.get("canonical_members") or []
-        
+
         # Validate members
-        valid_members = []
+        valid_members: List[Dict[str, str]] = []
         for m in members:
-            if isinstance(m, dict) and m.get("code"):
-                valid_members.append({
-                    "source": str(m.get("source", "")).lower(),
-                    "code": str(m.get("code", "")),
-                    "title": str(m.get("title", "")),
-                })
-        
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_members.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
         # Validate canonical members
-        valid_canonical = []
+        valid_canonical: List[Dict[str, str]] = []
         for m in canonical_members:
-            if isinstance(m, dict) and m.get("code"):
-                valid_canonical.append({
-                    "source": str(m.get("source", "")).lower(),
-                    "code": str(m.get("code", "")),
-                    "title": str(m.get("title", "")),
-                })
-        
+            if not isinstance(m, dict):
+                continue
+            code = str(m.get("code") or "").strip()
+            if not code:
+                continue
+            src = str(m.get("source") or "").lower().strip()
+            title = str(m.get("title") or "")
+            valid_canonical.append(
+                {
+                    "source": src,
+                    "code": code,
+                    "title": title,
+                }
+            )
+
         # If no canonical members, use first member
         if not valid_canonical and valid_members:
             valid_canonical = [valid_members[0]]
-        
-        if valid_members:
-            clusters.append({
+
+        if not valid_members:
+            continue
+
+        clusters.append(
+            {
                 "cluster_id": cluster_id,
                 "label": label,
                 "members": valid_members,
                 "canonical_members": valid_canonical,
-            })
-            
-            # Build source_cluster_map
-            for m in valid_members:
-                src = m["source"]
-                code = m["code"]
-                if src not in source_cluster_map:
-                    source_cluster_map[src] = {}
-                source_cluster_map[src][code] = cluster_id
-    
+            }
+        )
+
+        # Build source_cluster_map
+        for m in valid_members:
+            src = m["source"]
+            code = m["code"]
+            source_cluster_map.setdefault(src, {})[code] = cluster_id
+
     return {"clusters": clusters, "source_cluster_map": source_cluster_map}
 
 
@@ -2857,7 +2957,8 @@ async def run_icd10cm_crosswalk_phase(
 # ---------------------------------------------------------------------------
 
 
-TERM_EXTRACT_SYSTEM_PROMPT = """You are the world's #1 grand-master of medical coding and terminology retrieval. You detect every valid ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, HPO, and CHV code with perfect precision. You are brutally strict: you miss nothing, you hallucinate nothing, and you always return a complete, validated, canonical code set. You catch every omission, contradiction, and weak inference with the harshest technical critique.
+TERM_EXTRACT_SYSTEM_PROMPT = """
+You are the world's #1 grand-master of medical coding and terminology retrieval. You detect every valid ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm, HPO, and CHV code with perfect precision. You are brutally strict: you miss nothing, you hallucinate nothing, and you always return a complete, validated, canonical code set. You catch every omission, contradiction, and weak inference with the harshest technical critique.
 
 You extract coding-related medical concepts from a clinical question.
 
