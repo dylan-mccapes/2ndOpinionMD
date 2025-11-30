@@ -565,6 +565,310 @@ def _apply_slot_satisfaction_heuristics(
     return new_keep, new_missing
 
 
+# ---------------------------------------------------------------------------
+# compute_slot_satisfaction: LLM-driven slot satisfaction helper
+# ---------------------------------------------------------------------------
+
+# Import the gap satisfaction prompt from stream_config
+from server.api.stream_config import CODING_GAP_SATISFACTION_SYSTEM_PROMPT
+
+# Maximum codes per source in ledger snapshot to avoid LLM timeouts
+LEDGER_SNAPSHOT_MAX_PER_SOURCE = 20
+
+
+def _build_ledger_snapshot(
+    ledger: Dict[str, Any],
+    clusters: Optional[Dict[str, Any]] = None,
+) -> Dict[str, List[Dict[str, str]]]:
+    """
+    Build a compact ledger snapshot for the LLM.
+    Limits codes per source and drops score field.
+    Optionally enriches with cluster_id if clusters provided.
+    """
+    sources = (ledger.get("sources") or {}) if isinstance(ledger, dict) else {}
+    cluster_map = (clusters.get("source_cluster_map") or {}) if clusters else {}
+    
+    snapshot: Dict[str, List[Dict[str, str]]] = {}
+    
+    for src, items in sources.items():
+        if not items or not isinstance(items, list):
+            continue
+        
+        # Take top N items (already sorted by score)
+        top_items = items[:LEDGER_SNAPSHOT_MAX_PER_SOURCE]
+        src_cluster_map = cluster_map.get(src) or {}
+        
+        snapshot_items: List[Dict[str, str]] = []
+        for item in top_items:
+            code = str(item.get("code", "")).strip()
+            title = str(item.get("title", ""))[:200].strip()  # Truncate long titles
+            if not code:
+                continue
+            
+            entry: Dict[str, str] = {
+                "source": src,
+                "code": code,
+                "title": title,
+            }
+            
+            # Add cluster_id if available
+            if src_cluster_map and code in src_cluster_map:
+                entry["cluster_id"] = str(src_cluster_map[code])
+            
+            snapshot_items.append(entry)
+        
+        if snapshot_items:
+            snapshot[src] = snapshot_items
+    
+    return snapshot
+
+
+def _build_slots_payload(
+    missing_slots: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Build slots payload with deterministic slot_id for each slot.
+    """
+    slots_payload: List[Dict[str, Any]] = []
+    
+    for idx, slot in enumerate(missing_slots or []):
+        if not isinstance(slot, dict):
+            continue
+        
+        vocab = str(slot.get("vocabulary", "")).lower().strip()
+        label = str(slot.get("slot_label", "")).strip()
+        terms_raw = slot.get("search_terms") or []
+        
+        search_terms: List[str] = []
+        if isinstance(terms_raw, list):
+            for t in terms_raw:
+                if isinstance(t, str) and t.strip():
+                    search_terms.append(t.strip())
+        
+        if not vocab or not label:
+            continue
+        
+        # Generate deterministic slot_id
+        slot_id = f"{vocab}:{label}:{idx}".lower().replace(" ", "_")
+        
+        slots_payload.append({
+            "slot_id": slot_id,
+            "vocabulary": vocab,
+            "slot_label": label,
+            "search_terms": search_terms,
+        })
+    
+    return slots_payload
+
+
+async def llm_gap_satisfaction(
+    q: str,
+    slots: List[Dict[str, Any]],
+    ledger_snapshot: Dict[str, List[Dict[str, str]]],
+    *,
+    model: str = CHAT_MODEL_UTIL,
+) -> Dict[str, Any]:
+    """
+    Call the LLM to determine which slots are satisfied given the current ledger.
+    
+    Returns a JSON-compatible dict with:
+      {
+        "slots": [
+          {
+            "slot_id": "...",
+            "satisfied": true/false,
+            "matched_codes": [
+              {"source": "...", "code": "...", "title": "..."}
+            ]
+          },
+          ...
+        ]
+      }
+    
+    On failure, returns {"slots": [], "error": "..."}.
+    """
+    if not slots:
+        return {"slots": []}
+    
+    # Build compact JSON payload
+    payload = {
+        "clinical_question": q.strip()[:2000],  # Limit question length
+        "slots": slots,
+        "ledger_snapshot": ledger_snapshot,
+    }
+    
+    user_content = (
+        "You will receive JSON with the clinical question, slots, and ledger snapshot.\n"
+        "Decide for each slot whether it is satisfied by codes in the ledger.\n"
+        "Return STRICT JSON only with the schema described in the system prompt.\n\n"
+        "INPUT:\n"
+        f"{json.dumps(payload, separators=(',', ':'))}\n"
+    )
+    
+    messages = [
+        {
+            "role": "system",
+            "content": CODING_GAP_SATISFACTION_SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": user_content,
+        },
+    ]
+    
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        logger.exception("llm_gap_satisfaction: OpenAI call failed")
+        return {"slots": [], "error": str(e)}
+    
+    content = completion.choices[0].message.content or "{}"
+    
+    # Log raw response at debug level (truncated)
+    logger.debug("llm_gap_satisfaction raw response: %s", content[:500])
+    
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning("llm_gap_satisfaction: JSON parse failed: %r", content[:500])
+        return {"slots": [], "error": f"json_parse_failed: {e}"}
+    
+    # Basic sanitization of response
+    raw_slots = data.get("slots") or []
+    clean_slots: List[Dict[str, Any]] = []
+    
+    if isinstance(raw_slots, list):
+        for s in raw_slots:
+            if not isinstance(s, dict):
+                continue
+            
+            slot_id = str(s.get("slot_id", "")).strip()
+            if not slot_id:
+                continue
+            
+            satisfied = bool(s.get("satisfied"))
+            matched_codes_raw = s.get("matched_codes") or []
+            
+            matched_codes: List[Dict[str, str]] = []
+            if isinstance(matched_codes_raw, list):
+                for mc in matched_codes_raw:
+                    if not isinstance(mc, dict):
+                        continue
+                    matched_codes.append({
+                        "source": str(mc.get("source", "")).strip(),
+                        "code": str(mc.get("code", "")).strip(),
+                        "title": str(mc.get("title", "")).strip(),
+                    })
+            
+            clean_slots.append({
+                "slot_id": slot_id,
+                "satisfied": satisfied,
+                "matched_codes": matched_codes,
+            })
+    
+    return {"slots": clean_slots}
+
+
+async def compute_slot_satisfaction(
+    ledger: Dict[str, Any],
+    clusters: Optional[Dict[str, Any]],
+    missing_slots: List[Dict[str, Any]],
+    q: str,
+    *,
+    model: str = CHAT_MODEL_UTIL,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    """
+    LLM-driven slot satisfaction helper.
+    
+    Given the current ledger, clusters, and the LLM-reported missing_slots,
+    calls the LLM to determine which slots are truly unsatisfied.
+    
+    Returns:
+      - remaining_missing_slots: slots that are STILL truly unsatisfied
+      - slot_status: mapping of slot_id -> {
+            "satisfied": bool,
+            "matched_codes": [...],
+        }
+    
+    This is a thin wrapper around llm_gap_satisfaction.
+    All semantic reasoning is done by the LLM, not Python.
+    """
+    if not missing_slots:
+        return [], {}
+    
+    # 1) Build compact ledger snapshot
+    ledger_snapshot = _build_ledger_snapshot(ledger, clusters)
+    
+    # 2) Build slots payload with slot_id
+    slots_payload = _build_slots_payload(missing_slots)
+    
+    if not slots_payload:
+        return list(missing_slots), {}
+    
+    # 3) Call LLM
+    response = await llm_gap_satisfaction(
+        q=q,
+        slots=slots_payload,
+        ledger_snapshot=ledger_snapshot,
+        model=model,
+    )
+    
+    # 4) Parse response into slot_status and remaining_missing_slots
+    raw_slots = response.get("slots") or []
+    
+    # Build slot_status from LLM response
+    slot_status: Dict[str, Dict[str, Any]] = {}
+    satisfied_ids: set[str] = set()
+    
+    for s in raw_slots:
+        sid = str(s.get("slot_id", "")).strip()
+        if not sid:
+            continue
+        
+        satisfied = bool(s.get("satisfied"))
+        matched_codes = s.get("matched_codes") or []
+        
+        slot_status[sid] = {
+            "satisfied": satisfied,
+            "matched_codes": matched_codes,
+        }
+        
+        if satisfied:
+            satisfied_ids.add(sid)
+    
+    # 5) Build remaining_missing_slots from original missing_slots
+    # Only include slots whose slot_id is NOT in satisfied_ids
+    remaining_missing_slots: List[Dict[str, Any]] = []
+    
+    for idx, slot in enumerate(missing_slots or []):
+        if not isinstance(slot, dict):
+            remaining_missing_slots.append(slot)
+            continue
+        
+        vocab = str(slot.get("vocabulary", "")).lower().strip()
+        label = str(slot.get("slot_label", "")).strip()
+        
+        # Reconstruct slot_id the same way as _build_slots_payload
+        sid = f"{vocab}:{label}:{idx}".lower().replace(" ", "_")
+        
+        if sid not in satisfied_ids:
+            remaining_missing_slots.append(slot)
+    
+    logger.debug(
+        "compute_slot_satisfaction: %d slots -> %d satisfied, %d remaining",
+        len(missing_slots),
+        len(satisfied_ids),
+        len(remaining_missing_slots),
+    )
+    
+    return remaining_missing_slots, slot_status
+
+
 @dataclass
 class SourceMatches:
     source: str
