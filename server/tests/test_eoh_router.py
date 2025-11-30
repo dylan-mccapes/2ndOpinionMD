@@ -531,5 +531,183 @@ class TestEoHRouterEndpoints:
         assert response.status_code == 422
 
 
+class TestEoHStreamRouterIntegration:
+    """Tests for the EoH stream router integration in rag_stream_custom_endpoints."""
+    
+    def test_eoh_routed_answer_system_prompt_exists(self):
+        """Test that EOH_ROUTED_ANSWER_SYSTEM_PROMPT is defined."""
+        from server.api.rag_stream_custom_endpoints import EOH_ROUTED_ANSWER_SYSTEM_PROMPT
+        
+        assert EOH_ROUTED_ANSWER_SYSTEM_PROMPT is not None
+        assert len(EOH_ROUTED_ANSWER_SYSTEM_PROMPT) > 0
+        assert "EoH router plan" in EOH_ROUTED_ANSWER_SYSTEM_PROMPT
+        assert "question type" in EOH_ROUTED_ANSWER_SYSTEM_PROMPT.lower()
+    
+    def test_eoh_stream_event_generator_exists(self):
+        """Test that eoh_stream_event_generator function is defined."""
+        from server.api.rag_stream_custom_endpoints import eoh_stream_event_generator
+        
+        assert callable(eoh_stream_event_generator)
+    
+    def test_eoh_router_imports_in_rag_stream(self):
+        """Test that EoH router imports are present in rag_stream_custom_endpoints."""
+        import server.api.rag_stream_custom_endpoints as module
+        
+        assert hasattr(module, 'eoh_llm_router')
+        assert hasattr(module, 'MODULE_INDEX')
+        assert hasattr(module, 'EOH_SYSTEM_PROMPT')
+    
+    def test_router_plan_context_item_structure(self):
+        """Test the structure of a router plan context item."""
+        question_type = "A"
+        router_plan_text = "EoH question type: A\nExplanation: Test"
+        
+        router_ctx_item = {
+            "source": "eoh_router",
+            "source_id": f"eoh_plan:{question_type}",
+            "id": f"eoh_router_plan_{question_type}",
+            "title": "EoH Router plan (modules + doc handles)",
+            "text": router_plan_text,
+            "score": 1.0,
+            "method": "eoh_router",
+        }
+        
+        assert router_ctx_item["source"] == "eoh_router"
+        assert router_ctx_item["score"] == 1.0
+        assert "eoh_plan:A" in router_ctx_item["source_id"]
+        assert "EoH Router plan" in router_ctx_item["title"]
+    
+    def test_router_plan_text_formatting(self):
+        """Test the formatting of router plan text for context injection."""
+        plan = {
+            "question_type": "A",
+            "question_type_explanation": "Flare risk prediction",
+            "module_plan": [
+                {"step": 1, "goal": "Check terrain", "modules": ["M1", "M2"], "why": "Baseline"}
+            ],
+            "doc_retrieval_plan": [
+                {"module": "M1", "handles": [{"kind": "pg_view", "name": "eoh_m1_patient_terrain"}], "purpose": "Get terrain"}
+            ]
+        }
+        
+        question_type = plan.get("question_type", "OTHER")
+        qt_expl = plan.get("question_type_explanation", "")
+        
+        router_plan_text_lines = [
+            f"EoH question type: {question_type}",
+            f"Explanation: {qt_expl}",
+            "",
+            "Module plan:",
+        ]
+        for step in plan.get("module_plan", []):
+            step_num = step.get("step")
+            goal = step.get("goal", "")
+            modules = ", ".join(step.get("modules", []))
+            why = step.get("why", "")
+            router_plan_text_lines.append(
+                f"- Step {step_num}: {goal} | modules: [{modules}] | why: {why}"
+            )
+        
+        router_plan_text_lines.append("")
+        router_plan_text_lines.append("Doc retrieval plan:")
+        for item in plan.get("doc_retrieval_plan", []):
+            module_id = item.get("module", "")
+            handles = ", ".join(
+                f"{h.get('kind')}:{h.get('name')}" for h in item.get("handles", [])
+            )
+            purpose = item.get("purpose", "")
+            router_plan_text_lines.append(
+                f"- Module {module_id}: {handles} | purpose: {purpose}"
+            )
+        
+        router_plan_text = "\n".join(router_plan_text_lines)
+        
+        assert "EoH question type: A" in router_plan_text
+        assert "Flare risk prediction" in router_plan_text
+        assert "Module plan:" in router_plan_text
+        assert "M1, M2" in router_plan_text
+        assert "Doc retrieval plan:" in router_plan_text
+        assert "pg_view:eoh_m1_patient_terrain" in router_plan_text
+    
+    def test_doc_plan_summary_structure(self):
+        """Test the structure of doc_plan_summary for SSE emission."""
+        plan = {
+            "doc_retrieval_plan": [
+                {
+                    "module": "M1",
+                    "handles": [
+                        {"kind": "pg_view", "name": "eoh_m1_patient_terrain"},
+                        {"kind": "pg_table", "name": "eoh_patient_stack_history"}
+                    ],
+                    "purpose": "Get terrain data"
+                },
+                {
+                    "module": "M13",
+                    "handles": [{"kind": "pg_view", "name": "eoh_m13_forecasts"}],
+                    "purpose": "Get forecasts"
+                }
+            ]
+        }
+        
+        doc_plan_summary = [
+            {
+                "module": item.get("module"),
+                "handles": [h.get("name") for h in item.get("handles", [])],
+                "purpose": item.get("purpose", ""),
+            }
+            for item in plan.get("doc_retrieval_plan", [])
+        ]
+        
+        assert len(doc_plan_summary) == 2
+        assert doc_plan_summary[0]["module"] == "M1"
+        assert "eoh_m1_patient_terrain" in doc_plan_summary[0]["handles"]
+        assert "eoh_patient_stack_history" in doc_plan_summary[0]["handles"]
+        assert doc_plan_summary[1]["module"] == "M13"
+        assert doc_plan_summary[1]["purpose"] == "Get forecasts"
+    
+    @pytest.mark.asyncio
+    async def test_eoh_llm_router_called_with_patient_state(self):
+        """Test that eoh_llm_router can be called with patient_state_summary."""
+        mock_response = {
+            "question_type": "A",
+            "question_type_explanation": "Flare risk with patient context",
+            "module_plan": [
+                {"step": 1, "goal": "Check terrain", "modules": ["M1"], "why": "Baseline"}
+            ],
+            "doc_retrieval_plan": []
+        }
+        
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(mock_response)))]
+        )
+        
+        patient_state = {
+            "stack_level": 3,
+            "stability_band": "unstable",
+            "recent_flare": True
+        }
+        
+        result = await eoh_llm_router(
+            client=mock_client,
+            question="What is this patient's flare risk?",
+            patient_state_summary=patient_state
+        )
+        
+        assert result["question_type"] == "A"
+        
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs.get("messages") or call_args[1].get("messages")
+        
+        user_message = None
+        for msg in messages:
+            if msg.get("role") == "user":
+                user_message = msg.get("content", "")
+                break
+        
+        assert user_message is not None
+        assert "stack_level" in user_message or "patient" in user_message.lower()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
