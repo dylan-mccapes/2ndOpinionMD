@@ -19,9 +19,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- sys.path & env -----------------------------------------------------------
-server_dir = Path(__file__).resolve().parent.parent
-env_path = server_dir / ".env"
-load_dotenv(dotenv_path=env_path, override=True)
+# Resolve project root (two levels up from this file: .../2ndOpinionMD-MVP)
+project_root = Path(__file__).resolve().parents[2]
+env_path = project_root / ".env"
+
+APP_ENV = os.getenv("APP_ENV", "local")
+
+# In Docker we set APP_ENV=production via .env.docker, so:
+# - Local dev: load .env (if present)
+# - Docker / production: DO NOT override Docker-provided env vars
+if APP_ENV != "production" and env_path.exists():
+    load_dotenv(dotenv_path=env_path, override=True)
 
 # --- logging ------------------------------------------------------------------
 from server.utils.encrypted_logging import setup_encrypted_logging
@@ -89,9 +97,28 @@ from server.api.schemas import DiagnoseResponse
 # --- lifespan: init async engine + session + RAG engine -----------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from server.db.session import DATABASE_URL
+    # Prefer async URL; fall back to sync if needed
+    raw_url = os.getenv("DATABASE_URL") or os.getenv("SYNC_DATABASE_URL")
+    if not raw_url:
+        raise RuntimeError("No DATABASE_URL or SYNC_DATABASE_URL set in environment")
+
+    # Redact password for logs
+    redacted = raw_url
+    try:
+        if "://" in raw_url and "@" in raw_url:
+            scheme, rest = raw_url.split("://", 1)
+            creds, tail = rest.split("@", 1)
+            if ":" in creds:
+                user, _pw = creds.split(":", 1)
+                redacted = f"{scheme}://{user}:****@{tail}"
+    except Exception:
+        # best effort; don't crash on weird URL
+        pass
+
+    logger.info(f"Using async DATABASE_URL: {redacted}")
+
     engine = create_async_engine(
-        DATABASE_URL,
+        raw_url,
         echo=False,
         pool_pre_ping=False,
         pool_recycle=1800,
@@ -99,6 +126,8 @@ async def lifespan(app: FastAPI):
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     app.state.engine = engine
     app.state.session_maker = session_maker
+
+    # Wire existing session factory to this engine
     init_session_factory(engine)
 
     # Initialize RAG engine lazily here (after env is loaded)

@@ -114,3 +114,4 @@ failed_ids.txt
 *.csv
 *.pdf
 =*
+docker/certs-local/

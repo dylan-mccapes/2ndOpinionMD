@@ -11,9 +11,10 @@ import difflib
 
 import asyncpg
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from openai import OpenAI
 from sse_starlette.sse import EventSourceResponse
+from sqlalchemy import text
 
 from . import valyu_client
 from .stream_config import (
@@ -4433,4 +4434,72 @@ def sse(event: str, payload: Dict[str, Any]) -> Dict[str, str]:
         "event": event,
         "data": json.dumps(payload, default=str),
     }
+    
+# ---------------------------------------------------------------------------
+# Simple TS-based search endpoint for RAG corpora
+# ---------------------------------------------------------------------------
+
+@router.get("/search")
+async def rag_search(
+    q: str = Query(..., min_length=2, description="Free-text query (websearch syntax allowed)"),
+    sources: Optional[List[str]] = Query(
+        None,
+        description="Optional list of RAG sources (e.g. kdigo_ckd_2021, nice, acr_ra_2021)",
+    ),
+    limit: int = Query(20, ge=1, le=100),
+    pool: asyncpg.Pool = Depends(resolve_pg_pool),
+) -> List[Dict[str, Any]]:
+    """
+    Lightweight non-streaming search over rag_corpus using TS (websearch_to_tsquery).
+
+    Designed for:
+      - demo / debugging (KDIGO, NICE, etc.)
+      - inspecting the exact chunks that RAG used
+
+    Currently surfaces TS hits only (method='ts_terms').
+    """
+    base_sql = """
+      WITH qry AS (
+        SELECT websearch_to_tsquery('english', $1) AS tsq
+      )
+      SELECT
+        c.id,
+        c.source,
+        c.source_id,
+        c.title,
+        c.meta,
+        substring(c.text for 600) AS preview,
+        ts_rank(c.ts, (SELECT tsq FROM qry)) AS score,
+        'ts_terms'::text AS method
+      FROM rag_corpus c, qry
+      WHERE c.ts @@ (SELECT tsq FROM qry)
+    """
+
+    params: List[Any] = [q]
+
+    if sources:
+        base_sql += " AND c.source = ANY($2::text[])"
+        params.append(sources)
+
+    base_sql += " ORDER BY score DESC LIMIT $%d" % (len(params) + 1)
+    params.append(limit)
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(base_sql, *params)
+
+    results: List[Dict[str, Any]] = []
+    for r in rows:
+        results.append(
+            {
+                "id": r["id"],
+                "source": r["source"],
+                "source_id": r["source_id"],
+                "title": r["title"],
+                "meta": r["meta"],
+                "preview": r["preview"],
+                "score": float(r["score"]) if r["score"] is not None else None,
+                "method": r["method"],  # "ts_terms"
+            }
+        )
+    return results
     

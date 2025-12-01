@@ -1,0 +1,31 @@
+# docker/Dockerfile.api
+FROM python:3.12-slim
+
+# System deps you almost certainly need (psycopg2, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy only dependency files first (for better caching)
+# Adjust these if your requirements live elsewhere
+COPY server/requirements.txt /app/server/requirements.txt
+
+RUN pip install --no-cache-dir -r /app/server/requirements.txt
+
+# Now copy the rest of the project
+COPY . /app
+
+ENV PYTHONUNBUFFERED=1
+
+# Use your docker env file values
+ENV APP_ENV=production
+
+# Expose API port
+EXPOSE 8000
+
+ENV PYTHONPATH=/app
+
+CMD ["python", "-m", "server.scripts.run_postgres_app"]
