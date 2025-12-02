@@ -1,0 +1,540 @@
+# 2ndOpinionMD-MVP Repository Snapshot
+# Generated: December 02, 2025
+# Purpose: Comprehensive project overview for onboarding and reference
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+2ndOpinionMD is an AI-powered medical diagnostic support platform focused on 
+autoimmune disease diagnosis. The system combines a comprehensive Medical 
+Knowledge Graph (MKG) with Retrieval Augmented Generation (RAG) to provide 
+second-opinion analysis for complex medical conditions.
+
+Core Capabilities:
+- AI-powered diagnosis from symptom descriptions using hybrid RAG (TS + ANN + fusion)
+- Health journaling with AI-generated insights (2OPMD Diagnostic Terrain System)
+- Medical knowledge search across 100,000+ codes, 10,000+ rare diseases, guidelines
+- Clinical coding abstraction (ICD-10-CM/PCS, SNOMED, LOINC, RxNorm)
+- Pattern recognition using STAX levels and Zones framework
+
+Technology Stack:
+- Backend: FastAPI (Python 3.12) with async PostgreSQL
+- Database: PostgreSQL 14+ with pgvector extension
+- AI/ML: OpenAI (GPT-4, text-embedding-3-small)
+- Frontend: React (CRA-based) with Node.js v18
+- Deployment: Docker containers with Nginx reverse proxy
+
+================================================================================
+DIRECTORY STRUCTURE
+================================================================================
+
+2ndOpinionMD-MVP/
+|
++-- server/                     # Python FastAPI backend
+|   +-- api/                    # API route handlers (50+ routers)
+|   +-- scripts/                # Data ingestion & ETL utilities (130+ scripts)
+|   +-- models/                 # SQLAlchemy ORM models
+|   |   +-- postgresql/         # PostgreSQL models (User, JournalEntry, MedicalKnowledge)
+|   |   +-- mongodb/            # Legacy MongoDB models (deprecated)
+|   +-- vectordb/               # RAG query engines
+|   |   +-- postgresql_query_engine.py  # Main RAG engine
+|   |   +-- hybrid_query.py     # Hybrid TS + ANN fusion
+|   +-- utils/                  # Logging, email, rate limiting
+|   +-- db/                     # Database session management
+|   +-- alembic/                # Database migrations
+|   +-- templates/              # Email templates
+|   +-- tests/                  # Test files
+|
++-- database/                   # Database definitions
+|   +-- schemas/                # Schema DDL SQL (16 files)
+|   +-- sql/                    # Queries, indexes, audits (80+ files)
+|   +-- models/                 # Shared model definitions
+|
++-- frontend/                   # Frontend applications
+|   +-- react/                  # React SPA
+|       +-- src/                # Source code
+|       |   +-- components/     # UI components
+|       |   |   +-- auth/       # Authentication (Login, Register)
+|       |   |   +-- journal/    # Health journaling
+|       |   |   +-- layout/     # Navigation, layout
+|       |   |   +-- AIResponse/ # AI response display
+|       |   |   +-- SymptomIntake/ # Symptom input forms
+|       |   +-- styles/         # CSS stylesheets
+|       |   +-- utils/          # Utility functions
+|       +-- public/             # Static assets
+|
++-- mk/                         # Makefile system (29 modular files)
+|   +-- 00_main.mk              # Entry point, frontend deployment
+|   +-- 01_snomed.mk            # SNOMED CT ingestion
+|   +-- 02_icd.mk               # ICD-10-CM ingestion
+|   +-- 03_hpo.mk               # HPO ingestion
+|   +-- 04_loinc_rxnorm.mk      # LOINC/RxNorm ingestion
+|   +-- 05_orphanet.mk          # Orphanet rare diseases
+|   +-- 13_guidelines.mk        # Clinical guidelines
+|   +-- 17_neurolex.mk          # NeuroLex neuroscience terms
+|   +-- 19_who.mk               # WHO data
+|   +-- 20_cdc.mk               # CDC guidelines
+|   +-- 21_va.mk                # VA/DoD guidelines
+|   +-- 90_reports.mk           # Audit report generation
+|   +-- 91_coding.mk            # Coding abstraction
+|   +-- 99_backend.mk           # Backend management
+|
++-- docker/                     # Docker configuration
+|   +-- api/                    # API container
+|   |   +-- Dockerfile.api      # Python 3.12-slim based
+|   +-- nginx/                  # Nginx reverse proxy
+|       +-- Dockerfile.nginx
+|       +-- nginx.conf
+|       +-- conf.d/
+|
++-- data/                       # Downloaded source data
+|   +-- va/                     # VA guidelines
+|   +-- cdc_opioid/             # CDC opioid guidelines
+|
++-- docs/                       # Documentation
+|   +-- scripts/                # Documentation scripts
+|
++-- ontology_loaders/           # Medical ontology ETL
+|   +-- icd/                    # ICD loaders
+|   +-- hpo/                    # HPO loaders
+|   +-- legacy/                 # Deprecated loaders
+|
++-- nlp_engines/                # NLP and vector search
+|   +-- vector_stores/          # Vector store implementations
+|
++-- agent_tasks/                # AI agent task definitions
+|   +-- devin/                  # Devin agent tasks
+|   +-- hedy/                   # Hedy agent tasks
+|   +-- policies/               # Agent policies
+|
++-- snapshots/                  # Snapshot storage
++-- scripts/                    # Root-level utility scripts
++-- shared/                     # Shared utilities
+|   +-- tools/
+|   +-- config/
++-- build/                      # Frontend build output
++-- www-build/                  # Web build artifacts
+
+================================================================================
+KEY FILES
+================================================================================
+
+Configuration:
+- Makefile                      # Root makefile (includes mk/00_main.mk)
+- .env.docker                   # Docker environment configuration
+- .env.example                  # Environment template
+- package.json                  # Node.js dependencies
+- requirements.txt              # Python dependencies (root)
+- server/requirements.txt       # Server Python dependencies
+
+Main Application:
+- server/api/app_postgres.py    # Primary FastAPI application
+- server/api/app.py             # Legacy MongoDB app (deprecated)
+- server/api/journal.py         # Health journaling with AI analysis
+- server/api/rag_routes.py      # RAG retrieval endpoints
+- server/api/coding_routes.py   # Clinical coding abstraction
+
+RAG Engine:
+- server/vectordb/postgresql_query_engine.py  # Main RAG query engine
+- server/vectordb/hybrid_query.py             # Hybrid TS + ANN fusion
+
+Database Models:
+- database/models/postgresql/models.py        # User, JournalEntry, MedicalKnowledge
+
+Key Scripts:
+- server/scripts/embed_table.py               # Generic embedding generator
+- server/scripts/ingest_*.py                  # Data ingestion scripts (40+)
+- server/scripts/*_rag_upsert.py              # RAG corpus population
+- server/scripts/report_*_pdf.py              # Audit report generators
+
+================================================================================
+API ENDPOINTS (50+ ROUTERS)
+================================================================================
+
+Core Endpoints:
+- POST /api/diagnose            # AI-powered diagnosis from symptoms
+- POST /api/rag/ask             # RAG retrieval with hybrid search
+- POST /api/rag/coding          # Clinical coding abstraction
+- GET  /api/health              # Health check
+
+Authentication:
+- POST /api/auth/register       # User registration with email verification
+- POST /api/auth/login          # JWT-based login
+- POST /api/auth/verify-email   # Email verification
+- POST /api/auth/reset-password # Password reset
+
+Journal:
+- GET  /api/journal/            # List journal entries
+- POST /api/journal/            # Create entry with AI analysis
+- GET  /api/journal/{id}        # Get specific entry
+- GET  /api/journal/analytics   # Trend analysis
+
+Ontology Search:
+- GET  /api/loinc/search        # LOINC lab codes
+- GET  /api/snomed/search       # SNOMED CT concepts
+- GET  /api/rxnorm/search       # RxNorm medications
+- GET  /api/orphanet/search     # Rare diseases
+- GET  /api/hpo/search          # Human Phenotype Ontology
+- GET  /api/neurolex/search     # Neuroscience terminology
+- GET  /api/chv/search          # Consumer Health Vocabulary
+
+Guidelines:
+- GET  /api/guidelines/search   # Clinical guidelines search
+- GET  /api/guidelines/va/*     # VA/DoD guidelines
+- GET  /api/guidelines/cdc/*    # CDC guidelines
+- GET  /api/who/*               # WHO guidelines
+
+Molecular/Genomic:
+- GET  /api/gwas/search         # GWAS catalog
+- GET  /api/disgenet/search     # DisGeNET gene-disease
+- GET  /api/panelapp/search     # Gene panels
+- GET  /api/clingen/*           # ClinGen actionability
+
+EHR Data:
+- GET  /api/mimic3/*            # MIMIC-III queries
+- GET  /api/mimic4/*            # MIMIC-IV queries
+- GET  /api/notes/*             # Clinical notes
+
+================================================================================
+MKG SCHEMAS (MEDICAL KNOWLEDGE GRAPH)
+================================================================================
+
+Schema: ontology.*
+- ontology.icd10cm              # ICD-10-CM codes (100K+)
+- ontology.icd11                # ICD-11 codes
+- ontology.snomed_map_icd10cm   # SNOMED-ICD mappings
+- ontology.loinc_terms          # LOINC lab codes
+- ontology.rxnorm_conso         # RxNorm medications
+- ontology.orphanet_diseases    # Rare diseases (10K+)
+- ontology.hpo_terms            # Human Phenotype Ontology
+- ontology.neurolex             # Neuroscience terms (50K+)
+- ontology.chv                  # Consumer Health Vocabulary
+
+Schema: guidelines.*
+- guidelines.va_docs            # VA/DoD guideline documents
+- guidelines.va_sections        # VA guideline sections
+- guidelines.cdc_sections       # CDC guideline sections
+- guidelines.who_eml_medicines  # WHO Essential Medicines
+- guidelines.who_committee_sections # WHO Expert Committee
+- guidelines.nice_sections      # NICE guidelines
+
+Schema: molecular.*
+- molecular.gwas_hits           # GWAS catalog associations
+- molecular.disgenet_associations # Gene-disease associations
+- molecular.gene_panels         # PanelApp gene panels
+
+Schema: clingen.*
+- clingen.actionability_summary # ClinGen actionability
+
+Schema: ehr_mimic3.* / ehr_mimic4.*
+- 40+ tables each for MIMIC-III and MIMIC-IV EHR data
+- admissions, patients, diagnoses_icd, procedures, prescriptions, notes
+
+Schema: text.*
+- text.mimiciv_notes            # MIMIC-IV clinical notes
+- text.n2c2_*                   # N2C2 NLP challenge data
+
+Central RAG Table:
+- public.rag_corpus             # Unified RAG corpus
+  - id, source, source_id, title, text
+  - embedding (vector 1536)     # OpenAI embeddings
+  - ts (tsvector)               # Full-text search
+  - meta (jsonb)                # Extensible metadata
+
+================================================================================
+RAG ARCHITECTURE
+================================================================================
+
+Query Flow:
+1. Term Extraction
+   - ICD-10 codes via regex (I21.4, E11.9)
+   - LOINC codes (2345-7)
+   - SNOMED concepts
+   - Drug names (aspirin, heparin)
+   - Symptom keywords
+
+2. Source Routing
+   - MKG-first expansion via SQL lookups
+   - ehr_mimic4.d_icd_diagnoses for ICD labels
+   - rag_corpus by source (loinc, rxnorm, snomed, hpo)
+
+3. Hybrid Retrieval
+   - TS (BM25): ts_rank with plainto_tsquery
+   - ANN (Dense): pgvector cosine similarity (<#>)
+   - Fusion: RRF scoring with configurable weights (0.7 ANN, 0.3 BM25)
+
+4. LLM Synthesis
+   - Context assembly from top-k matches
+   - OpenAI GPT-4/GPT-4o-mini for response generation
+   - Structured JSON output with citations
+
+5. Citation Governance
+   - Evidence title matching
+   - Code enrichment from matches
+   - Missing citation explanation
+
+Embedding Configuration:
+- Model: text-embedding-3-small (1536 dimensions)
+- Batch size: 256
+- ANN Index: ivfflat with lists=200, probes=8
+
+================================================================================
+GUIDELINES INGESTION PIPELINE
+================================================================================
+
+Sources:
+- VA/DoD Clinical Practice Guidelines
+- CDC Guidelines (Opioid, etc.)
+- WHO Essential Medicines List
+- WHO Expert Committee Reports
+- NICE Guidelines (UK)
+
+Pipeline Steps:
+1. Fetch: Download PDFs/HTML from source
+2. Parse: Extract sections with 2000-char chunks, 250-char overlap
+3. Load: Insert into guidelines.* tables
+4. RAG Upsert: Copy to rag_corpus with source tag
+5. Embed: Generate OpenAI embeddings
+6. Index: Create ivfflat ANN indexes
+7. Audit: Generate integrity reports
+
+Make Targets (example for VA):
+- make va-fetch              # Download guidelines
+- make va-parse              # Parse into sections
+- make va-rag-upsert         # Populate rag_corpus
+- make va-embed              # Generate embeddings
+- make va-ann                # Create ANN index
+- make va-ci                 # Run integrity audit
+
+================================================================================
+CODING/ABSTRACTION PIPELINE
+================================================================================
+
+Endpoint: POST /api/rag/coding
+
+Input: Clinical note text
+Output: Structured JSON with:
+- probable_dx: Primary diagnoses (ICD-10-CM)
+- differential_dx: Differential diagnoses
+- procedures: Recommended procedures (ICD-10-PCS)
+- labs: Recommended labs (LOINC)
+- medications: Recommended medications (RxNorm)
+- insight: Clinical assessment
+
+Process:
+1. RAG retrieval from clinical note
+2. LLM analysis with structured prompt
+3. Code enrichment from matches
+4. Citation governance
+5. Output formats: JSON, CSV, PDF
+
+================================================================================
+DOCKER DEPLOYMENT
+================================================================================
+
+Containers:
+1. api (docker/api/Dockerfile.api)
+   - Base: python:3.12-slim
+   - Exposes: 8000
+   - Entry: python -m server.scripts.run_postgres_app
+
+2. nginx (docker/nginx/Dockerfile.nginx)
+   - Reverse proxy configuration
+   - SSE support (proxy_buffering off)
+   - Gzip compression
+   - Static asset serving
+
+Configuration:
+- .env.docker: Docker-specific environment
+- APP_ENV=production disables .env loading
+
+Deployment Commands:
+- make ship                  # Build + deploy frontend
+- make fe-build              # Build React app
+- make deploy-fe             # Deploy to /opt/homebrew/var/www/2ndopinionmd
+- make nginx-reload          # Reload Nginx
+- make smoke                 # Health check
+- make rollback REL=YYYY-MM-DD-HHMM  # Rollback to release
+
+================================================================================
+CRON JOBS / SCHEDULED TASKS
+================================================================================
+
+Embedding Watch:
+- server/scripts/watch_embeddings.py
+- Monitors rag_corpus for null embeddings
+- Batch processes new records
+
+Backup Scripts:
+- server/scripts/pg_backup.sh
+- server/scripts/pg_backup_knowledgegraph.sh
+- server/scripts/pg_backup_verify.sh
+
+Integrity Reports:
+- make reports-all           # Generate all audit PDFs
+- Output: db_integrity_reports/*.pdf
+
+================================================================================
+MAKE TARGETS (100+)
+================================================================================
+
+Development:
+- make dev-setup             # Configure shell, libpq paths
+- make env-doctor            # Verify tools and env vars
+- make py-venv               # Create Python virtual environment
+- make deps-install          # Install Python dependencies
+
+Frontend:
+- make fe-build              # Build React app
+- make ship                  # Build + deploy + reload nginx
+- make verify-live           # Verify JS bundle content
+
+Backend:
+- make be-start              # Start FastAPI server
+- make be-stop               # Stop server
+- make be-restart            # Restart server
+- make api-health            # Check API health
+
+Database:
+- make db-audit              # RAG corpus counts by source
+- make rag-search q="..."    # Search RAG corpus
+- make rag-neighbors ID=...  # Find similar documents
+
+Data Ingestion (per source):
+- make {source}-schema       # Create tables
+- make {source}-download     # Fetch data
+- make {source}-load         # Parse and insert
+- make {source}-rag-upsert   # Populate rag_corpus
+- make {source}-embed        # Generate embeddings
+- make {source}-ann          # Create ANN indexes
+- make {source}-ci           # Run integrity audit
+
+Sources: icd, snomed, loinc, rxnorm, orphanet, hpo, neurolex, 
+         gwas, disgenet, panelapp, clingen, va, cdc, who, nice
+
+================================================================================
+DATA SIZES (APPROXIMATE)
+================================================================================
+
+Ontology:
+- ICD-10-CM: 100,000+ codes
+- ICD-11: 50,000+ codes
+- SNOMED CT: 400,000+ concepts
+- LOINC: 90,000+ terms
+- RxNorm: 200,000+ concepts
+- Orphanet: 10,000+ rare diseases
+- HPO: 15,000+ phenotype terms
+- NeuroLex: 50,000+ neuroscience terms
+
+Guidelines:
+- VA/DoD: 50+ guidelines, 10,000+ sections
+- CDC: Multiple guideline sets
+- WHO: Essential Medicines + Committee reports
+- NICE: UK clinical guidelines
+
+EHR:
+- MIMIC-III: 40+ tables, millions of records
+- MIMIC-IV: 40+ tables, millions of records
+
+RAG Corpus:
+- Total: 500,000+ documents
+- Embedded: 400,000+ with vectors
+
+================================================================================
+PERFORMANCE NOTES
+================================================================================
+
+Database:
+- Connection pooling: pool_size=20, max_overflow=30
+- Pool pre-ping enabled
+- Pool recycle: 3600 seconds
+
+Vector Search:
+- ivfflat index: lists=200, probes=8
+- Cosine similarity (<#> operator)
+- Hybrid fusion improves recall
+
+Rate Limiting:
+- Auth endpoints: 5 req/min
+- Diagnose endpoint: 10 req/min
+- General endpoints: 60 req/min
+
+Embedding:
+- Batch size: 256
+- Max chars: 6000 per document
+- Model: text-embedding-3-small
+
+================================================================================
+AWS READINESS
+================================================================================
+
+Current: Local PostgreSQL with pgvector
+Target: AWS RDS PostgreSQL with pgvector extension
+
+Migration Path:
+1. RDS instance with pgvector extension
+2. Database migration via pg_dump/pg_restore
+3. Update DATABASE_URL environment variable
+4. Verify ANN indexes recreated
+
+Considerations:
+- RDS supports pgvector extension
+- ivfflat indexes may need tuning for RDS
+- Connection pooling via RDS Proxy recommended
+
+================================================================================
+SECURITY FEATURES
+================================================================================
+
+Authentication:
+- JWT-based with bcrypt password hashing
+- Email verification with 24-hour tokens
+- Account lockout after 5 failed attempts (15-min)
+- Password reset with secure tokens
+
+Rate Limiting:
+- IP-based rate limiting
+- Configurable per-endpoint limits
+
+Security Middleware:
+- Blocks sensitive paths (.env, .git, wp-admin, etc.)
+- Security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+- CORS configuration with credentials
+
+Logging:
+- Encrypted logging system (Fernet)
+- Request/response logging with timing
+
+================================================================================
+FRONTEND COMPONENTS
+================================================================================
+
+Authentication:
+- LoginForm, RegisterForm
+- SplashPage, EmailVerification
+
+Journal:
+- JournalForm (symptom entry with severity)
+- JournalList (entry list with filters)
+- JournalDetail (single entry view)
+- JournalAnalysisDisplay (AI analysis rendering)
+
+Diagnosis:
+- SymptomIntake (symptom input)
+- Diagnostics (diagnosis display)
+- AIResponse (AI response rendering)
+
+UI Components:
+- NavBar, HeroSection
+- PricingSection, TestimonialCarousel
+- FAQAccordion, SecurityBadge
+- DoctorEndorsement, NetworkBackground
+
+Utilities:
+- parseJournalAnalysis.js (normalize AI output)
+- apiFetch.js (authenticated API calls)
+
+================================================================================
+END OF SNAPSHOT
+================================================================================
