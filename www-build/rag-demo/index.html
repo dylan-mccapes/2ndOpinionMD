@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>2ndOpinionMD · EoH Router + RAG Demo</title>
+  <title>2ndOpinionMD · RAG Stream Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -43,10 +43,14 @@
       background: #020617;
       color: #e5e7eb;
       font-size: 0.8rem;
-      cursor: default;
+      cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
+      transition: all 0.2s;
+    }
+    .pill:hover {
+      border-color: #38bdf8;
     }
     .pill.active {
       background: linear-gradient(135deg, #8b5cf6, #38bdf8);
@@ -228,9 +232,10 @@
 </head>
 <body>
   <div class="card">
-    <h1>2ndOpinionMD · EoH Router + RAG Demo</h1>
+    <h1>2ndOpinionMD · RAG Stream Demo</h1>
     <div class="subtitle">
-      Inspect Ethos-of-Health routing, retrieval, and fused context streaming from <code>/api/rag/eoh_stream</code>.
+      Toggle between <strong>Guideline Q&A</strong>, <strong>Coding / Abstraction</strong>, and <strong>EoH Router + RAG</strong>. 
+      Streams directly from <code>/api/rag/ask_stream</code>, <code>/api/rag/coding_stream</code>, or <code>/api/rag/eoh_stream</code>.
     </div>
 
     <div class="row">
@@ -238,15 +243,23 @@
       <textarea
         id="query"
         class="input"
-        placeholder="e.g. In a 32-year-old adult with CKD G3bA3 and type 2 diabetes, what do KDIGO 2021 CKD guidelines recommend for blood pressure targets and renoprotective therapy?"
+        placeholder="e.g. In a 32-year-old woman with newly diagnosed seropositive RA and mild RA-ILD who wishes to conceive, summarize guideline-based RA therapy and map key codes."
       ></textarea>
     </div>
 
     <div class="pill-row">
-      <span class="pill active">
+      <button type="button" class="pill active" data-mode="guideline">
+        <span class="mode-label">Guideline Q&A</span>
+        <small>/ask_stream</small>
+      </button>
+      <button type="button" class="pill" data-mode="coding">
+        <span class="mode-label">Coding / Abstraction</span>
+        <small>/coding_stream</small>
+      </button>
+      <button type="button" class="pill" data-mode="eoh">
         <span class="mode-label">EoH Router + RAG</span>
         <small>/eoh_stream</small>
-      </span>
+      </button>
 
       <span class="badge">
         <span style="width:0.5rem;height:0.5rem;border-radius:999px;background:#8b5cf6;margin-right:0.35rem;"></span>
@@ -272,14 +285,14 @@
     <div class="columns">
       <div class="panel">
         <h2>
-          Router & Retrieval Trace
-          <span class="tag">EoH routing & retrieval</span>
+          <span id="trace-title">Context & Matches</span>
+          <span class="tag" id="trace-tag">retrieval</span>
         </h2>
         <div id="matches" class="pre">No results yet.</div>
       </div>
       <div class="panel">
         <h2>
-          EoH Answer
+          <span id="answer-title">LLM Answer</span>
           <span class="tag">generation</span>
         </h2>
         <div id="answer" class="pre">No answer yet.</div>
@@ -321,14 +334,61 @@
     const rawEventsEl = document.getElementById("raw-events");
     const rawEventsPanel = document.getElementById("raw-events-panel");
     const rawEventsToggle = document.getElementById("raw-events-toggle");
+    const traceTitle = document.getElementById("trace-title");
+    const traceTag = document.getElementById("trace-tag");
+    const answerTitle = document.getElementById("answer-title");
+    const modePills = document.querySelectorAll(".pill[data-mode]");
 
-    let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
+    let currentMode = "guideline";
+    let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0, edges: 0 };
     let currentEventSource = null;
 
     // Toggle raw events panel
     rawEventsToggle.addEventListener("click", () => {
       rawEventsPanel.classList.toggle("collapsed");
     });
+
+    // Mode switching
+    modePills.forEach(pill => {
+      pill.addEventListener("click", () => {
+        const newMode = pill.dataset.mode;
+        if (newMode === currentMode) return;
+        
+        // Close any existing EventSource
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+        
+        // Update UI
+        modePills.forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+        currentMode = newMode;
+        
+        // Update panel titles based on mode
+        updatePanelTitles();
+        
+        // Reset output
+        resetOutput();
+        setStatus("Idle", null);
+      });
+    });
+
+    function updatePanelTitles() {
+      if (currentMode === "guideline") {
+        traceTitle.textContent = "Context & Matches";
+        traceTag.textContent = "retrieval";
+        answerTitle.textContent = "LLM Answer";
+      } else if (currentMode === "coding") {
+        traceTitle.textContent = "Coding Trace";
+        traceTag.textContent = "coding";
+        answerTitle.textContent = "LLM Answer";
+      } else if (currentMode === "eoh") {
+        traceTitle.textContent = "Router & Retrieval Trace";
+        traceTag.textContent = "EoH routing & retrieval";
+        answerTitle.textContent = "EoH Answer";
+      }
+    }
 
     function setStatus(text, state) {
       statusText.textContent = text;
@@ -341,7 +401,7 @@
       matchesEl.textContent = "No results yet.";
       answerEl.textContent = "No answer yet.";
       rawEventsEl.textContent = "";
-      currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
+      currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0, edges: 0 };
       metaBody.innerHTML = "";
       metaTable.style.display = "none";
     }
@@ -369,6 +429,83 @@
       rawEventsEl.scrollTop = rawEventsEl.scrollHeight;
     }
 
+    // Build URL based on mode
+    function buildUrlForMode(mode, q) {
+      let endpoint, params;
+      
+      if (mode === "guideline") {
+        endpoint = "/api/rag/ask_stream";
+        params = new URLSearchParams({
+          q,
+          limit: "8",
+          ctx_k: "24",
+          with_llm: "1",
+          llm_mode: "chunk",
+          use_valyu: "1",
+          valyu_k: "3",
+          valyu_mode: "search",
+          valyu_raw: "1",
+        });
+      } else if (mode === "coding") {
+        endpoint = "/api/rag/coding_stream";
+        params = new URLSearchParams({
+          q,
+          limit: "8",
+          ctx_k: "24",
+          with_llm: "1",
+          llm_mode: "chunk",
+        });
+      } else if (mode === "eoh") {
+        endpoint = "/api/rag/eoh_stream";
+        params = new URLSearchParams({
+          q,
+          limit: "10",
+          ctx_k: "96",
+          with_llm: "1",
+          llm_mode: "chunk",
+        });
+      }
+      
+      return { endpoint, params };
+    }
+
+    // Status mapping for all modes
+    const statusMap = {
+      // Common statuses
+      "embedding_query": "Embedding query...",
+      "extracting_query_terms": "Extracting query terms...",
+      "extracting_terms": "Extracting terms...",
+      "routing_sources": "Routing sources...",
+      "retrieving_candidates": "Retrieving candidates...",
+      "fusing_context": "Fusing context...",
+      "generating_answer": "Generating answer...",
+      "done_no_llm": "Done (retrieval only).",
+      
+      // ask_stream specific
+      "valyu_fetch": "Fetching Valyu evidence...",
+      "valyu_error": "Valyu fetch error...",
+      "generating_valyu_answer": "Generating Valyu answer...",
+      
+      // coding_stream specific
+      "extracting_code_terms": "Extracting code terms...",
+      "routing_coding_sources": "Routing coding sources...",
+      "retrieving_candidates_ts_only": "Retrieving candidates (TS only)...",
+      "coding_crosswalk_expansion": "Expanding SNOMED crosswalk...",
+      "crosswalk_error": "Crosswalk error...",
+      "coding_gap_retrieval": "Retrieving gap codes...",
+      "clustering_concepts": "Clustering concepts...",
+      "clustering_error": "Clustering error...",
+      "computing_slot_satisfaction": "Computing slot satisfaction...",
+      "slot_satisfaction_error": "Slot satisfaction error...",
+      
+      // eoh_stream specific
+      "routing_eoh": "Routing EoH modules...",
+      "routing_eoh_failed": "EoH routing failed, using fallback...",
+      "post_routing_sources": "Post-routing sources...",
+      "gating_sources": "Gating sources...",
+      "generating_eoh_answer": "Generating EoH answer...",
+    };
+
     clearBtn.addEventListener("click", () => {
       queryEl.value = "";
       resetOutput();
@@ -394,23 +531,19 @@
 
       resetOutput();
       runBtn.disabled = true;
-      setStatus("Routing EoH modules...", "live");
+      
+      const modeLabel = currentMode === "guideline" ? "Guideline Q&A" 
+                      : currentMode === "coding" ? "Coding" 
+                      : "EoH";
+      setStatus(`Starting ${modeLabel} stream...`, "live");
 
-      const endpoint = "/api/rag/eoh_stream";
-
-      const params = new URLSearchParams({
-        q,
-        with_llm: "1",
-        ctx_k: "96",
-        limit: "10",
-        llm_mode: "chunk",
-      });
-
+      const { endpoint, params } = buildUrlForMode(currentMode, q);
       const url = `${API_BASE}${endpoint}?${params.toString()}`;
       const es = new EventSource(url);
       currentEventSource = es;
 
       let answerText = "";
+      let valyuAnswerStarted = false;
 
       // === SSE Event Handlers ===
 
@@ -432,8 +565,10 @@
       on("start", (ev) => {
         const data = JSON.parse(ev.data);
         const srcs = Array.isArray(data.sources) ? data.sources.join(", ") : "(not specified)";
+        const mode = data.mode || data.answer_mode || currentMode;
+        const retrievalMode = data.retrieval_mode || "ts+ann";
         matchesEl.textContent =
-          `Query: ${data.q}\nMode: ${data.mode || "eoh"}\nSources: ${srcs}\n\nAwaiting EoH router plan...`;
+          `Query: ${data.q}\nMode: ${mode}\nRetrieval: ${retrievalMode}\nSources: ${srcs}\n\nAwaiting events...`;
       });
 
       // --- warning ---
@@ -448,7 +583,7 @@
         setStatus("Warning: " + msgs[0], "live");
       });
 
-      // --- eoh_router_plan ---
+      // --- eoh_router_plan (EoH only) ---
       on("eoh_router_plan", (ev) => {
         const data = JSON.parse(ev.data);
         const questionType = data.question_type || "(unknown)";
@@ -489,7 +624,7 @@
         appendMatchesBlock(block);
       });
 
-      // --- eoh_retrieval_plan ---
+      // --- eoh_retrieval_plan (EoH only) ---
       on("eoh_retrieval_plan", (ev) => {
         const data = JSON.parse(ev.data);
         const questionType = data.question_type || "(unknown)";
@@ -505,7 +640,7 @@
         appendMatchesBlock(block);
       });
 
-      // --- query_terms ---
+      // --- query_terms (ask_stream, eoh_stream) ---
       on("query_terms", (ev) => {
         const data = JSON.parse(ev.data);
         const terms = data.terms || [];
@@ -535,6 +670,14 @@
         appendMatchesBlock("Extracted Query Terms\n" + lines.join("\n"));
       });
 
+      // --- code_terms (coding_stream only) ---
+      on("code_terms", (ev) => {
+        const data = JSON.parse(ev.data);
+        const terms = data.terms || [];
+        if (!terms.length) return;
+        appendMatchesBlock("Extracted Code Terms\n  " + terms.join(", "));
+      });
+
       // --- router ---
       on("router", (ev) => {
         const data = JSON.parse(ev.data);
@@ -543,9 +686,11 @@
           ? data.selected_sources.join(", ")
           : "(none)";
         const reasoning = data.reasoning || "";
+        const routerType = data.router_type || "";
         appendMatchesBlock(
           "Source Router Plan\n" +
           `  Task type: ${taskType}\n` +
+          (routerType ? `  Router type: ${routerType}\n` : "") +
           `  Selected sources: ${selected}\n` +
           (reasoning ? `  Reasoning:\n${reasoning}` : "")
         );
@@ -559,9 +704,11 @@
           ? data.effective_sources.join(", ")
           : "(none)";
         const eohQType = data.eoh_question_type || "";
+        const retrievalMode = data.retrieval_mode || "";
         appendMatchesBlock(
           "Router Summary\n" +
           `  Mode: ${mode}\n` +
+          (retrievalMode ? `  Retrieval mode: ${retrievalMode}\n` : "") +
           `  Effective sources: ${effective}` +
           (eohQType ? `\n  EoH Question Type: ${eohQType}` : "")
         );
@@ -622,6 +769,130 @@
         }
       });
 
+      // --- valyu_fulltext (ask_stream) ---
+      on("valyu_fulltext", (ev) => {
+        const data = JSON.parse(ev.data);
+        const rows = data.rows || [];
+        appendMatchesBlock(
+          `Valyu Fulltext - ${rows.length} rows with full text available`
+        );
+      });
+
+      // --- valyu_fulltext_ctx (ask_stream) ---
+      on("valyu_fulltext_ctx", (ev) => {
+        const data = JSON.parse(ev.data);
+        const rows = data.rows || [];
+        const k = data.k || 0;
+        appendMatchesBlock(
+          `Valyu Fulltext Context - ${k} rows\n` +
+          rows.slice(0, 5).map(r => `  - ${r.title} (${r.len_text} chars)`).join("\n") +
+          (rows.length > 5 ? `\n  ... and ${rows.length - 5} more` : "")
+        );
+      });
+
+      // --- qa_ledger (ask_stream) ---
+      on("qa_ledger", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "QA Ledger\n" + JSON.stringify(data.summary || data, null, 2)
+        );
+      });
+
+      // --- qa_grader (ask_stream) ---
+      on("qa_grader", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "QA Grader\n" + JSON.stringify(data, null, 2)
+        );
+      });
+
+      // --- coding_ledger (coding_stream) ---
+      on("coding_ledger", (ev) => {
+        const data = JSON.parse(ev.data);
+        const pass = data.pass || "?";
+        appendMatchesBlock(
+          `Coding Ledger (pass ${pass})\n` + JSON.stringify(data.summary || data, null, 2)
+        );
+      });
+
+      // --- coding_grader (coding_stream) ---
+      on("coding_grader", (ev) => {
+        const data = JSON.parse(ev.data);
+        const pass = data.pass || "?";
+        const keepMap = data.keep_map || {};
+        const missingSlots = data.missing_slots || [];
+        appendMatchesBlock(
+          `Coding Grader (pass ${pass})\n` +
+          `  Keep map: ${JSON.stringify(keepMap)}\n` +
+          `  Missing slots: ${missingSlots.length}`
+        );
+      });
+
+      // --- coding_gap_terms (coding_stream) ---
+      on("coding_gap_terms", (ev) => {
+        const data = JSON.parse(ev.data);
+        const slots = data.slots || [];
+        appendMatchesBlock(
+          `Coding Gap Terms - ${slots.length} slots\n` +
+          JSON.stringify(slots.slice(0, 5), null, 2) +
+          (slots.length > 5 ? `\n... and ${slots.length - 5} more` : "")
+        );
+      });
+
+      // --- coding_gap_retrieval (coding_stream) ---
+      on("coding_gap_retrieval", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "Coding Gap Retrieval\n" + JSON.stringify(data, null, 2)
+        );
+      });
+
+      // --- coding_pinned (coding_stream) ---
+      on("coding_pinned", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "Coding Pinned\n" + JSON.stringify(data.pinned_counts || data, null, 2)
+        );
+      });
+
+      // --- concept_clusters (coding_stream) ---
+      on("concept_clusters", (ev) => {
+        const data = JSON.parse(ev.data);
+        const nClusters = data.n_clusters || 0;
+        appendMatchesBlock(
+          `Concept Clusters - ${nClusters} clusters\n` +
+          JSON.stringify(data.clusters?.slice(0, 3) || [], null, 2) +
+          (nClusters > 3 ? `\n... and ${nClusters - 3} more clusters` : "")
+        );
+      });
+
+      // --- slot_satisfaction (coding_stream) ---
+      on("slot_satisfaction", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          `Slot Satisfaction\n` +
+          `  Original missing: ${data.original_missing_count || 0}\n` +
+          `  Remaining missing: ${data.remaining_missing_count || 0}\n` +
+          `  Satisfied: ${data.satisfied_count || 0}`
+        );
+      });
+
+      // --- canonical_keep_map (coding_stream) ---
+      on("canonical_keep_map", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "Canonical Keep Map\n" + JSON.stringify(data.canonical_keep_map || data, null, 2)
+        );
+      });
+
+      // --- coding_result (coding_stream) ---
+      on("coding_result", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          "Coding Result\n" + JSON.stringify(data, null, 2)
+        );
+      });
+
       // --- gating ---
       on("gating", (ev) => {
         const data = JSON.parse(ev.data);
@@ -641,36 +912,24 @@
         );
       });
 
-      // --- qa_ledger ---
-      on("qa_ledger", (ev) => {
-        const data = JSON.parse(ev.data);
-        appendMatchesBlock(
-          "QA Ledger\n" + JSON.stringify(data.summary || data, null, 2)
-        );
-      });
-
-      // --- qa_grader ---
-      on("qa_grader", (ev) => {
-        const data = JSON.parse(ev.data);
-        appendMatchesBlock(
-          "QA Grader\n" + JSON.stringify(data, null, 2)
-        );
-      });
-
       // --- llm_chunk ---
       on("llm_chunk", (ev) => {
         const data = JSON.parse(ev.data);
-        answerText += data.text || "";
+        const content = data.content || data.text || "";
+        answerText += content;
         answerEl.textContent = answerText;
-        setStatus("Streaming EoH answer...", "live");
+        const modeLabel = currentMode === "eoh" ? "EoH" : "LLM";
+        setStatus(`Streaming ${modeLabel} answer...`, "live");
       });
 
       // --- llm_delta (backwards compat) ---
       on("llm_delta", (ev) => {
         const data = JSON.parse(ev.data);
-        answerText += data.text || "";
+        const content = data.content || data.text || "";
+        answerText += content;
         answerEl.textContent = answerText;
-        setStatus("Streaming EoH answer...", "live");
+        const modeLabel = currentMode === "eoh" ? "EoH" : "LLM";
+        setStatus(`Streaming ${modeLabel} answer...`, "live");
       });
 
       // --- llm_done ---
@@ -682,6 +941,37 @@
         }
       });
 
+      // --- valyu_llm_chunk (ask_stream second pass) ---
+      on("valyu_llm_chunk", (ev) => {
+        const data = JSON.parse(ev.data);
+        const content = data.content || data.text || "";
+        if (!valyuAnswerStarted) {
+          answerText += "\n\n--- Valyu Evidence ---\n";
+          valyuAnswerStarted = true;
+        }
+        answerText += content;
+        answerEl.textContent = answerText;
+        setStatus("Streaming Valyu answer...", "live");
+      });
+
+      // --- valyu_llm_delta (ask_stream second pass) ---
+      on("valyu_llm_delta", (ev) => {
+        const data = JSON.parse(ev.data);
+        const content = data.content || data.text || "";
+        if (!valyuAnswerStarted) {
+          answerText += "\n\n--- Valyu Evidence ---\n";
+          valyuAnswerStarted = true;
+        }
+        answerText += content;
+        answerEl.textContent = answerText;
+        setStatus("Streaming Valyu answer...", "live");
+      });
+
+      // --- valyu_llm_done (ask_stream second pass) ---
+      on("valyu_llm_done", (ev) => {
+        // Valyu answer complete
+      });
+
       // --- citations ---
       on("citations", (ev) => {
         const data = JSON.parse(ev.data);
@@ -689,21 +979,24 @@
         if (!cits.length) return;
 
         metaBody.innerHTML = "";
-        const groups = { valyu: 0, ethos: 0, guideline: 0, eoh_router: 0 };
+        const groups = { valyu: 0, ethos: 0, guideline: 0, eoh_router: 0, coding: 0 };
         cits.forEach(c => { 
           const kind = c.kind || "guideline";
           groups[kind] = (groups[kind] || 0) + 1; 
         });
 
-        const rows = [
-          ["EoH Router citations", groups.eoh_router || 0],
-          ["Guideline citations", groups.guideline || 0],
-          ["Ethos citations", groups.ethos || 0],
-          ["Valyu citations", groups.valyu || 0],
-          ["TS matches", currentSourceStats.ts || 0],
-          ["ANN matches", currentSourceStats.ann || 0],
-          ["Fused context items", currentSourceStats.fused || 0],
-        ];
+        const rows = [];
+        if (currentMode === "eoh") {
+          rows.push(["EoH Router citations", groups.eoh_router || 0]);
+        }
+        rows.push(["Guideline citations", groups.guideline || 0]);
+        if (groups.ethos) rows.push(["Ethos citations", groups.ethos]);
+        if (groups.valyu) rows.push(["Valyu citations", groups.valyu]);
+        if (groups.coding) rows.push(["Coding citations", groups.coding]);
+        rows.push(["TS matches", currentSourceStats.ts || 0]);
+        if (currentSourceStats.ann) rows.push(["ANN matches", currentSourceStats.ann]);
+        if (currentSourceStats.edges) rows.push(["Edge matches", currentSourceStats.edges]);
+        rows.push(["Fused context items", currentSourceStats.fused || 0]);
 
         rows.forEach(([label, value]) => {
           const tr = document.createElement("tr");
@@ -725,27 +1018,15 @@
         const s = data.status;
         const detail = data.detail || "";
         
-        const statusMap = {
-          "routing_eoh": "Routing EoH modules...",
-          "routing_eoh_failed": "EoH routing failed, using fallback...",
-          "post_routing_sources": detail || "Post-routing sources...",
-          "embedding_query": "Embedding query...",
-          "valyu_fetch": "Fetching Valyu evidence...",
-          "valyu_error": "Valyu fetch error...",
-          "extracting_query_terms": "Extracting query terms...",
-          "extracting_terms": "Extracting terms...",
-          "routing_sources": "Routing sources...",
-          "retrieving_candidates": "Retrieving candidates...",
-          "ts_error": `TS error: ${data.source || ""}`,
-          "ann_error": `ANN error: ${data.source || ""}`,
-          "gating_sources": "Gating sources...",
-          "fusing_context": "Fusing context...",
-          "generating_eoh_answer": "Generating EoH answer...",
-          "generating_answer": "Generating answer...",
-          "done_no_llm": "Done (retrieval only).",
-        };
-
-        const statusLabel = statusMap[s] || (detail ? `${s}: ${detail}` : s);
+        let statusLabel = statusMap[s];
+        if (!statusLabel) {
+          statusLabel = detail ? `${s}: ${detail}` : s;
+        } else if (s === "post_routing_sources" && detail) {
+          statusLabel = detail;
+        } else if ((s === "ts_error" || s === "ann_error") && data.source) {
+          statusLabel = `${s.replace("_", " ").toUpperCase()}: ${data.source}`;
+        }
+        
         if (statusLabel) {
           setStatus(statusLabel, "live");
         }
@@ -767,16 +1048,18 @@
         const data = JSON.parse(ev.data);
         const meta = data.meta || {};
         
-        appendMatchesBlock(
-          "Stream Complete\n" +
-          `  Mode: ${meta.mode || "eoh"}\n` +
-          `  Question Type: ${meta.question_type || "N/A"}\n` +
-          `  Modules: ${meta.n_modules || 0}\n` +
-          `  Doc Handles: ${meta.n_handles || 0}\n` +
-          `  Sources (raw): ${meta.n_sources_raw || 0}\n` +
-          `  Sources (gated): ${meta.n_sources || 0}\n` +
-          `  Context items: ${meta.n_ctx_total || 0}`
-        );
+        let block = "Stream Complete\n";
+        if (meta.mode) block += `  Mode: ${meta.mode}\n`;
+        if (meta.question_type) block += `  Question Type: ${meta.question_type}\n`;
+        if (meta.n_modules !== undefined) block += `  Modules: ${meta.n_modules}\n`;
+        if (meta.n_handles !== undefined) block += `  Doc Handles: ${meta.n_handles}\n`;
+        if (meta.retrieval_mode) block += `  Retrieval Mode: ${meta.retrieval_mode}\n`;
+        if (meta.n_concept_clusters !== undefined) block += `  Concept Clusters: ${meta.n_concept_clusters}\n`;
+        block += `  Sources (raw): ${meta.n_sources_raw || 0}\n`;
+        block += `  Sources (gated): ${meta.n_sources || 0}\n`;
+        block += `  Context items: ${meta.n_ctx_total || 0}`;
+        
+        appendMatchesBlock(block);
         
         setStatus("Completed.", null);
         es.close();
@@ -799,6 +1082,9 @@
         logEventRaw("onopen", JSON.stringify({ type: "connection_opened" }));
       };
     });
+
+    // Initialize panel titles
+    updatePanelTitles();
   </script>
 </body>
 </html>
