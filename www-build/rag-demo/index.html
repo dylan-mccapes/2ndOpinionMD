@@ -367,6 +367,7 @@
     let eohPatientsLoaded = false;
     let eohPatients = [];
     let currentEohTimeline = null;
+    let currentEohTimelineText = "";
 
     // Default EoH prompt when textarea is empty
     const DEFAULT_EOH_PROMPT = "For this patient's RA course and flare history, summarize the Ethos-of-Health flare risk over the next 6-12 months, key conceptual risk drivers, and any important safety/evidence-of-harm considerations, using the EoH router plan provided in context.";
@@ -568,18 +569,13 @@
         });
         
         sortedEvents.forEach(event => {
-          // Extract fields using canonical names first (ts, kind, summary), then fallbacks
           const date = event.ts || event.date || event.timestamp || event.event_date || "(no date)";
           const eventType = event.kind || event.event_type || event.type || event.category || "(unknown)";
           const description = event.summary || event.description || event.text || event.value || "";
-          
-          // Format the date to just show the date part if it's an ISO timestamp
           const displayDate = date.length > 10 ? date.substring(0, 10) : date;
-          
           block += `${displayDate} - ${eventType} - ${description}\n`;
         });
       } else if (typeof events === 'object') {
-        // If it's an object but not an array, pretty-print it
         block += "Timeline data (raw):\n";
         block += JSON.stringify(events, null, 2);
       } else {
@@ -589,6 +585,8 @@
       block += "\n\n" + "-".repeat(50) + "\n";
       block += "EoH Router & Retrieval events will appear below...\n";
       
+      // Save for backend
+      currentEohTimelineText = block;      // <- add this
       matchesEl.textContent = block;
     }
 
@@ -663,11 +661,17 @@
           ctx_k: "24",
           with_llm: "1",
           llm_mode: "chunk",
-          use_valyu: "1",
-          valyu_mode: "answer",
-          valyu_k: "4",
-          valyu_raw: "1",
+          sources: "acr_ra_2021,ethos_model,eular_ra_2022",
         });
+
+        // 🔗 Pass the demo timeline + patient id through to the backend
+        if (currentEohTimelineText) {
+          params.set("eoh_demo_timeline", currentEohTimelineText);
+        }
+        const selectedPatientId = eohPatientSelect.value || "";
+        if (selectedPatientId) {
+          params.set("eoh_demo_patient_id", selectedPatientId);
+        }
       }
       
       return { endpoint, params };
@@ -757,6 +761,19 @@
       setStatus(`Starting ${modeLabel} stream...`, "live");
 
       const { endpoint, params } = buildUrlForMode(currentMode, q);
+
+      // For EoH Flare mode, attach patient + timeline to the request
+      if (currentMode === "eoh_flare" && currentEohTimeline) {
+        const patientId = eohPatientSelect.value;
+        if (patientId) {
+          params.set("eoh_demo_patient_id", patientId);
+        }
+        if (currentEohTimelineText) {
+          // If this ever gets too long, we can switch to just patient_id and let the backend re-fetch
+          params.set("eoh_demo_timeline", currentEohTimelineText);
+        }
+      }
+
       const url = `${API_BASE}${endpoint}?${params.toString()}`;
       const es = new EventSource(url);
       currentEventSource = es;
@@ -1136,6 +1153,14 @@
           `Fused Context (debug) - ${items.length} items\n` +
           JSON.stringify(items.slice(0, 5), null, 2) +
           (items.length > 5 ? `\n... and ${items.length - 5} more` : "")
+        );
+      });
+
+      // --- patient_timeline_ctx ---
+      on("patient_timeline_ctx", (ev) => {
+        const data = JSON.parse(ev.data);
+        appendMatchesBlock(
+          `Injected EoH Timeline\n  Patient: ${data.patient_id}\n  Source: ${data.source}`
         );
       });
 

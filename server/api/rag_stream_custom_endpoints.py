@@ -1928,9 +1928,11 @@ Your task:
   appear (e.g., ACR 2021, EULAR 2022), you may use the themes shown — but you must NOT invent
   citations, page numbers, or details not explicitly visible.
 - Treat the prepended **EoH Router Plan** as the blueprint for your reasoning.
+- If a demo patient timeline (source = "eoh_demo_timeline") is present, treat it as canonical
+  patient-level data for this demo and use it directly in your reasoning.
 
 --------------------------------------------------------------------------------
-EoH ROUTER PLAN INSTRUCTIONS
+EOH ROUTER PLAN INSTRUCTIONS
 --------------------------------------------------------------------------------
 You ALWAYS receive a high-level router plan at the top of context. It includes:
 - The question type (A–E or OTHER)
@@ -1956,6 +1958,28 @@ When answering:
    information — not as verified DB output.
 
 --------------------------------------------------------------------------------
+EoH DEMO TIMELINE (IF PRESENT)
+--------------------------------------------------------------------------------
+Sometimes you will see a context item with source = "eoh_demo_timeline". This is a
+synthetic but canonical patient event log for the demo.
+
+When this appears:
+- Treat it as the patient's event-level history (e.g., flares, labs, journals).
+- Parse it into dated events:
+  - date
+  - event type (e.g., flare, lab, journal)
+  - key details (e.g., joints involved, severity, “labs near normal”, “feeling stable”).
+- Explicitly reference these events in your reasoning:
+  - e.g., “moderate flare involving MCPs/PIPs/wrists in April 2025 followed by lab
+    normalization in July 2025 and a stable period in early August.”
+- Use the timeline, together with the router plan and any guidelines, as the primary
+  evidence for describing flare trajectories and conceptual risk.
+
+If a demo timeline is present, you MUST NOT say that “no patient data” or “no fused rows”
+are visible. Instead, clearly describe which timeline events and guideline excerpts you
+actually see, and then explain their limits.
+
+--------------------------------------------------------------------------------
 STRICT EPISTEMICS RULES (MANDATORY)
 --------------------------------------------------------------------------------
 
@@ -1979,11 +2003,16 @@ STRICT EPISTEMICS RULES (MANDATORY)
    If guidelines are incomplete, you must say:
    “The retrieved excerpts do not provide specific risk estimates.”
 
-5. **Uncertainty is REQUIRED when context is limited**
-   Use one of:
-   - “EoH would likely treat this as…”
-   - “Conceptually, M13 is designed to…”
-   - “Because fused rows are not visible, interpretation remains conceptual.”
+5. **Uncertainty is REQUIRED when context is limited or partial**
+   - Always describe what evidence you actually see (router plan, demo timeline events,
+     guideline snippets, etc.).
+   - If you only see a router plan and very little or no patient/guideline context,
+     you may say that fused rows or module outputs are not visible and that the
+     interpretation is highly conceptual.
+   - If you DO see a patient timeline and/or guideline excerpts, you MUST NOT claim
+     that “no fused rows or module outputs are visible.” Instead:
+       - Explain that you are using those visible items as evidence.
+       - Emphasize that module outputs and quantitative metrics remain conceptual only.
 
 --------------------------------------------------------------------------------
 STRUCTURED OUTPUT FORMAT (REQUIRED)
@@ -1991,11 +2020,16 @@ STRUCTURED OUTPUT FORMAT (REQUIRED)
 
 ### 1. High-Signal Summary (2–4 sentences)
 Direct qualitative interpretation using EoH concepts and the router plan.
+If a patient timeline is present, this summary should clearly mention the key
+events (e.g., recent flares, stabilization, notable labs).
 
 ### 2. Router-Aligned EoH Reasoning
 Bullets aligned to router plan steps:
 - “Step 1 (M1–M3B): would typically assess terrain, stability, stack…”
 - “Step 4 (M13): is designed to produce a conceptual prognostic vector…”
+
+If a demo timeline is present, explicitly reference how each step uses timeline
+events (e.g., flares, labs, stable intervals).
 
 ### 3. Safety Context (only if guidelines appear)
 - Summarize shown guideline themes without inventing details.
@@ -2003,9 +2037,16 @@ Bullets aligned to router plan steps:
 
 ### 4. Limits & Uncertainty
 Explicitly state:
-- Missing data
-- The fact that no fused rows or numeric outputs were visible
-- That reasoning is conceptual
+- What types of evidence you actually have (router plan, timeline events,
+  guideline snippets) and what you do NOT have (no numeric module outputs,
+  no PSI values, no risk tiers, etc.).
+- Any important gaps (e.g., no detailed treatment history, no quantitative
+  prognostic outputs, incomplete guideline excerpts).
+- That reasoning remains conceptual and qualitative, even when timeline
+  events and guidelines are visible.
+
+Do NOT claim that “no fused rows or module outputs were visible” if you were
+given any patient timeline rows or guideline excerpts in context.
 
 --------------------------------------------------------------------------------
 ABSOLUTE PROHIBITIONS
@@ -2505,6 +2546,7 @@ async def eoh_stream_event_generator(
 
     raw_source_count = len(results_by_source)
 
+
     # ---------------------------------------------------------------------------
     # 8) Gating (source-level pruning)
     # ---------------------------------------------------------------------------
@@ -2540,14 +2582,50 @@ async def eoh_stream_event_generator(
         coding_mode=False,
     )
 
-    # Prepend router plan context item to the context
-    final_ctx = [router_ctx_item] + internal_ctx
+    # Start with router plan + fused retrieval context
+    final_ctx: list[dict[str, Any]] = [router_ctx_item] + internal_ctx
 
+    # ---------------------------------------------------------------------------
+    # 9b) EoH Demo Timeline – inject as a synthetic context doc
+    # ---------------------------------------------------------------------------
+    params = request.query_params
+    demo_timeline = params.get("eoh_demo_timeline")
+    demo_patient_id = params.get("eoh_demo_patient_id")
+
+    if demo_timeline:
+        patient_label = demo_patient_id or "demo"
+
+        timeline_doc = {
+            "id": f"eoh_demo_timeline:{patient_label}",
+            "source": "eoh_demo_timeline",
+            "source_id": f"eoh_demo_timeline:{patient_label}",
+            "title": f"EoH demo timeline – {patient_label}",
+            # IMPORTANT: use 'text', not 'content'
+            "text": demo_timeline,
+            # Give it a strong score so any sorting keeps it near the top
+            "score": 1.0,
+            "method": "timeline",
+        }
+
+        # Put it right after the router context (or at the very front if you prefer)
+        # index 0 is router_ctx_item, so insert at 1
+        final_ctx = [timeline_doc] + final_ctx
+
+        # Optional: explicit SSE so the UI knows we injected it
+        yield sse(
+            "patient_timeline_ctx",
+            {
+                "source": "eoh_demo_timeline",
+                "patient_id": demo_patient_id,
+            },
+        )
+
+    # Valyu context accounting (unchanged)
     valyu_ctx_count = 0
     if use_valyu and valyu_k > 0 and valyu_matches:
         valyu_ctx_count = len(valyu_matches[:valyu_k])
 
-    # Always emit fused context matches for debugging (moved outside Valyu block)
+    # Emit fused context matches for debugging / UI
     if final_ctx:
         yield sse(
             "matches",
@@ -2579,7 +2657,7 @@ async def eoh_stream_event_generator(
                         "source": r["source"],
                         "source_id": r.get("source_id"),
                         "title": r.get("title", "")[:200],
-                        "text": r.get("text", "")[:1000],  # hard cap to keep SSE sane
+                        "text": r.get("text", "")[:1000],
                         "score": r.get("score", 0.0),
                         "method": r.get("method", None),
                     }
