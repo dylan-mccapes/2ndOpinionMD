@@ -34,12 +34,20 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# OpenAI client for embeddings
-client = OpenAI()
-
 # Embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSION = 1536
+
+# Lazy-initialized OpenAI client (avoids import errors when API key not set)
+_openai_client: Optional[OpenAI] = None
+
+
+def get_openai_client() -> OpenAI:
+    """Get or create the OpenAI client (lazy initialization)."""
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI()
+    return _openai_client
 
 
 class TimelineEngine:
@@ -74,7 +82,7 @@ class TimelineEngine:
             List of 1536 floats representing the embedding
         """
         try:
-            response = client.embeddings.create(
+            response = get_openai_client().embeddings.create(
                 model=EMBEDDING_MODEL,
                 input=text
             )
@@ -103,7 +111,7 @@ class TimelineEngine:
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             try:
-                response = client.embeddings.create(
+                response = get_openai_client().embeddings.create(
                     model=EMBEDDING_MODEL,
                     input=batch
                 )
