@@ -202,6 +202,35 @@
       </span>
     </div>
 
+    <!-- EoH Patient Selector (hidden by default, shown in EoH mode) -->
+    <div id="eoh-patient-panel" style="display:none; margin-bottom:0.75rem; padding:0.75rem; background:#020617; border-radius:0.5rem; border:1px solid #1f2937;">
+      <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.5rem;">
+        <label style="font-size:0.8rem; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af;">Select Patient:</label>
+        <select id="patient-select" class="input" style="width:auto; min-width:280px;">
+          <option value="">-- Select a patient --</option>
+          <option value="P1">P1 - Recurrent flares on MTX + ADA</option>
+          <option value="P2">P2 - Deep remission</option>
+          <option value="P3">P3 - Smoldering / high risk</option>
+          <option value="P4">P4 - Subjective heavy / psychosomatic noise</option>
+        </select>
+        <button id="load-patient-btn" class="btn btn-secondary" type="button" style="padding:0.4rem 0.8rem;">
+          Load Patient
+        </button>
+      </div>
+      <div id="patient-summary" style="font-size:0.8rem; color:#9ca3af; margin-bottom:0.5rem;"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+        <button id="eoh-flare-risk-btn" class="btn btn-secondary" type="button" style="font-size:0.75rem; padding:0.35rem 0.7rem;" disabled>
+          Flare risk (6-12 months)
+        </button>
+        <button id="eoh-trajectory-btn" class="btn btn-secondary" type="button" style="font-size:0.75rem; padding:0.35rem 0.7rem;" disabled>
+          Trajectory / drift summary
+        </button>
+        <button id="eoh-whatif-btn" class="btn btn-secondary" type="button" style="font-size:0.75rem; padding:0.35rem 0.7rem;" disabled>
+          What if: new flare 2 weeks ago
+        </button>
+      </div>
+    </div>
+
     <div class="button-row">
       <div>
         <button id="run-btn" class="btn btn-primary" type="button">
@@ -243,6 +272,15 @@
       </div>
     </div>
 
+    <!-- EoH Timeline Panel (hidden by default, shown in EoH mode when patient loaded) -->
+    <div id="eoh-timeline-panel" class="panel" style="display:none; margin-top:0.75rem; max-height:300px; overflow:auto;">
+      <h2>
+        Patient Timeline
+        <span class="tag">EoH</span>
+      </h2>
+      <div id="timeline-content" class="pre" style="font-size:0.75rem;">No patient loaded.</div>
+    </div>
+
     <!-- NEW: full trace/debug panel -->
     <div class="panel" style="margin-top:0.75rem; max-height:260px; overflow:auto;">
       <h2>
@@ -274,9 +312,25 @@
     const modeCodingBtn    = document.getElementById("mode-coding");
     const modeEohBtn       = document.getElementById("mode-eoh");
 
-    let mode = "guideline";  // "guideline" or "coding"
+    // EoH patient panel elements
+    const eohPatientPanel = document.getElementById("eoh-patient-panel");
+    const eohTimelinePanel = document.getElementById("eoh-timeline-panel");
+    const patientSelect = document.getElementById("patient-select");
+    const loadPatientBtn = document.getElementById("load-patient-btn");
+    const patientSummaryEl = document.getElementById("patient-summary");
+    const timelineContentEl = document.getElementById("timeline-content");
+    const eohFlareRiskBtn = document.getElementById("eoh-flare-risk-btn");
+    const eohTrajectoryBtn = document.getElementById("eoh-trajectory-btn");
+    const eohWhatIfBtn = document.getElementById("eoh-whatif-btn");
+
+    let mode = "guideline";  // "guideline", "coding", or "eoh"
     let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0 };
     let valyuAnswerText = "";
+
+    // EoH patient state
+    let currentPatientState = null;
+    let currentPatientTimeline = null;
+    let currentPatientId = null;
 
     function safeParse(json, fallback = {}) {
       try {
@@ -311,16 +365,167 @@
 
       if (mode === "guideline") {
         modeGuidelineBtn.classList.add("active");
+        eohPatientPanel.style.display = "none";
+        eohTimelinePanel.style.display = "none";
       } else if (mode === "coding") {
         modeCodingBtn.classList.add("active");
+        eohPatientPanel.style.display = "none";
+        eohTimelinePanel.style.display = "none";
       } else if (mode === "eoh") {
         modeEohBtn.classList.add("active");
+        eohPatientPanel.style.display = "block";
+        if (currentPatientTimeline) {
+          eohTimelinePanel.style.display = "block";
+        }
       }
     }
 
     modeGuidelineBtn.addEventListener("click", () => setMode("guideline"));
     modeCodingBtn.addEventListener("click",    () => setMode("coding"));
     modeEohBtn.addEventListener("click",       () => setMode("eoh"));
+
+    // === EoH Patient Loading Functions ===
+    async function loadPatientData(patientId) {
+      if (!patientId) {
+        alert("Please select a patient first.");
+        return;
+      }
+
+      setStatus("Loading patient data...", "live");
+      currentPatientId = patientId;
+
+      try {
+        const [stateRes, timelineRes] = await Promise.all([
+          fetch(`${API_BASE}/api/eoh_demo/patient_state/${patientId}`),
+          fetch(`${API_BASE}/api/eoh_demo/timeline/${patientId}?max_events=200`)
+        ]);
+
+        if (!stateRes.ok || !timelineRes.ok) {
+          throw new Error("Failed to load patient data");
+        }
+
+        currentPatientState = await stateRes.json();
+        currentPatientTimeline = await timelineRes.json();
+
+        patientSummaryEl.textContent = currentPatientState.summary || "";
+        renderTimeline(currentPatientTimeline);
+        eohTimelinePanel.style.display = "block";
+
+        eohFlareRiskBtn.disabled = false;
+        eohTrajectoryBtn.disabled = false;
+        eohWhatIfBtn.disabled = false;
+
+        setStatus(`Loaded patient ${patientId}`, null);
+      } catch (err) {
+        console.error("Error loading patient:", err);
+        setStatus("Error loading patient", "error");
+        patientSummaryEl.textContent = "Error loading patient data.";
+      }
+    }
+
+    function renderTimeline(timeline) {
+      if (!timeline || timeline.length === 0) {
+        timelineContentEl.textContent = "No timeline events.";
+        return;
+      }
+
+      const reversed = [...timeline].reverse();
+      const lines = reversed.map(e => {
+        const date = e.ts ? e.ts.substring(0, 10) : "????-??-??";
+        const kind = e.kind || "unknown";
+        const summary = e.summary || "";
+        return `${date} | ${kind.padEnd(10)} | ${summary}`;
+      });
+
+      timelineContentEl.textContent = lines.join("\n");
+    }
+
+    function buildFlareRiskQuestion() {
+      if (!currentPatientState) return "";
+      const stateJson = JSON.stringify(currentPatientState, null, 2);
+      return `Using the following patient_state JSON for a person with rheumatoid arthritis, conceptually estimate their qualitative 6- and 12-month flare risk and explain the main drivers, following the EoH router plan if provided. Do not invent numeric scores or probabilities.
+
+${stateJson}`;
+    }
+
+    function buildTrajectoryQuestion() {
+      if (!currentPatientTimeline) return "";
+      const timelineJson = JSON.stringify(currentPatientTimeline, null, 2);
+      return `Here is a chronological timeline of visits, flares, labs, medication changes, and journal entries for a patient with rheumatoid arthritis:
+
+${timelineJson}
+
+Using the EoH router plan if provided, narrate the patient's baseline terrain, stability band, and conceptual drift over the last 12 months, then give a qualitative flare-risk outlook for the next 6 months. Do not invent numeric probabilities or scores.`;
+    }
+
+    async function buildWhatIfQuestion() {
+      if (!currentPatientId) return "";
+
+      setStatus("Creating hypothetical scenario...", "live");
+
+      try {
+        const twoWeeksAgo = new Date();
+        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+        const ts = twoWeeksAgo.toISOString();
+
+        const res = await fetch(`${API_BASE}/api/eoh_demo/hypothetical`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base_patient_id: currentPatientId,
+            changes: [{
+              ts: ts,
+              kind: "flare",
+              severity: "moderate",
+              summary: "New moderate flare affecting knees and wrists"
+            }]
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to create hypothetical");
+        }
+
+        const hypotheticalState = await res.json();
+        const stateJson = JSON.stringify(hypotheticalState, null, 2);
+
+        setStatus("Hypothetical created", null);
+
+        return `Below is a hypothetical updated patient_state JSON, where the same patient experienced a new moderate flare about 2 weeks ago. Compare this to their prior baseline and conceptually describe how the 6-month flare-risk outlook shifts and which drivers changed:
+
+${stateJson}`;
+      } catch (err) {
+        console.error("Error creating hypothetical:", err);
+        setStatus("Error creating hypothetical", "error");
+        return "";
+      }
+    }
+
+    loadPatientBtn.addEventListener("click", () => {
+      const patientId = patientSelect.value;
+      loadPatientData(patientId);
+    });
+
+    eohFlareRiskBtn.addEventListener("click", () => {
+      const question = buildFlareRiskQuestion();
+      if (question) {
+        queryEl.value = question;
+      }
+    });
+
+    eohTrajectoryBtn.addEventListener("click", () => {
+      const question = buildTrajectoryQuestion();
+      if (question) {
+        queryEl.value = question;
+      }
+    });
+
+    eohWhatIfBtn.addEventListener("click", async () => {
+      const question = await buildWhatIfQuestion();
+      if (question) {
+        queryEl.value = question;
+      }
+    });
 
     function setStatus(text, state) {
       statusText.textContent = text;

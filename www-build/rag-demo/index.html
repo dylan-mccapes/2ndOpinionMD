@@ -260,11 +260,26 @@
         <span class="mode-label">EoH Router + RAG</span>
         <small>/eoh_stream</small>
       </button>
+      <button type="button" class="pill" data-mode="eoh_flare">
+        <span class="mode-label">EoH / Flare Demo</span>
+        <small>/eoh_stream + timeline</small>
+      </button>
 
       <span class="badge">
         <span style="width:0.5rem;height:0.5rem;border-radius:999px;background:#8b5cf6;margin-right:0.35rem;"></span>
         streaming SSE
       </span>
+    </div>
+
+    <!-- EoH Flare Demo Controls (hidden unless in eoh_flare mode) -->
+    <div id="eoh-flare-controls" class="row" style="display:none; align-items: center; gap: 0.75rem;">
+      <label for="eoh-patient-select" style="margin-bottom: 0;">Patient</label>
+      <select id="eoh-patient-select" class="input" style="width: auto; min-width: 280px;">
+        <option value="">Loading patients...</option>
+      </select>
+      <button id="eoh-load-btn" class="btn btn-primary" type="button">
+        Load EoH timeline &amp; run
+      </button>
     </div>
 
     <div class="button-row">
@@ -339,9 +354,22 @@
     const answerTitle = document.getElementById("answer-title");
     const modePills = document.querySelectorAll(".pill[data-mode]");
 
+    // EoH Flare Demo elements
+    const eohFlareControls = document.getElementById("eoh-flare-controls");
+    const eohPatientSelect = document.getElementById("eoh-patient-select");
+    const eohLoadBtn = document.getElementById("eoh-load-btn");
+
     let currentMode = "guideline";
     let currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0, edges: 0 };
     let currentEventSource = null;
+
+    // EoH Flare Demo state
+    let eohPatientsLoaded = false;
+    let eohPatients = [];
+    let currentEohTimeline = null;
+
+    // Default EoH prompt when textarea is empty
+    const DEFAULT_EOH_PROMPT = "For this patient's RA course and flare history, summarize the Ethos-of-Health flare risk over the next 6-12 months, key conceptual risk drivers, and any important safety/evidence-of-harm considerations, using the EoH router plan provided in context.";
 
     // Toggle raw events panel
     rawEventsToggle.addEventListener("click", () => {
@@ -365,11 +393,20 @@
         pill.classList.add("active");
         currentMode = newMode;
         
+        // Show/hide EoH flare controls
+        if (newMode === "eoh_flare") {
+          eohFlareControls.style.display = "flex";
+          loadEohPatientsIfNeeded();
+        } else {
+          eohFlareControls.style.display = "none";
+        }
+        
         // Update panel titles based on mode
         updatePanelTitles();
         
         // Reset output
         resetOutput();
+        currentEohTimeline = null;
         setStatus("Idle", null);
       });
     });
@@ -387,6 +424,10 @@
         traceTitle.textContent = "Router & Retrieval Trace";
         traceTag.textContent = "EoH routing & retrieval";
         answerTitle.textContent = "EoH Answer";
+      } else if (currentMode === "eoh_flare") {
+        traceTitle.textContent = "EoH Patient Timeline & Router Plan";
+        traceTag.textContent = "timeline + EoH";
+        answerTitle.textContent = "EoH Flare Forecast (Conceptual)";
       }
     }
 
@@ -429,6 +470,156 @@
       rawEventsEl.scrollTop = rawEventsEl.scrollHeight;
     }
 
+    // === EoH Flare Demo Functions ===
+
+    // Load EoH demo patients from /api/eoh_demo/patients
+    async function loadEohPatientsIfNeeded() {
+      if (eohPatientsLoaded) return;
+      
+      eohPatientSelect.innerHTML = '<option value="">Loading patients...</option>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/eoh_demo/patients`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        eohPatients = Array.isArray(data) ? data : (data.patients || []);
+        eohPatientsLoaded = true;
+        
+        // Populate the select dropdown
+        eohPatientSelect.innerHTML = '';
+        
+        if (eohPatients.length === 0) {
+          eohPatientSelect.innerHTML = '<option value="">No patients available</option>';
+          return;
+        }
+        
+        eohPatients.forEach((patient, idx) => {
+          const option = document.createElement('option');
+          // Try to extract id and label from various possible shapes
+          const id = patient.id || patient.patient_id || `P${idx + 1}`;
+          const label = patient.label || patient.name || patient.description || `Patient ${id}`;
+          option.value = id;
+          option.textContent = `${id} - ${label}`;
+          eohPatientSelect.appendChild(option);
+        });
+        
+      } catch (err) {
+        console.error("Failed to load EoH demo patients:", err);
+        eohPatientSelect.innerHTML = '<option value="">Error loading patients</option>';
+        matchesEl.textContent = `Error loading EoH demo patients:\n${err.message}\n\nThe /api/eoh_demo/patients endpoint may not be available.`;
+      }
+    }
+
+    // Load timeline for a specific patient
+    async function loadEohTimeline(patientId) {
+      if (!patientId) {
+        alert("Please select a patient first.");
+        return null;
+      }
+      
+      setStatus("Loading patient timeline...", "live");
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/eoh_demo/timeline/${encodeURIComponent(patientId)}?max_events=200`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        currentEohTimeline = data;
+        
+        // Render the timeline in the left panel
+        renderEohTimeline(patientId, data);
+        
+        return data;
+        
+      } catch (err) {
+        console.error("Failed to load EoH timeline:", err);
+        setStatus("Error loading timeline", "error");
+        matchesEl.textContent = `Error loading timeline for patient ${patientId}:\n${err.message}\n\nThe /api/eoh_demo/timeline endpoint may not be available.`;
+        return null;
+      }
+    }
+
+    // Render the timeline in the left panel
+    function renderEohTimeline(patientId, timelineData) {
+      // Find patient label
+      const patient = eohPatients.find(p => (p.id || p.patient_id) === patientId);
+      const patientLabel = patient ? (patient.label || patient.name || patient.description || "") : "";
+      
+      let block = `Timeline for ${patientId}`;
+      if (patientLabel) {
+        block += ` - ${patientLabel}`;
+      }
+      block += "\n" + "=".repeat(50) + "\n\n";
+      
+      // Try to extract events from various possible shapes
+      const events = timelineData.events || timelineData.timeline || timelineData;
+      
+      if (Array.isArray(events) && events.length > 0) {
+        // Sort events in reverse chronological order (newest first) for display
+        const sortedEvents = [...events].sort((a, b) => {
+          const tsA = a.ts || a.date || a.timestamp || "";
+          const tsB = b.ts || b.date || b.timestamp || "";
+          return tsB.localeCompare(tsA);
+        });
+        
+        sortedEvents.forEach(event => {
+          // Extract fields using canonical names first (ts, kind, summary), then fallbacks
+          const date = event.ts || event.date || event.timestamp || event.event_date || "(no date)";
+          const eventType = event.kind || event.event_type || event.type || event.category || "(unknown)";
+          const description = event.summary || event.description || event.text || event.value || "";
+          
+          // Format the date to just show the date part if it's an ISO timestamp
+          const displayDate = date.length > 10 ? date.substring(0, 10) : date;
+          
+          block += `${displayDate} - ${eventType} - ${description}\n`;
+        });
+      } else if (typeof events === 'object') {
+        // If it's an object but not an array, pretty-print it
+        block += "Timeline data (raw):\n";
+        block += JSON.stringify(events, null, 2);
+      } else {
+        block += "(No timeline events found)";
+      }
+      
+      block += "\n\n" + "-".repeat(50) + "\n";
+      block += "EoH Router & Retrieval events will appear below...\n";
+      
+      matchesEl.textContent = block;
+    }
+
+    // EoH Load button click handler
+    eohLoadBtn.addEventListener("click", async () => {
+      const patientId = eohPatientSelect.value;
+      if (!patientId) {
+        alert("Please select a patient first.");
+        return;
+      }
+      
+      // Reset answer panel but keep timeline in matches panel
+      answerEl.textContent = "No answer yet.";
+      rawEventsEl.textContent = "";
+      currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0, edges: 0 };
+      metaBody.innerHTML = "";
+      metaTable.style.display = "none";
+      
+      // Load the timeline
+      const timeline = await loadEohTimeline(patientId);
+      
+      if (timeline) {
+        // If textarea is empty, set the default prompt
+        if (!queryEl.value.trim()) {
+          queryEl.value = DEFAULT_EOH_PROMPT;
+        }
+        // Trigger the run button click to start the stream
+        runBtn.click();
+      }
+    });
+
     // Build URL based on mode
     function buildUrlForMode(mode, q) {
       let endpoint, params;
@@ -463,6 +654,19 @@
           ctx_k: "96",
           with_llm: "1",
           llm_mode: "chunk",
+        });
+      } else if (mode === "eoh_flare") {
+        endpoint = "/api/rag/eoh_stream";
+        params = new URLSearchParams({
+          q,
+          limit: "10",
+          ctx_k: "24",
+          with_llm: "1",
+          llm_mode: "chunk",
+          use_valyu: "1",
+          valyu_mode: "answer",
+          valyu_k: "4",
+          valyu_raw: "1",
         });
       }
       
@@ -529,11 +733,26 @@
         currentEventSource = null;
       }
 
-      resetOutput();
+      // For eoh_flare mode, don't reset the matches panel if we have a timeline loaded
+      if (currentMode === "eoh_flare" && currentEohTimeline) {
+        // Only reset answer and raw events, keep the timeline in matches panel
+        answerEl.textContent = "No answer yet.";
+        rawEventsEl.textContent = "";
+        currentSourceStats = { ts: 0, ann: 0, valyu: 0, fused: 0, edges: 0 };
+        metaBody.innerHTML = "";
+        metaTable.style.display = "none";
+      } else {
+        resetOutput();
+      }
+      
       runBtn.disabled = true;
+      if (currentMode === "eoh_flare") {
+        eohLoadBtn.disabled = true;
+      }
       
       const modeLabel = currentMode === "guideline" ? "Guideline Q&A" 
                       : currentMode === "coding" ? "Coding" 
+                      : currentMode === "eoh_flare" ? "EoH Flare"
                       : "EoH";
       setStatus(`Starting ${modeLabel} stream...`, "live");
 
@@ -567,8 +786,16 @@
         const srcs = Array.isArray(data.sources) ? data.sources.join(", ") : "(not specified)";
         const mode = data.mode || data.answer_mode || currentMode;
         const retrievalMode = data.retrieval_mode || "ts+ann";
-        matchesEl.textContent =
-          `Query: ${data.q}\nMode: ${mode}\nRetrieval: ${retrievalMode}\nSources: ${srcs}\n\nAwaiting events...`;
+        
+        // In eoh_flare mode with timeline loaded, append to existing content instead of replacing
+        if (currentMode === "eoh_flare" && currentEohTimeline) {
+          appendMatchesBlock(
+            `Query: ${data.q}\nMode: ${mode}\nRetrieval: ${retrievalMode}\nSources: ${srcs}\n\nAwaiting events...`
+          );
+        } else {
+          matchesEl.textContent =
+            `Query: ${data.q}\nMode: ${mode}\nRetrieval: ${retrievalMode}\nSources: ${srcs}\n\nAwaiting events...`;
+        }
       });
 
       // --- warning ---
@@ -986,7 +1213,7 @@
         });
 
         const rows = [];
-        if (currentMode === "eoh") {
+        if (currentMode === "eoh" || currentMode === "eoh_flare") {
           rows.push(["EoH Router citations", groups.eoh_router || 0]);
         }
         rows.push(["Guideline citations", groups.guideline || 0]);
@@ -1065,6 +1292,9 @@
         es.close();
         currentEventSource = null;
         runBtn.disabled = false;
+        if (currentMode === "eoh_flare") {
+          eohLoadBtn.disabled = false;
+        }
       });
 
       // --- EventSource error handler ---
@@ -1075,6 +1305,9 @@
         es.close();
         currentEventSource = null;
         runBtn.disabled = false;
+        if (currentMode === "eoh_flare") {
+          eohLoadBtn.disabled = false;
+        }
       };
 
       // --- EventSource open handler ---
