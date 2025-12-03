@@ -181,7 +181,11 @@ def generate_ra_like_patient(patient_id: str = "DEMO_RA_001") -> List[TimelineEv
         structured=ImagingData(
             modality="X-ray",
             body_part="bilateral hands",
-            findings="Periarticular osteopenia at MCP and PIP joints. No erosions identified. Soft tissue swelling at MCP 2-4 bilaterally.",
+            findings=[
+                "Periarticular osteopenia at MCP and PIP joints.",
+                "No erosions identified.",
+                "Soft tissue swelling at MCP 2–4 bilaterally.",
+            ],
             impression="Findings consistent with early inflammatory arthritis. No erosive changes.",
             comparison="No prior imaging available.",
         ).model_dump(),
