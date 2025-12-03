@@ -55,7 +55,9 @@ class LabResult(BaseModel):
     unit: Optional[str] = None
     reference_low: Optional[float] = None
     reference_high: Optional[float] = None
-    flag: Optional[str] = None  # H, L, N, etc.
+    reference_range: Optional[str] = None  # Human-readable reference range (e.g., "<0.5", "0-20")
+    flag: Optional[str] = None  # H, L, N, high, low, normal, borderline, positive, etc.
+    qualitative: Optional[str] = None  # Qualitative result (e.g., "positive", "negative", "reactive")
     
     # Common autoimmune markers
     CRP: Optional[float] = None
@@ -76,8 +78,10 @@ class SymptomData(BaseModel):
     location: Optional[str] = None
     duration: Optional[str] = None
     frequency: Optional[str] = None
+    pattern: Optional[str] = None  # Temporal pattern (e.g., "worse in morning", "improving", "stable")
     triggers: Optional[List[str]] = None
     relieving_factors: Optional[List[str]] = None
+    associated_symptoms: Optional[List[str]] = None  # Related symptoms occurring together
     
     # Common autoimmune symptoms
     joint_pain: Optional[bool] = None
@@ -99,7 +103,9 @@ class MedicationData(BaseModel):
     frequency: Optional[str] = None
     route: Optional[str] = None
     action: Optional[str] = None  # started, stopped, changed, continued
+    status: Optional[str] = None  # Alias for action (started, stopped, etc.)
     reason: Optional[str] = None
+    indication: Optional[str] = None  # Medical indication for the medication
     adherence_gap_days: Optional[int] = None
     
     # Common autoimmune medications
@@ -114,8 +120,10 @@ class FlareData(BaseModel):
     severity: Optional[int] = Field(None, ge=1, le=10)
     joints_involved: Optional[List[str]] = None
     duration_days: Optional[int] = None
-    trigger: Optional[str] = None
+    trigger: Optional[str] = None  # Primary/main trigger
+    triggers: Optional[List[str]] = None  # Multiple triggers
     treatment_response: Optional[str] = None
+    organ_involvement: Optional[List[str]] = None  # For systemic diseases like SLE
     
     # Disease activity scores
     das28: Optional[float] = None
@@ -126,8 +134,12 @@ class FlareData(BaseModel):
 
 class VisitData(BaseModel):
     """Structured clinical visit data."""
-    visit_type: Optional[str] = None  # routine, urgent, follow-up
+    visit_type: Optional[str] = None  # routine, urgent, follow-up, new_patient
     provider_type: Optional[str] = None  # rheumatologist, PCP, etc.
+    provider: Optional[str] = None  # Provider name
+    location: Optional[str] = None  # Clinic/facility name
+    chief_complaint: Optional[str] = None  # Reason for visit
+    diagnoses: Optional[List[str]] = None  # Diagnoses made/confirmed at visit
     
     # Physical exam findings
     swollen_joint_count: Optional[int] = None
@@ -146,6 +158,7 @@ class ImagingData(BaseModel):
     body_part: Optional[str] = None
     impression: Optional[str] = None
     findings: Optional[List[str]] = None
+    comparison: Optional[str] = None  # Comparison to prior imaging
     
     # Joint-specific findings
     erosions: Optional[bool] = None
@@ -361,7 +374,7 @@ class FlareReport(BaseModel):
     guidance_for_clinician: List[str]
     
     # Metadata
-    model_version: str = "1.0.0"
+    engine_version: str = "1.0.0"  # Renamed from model_version to avoid Pydantic protected namespace
     
     # Regulatory disclaimer
     disclaimer: str = (

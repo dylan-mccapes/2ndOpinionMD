@@ -334,7 +334,7 @@ def generate_ra_like_patient(patient_id: str = "DEMO_RA_001") -> List[TimelineEv
         event_type=EventType.FLARE,
         source=EventSource.CLINICIAN_NOTE,
         structured=FlareData(
-            severity="moderate",
+            severity=5,  # moderate (1-10 scale)
             duration_days=14,
             joints_involved=["bilateral MCPs", "bilateral PIPs", "bilateral wrists"],
             triggers=["medication gap"],
@@ -685,7 +685,7 @@ def generate_lupus_like_patient(patient_id: str = "DEMO_SLE_001") -> List[Timeli
             event_type=EventType.FLARE,
             source=EventSource.CLINICIAN_NOTE,
             structured=FlareData(
-                severity="moderate-severe",
+                severity=7,  # moderate-severe (1-10 scale)
                 duration_days=30,
                 joints_involved=["bilateral hands", "bilateral knees"],
                 triggers=["sun exposure", "stress"],
@@ -1048,11 +1048,14 @@ def main():
         
         if args.dry_run:
             for e in events:
+                # event_type and source may be strings or enums depending on Config
+                event_type = e.event_type.value if hasattr(e.event_type, 'value') else e.event_type
+                source = e.source.value if hasattr(e.source, 'value') else e.source
                 all_events.append({
                     "patient_id": e.patient_id,
                     "ts": e.ts.isoformat(),
-                    "event_type": e.event_type.value,
-                    "source": e.source.value,
+                    "event_type": event_type,
+                    "source": source,
                     "structured": e.structured,
                     "text": e.text,
                     "meta": e.meta,
