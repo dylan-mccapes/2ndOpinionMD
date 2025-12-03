@@ -25,6 +25,9 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+import psycopg2
+from psycopg2.extras import execute_values, Json
+
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -41,6 +44,23 @@ from server.timeline.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_db_url() -> str:
+    """
+    Return a synchronous PostgreSQL URL.
+
+    Prefers SYNC_DATABASE_URL (used by other MKG ingest scripts),
+    falls back to DATABASE_URL, and strips any async driver suffix.
+    """
+    url = (
+        os.getenv("SYNC_DATABASE_URL")
+        or os.getenv("DATABASE_URL")
+        or "postgresql:///2ndopinionmd"
+    )
+    # Strip async drivers so psycopg2 is happy
+    url = url.replace("+asyncpg", "").replace("+psycopg", "")
+    return url
 
 
 def generate_ra_like_patient(patient_id: str = "DEMO_RA_001") -> List[TimelineEventCreate]:
@@ -950,20 +970,18 @@ def generate_psa_like_patient(patient_id: str = "DEMO_PSA_001") -> List[Timeline
     return events
 
 
-async def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
+def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
     """
-    Seed patient timeline data into the database.
-    
+    Seed patient timeline data into the database using a synchronous psycopg2
+    connection (like other MKG ingest scripts).
+
     Args:
         patient_id: Patient identifier
         patient_type: Type of patient data to generate ("ra", "sle", "psa")
-    
+
     Returns:
-        Number of events created
+        Number of events inserted
     """
-    from server.timeline.engine import TimelineEngine
-    from server.db.session import get_async_session
-    
     # Generate events based on patient type
     if patient_type == "ra":
         events = generate_ra_like_patient(patient_id)
@@ -973,17 +991,51 @@ async def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
         events = generate_psa_like_patient(patient_id)
     else:
         raise ValueError(f"Unknown patient type: {patient_type}")
-    
+
     logger.info(f"Generated {len(events)} events for patient {patient_id} ({patient_type})")
-    
-    # Store events in database
-    engine = TimelineEngine()
-    
-    async with get_async_session() as session:
-        stored_events = await engine.store_events_batch(session, events)
-        await session.commit()
-        logger.info(f"Stored {len(stored_events)} events in database")
-        return len(stored_events)
+
+    if not events:
+        return 0
+
+    # Prepare rows for INSERT
+    rows = []
+    for e in events:
+        event_type = e.event_type.value if hasattr(e.event_type, "value") else e.event_type
+        source = e.source.value if hasattr(e.source, "value") else e.source
+
+        rows.append(
+            (
+                e.patient_id,
+                e.ts,
+                event_type,
+                source,
+                Json(e.structured) if e.structured is not None else Json({}),
+                e.text,
+                Json(e.meta) if e.meta is not None else Json({}),
+            )
+        )
+
+    conn = psycopg2.connect(get_db_url())
+    try:
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                """
+                INSERT INTO ehr.patient_timeline
+                    (patient_id, ts, event_type, source, structured, text, meta)
+                VALUES %s
+                """,
+                rows,
+            )
+        conn.commit()
+        logger.info(f"Stored {len(rows)} events in ehr.patient_timeline for {patient_id}")
+        return len(rows)
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Error inserting timeline events for {patient_id}: {exc}")
+        raise
+    finally:
+        conn.close()
 
 
 def main():
@@ -1061,7 +1113,7 @@ def main():
                     "meta": e.meta,
                 })
         else:
-            count = asyncio.run(seed_patient_data(pid, pt))
+            count = seed_patient_data(pid, pt)
             logger.info(f"Seeded {count} events for patient {pid}")
     
     if args.dry_run:

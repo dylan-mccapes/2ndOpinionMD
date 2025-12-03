@@ -1,518 +1,480 @@
-"""
-Timeline API Routes
+# server/api/timeline_routes.py
 
-Provides endpoints for:
-- GET /api/timeline/{patient_id} - Timeline reconstruction
-- GET /api/eoh/flarereport/{patient_id} - Flare prediction report
-- POST /api/timeline/{patient_id}/events - Add timeline events
-- GET /api/timeline/{patient_id}/search - Search timeline events
-
-All outputs are probabilistic, transparent, and non-diagnostic per regulatory strategy.
-"""
+from __future__ import annotations
 
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.db.session import get_session
-from server.timeline.engine import TimelineEngine
-from server.timeline.models import (
-    DiagnosticLandscape,
-    DiagnosticProbability,
-    EventSource,
-    EventType,
-    FlarePrecursor,
-    FlarePrediction,
-    FlareReport,
-    TimelineContext,
-    TimelineEvent,
-    TimelineEventCreate,
-    TimelineResponse,
-)
+from server.ann.flare import find_flare_precursors
+from server.ann.diagnostic import estimate_diagnostic_landscape
+from server.eoh.fusion import fuse_timeline_context
+from server.eoh.validators import validate_response_safety
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["timeline"])
+router = APIRouter(
+    prefix="/api",
+    tags=["timeline", "eoh"],
+)
 
 
-# ============================================================================
-# Request/Response Models
-# ============================================================================
+# ---------------------------------------------------------------------------
+# DB session helper (wraps get_session(request: Request))
+# ---------------------------------------------------------------------------
 
-class TimelineEventRequest(BaseModel):
-    """Request model for creating a timeline event."""
-    ts: datetime
-    event_type: str = Field(..., description="Event type: lab, symptom, medication, imaging, flare, note, self_report, visit, med_change")
-    source: str = Field(default="patient_upload", description="Data source")
-    structured: Optional[Dict[str, Any]] = None
-    text: str
-    meta: Dict[str, Any] = Field(default_factory=dict)
-
-
-class TimelineEventsRequest(BaseModel):
-    """Request model for creating multiple timeline events."""
-    events: List[TimelineEventRequest]
-
-
-class TimelineSearchRequest(BaseModel):
-    """Request model for searching timeline events."""
-    query: str
-    limit: int = Field(default=10, ge=1, le=100)
-    event_types: Optional[List[str]] = None
-
-
-class TimelineSearchResult(BaseModel):
-    """Search result with similarity score."""
-    event: TimelineEvent
-    similarity_score: float
-
-
-class TimelineSearchResponse(BaseModel):
-    """Response model for timeline search."""
-    patient_id: str
-    query: str
-    results: List[TimelineSearchResult]
-    total_results: int
-
-
-class FlareReportResponse(BaseModel):
-    """Response model for flare report endpoint."""
-    patient_id: str
-    report_timestamp: datetime
-    flare_forecast: str
-    differential_landscape: Dict[str, Any]
-    key_precursors: List[Dict[str, Any]]
-    contradictions: List[str]
-    risk_drivers: List[str]
-    protective_factors: List[str]
-    timeline_summary: str
-    timeline_event_count: int
-    timeline_span_days: int
-    guidance_for_clinician: List[str]
-    model_version: str
-    disclaimer: str
-
-
-class DiagnosticLandscapeResponse(BaseModel):
-    """Response model for diagnostic landscape endpoint."""
-    patient_id: str
-    analysis_timestamp: datetime
-    diagnostic_probabilities: Dict[str, float]
-    drivers: List[str]
-    key_features: Dict[str, Any]
-    disclaimer: str
-
-
-class FlarePredictionResponse(BaseModel):
-    """Response model for flare prediction endpoint."""
-    patient_id: str
-    prediction_timestamp: datetime
-    flare_likelihood: str
-    likelihood_score: float
-    key_precursors: List[Dict[str, Any]]
-    matched_signatures: List[Dict[str, Any]]
-    risk_drivers: List[str]
-    protective_factors: List[str]
-    contradictions: List[str]
-    disclaimer: str
-
-
-class TimelineContextResponse(BaseModel):
-    """Response model for timeline context (for EoH integration)."""
-    patient_id: str
-    context_text: str
-    event_count: int
-    span_days: int
-    key_signals: List[str]
-    flare_features: Optional[Dict[str, Any]] = None
-    diagnostic_landscape: Optional[Dict[str, float]] = None
-
-
-# ============================================================================
-# Timeline Reconstruction Endpoint
-# ============================================================================
-
-@router.get("/timeline/{patient_id}", response_model=TimelineResponse)
-async def get_patient_timeline(
-    patient_id: str,
-    limit: int = Query(default=100, ge=1, le=1000, description="Maximum events to return"),
-    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
-    event_types: Optional[str] = Query(default=None, description="Comma-separated event types to filter"),
-    start_date: Optional[datetime] = Query(default=None, description="Filter events after this date"),
-    end_date: Optional[datetime] = Query(default=None, description="Filter events before this date"),
-    session: AsyncSession = Depends(get_session),
-) -> TimelineResponse:
+async def get_db_session(request: Request) -> AsyncSession:
     """
-    Retrieve patient timeline events.
-    
-    Returns chronologically ordered, normalized timeline with structured + narrative elements.
-    
-    Args:
-        patient_id: Patient identifier
-        limit: Maximum number of events to return (default 100, max 1000)
-        offset: Offset for pagination
-        event_types: Comma-separated list of event types to filter
-        start_date: Filter events after this date
-        end_date: Filter events before this date
-        
-    Returns:
-        TimelineResponse with events and metadata
+    Turn get_session(request) -> AsyncSession into a normal dependency.
     """
-    engine = TimelineEngine()
-    
-    # Parse event types if provided
-    event_type_list = None
-    if event_types:
-        event_type_list = [et.strip() for et in event_types.split(",")]
-    
-    try:
-        timeline = await engine.get_timeline(
-            session=session,
-            patient_id=patient_id,
-            limit=limit,
-            offset=offset,
-            event_types=event_type_list,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        return timeline
-    except Exception as e:
-        logger.exception(f"Error retrieving timeline for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving timeline: {str(e)}")
+    async for session in get_session(request):
+        return session
+    raise RuntimeError("Could not obtain DB session")
 
 
-# ============================================================================
-# Timeline Event Creation Endpoint
-# ============================================================================
+# ---------------------------------------------------------------------------
+# GET /api/timeline/{patient_id}
+# ---------------------------------------------------------------------------
 
-@router.post("/timeline/{patient_id}/events", response_model=Dict[str, Any])
-async def create_timeline_events(
+@router.get("/timeline/{patient_id}")
+async def get_timeline(
     patient_id: str,
-    request: TimelineEventsRequest,
-    session: AsyncSession = Depends(get_session),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db_session),
 ) -> Dict[str, Any]:
     """
-    Create timeline events for a patient.
-    
-    Args:
-        patient_id: Patient identifier
-        request: List of events to create
-        
-    Returns:
-        Dict with created event IDs and count
+    Return chronologically ordered, normalized timeline for a patient.
+
+    Shape is as documented in docs/timeline.md:
+    {
+      "patient_id": "...",
+      "events": [...],
+      "total_events": N
+    }
     """
-    engine = TimelineEngine()
-    
-    created_ids = []
-    errors = []
-    
-    for event_req in request.events:
-        try:
-            event = TimelineEventCreate(
-                patient_id=patient_id,
-                ts=event_req.ts,
-                event_type=event_req.event_type,
-                source=event_req.source,
-                structured=event_req.structured,
-                text=event_req.text,
-                meta=event_req.meta,
-            )
-            event_id = await engine.store_event(session, event)
-            created_ids.append(event_id)
-        except Exception as e:
-            errors.append(f"Error creating event: {str(e)}")
-    
+    # total count
+    total_q = await db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS n
+            FROM ehr.patient_timeline
+            WHERE patient_id = :pid
+            """
+        ),
+        {"pid": patient_id},
+    )
+    total_events = total_q.scalar_one()
+
+    if total_events == 0:
+        return {
+            "patient_id": patient_id,
+            "events": [],
+            "total_events": 0,
+        }
+
+    # page of events
+    rows_q = await db.execute(
+        text(
+            """
+            SELECT patient_id,
+                   ts,
+                   event_type,
+                   source,
+                   structured,
+                   text,
+                   meta
+            FROM ehr.patient_timeline
+            WHERE patient_id = :pid
+            ORDER BY ts ASC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"pid": patient_id, "limit": limit, "offset": offset},
+    )
+    rows = rows_q.mappings().all()
+
+    events: List[Dict[str, Any]] = []
+    for row in rows:
+        events.append(
+            {
+                "ts": row["ts"].isoformat(),
+                "event_type": row["event_type"],
+                "source": row["source"],
+                "structured": row["structured"],
+                "text": row["text"],
+                "meta": row["meta"] or {},
+            }
+        )
+
     return {
         "patient_id": patient_id,
-        "created_count": len(created_ids),
-        "created_ids": created_ids,
-        "errors": errors,
+        "events": events,
+        "total_events": total_events,
     }
 
 
-# ============================================================================
-# Timeline Search Endpoint
-# ============================================================================
+# ---------------------------------------------------------------------------
+# POST /api/timeline/{patient_id}/events  (simple bulk insert)
+# ---------------------------------------------------------------------------
 
-@router.post("/timeline/{patient_id}/search", response_model=TimelineSearchResponse)
+@router.post("/timeline/{patient_id}/events")
+async def create_timeline_events(
+    patient_id: str,
+    payload: Dict[str, Any],
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Create timeline events for a patient.
+
+    Expected payload:
+    {
+      "events": [
+        {
+          "ts": "2024-01-15T10:30:00Z",
+          "event_type": "...",
+          "source": "...",
+          "structured": {...},
+          "text": "...",
+          "meta": {...}
+        },
+        ...
+      ]
+    }
+    """
+    events = payload.get("events") or []
+    if not isinstance(events, list) or not events:
+        raise HTTPException(status_code=400, detail="events[] required")
+
+    rows_to_insert: List[Dict[str, Any]] = []
+    for e in events:
+        ts_raw = e.get("ts")
+        if not ts_raw:
+            raise HTTPException(status_code=400, detail="Each event must have ts")
+
+        try:
+            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid ts: {ts_raw!r}")
+
+        rows_to_insert.append(
+            {
+                "patient_id": patient_id,
+                "ts": ts,
+                "event_type": e.get("event_type") or "unknown",
+                "source": e.get("source") or "EHR",
+                "structured": e.get("structured"),
+                "text": e.get("text"),
+                "meta": e.get("meta") or {},
+            }
+        )
+
+    await db.execute(
+        text(
+            """
+            INSERT INTO ehr.patient_timeline
+                (patient_id, ts, event_type, source, structured, text, meta)
+            VALUES
+                (:patient_id, :ts, :event_type, :source, :structured, :text, :meta)
+            """
+        ),
+        rows_to_insert,
+    )
+    await db.commit()
+
+    return {
+        "patient_id": patient_id,
+        "inserted": len(rows_to_insert),
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/timeline/{patient_id}/search  (simple text search)
+# ---------------------------------------------------------------------------
+
+@router.post("/timeline/{patient_id}/search")
 async def search_timeline(
     patient_id: str,
-    request: TimelineSearchRequest,
-    session: AsyncSession = Depends(get_session),
-) -> TimelineSearchResponse:
+    payload: Dict[str, Any],
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
     """
-    Search patient timeline using semantic similarity.
-    
-    Uses ANN search to find events similar to the query text.
-    
-    Args:
-        patient_id: Patient identifier
-        request: Search parameters
-        
-    Returns:
-        TimelineSearchResponse with matching events and scores
+    Simple semantic-ish search over timeline events.
+
+    Payload:
+    {
+      "query": "CRP",
+      "limit": 50
+    }
+
+    For now this is ILIKE on text + structured::text; later you can
+    upgrade to pgvector ANN search over the embedding column.
     """
-    engine = TimelineEngine()
-    
-    try:
-        results = await engine.search_similar_events(
-            session=session,
-            query_text=request.query,
-            patient_id=patient_id,
-            limit=request.limit,
-            event_types=request.event_types,
+    query = (payload.get("query") or "").strip()
+    limit = int(payload.get("limit") or 50)
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    limit = max(1, min(limit, 200))
+
+    rows_q = await db.execute(
+        text(
+            """
+            SELECT patient_id,
+                   ts,
+                   event_type,
+                   source,
+                   structured,
+                   text,
+                   meta
+            FROM ehr.patient_timeline
+            WHERE patient_id = :pid
+              AND (
+                    text ILIKE :q
+                 OR structured::text ILIKE :q
+              )
+            ORDER BY ts DESC
+            LIMIT :limit
+            """
+        ),
+        {"pid": patient_id, "q": f"%{query}%", "limit": limit},
+    )
+    rows = rows_q.mappings().all()
+
+    matches: List[Dict[str, Any]] = []
+    for row in rows:
+        matches.append(
+            {
+                "ts": row["ts"].isoformat(),
+                "event_type": row["event_type"],
+                "source": row["source"],
+                "structured": row["structured"],
+                "text": row["text"],
+                "meta": row["meta"] or {},
+            }
         )
-        
-        search_results = [
-            TimelineSearchResult(event=event, similarity_score=score)
-            for event, score in results
-        ]
-        
-        return TimelineSearchResponse(
-            patient_id=patient_id,
-            query=request.query,
-            results=search_results,
-            total_results=len(search_results),
-        )
-    except Exception as e:
-        logger.exception(f"Error searching timeline for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error searching timeline: {str(e)}")
+
+    return {
+        "patient_id": patient_id,
+        "query": query,
+        "matches": matches,
+        "count": len(matches),
+    }
 
 
-# ============================================================================
-# Flare Report Endpoint
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Shared helper: load events as dicts for ANN / EoH
+# ---------------------------------------------------------------------------
 
-@router.get("/eoh/flarereport/{patient_id}", response_model=FlareReportResponse)
-async def get_flare_report(
+async def _load_timeline_events_for_eoh(
+    db: AsyncSession,
     patient_id: str,
-    session: AsyncSession = Depends(get_session),
-) -> FlareReportResponse:
+    window_days: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """
-    Generate complete flare prediction report for a patient.
-    
-    Returns a structured report with:
-    - Qualitative flare forecast
-    - Diagnostic landscape (probabilistic pattern similarities)
-    - Key precursor events
-    - Risk drivers and protective factors
-    - Clinician guidance
-    
-    NOTE: This is NOT a diagnosis. All outputs are probabilistic and
-    intended for clinician review only.
-    
-    Args:
-        patient_id: Patient identifier
-        
-    Returns:
-        FlareReportResponse with complete flare analysis
+    Load events from ehr.patient_timeline and convert to the simple dict
+    structure expected by server.ann.* and server.eoh.* helpers.
     """
-    engine = TimelineEngine()
-    
-    try:
-        report = await engine.generate_flare_report(session, patient_id)
-        
-        # Convert to response model
-        return FlareReportResponse(
-            patient_id=report.patient_id,
-            report_timestamp=report.report_timestamp,
-            flare_forecast=report.flare_forecast,
-            differential_landscape={
-                "patient_id": report.differential_landscape.patient_id,
-                "analysis_timestamp": report.differential_landscape.analysis_timestamp.isoformat(),
-                "diagnostic_probabilities": {
-                    "ra_like": report.differential_landscape.diagnostic_probabilities.ra_like,
-                    "sle_like": report.differential_landscape.diagnostic_probabilities.sle_like,
-                    "psa_like": report.differential_landscape.diagnostic_probabilities.psa_like,
-                    "sjogren_like": report.differential_landscape.diagnostic_probabilities.sjogren_like,
-                    "mixed_ctd_like": report.differential_landscape.diagnostic_probabilities.mixed_ctd_like,
-                    "vasculitis_like": report.differential_landscape.diagnostic_probabilities.vasculitis_like,
-                    "other": report.differential_landscape.diagnostic_probabilities.other,
-                },
-                "drivers": report.differential_landscape.drivers,
-            },
-            key_precursors=[
-                {
-                    "event_id": p.event.id,
-                    "event_ts": p.event.ts.isoformat(),
-                    "event_type": p.event.event_type,
-                    "event_text": p.event.text[:200] if p.event.text else "",
-                    "similarity_score": p.similarity_score,
-                    "precursor_type": p.precursor_type,
-                    "explanation": p.explanation,
-                }
-                for p in report.key_precursors
-            ],
-            contradictions=report.contradictions,
-            risk_drivers=report.risk_drivers,
-            protective_factors=report.protective_factors,
-            timeline_summary=report.timeline_summary,
-            timeline_event_count=report.timeline_event_count,
-            timeline_span_days=report.timeline_span_days,
-            guidance_for_clinician=report.guidance_for_clinician,
-            model_version=report.model_version,
-            disclaimer=report.disclaimer,
+    if window_days is not None:
+        # Use proper interval math: int * INTERVAL '1 day'
+        where_clause = """
+            WHERE patient_id = :pid
+              AND ts >= (NOW() AT TIME ZONE 'utc' - (:window_days * INTERVAL '1 day'))
+        """
+        params = {"pid": patient_id, "window_days": window_days}
+    else:
+        where_clause = "WHERE patient_id = :pid"
+        params = {"pid": patient_id}
+
+    rows_q = await db.execute(
+        text(
+            f"""
+            SELECT ts,
+                   event_type,
+                   source,
+                   structured,
+                   text,
+                   meta
+            FROM ehr.patient_timeline
+            {where_clause}
+            ORDER BY ts ASC
+            """
+        ),
+        params,
+    )
+    rows = rows_q.mappings().all()
+
+    # Convert to the simple dict structure expected by ANN / EoH
+    events: List[Dict[str, Any]] = []
+    for row in rows:
+        events.append(
+            {
+                "ts": row["ts"],
+                "event_type": row["event_type"],
+                "source": row["source"],
+                "structured": row["structured"] or {},
+                "text": row["text"],
+                "meta": row["meta"] or {},
+            }
         )
-    except Exception as e:
-        logger.exception(f"Error generating flare report for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error generating flare report: {str(e)}")
+    return events
 
 
-# ============================================================================
-# Diagnostic Landscape Endpoint
-# ============================================================================
+# ---------------------------------------------------------------------------
+# GET /api/eoh/flarereport/{patient_id}
+# ---------------------------------------------------------------------------
 
-@router.get("/eoh/landscape/{patient_id}", response_model=DiagnosticLandscapeResponse)
-async def get_diagnostic_landscape(
+@router.get("/eoh/flarereport/{patient_id}")
+async def eoh_flare_report(
     patient_id: str,
-    session: AsyncSession = Depends(get_session),
-) -> DiagnosticLandscapeResponse:
+    window_days: int = Query(90, ge=1, le=365),
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
     """
-    Get probabilistic diagnostic landscape for a patient.
-    
-    Returns pattern similarities to known autoimmune conditions.
-    
-    NOTE: This is NOT a diagnosis. It represents pattern similarities
-    for clinician review.
-    
-    Args:
-        patient_id: Patient identifier
-        
-    Returns:
-        DiagnosticLandscapeResponse with probabilistic pattern similarities
+    Complete flare prediction report as described in docs/eoh_router.md.
     """
-    engine = TimelineEngine()
-    
-    try:
-        landscape = await engine.estimate_diagnostic_landscape(session, patient_id)
-        
-        return DiagnosticLandscapeResponse(
-            patient_id=landscape.patient_id,
-            analysis_timestamp=landscape.analysis_timestamp,
-            diagnostic_probabilities={
-                "ra_like": landscape.diagnostic_probabilities.ra_like,
-                "sle_like": landscape.diagnostic_probabilities.sle_like,
-                "psa_like": landscape.diagnostic_probabilities.psa_like,
-                "sjogren_like": landscape.diagnostic_probabilities.sjogren_like,
-                "mixed_ctd_like": landscape.diagnostic_probabilities.mixed_ctd_like,
-                "vasculitis_like": landscape.diagnostic_probabilities.vasculitis_like,
-                "other": landscape.diagnostic_probabilities.other,
-            },
-            drivers=landscape.drivers,
-            key_features=landscape.key_features,
-            disclaimer=landscape.disclaimer,
-        )
-    except Exception as e:
-        logger.exception(f"Error estimating diagnostic landscape for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error estimating landscape: {str(e)}")
+    events = await _load_timeline_events_for_eoh(db, patient_id, window_days=window_days)
+
+    if not events:
+        raise HTTPException(status_code=404, detail="No timeline events for patient")
+
+    flare_result = find_flare_precursors(patient_id, window_days=window_days, events=events)
+    diagnostic_result = estimate_diagnostic_landscape(patient_id, events=events)
+
+    fused = fuse_timeline_context(
+        events=events,
+        flare_result=flare_result,
+        diagnostic_result=diagnostic_result,
+    )
+
+    # Basic narrative; keep it regulatory-friendly
+    flare_level = flare_result.get("flare_likelihood", {}).get("level", "unknown")
+    flare_forecast = f"Pattern analysis suggests {flare_level} flare risk within the next {window_days} days."
+
+    report = {
+        "patient_id": patient_id,
+        "window_days": window_days,
+        "flare_forecast": flare_forecast,
+        "probabilistic_differential": diagnostic_result.get("diagnostic_probabilities", {}),
+        "precursor_signals": flare_result.get("precursors", []),
+        "contradictions": fused.get("contradictions", []),
+        "risk_drivers": diagnostic_result.get("drivers", []),
+        "timeline_summary": f"{fused.get('event_count', len(events))} events analyzed over {window_days} days",
+        "guidance_for_clinician": [
+            "Consider monitoring inflammatory markers and symptom trends over time.",
+            "Review medication adherence and recent treatment changes in context.",
+        ],
+    }
+
+    safety = validate_response_safety(
+        {
+            "diagnostic_probabilities": report["probabilistic_differential"],
+            "drivers": report["risk_drivers"],
+            "narrative": report["flare_forecast"],
+        }
+    )
+    if not safety["is_safe"]:
+        report["safety_warnings"] = safety["violations"]
+
+    return report
 
 
-# ============================================================================
-# Flare Prediction Endpoint
-# ============================================================================
+# ---------------------------------------------------------------------------
+# GET /api/eoh/landscape/{patient_id}
+# ---------------------------------------------------------------------------
 
-@router.get("/eoh/flareprediction/{patient_id}", response_model=FlarePredictionResponse)
-async def get_flare_prediction(
+@router.get("/eoh/landscape/{patient_id}")
+async def eoh_landscape(
     patient_id: str,
-    window_days: int = Query(default=90, ge=7, le=365, description="Days to analyze"),
-    session: AsyncSession = Depends(get_session),
-) -> FlarePredictionResponse:
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
     """
-    Get probabilistic flare prediction for a patient.
-    
-    Analyzes recent timeline events to predict flare likelihood.
-    
-    NOTE: This is NOT a diagnosis. All outputs are probabilistic and
-    intended for clinician review only.
-    
-    Args:
-        patient_id: Patient identifier
-        window_days: Number of days to analyze (default 90)
-        
-    Returns:
-        FlarePredictionResponse with probabilistic flare assessment
+    Probabilistic diagnostic landscape only.
     """
-    engine = TimelineEngine()
-    
-    try:
-        prediction = await engine.predict_flare_likelihood(
-            session, patient_id, window_days=window_days
-        )
-        
-        return FlarePredictionResponse(
-            patient_id=prediction.patient_id,
-            prediction_timestamp=prediction.prediction_timestamp,
-            flare_likelihood=prediction.flare_likelihood.value,
-            likelihood_score=prediction.likelihood_score,
-            key_precursors=[
-                {
-                    "event_id": p.event.id,
-                    "event_ts": p.event.ts.isoformat(),
-                    "event_type": p.event.event_type,
-                    "event_text": p.event.text[:200] if p.event.text else "",
-                    "similarity_score": p.similarity_score,
-                    "precursor_type": p.precursor_type,
-                    "explanation": p.explanation,
-                }
-                for p in prediction.key_precursors
-            ],
-            matched_signatures=prediction.matched_signatures,
-            risk_drivers=prediction.risk_drivers,
-            protective_factors=prediction.protective_factors,
-            contradictions=prediction.contradictions,
-            disclaimer=prediction.disclaimer,
-        )
-    except Exception as e:
-        logger.exception(f"Error predicting flare for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error predicting flare: {str(e)}")
+    events = await _load_timeline_events_for_eoh(db, patient_id, window_days=None)
+    if not events:
+        raise HTTPException(status_code=404, detail="No timeline events for patient")
+
+    diagnostic_result = estimate_diagnostic_landscape(patient_id, events=events)
+
+    safety = validate_response_safety(
+        {
+            "diagnostic_probabilities": diagnostic_result.get("diagnostic_probabilities", {}),
+            "drivers": diagnostic_result.get("drivers", []),
+        }
+    )
+    result: Dict[str, Any] = {
+        "patient_id": patient_id,
+        "diagnostic_probabilities": diagnostic_result.get("diagnostic_probabilities", {}),
+        "drivers": diagnostic_result.get("drivers", []),
+    }
+    if not safety["is_safe"]:
+        result["safety_warnings"] = safety["violations"]
+
+    return result
 
 
-# ============================================================================
-# Timeline Context Endpoint (for EoH Router Integration)
-# ============================================================================
+# ---------------------------------------------------------------------------
+# GET /api/eoh/flareprediction/{patient_id}
+# ---------------------------------------------------------------------------
 
-@router.get("/eoh/timeline-context/{patient_id}", response_model=TimelineContextResponse)
-async def get_timeline_context(
+@router.get("/eoh/flareprediction/{patient_id}")
+async def eoh_flare_prediction(
     patient_id: str,
-    session: AsyncSession = Depends(get_session),
-) -> TimelineContextResponse:
+    window_days: int = Query(90, ge=1, le=365),
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
     """
-    Get timeline context document for EoH Router integration.
-    
-    Returns a structured context that can be injected into the EoH RAG system.
-    
-    Args:
-        patient_id: Patient identifier
-        
-    Returns:
-        TimelineContextResponse with context for EoH integration
+    Flare likelihood prediction only (thin wrapper over ann.flare).
     """
-    engine = TimelineEngine()
-    
-    try:
-        context = await engine.build_timeline_context(session, patient_id)
-        
-        return TimelineContextResponse(
-            patient_id=context.patient_id,
-            context_text=context.context_text,
-            event_count=context.event_count,
-            span_days=context.span_days,
-            key_signals=context.key_signals,
-            flare_features=context.flare_features,
-            diagnostic_landscape={
-                "ra_like": context.diagnostic_landscape.ra_like,
-                "sle_like": context.diagnostic_landscape.sle_like,
-                "psa_like": context.diagnostic_landscape.psa_like,
-                "sjogren_like": context.diagnostic_landscape.sjogren_like,
-                "mixed_ctd_like": context.diagnostic_landscape.mixed_ctd_like,
-                "vasculitis_like": context.diagnostic_landscape.vasculitis_like,
-                "other": context.diagnostic_landscape.other,
-            } if context.diagnostic_landscape else None,
-        )
-    except Exception as e:
-        logger.exception(f"Error building timeline context for patient {patient_id}")
-        raise HTTPException(status_code=500, detail=f"Error building context: {str(e)}")
+    events = await _load_timeline_events_for_eoh(db, patient_id, window_days=window_days)
+    if not events:
+        raise HTTPException(status_code=404, detail="No timeline events for patient")
+
+    flare_result = find_flare_precursors(patient_id, window_days=window_days, events=events)
+    return {
+        "patient_id": patient_id,
+        "window_days": window_days,
+        "result": flare_result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/eoh/timeline-context/{patient_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/eoh/timeline-context/{patient_id}")
+async def eoh_timeline_context(
+    patient_id: str,
+    window_days: int = Query(180, ge=1, le=365),
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Return the fused timeline context for EoH router integration.
+
+    This is what you'd prepend (or pass as a side-channel) when using
+    ?use_timeline=1 in /api/rag/eoh_stream.
+    """
+    events = await _load_timeline_events_for_eoh(db, patient_id, window_days=window_days)
+    if not events:
+        raise HTTPException(status_code=404, detail="No timeline events for patient")
+
+    flare_result = find_flare_precursors(patient_id, window_days=window_days, events=events)
+    diagnostic_result = estimate_diagnostic_landscape(patient_id, events=events)
+
+    fused = fuse_timeline_context(
+        events=events,
+        flare_result=flare_result,
+        diagnostic_result=diagnostic_result,
+    )
+
+    return {
+        "patient_id": patient_id,
+        "window_days": window_days,
+        "fused_context": fused,
+    }
