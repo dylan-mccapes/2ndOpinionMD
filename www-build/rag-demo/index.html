@@ -523,7 +523,7 @@
       setStatus("Loading patient timeline...", "live");
       
       try {
-        const response = await fetch(`${API_BASE}/api/eoh_demo/timeline?patient_id=${encodeURIComponent(patientId)}`);
+        const response = await fetch(`${API_BASE}/api/eoh_demo/timeline/${encodeURIComponent(patientId)}?max_events=200`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -560,13 +560,23 @@
       const events = timelineData.events || timelineData.timeline || timelineData;
       
       if (Array.isArray(events) && events.length > 0) {
-        events.forEach(event => {
-          // Try to extract date, type, and description from various shapes
-          const date = event.date || event.timestamp || event.event_date || "(no date)";
-          const eventType = event.event_type || event.type || event.category || "(unknown)";
-          const description = event.description || event.text || event.details || event.value || "";
+        // Sort events in reverse chronological order (newest first) for display
+        const sortedEvents = [...events].sort((a, b) => {
+          const tsA = a.ts || a.date || a.timestamp || "";
+          const tsB = b.ts || b.date || b.timestamp || "";
+          return tsB.localeCompare(tsA);
+        });
+        
+        sortedEvents.forEach(event => {
+          // Extract fields using canonical names first (ts, kind, summary), then fallbacks
+          const date = event.ts || event.date || event.timestamp || event.event_date || "(no date)";
+          const eventType = event.kind || event.event_type || event.type || event.category || "(unknown)";
+          const description = event.summary || event.description || event.text || event.value || "";
           
-          block += `${date} - ${eventType} - ${description}\n`;
+          // Format the date to just show the date part if it's an ISO timestamp
+          const displayDate = date.length > 10 ? date.substring(0, 10) : date;
+          
+          block += `${displayDate} - ${eventType} - ${description}\n`;
         });
       } else if (typeof events === 'object') {
         // If it's an object but not an array, pretty-print it
