@@ -2095,6 +2095,8 @@ async def eoh_stream_event_generator(
     pool: Any,
     patient_state: Optional[str] = None,
     debug: bool = False,
+    use_timeline: bool = False,
+    timeline_patient_id: Optional[str] = None,
 ) -> AsyncIterator[Dict[str, str]]:
     """
     Dedicated event generator for /eoh_stream with EoH LLM Router integration.
@@ -2620,6 +2622,105 @@ async def eoh_stream_event_generator(
             },
         )
 
+    # ---------------------------------------------------------------------------
+    # 9c) Database Timeline – load from ehr.patient_timeline if use_timeline=1
+    # ---------------------------------------------------------------------------
+    if use_timeline and timeline_patient_id:
+        yield sse(
+            "status",
+            {"status": "loading_timeline", "patient_id": timeline_patient_id},
+        )
+        
+        try:
+            from server.timeline.engine import TimelineEngine
+            from server.db.session import get_async_session
+            
+            # Get async session for timeline queries
+            async with get_async_session() as timeline_session:
+                engine = TimelineEngine()
+                
+                # Build timeline context
+                timeline_ctx = await engine.build_timeline_context(
+                    timeline_session, timeline_patient_id
+                )
+                
+                # Emit timeline_loaded event
+                yield sse(
+                    "timeline_loaded",
+                    {
+                        "patient_id": timeline_patient_id,
+                        "event_count": timeline_ctx.event_count,
+                        "span_days": timeline_ctx.span_days,
+                    },
+                )
+                
+                # Emit timeline_signals event
+                yield sse(
+                    "timeline_signals",
+                    {
+                        "patient_id": timeline_patient_id,
+                        "key_signals": timeline_ctx.key_signals,
+                    },
+                )
+                
+                # Emit timeline_flare_features event
+                if timeline_ctx.flare_features:
+                    yield sse(
+                        "timeline_flare_features",
+                        {
+                            "patient_id": timeline_patient_id,
+                            "flare_features": timeline_ctx.flare_features,
+                        },
+                    )
+                
+                # Emit timeline_probabilistic_differential event
+                if timeline_ctx.diagnostic_landscape:
+                    yield sse(
+                        "timeline_probabilistic_differential",
+                        {
+                            "patient_id": timeline_patient_id,
+                            "diagnostic_landscape": {
+                                "ra_like": timeline_ctx.diagnostic_landscape.ra_like,
+                                "sle_like": timeline_ctx.diagnostic_landscape.sle_like,
+                                "psa_like": timeline_ctx.diagnostic_landscape.psa_like,
+                                "sjogren_like": timeline_ctx.diagnostic_landscape.sjogren_like,
+                                "mixed_ctd_like": timeline_ctx.diagnostic_landscape.mixed_ctd_like,
+                                "vasculitis_like": timeline_ctx.diagnostic_landscape.vasculitis_like,
+                                "other": timeline_ctx.diagnostic_landscape.other,
+                            },
+                        },
+                    )
+                
+                # Create timeline context document for injection
+                timeline_doc = {
+                    "id": f"patient_timeline:{timeline_patient_id}",
+                    "source": "patient_timeline",
+                    "source_id": f"patient_timeline:{timeline_patient_id}",
+                    "title": f"Patient Timeline – {timeline_patient_id}",
+                    "text": timeline_ctx.context_text,
+                    "score": 1.0,
+                    "method": "timeline",
+                }
+                
+                # Prepend timeline context to final_ctx
+                final_ctx = [timeline_doc] + final_ctx
+                
+                yield sse(
+                    "patient_timeline_ctx",
+                    {
+                        "source": "patient_timeline",
+                        "patient_id": timeline_patient_id,
+                        "event_count": timeline_ctx.event_count,
+                    },
+                )
+                
+        except Exception as e:
+            logger.exception("Failed to load patient timeline for %s", timeline_patient_id)
+            yield sse(
+                "status",
+                {"status": "timeline_load_failed", "detail": str(e)},
+            )
+
     # Valyu context accounting (unchanged)
     valyu_ctx_count = 0
     if use_valyu and valyu_k > 0 and valyu_matches:
@@ -2840,6 +2941,16 @@ async def eoh_stream(
         False,
         description="Emit extra debug events including fused context text (context_fused)",
     ),
+    use_timeline: int = Query(
+        0,
+        ge=0,
+        le=1,
+        description="1=load patient timeline from DB and inject into context, 0=disable (default).",
+    ),
+    timeline_patient_id: Optional[str] = Query(
+        None,
+        description="Patient ID for timeline loading (required if use_timeline=1).",
+    ),
     pool: Any = Depends(resolve_pg_pool),
 ) -> EventSourceResponse:
     """
@@ -2905,6 +3016,8 @@ async def eoh_stream(
             pool=pool,
             patient_state=patient_state,
             debug=debug,
+            use_timeline=bool(use_timeline),
+            timeline_patient_id=timeline_patient_id,
         ):
             yield ev
 

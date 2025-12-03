@@ -89,6 +89,7 @@ from .llm_stream_routes import router as llm_stream_router
 from .rag_stream_custom_endpoints import router as rag_stream_custom_router
 from .eoh_router_routes import router as eoh_router_router
 from server.api import eoh_demo_routes
+from server.api.timeline_routes import router as timeline_router
 
 from server.api.kg import router as kg_router
 
@@ -232,8 +233,9 @@ app.include_router(llm_stream_router)
 app.include_router(rag_stream_custom_router)
 app.include_router(eoh_router_router)
 app.include_router(eoh_demo_routes.router)
+app.include_router(timeline_router)
 
-# --- Middlewares ---------------------------------------------------------------
+# --- Middlewares---------------------------------------------------------------
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """First: log all requests and durations (even blocked ones below)."""
