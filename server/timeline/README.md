@@ -302,12 +302,130 @@ All outputs from the Timeline Engine are designed to be:
 
 The `_like` suffix on diagnostic categories (e.g., `ra_like`, `sle_like`) emphasizes that these are pattern similarities, not diagnoses.
 
+## Terminal Testing Instructions
+
+### Prerequisites
+
+```bash
+# Navigate to the repository
+cd /path/to/2ndOpinionMD-MVP
+
+# Activate virtual environment
+source server/venv312/bin/activate
+
+# Ensure dependencies are installed
+pip install -r server/requirements.txt
+```
+
+### Quick Start: Test Seed Data Generation
+
+```bash
+# Test all patient types (dry run - no database writes)
+python -m server.timeline.seed_data --patient-id TEST_ALL --type all --dry-run
+
+# Test specific patient types
+python -m server.timeline.seed_data --patient-id TEST_RA --type ra --dry-run
+python -m server.timeline.seed_data --patient-id TEST_SLE --type sle --dry-run
+python -m server.timeline.seed_data --patient-id TEST_PSA --type psa --dry-run
+```
+
+**Expected Output:** No errors, JSON output showing generated events.
+
+### Run Timeline Tests
+
+```bash
+# Run all timeline tests
+python -m pytest tests/timeline/ -v
+
+# Run specific test modules
+python -m pytest tests/timeline/test_normalizer.py -v
+python -m pytest tests/timeline/test_parser.py -v
+
+# Run with coverage
+python -m pytest tests/timeline/ -v --cov=server.timeline
+```
+
+### Test Normalization Contracts
+
+```bash
+# Verify normalization contracts
+python -c "
+from server.timeline.normalizer import NormalizedLab, NormalizedSymptom
+
+# Test LAB normalization
+lab = NormalizedLab(test_name='CRP', value=15.5, unit='mg/L', flag='high')
+print('LAB:', lab.model_dump())
+
+# Test SYMPTOM normalization (numeric severity mapping)
+symptom = NormalizedSymptom(severity='7')
+print('Severity 7 maps to:', symptom.severity)  # Should be 'severe'
+"
+```
+
+### Test Error Taxonomy
+
+```bash
+# Verify error classification
+python -c "
+from server.timeline.utils import ErrorType, classify_error
+
+try:
+    raise FileNotFoundError('test.txt')
+except Exception as e:
+    print(f'FileNotFoundError -> {classify_error(e)}')
+
+try:
+    raise UnicodeDecodeError('utf-8', b'', 0, 1, 'test')
+except Exception as e:
+    print(f'UnicodeDecodeError -> {classify_error(e)}')
+"
+```
+
+### Run ANN Tests
+
+```bash
+# Run flare prediction tests
+python -m pytest tests/ann/test_flare.py -v
+
+# Run diagnostic landscape tests
+python -m pytest tests/ann/test_diagnostic.py -v
+
+# Run all ANN tests
+python -m pytest tests/ann/ -v
+```
+
+### Run Safety Tests
+
+```bash
+# Run EoH validator tests
+python -m pytest tests/eoh/test_validators.py -v
+
+# Test forbidden language detection
+python -c "
+from server.eoh.validators import check_forbidden_language
+
+text = 'The patient has rheumatoid arthritis'
+violations = check_forbidden_language(text)
+print(f'Violations found: {len(violations)}')
+"
+```
+
+### Full Test Suite
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with verbose output and stop on first failure
+python -m pytest tests/ -v -x --tb=short
+```
+
 ## Development
 
 ### Running Tests
 
 ```bash
-pytest server/timeline/tests/
+pytest tests/timeline/ -v
 ```
 
 ### Adding New Event Types
