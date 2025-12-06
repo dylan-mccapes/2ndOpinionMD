@@ -71,6 +71,47 @@ FLARE_PRECURSOR_SIGNATURES = {
 # Precursor Detection Functions
 # ============================================================================
 
+def _severity_to_number(value: Any) -> float | None:
+    """
+    Normalize severity to a numeric 1–10 scale.
+
+    Accepts:
+      - int/float (assumed already 1–10ish)
+      - numeric strings ("7", "3.5")
+      - label strings ("mild", "moderate", "severe") → 2, 5, 8
+
+    Returns:
+      float severity or None if unusable.
+    """
+    if value is None:
+        return None
+
+    # Already numeric
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if not s:
+            return None
+
+        # numeric string
+        try:
+            return float(s)
+        except ValueError:
+            pass
+
+        # label mapping
+        label_map = {
+            "mild": 2.0,
+            "moderate": 5.0,
+            "severe": 8.0,
+        }
+        return label_map.get(s)
+
+    return None
+
+    
 def _calculate_keyword_score(text: str, keywords: List[str]) -> float:
     """
     Calculate a score based on keyword presence in text.
@@ -152,61 +193,122 @@ def _analyze_inflammatory_markers(events: List[Dict[str, Any]]) -> Tuple[float, 
 
 def _analyze_symptom_clusters(events: List[Dict[str, Any]]) -> Tuple[float, str]:
     """
-    Analyze symptom clustering patterns.
-    
+    Analyze symptom clusters over time using numeric severity.
+
     Returns:
-        Tuple of (score, explanation)
+      (score_0_to_1, explanation_str)
+
+    Heuristics (tunable):
+      - Focus on symptom events with severity >= ~4/10
+      - Group by body region keywords
+      - Higher score if:
+          * multiple events in same region
+          * more recent symptoms
+          * higher average severity
     """
-    symptom_events = [e for e in events if e.get("event_type") == "symptom"]
-    
+    # Filter symptom events and normalize severity
+    symptom_events: List[Dict[str, Any]] = []
+    for ev in events:
+        if ev.get("event_type") != "symptom":
+            continue
+        structured = ev.get("structured") or {}
+        sev_num = _severity_to_number(structured.get("severity"))
+        if sev_num is None:
+            continue
+
+        ts = ev.get("ts")
+        # ts might be string or datetime; we only need ordering, so keep as-is
+        symptom_events.append({
+            "ts": ts,
+            "severity": sev_num,
+            "structured": structured,
+            "raw": ev,
+        })
+
     if not symptom_events:
-        return 0.0, "No symptom events in window"
-    
-    # Count symptom types and severities
-    joint_symptoms = 0
-    severe_symptoms = 0
-    body_regions = set()
-    
-    for event in symptom_events:
-        structured = event.get("structured", {})
-        text = (event.get("text") or "").lower()
-        
-        # Check for joint-related symptoms
-        joint_keywords = ["joint", "pain", "swelling", "stiffness", "tender"]
-        if any(kw in text for kw in joint_keywords):
-            joint_symptoms += 1
-        
-        # Check severity
-        severity = (structured.get("severity") or "").lower()
-        if severity in ("severe", "moderate"):
-            severe_symptoms += 1
-        
-        # Collect body regions
-        regions = structured.get("body_regions", [])
+        return 0.0, "No symptom events with usable numeric severity."
+
+    # Sort by time if timestamps are comparable
+    try:
+        symptom_events.sort(key=lambda e: e["ts"])
+    except Exception:
+        # If ts types are mixed/unsortable, just leave original order
+        pass
+
+    # Cluster by rough body region / primary_symptom
+    clusters: Dict[str, Dict[str, Any]] = {}
+    for ev in symptom_events:
+        st = ev["structured"]
+
+        # Try to derive a cluster key: primary_symptom + coarse region
+        primary_symptom = (st.get("primary_symptom") or st.get("symptom_name") or "symptom").lower()
+
+        regions = st.get("body_regions") or st.get("location") or ""
         if isinstance(regions, list):
-            body_regions.update(regions)
-    
-    # Calculate score
-    score = 0.0
-    explanations = []
-    
-    if joint_symptoms >= 3:
-        score += 0.4
-        explanations.append(f"{joint_symptoms} joint-related symptom events")
-    elif joint_symptoms >= 1:
-        score += 0.2
-        explanations.append(f"{joint_symptoms} joint-related symptom event(s)")
-    
-    if severe_symptoms >= 2:
-        score += 0.3
-        explanations.append(f"{severe_symptoms} moderate/severe symptoms")
-    
-    if len(body_regions) >= 3:
-        score += 0.3
-        explanations.append(f"Multiple body regions affected: {', '.join(list(body_regions)[:5])}")
-    
-    explanation = "; ".join(explanations) if explanations else "No significant symptom clustering"
-    return min(score, 1.0), explanation
+            region_key = ",".join(sorted([str(r).lower() for r in regions]))
+        else:
+            region_key = str(regions).lower()
+
+        key = f"{primary_symptom}::{region_key or 'unspecified'}"
+
+        cl = clusters.setdefault(
+            key,
+            {
+                "events": [],
+                "sum_severity": 0.0,
+                "max_severity": 0.0,
+            },
+        )
+        cl["events"].append(ev)
+        cl["sum_severity"] += ev["severity"]
+        cl["max_severity"] = max(cl["max_severity"], ev["severity"])
+
+    # Score clusters: more events + higher severity → higher score
+    best_key = None
+    best_score = 0.0
+
+    for key, cl in clusters.items():
+        n = len(cl["events"])
+        avg_sev = cl["sum_severity"] / max(n, 1)
+        max_sev = cl["max_severity"]
+
+        # Simple heuristic scoring:
+        #   base on normalized avg_sev + bonus for repeated events
+        # Assume severity roughly 1–10; clamp to 0–10.
+        avg_norm = max(0.0, min(avg_sev, 10.0)) / 10.0
+        max_norm = max(0.0, min(max_sev, 10.0)) / 10.0
+
+        # weight: avg severity (0.5) + max severity (0.3) + event_count (0.2)
+        cluster_score = (
+            0.5 * avg_norm +
+            0.3 * max_norm +
+            0.2 * min(n, 5) / 5.0  # up to 5 events contribute
+        )
+
+        if cluster_score > best_score:
+            best_score = cluster_score
+            best_key = key
+
+    if best_key is None:
+        return 0.0, "Symptom events present but no meaningful clusters identified."
+
+    # Build explanation
+    cl = clusters[best_key]
+    n = len(cl["events"])
+    avg_sev = cl["sum_severity"] / max(n, 1)
+    max_sev = cl["max_severity"]
+
+    primary_symptom, region_key = best_key.split("::", 1)
+    region_text = region_key.replace(",", ", ")
+
+    explanation = (
+        f"Detected a symptom cluster involving {primary_symptom}"
+        f"{' in ' + region_text if region_text and region_text != 'unspecified' else ''} "
+        f"with {n} events, average severity ~{avg_sev:.1f}/10, "
+        f"maximum severity {max_sev:.1f}/10."
+    )
+
+    return float(max(0.0, min(best_score, 1.0))), explanation
 
 
 def _analyze_medication_adherence(events: List[Dict[str, Any]]) -> Tuple[float, str]:

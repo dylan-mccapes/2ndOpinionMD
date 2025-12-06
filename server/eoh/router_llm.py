@@ -27,6 +27,10 @@ from .module_index import (
     get_module_index_for_llm,
 )
 
+import os
+
+EOH_ROUTER_ENABLE_GUARDRAIL = os.getenv("EOH_ROUTER_ENABLE_GUARDRAIL", "1") == "1"
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -34,77 +38,213 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 EOH_ROUTER_SYSTEM_PROMPT = textwrap.dedent("""\
-You are the EoH (Ethos of Health) Router, an expert clinical planning system.
-Your job is to analyze clinical questions and create a structured execution plan
-that specifies which EoH modules to invoke and which data sources to query.
+You are the EoH (Ethos of Health) Router, an expert clinical planner.
+Your job is to look at a clinical question and produce a JSON plan that says:
+
+- which EoH question type it is (A, B, C, D, E, or OTHER), and
+- which EoH modules and doc handles to use.
 
 You are a PLANNER ONLY:
 - You do NOT fetch data or answer clinical questions directly.
 - You output a structured JSON plan that downstream code will execute.
 - You must ONLY use module IDs and doc handles from the provided MODULE_INDEX.
 
-## Question Types
+You may receive:
+- A free-text clinical question.
+- An optional JSON-like patient_state_summary (e.g. {"primary_focus": "flare_vs_noise"}).
+Treat patient_state_summary as a hint, not ground truth.
 
-You must classify each question into one of these types:
+-------------------------------------------------------------------------------
+## 1. EoH-FIRST BIAS (CRITICAL)
+-------------------------------------------------------------------------------
 
-A) "What is this patient's flare risk over the next X days/weeks?"
-   Goal: Compute flare probability, interpret trajectory, give drivers + safety context.
+EoH exists to reason about:
+- flares and near-term risk,
+- baseline / trajectory / stability bands,
+- remission maintenance and relapse prevention,
+- plan adjustment over time,
+- explainability and system QA.
 
-B) "Is this a real flare or symbolic / overshoot / lab error?"
-   Goal: Classification of the instability event.
+In this environment, ALMOST ALL questions are intended to exercise EoH.
 
-C) "Why did the system predict / escalate a flare?" (Explainability)
-   Goal: Reconstruct the decision chain.
+You must follow these rules:
 
-D) "Given this state, how should we adjust the plan?" (non-emergency)
-   Goal: Adjust tasks/plan intensity, not trigger crisis.
+1) If the question mentions ANY of these ideas, you MUST choose A, B, C, D or E
+   (NOT OTHER):
 
-E) "Is the model still calibrated / are we over-suppressing flares?" (meta)
-   Goal: Meta on performance, not per-patient.
+   FLARE / RISK / TRAJECTORY:
+   - "flare", "flares", "flare risk", "flare prediction", "flare prevention"
+   - "exacerbation", "relapse", "relapses", "relapse risk", "relapse prevention"
+   - "baseline", "chronic baseline", "band", "stability band", "stack",
+     "flare stack", "stacked burden"
+   - "trajectory", "short-horizon", "near-term",
+     "next 3 months", "next three months",
+     "next 6 months", "next six months",
+     "next 12 months", "next twelve months",
+     "over the next year", "over the next 5 years", "over the next five years"
 
-OTHER) Questions that don't fit the above categories.
+   REMISSION / MAINTENANCE / PLAN:
+   - "remission", "remission maintenance",
+   - "maintenance therapy", "maintenance strategy", "maintenance plan",
+   - "step-up", "step up", "step-down", "step down",
+   - "escalate", "escalation", "de-escalate", "de-escalation",
+   - "treat-to-target", "treat to target",
+   - "care plan", "careplan", "monitoring plan", "follow-up plan",
+   - "what should the next 12 months look like"
 
-## Routing Recipes
+   ETHOS / SYSTEM:
+   - "Ethos", "EoH", "Ethos-of-Health",
+   - "tier", "tiering", "risk tier", "stability tier"
 
-### Type A (Flare Risk):
-1. Check terrain & baseline: M1, M2, M3A/B
-2. Validate and tag signals: M7A, M4, M5, M9
-3. Compress narratives: M12
-4. Generate prognostic vector: M13
-5. Attach safety/suppression context: M13, M41, M9
-6. Output to user: M14, M24, M25, M21
+2) Pregnancy + chronic disease are AUTOMATICALLY EoH-like unless they are
+   obviously pure guideline trivia.
 
-### Type B (Real Flare vs Symbolic):
-1. Locate event in terrain: M1, M2, M3A
-2. Examine raw signals + QA: M7A, M12, M4, M5
-3. Run suppression reasoning: M4, M9, M5
-4. Decide classification
-5. Route outcome: M6, M14, M10 (if T4), M11, M7B
+   If the question mentions pregnancy or related terms:
+   - "pregnancy", "pregnant", "preconception", "conception",
+     "fertility", "peripartum", "postpartum"
 
-### Type C (Explainability):
-1. Pull stored decision packet: M21
-2. Backtrack to features and digests: M13, M12, M4, M5
-3. Reconstruct tier mapping: M14
-4. Include suppression and QA context: M9, M41, M7A, M19
-5. Generate explanation: M25
+   AND also mentions a chronic inflammatory / autoimmune disease such as:
+   - "rheumatoid arthritis", "RA",
+   - "systemic lupus erythematosus", "SLE", "lupus",
+   - "antiphospholipid syndrome", "APS",
+   - "ulcerative colitis", "Crohn", "inflammatory bowel disease", "IBD",
+   - "vasculitis", "ANCA",
+   - or similar chronic immune-mediated disease,
 
-### Type D (Plan Adjustment):
-1. Understand trajectory and risk: M1-3, M7A, M12, M13
-2. Map risk to tier & suggested actions: M14
-3. Build or adjust CarePlan: M15, M7B, M22, M23
-4. Surface to humans: M24, M25
+   then you MUST treat it as an EoH question (A, C, or especially D), because
+   it inherently involves remission maintenance, flare prevention, and
+   long-horizon risk around pregnancy.
 
-### Type E (Meta/Calibration):
-1. M19: calibration metrics, drift detection
-2. M41: suppression audit trail
-3. M48: retraining and policy updates lineage
+   Examples that MUST be A–E (usually D), NOT OTHER:
+   - "In biologic-refractory ulcerative colitis, what long-term maintenance
+      strategy best prevents flares and colorectal cancer over the next 5 years?"
+   - "In ANCA vasculitis remission, how should we structure relapse prevention
+      and flare prediction over the next 5 years?"
+   - "In SLE with APS who wishes to conceive, how should we manage anticoagulation
+      and immunosuppression before, during, and after pregnancy to prevent
+      flares and complications?"
 
-## Output Schema
+3) OTHER is only allowed when ALL of the following are true:
+   - The question does NOT fit A, B, C, D, or E, AND
+   - It does NOT contain any of the triggers above (flare, remission, plan,
+     pregnancy+chronic disease, EoH/tier language), AND
+   - It is best handled as:
+     * pure guideline Q&A (e.g. "What do the RA guidelines say about MTX dose?"),
+       or
+     * pure coding/abstraction,
+       or
+     * clearly outside chronic disease / flare / care-plan scope.
 
-You MUST return a valid JSON object with this exact structure:
+When in doubt, pick an EoH type (A–E) instead of OTHER.
+
+-------------------------------------------------------------------------------
+## 2. Question Types (Short Definitions)
+-------------------------------------------------------------------------------
+
+You must choose EXACTLY ONE question_type for each question:
+
+A) Flare Risk / Baseline & Trajectory
+   - "Where is this patient in EoH terrain (bands/stacks) and what is their
+      near-term flare risk / trajectory?"
+
+B) Flare vs Noise / Artefact
+   - "Is this specific episode a real flare vs fibro/symbolic/overshoot/lab error?"
+
+C) Explainability / Diagnostic Landscape
+   - "Explain WHY EoH chose this flare prediction, tier, or diagnostic label."
+
+D) Plan Adjustment (non-emergency)
+   - "Given the current state, how should we adjust care intensity, maintenance
+      therapy, or monitoring over the next months to years?"
+
+E) Meta / Calibration / System QA
+   - "Is the model calibrated, over-suppressing, drifting, or missing flares?"
+
+OTHER) Very rare. Only for pure guideline/coding/other questions with NO
+       EoH-style triggers and no flare/remission/plan/pregnancy+chronic disease
+       trajectory intent.
+
+-------------------------------------------------------------------------------
+## 3. Simple Type Selection Algorithm
+-------------------------------------------------------------------------------
+
+Use this mechanical decision order:
+
+1) If the main focus is "is this episode a true flare vs noise/artefact?" → B.
+
+2) Else if the main focus is "explain EoH's decision, tier, or diagnostic
+   landscape" → C.
+
+3) Else if the main focus is "how to adjust the plan / maintenance / monitoring
+   over 3–12 months or longer" OR "long-term strategy", including pregnancy
+   planning in chronic disease → D.
+
+4) Else if the main focus is "how is the model performing / calibrated /
+   suppressing / drifting?" → E.
+
+5) Else if the main focus is "where are we now in bands/stacks and what is the
+   short-horizon flare risk / trajectory?" → A.
+
+6) Else, and only if there are NO EoH triggers and the question is clearly
+   pure guideline or coding trivia, use OTHER.
+
+In question_type_explanation, briefly say why your chosen type fits better
+than the alternatives (especially when you choose A or OTHER).
+
+-------------------------------------------------------------------------------
+## 4. Using MODULE_INDEX (Routing Plan)
+-------------------------------------------------------------------------------
+
+You are given a MODULE_INDEX describing each EoH module:
+- module id (e.g. "M1", "M2", ...),
+- layer (terrain, signal_tagging, flare_detection, care_planning, governance),
+- llm_use_when (when to use it),
+- doc_handles (e.g. pg_view:eoh_m1_patient_terrain, etc.).
+
+When you build module_plan and doc_retrieval_plan:
+
+- ONLY use module ids that exist in MODULE_INDEX.
+- ONLY use doc handles that exist in MODULE_INDEX.
+- Pick modules whose "llm_use_when" matches the chosen question_type.
+- You do NOT need to use every module; pick a small, coherent set.
+
+Example patterns (not strict, just common):
+
+- Type A (Flare risk / trajectory): terrain + signal + prognostics
+  e.g. M1–M3, M7A, M12, M13, M14, M24, M25
+
+- Type B (Flare vs noise): terrain + signal QA + suppression
+  e.g. M1–M3, M7A, M4, M5, M9, M6, M14, M7B
+
+- Type C (Explainability): decision packets + features + tier mapping
+  e.g. M21, M13, M12, M4, M5, M14, M25, M19, M41
+
+- Type D (Plan adjustment): terrain + prognostics + care planning
+  e.g. M1–M3, M7A, M12, M13, M14, M15, M7B, M22, M23, M24, M25
+
+- Type E (Meta / calibration): calibration + suppression audit
+  e.g. M19, M41, M48, plus any relevant terrain/decision modules.
+
+For OTHER, you may return empty module_plan/doc_retrieval_plan or a very
+minimal plan if appropriate.
+
+-------------------------------------------------------------------------------
+## 5. Output Schema (MUST FOLLOW EXACTLY)
+-------------------------------------------------------------------------------
+
+Return ONLY a valid JSON object with this exact structure:
+
 {
   "question_type": "A" | "B" | "C" | "D" | "E" | "OTHER",
-  "question_type_explanation": "Brief explanation of why this question type was chosen",
+  "question_type_explanation": "Brief explanation of why this question type was chosen, and why it is preferred over the other types.",
+  "type_scores": {
+    "A": 0.0,
+    "B": 0.0,
+    "C": 0.0,
+    "D": 0.0,
+    "E": 0.0,
+    "OTHER": 0.0
+  },
   "module_plan": [
     {
       "step": 1,
@@ -122,16 +262,156 @@ You MUST return a valid JSON object with this exact structure:
   ]
 }
 
-## Critical Constraints
+Requirements for type_scores:
+- Provide a score in [0, 1] for EACH type (A, B, C, D, E, OTHER).
+- question_type MUST be the key with the highest score.
+- Even if the application ignores type_scores, you must still fill them.
 
-1. ONLY use module IDs that exist in the MODULE_INDEX provided.
-2. ONLY use doc handles that exist in the MODULE_INDEX provided.
-3. Do NOT fabricate or invent module IDs or doc handle names.
-4. Keep the plan focused and relevant to the question.
-5. For "OTHER" questions, provide a minimal fallback plan or empty arrays.
-6. Always include question_type_explanation to justify your classification.
+-------------------------------------------------------------------------------
+## 6. Critical Constraints
+-------------------------------------------------------------------------------
+
+1) ONLY use module IDs that exist in MODULE_INDEX.
+2) ONLY use doc handles that exist in MODULE_INDEX.
+3) Do NOT invent module IDs or doc handle names.
+4) Keep the plan focused and small; do not add clearly unrelated modules.
+5) For A–E questions, you should usually include at least one module in
+   module_plan. Empty module_plan for A–E should be very rare.
+6) For OTHER questions, a minimal or empty plan is acceptable.
+7) Always include question_type_explanation to justify your classification,
+   especially when you choose A or OTHER.
+
+Return ONLY the JSON object. No markdown, no code fences.
 """).strip()
 
+
+# =============================================================================
+# EoH trigger heuristics (post-hoc guardrail support)
+# =============================================================================
+
+EoH_FLARE_TRAJECTORY_TRIGGERS = [
+    "flare", "flares", "flare risk", "flare prediction", "flare prevention",
+    "exacerbation", "relapse", "relapses", "relapse risk", "relapse prevention",
+    "baseline", "chronic baseline", "band", "stability band",
+    "stack", "flare stack", "stacked burden",
+    "trajectory", "short-horizon", "near-term",
+    "next 3 months", "next three months",
+    "next 6 months", "next six months",
+    "next 12 months", "next twelve months",
+    "next year", "over the next year",
+    "over the next 5 years", "over the next five years",
+]
+
+EoH_PLAN_TRIGGERS = [
+    "remission", "remission maintenance",
+    "maintenance therapy", "maintenance strategy", "maintenance plan",
+    "step-up", "step up", "step-down", "step down",
+    "escalate", "escalation", "de-escalate", "de-escalation",
+    "treat-to-target", "treat to target",
+    "care plan", "careplan", "monitoring plan", "follow-up plan",
+    "what should the next 12 months look like",
+]
+
+EoH_SYSTEM_TRIGGERS = [
+    "ethos", "eoh", "ethos-of-health",
+    "tier", "tiering", "risk tier", "stability tier",
+]
+
+
+def _has_eoh_triggers(question: str) -> bool:
+    """Return True if the question contains any EoH-ish lexical triggers."""
+    q = question.lower()
+    for t in (
+        EoH_FLARE_TRAJECTORY_TRIGGERS
+        + EoH_PLAN_TRIGGERS
+        + EoH_SYSTEM_TRIGGERS
+    ):
+        if t in q:
+            return True
+    return False
+
+
+def _guess_forced_eoh_type(question: str) -> str:
+    """
+    Heuristic for choosing a forced EoH question_type when the model returned OTHER
+    but the question clearly contains EoH triggers.
+
+    - If strongly plan / maintenance / long-horizon flavored: D
+    - Else if clearly trajectory-ish: A
+    - Else default to D (for board-facing long-horizon planning).
+    """
+    q = question.lower()
+
+    has_plan = any(t in q for t in EoH_PLAN_TRIGGERS)
+    has_long_horizon = any(
+        t in q
+        for t in [
+            "next 12 months", "over the next year",
+            "over the next 5 years", "over the next five years",
+            "5 years", "five years",
+        ]
+    )
+    if has_plan or has_long_horizon:
+        return "D"
+
+    has_trajectory = any(t in q for t in ["trajectory", "short-horizon", "near-term"])
+    if has_trajectory:
+        return "A"
+
+    return "D"
+
+
+def _apply_posthoc_eoh_guardrail(
+    plan: Dict[str, Any],
+    question: str,
+) -> Dict[str, Any]:
+    """
+    If the question clearly has EoH triggers but the router chose OTHER,
+    force an EoH type (A or D) and adjust type_scores + explanation.
+
+    This keeps the module_plan/doc_retrieval_plan the model produced; we only
+    correct the high-level classification.
+    """
+    if not _has_eoh_triggers(question):
+        return plan
+
+    qtype = plan.get("question_type", "OTHER")
+    if qtype != "OTHER":
+        return plan
+
+    forced_type = _guess_forced_eoh_type(question)
+
+    # Ensure type_scores exists and has all keys
+    scores = plan.get("type_scores") or {}
+    for key in ["A", "B", "C", "D", "E", "OTHER"]:
+        scores.setdefault(key, 0.0)
+
+    max_existing = max(scores.values()) if scores else 0.0
+    forced_score = max(0.8, max_existing)
+    scores[forced_type] = forced_score
+    scores["OTHER"] = min(scores["OTHER"], 0.05)
+    plan["type_scores"] = scores
+
+    # Flip question_type
+    old_type = qtype
+    plan["question_type"] = forced_type
+
+    # Explanation
+    expl = plan.get("question_type_explanation") or ""
+    extra = (
+        f" Post-hoc guardrail: question contained EoH triggers but router "
+        f"chose {old_type}, so type was forced to '{forced_type}'."
+    )
+    plan["question_type_explanation"] = (expl + extra).strip()
+
+    logger.warning(
+        "EoH Router guardrail: forced question_type from %s to %s for EoH-trigger question: %s",
+        old_type,
+        forced_type,
+        question[:200],
+    )
+
+    return plan
 
 def _build_module_index_context(module_index: Dict[str, Any]) -> str:
     """Build a formatted MODULE_INDEX context for the LLM prompt."""
@@ -172,13 +452,20 @@ def _validate_and_clean_plan(
     """
     Validate and clean the LLM-generated plan.
     
+    - Validates question_type
+    - Normalizes type_scores
     - Drops unknown module IDs from module_plan
     - Drops unknown doc handles from doc_retrieval_plan
     - Logs warnings for any dropped items
     """
-    cleaned_plan = {
-        "question_type": plan.get("question_type", "OTHER"),
-        "question_type_explanation": plan.get("question_type_explanation", "Unable to classify question"),
+    raw_qtype = plan.get("question_type", "OTHER")
+    cleaned_plan: Dict[str, Any] = {
+        "question_type": raw_qtype,
+        "question_type_explanation": plan.get(
+            "question_type_explanation",
+            "Unable to classify question",
+        ),
+        "type_scores": plan.get("type_scores") or {},
         "module_plan": [],
         "doc_retrieval_plan": [],
     }
@@ -188,9 +475,40 @@ def _validate_and_clean_plan(
     if cleaned_plan["question_type"] not in valid_types:
         logger.warning(
             "Invalid question_type '%s', defaulting to OTHER",
-            cleaned_plan["question_type"]
+            cleaned_plan["question_type"],
         )
         cleaned_plan["question_type"] = "OTHER"
+    
+    # Normalize type_scores: ensure all keys present and in [0, 1]
+    scores = cleaned_plan["type_scores"] or {}
+    for key in ["A", "B", "C", "D", "E", "OTHER"]:
+        val = scores.get(key, 0.0)
+        try:
+            val = float(val)
+        except (TypeError, ValueError):
+            val = 0.0
+        # Clamp to [0, 1]
+        if val < 0.0:
+            val = 0.0
+        if val > 1.0:
+            val = 1.0
+        scores[key] = val
+
+    # If all zeros, boost the selected question_type so it's clearly the max
+    if all(v == 0.0 for v in scores.values()):
+        scores[cleaned_plan["question_type"]] = 1.0
+
+    # Ensure question_type has the highest score
+    max_key = max(scores, key=scores.get)
+    if max_key != cleaned_plan["question_type"]:
+        logger.debug(
+            "Adjusting type_scores so question_type %s has highest score (was %s)",
+            cleaned_plan["question_type"], max_key,
+        )
+        qtype = cleaned_plan["question_type"]
+        max_val = max(scores.values())
+        scores[qtype] = max_val
+    cleaned_plan["type_scores"] = scores
     
     # Clean module_plan
     for step in plan.get("module_plan", []):
@@ -245,9 +563,17 @@ def _validate_and_clean_plan(
 
 def _create_fallback_plan(question_type: str = "OTHER") -> Dict[str, Any]:
     """Create a minimal fallback plan when LLM parsing fails."""
+    if question_type not in {"A", "B", "C", "D", "E", "OTHER"}:
+        question_type = "OTHER"
+    
+    # Simple scores: 1.0 for chosen type, 0.0 for others
+    type_scores = {t: 0.0 for t in ["A", "B", "C", "D", "E", "OTHER"]}
+    type_scores[question_type] = 1.0
+
     return {
         "question_type": question_type,
         "question_type_explanation": "Fallback plan due to parsing error",
+        "type_scores": type_scores,
         "module_plan": [],
         "doc_retrieval_plan": [],
     }
@@ -335,13 +661,17 @@ async def eoh_llm_router(
         
         # Validate and clean the plan
         cleaned_plan = _validate_and_clean_plan(plan, valid_module_ids, valid_doc_handles)
+
+        # Apply EoH trigger guardrail (may force OTHER -> A/D)
+        if EOH_ROUTER_ENABLE_GUARDRAIL:
+            cleaned_plan = _apply_posthoc_eoh_guardrail(cleaned_plan, question=question)
         
         # Log the validated plan
         logger.info(
             "EoH Router plan: question_type=%s, steps=%d, modules=%s",
             cleaned_plan["question_type"],
             len(cleaned_plan["module_plan"]),
-            [m for step in cleaned_plan["module_plan"] for m in step.get("modules", [])]
+            [m for step in cleaned_plan["module_plan"] for m in step.get("modules", [])],
         )
         
         return cleaned_plan

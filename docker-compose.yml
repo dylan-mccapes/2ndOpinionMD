@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile.api
+    container_name: api
+    env_file: .env.docker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"     
+    networks:
+      - backend
+
+  nginx:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile.nginx
+    container_name: nginx
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+    networks:
+      - backend
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+
+      # 🌐 Mount React build output into Nginx web root
+      # (once you copy from /opt/homebrew/var/www/2ndopinionmd OR build locally)
+      - ./www-build:/usr/share/nginx/html:ro
+
+networks:
+  backend:
+    driver: bridge

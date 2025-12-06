@@ -36,10 +36,11 @@ from .stream_config import (
     EOH_SYSTEM_PROMPT,
     CODING_GRADER_SYSTEM_PROMPT,
     CODING_USER_PROMPT_TEMPLATE,
+    SOURCE_CONFIG,
 )
 
 from .stream_gating import apply_code_row_filter, apply_source_gating
-from .stream_router import route_coding_sources, CodingRouterPlan
+from .stream_router import route_sources, CodingRouterPlan
 
 # Minimum per-source retrieval depth for code sources in coding_mode.
 # If the incoming `limit` is smaller than this, code sources will use this instead.
@@ -81,6 +82,7 @@ CODE_MAX_PER_SOURCE_CTX = int(os.getenv("RAG_CODE_MAX_PER_SOURCE_CTX", "16"))
 MAX_CODING_SOURCES = 8
 
 _GUIDELINE_EXACT = {
+    "eoh_2025",
     "acr_ra_2021",
     "acr_ild_2023",
     "eular_ra_2022",
@@ -98,6 +100,18 @@ _GUIDELINE_PREFIXES = (
     "guideline_",
     "esmo_",
     "kdigo_",
+    "acc_aha_",
+    "aha_asa_",
+    "aasld_",
+    "acg_",
+    "acog_",
+    "ada_",
+    "ats_",
+    "gina_",
+    "gold_",
+    "chest_",
+    "idsa_",
+    "ssc_",
 )
 
 # ---------------------------------------------------------------------------
@@ -1127,10 +1141,21 @@ def _is_guideline_source(src: str) -> bool:
         return True
     return any(s.startswith(pfx) for pfx in _GUIDELINE_PREFIXES)
 
+def _static_guideline_sources_from_config() -> list[str]:
+    out: list[str] = []
+    for name, cfg in SOURCE_CONFIG.items():
+        kind = (cfg.get("kind") or "").lower()
+        if kind in {"guideline", "guideline_bundle"}:
+            out.append(name)
+    return out
+
 async def discover_all_guideline_sources(pool: asyncpg.Pool) -> List[str]:
     """
-    Automatically discover all DB sources that match guideline prefixes
-    (acr_, eular_, esmo_, kdigo_, etc). Eliminates the need to hard-code.
+    Automatically discover all DB sources that look like guidelines
+    (acr_, eular_, esmo_, kdigo_, etc.) and union them with static
+    guideline definitions from SOURCE_CONFIG.
+
+    This eliminates the need to hard-code lists in multiple places.
     """
     sql = """
         SELECT DISTINCT source
@@ -1140,12 +1165,16 @@ async def discover_all_guideline_sources(pool: asyncpg.Pool) -> List[str]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(sql)
 
-    out = []
+    db_sources: set[str] = set()
     for r in rows:
-        src = r["source"]
+        src = (r["source"] or "").lower()
         if src and _is_guideline_source(src):
-            out.append(src)
-    return sorted(set(out))
+            db_sources.add(src)
+
+    static_sources = {s.lower() for s in _static_guideline_sources_from_config()}
+
+    # Union: DB discovered + static config, deduped and sorted
+    return sorted(db_sources | static_sources)
 
 # ---------------------------------------------------------------------------
 # Coding prepass: ledger, grader, gap retrieval, pinning
@@ -3184,30 +3213,36 @@ async def fetch_valyu_results(
     boost: float,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Bridge between ask_stream/coding_stream and server/api/valyu_client.py.
+    Bridge between ask_stream/coding_stream/EoH and server/api/valyu_client.py.
 
     - mode: "search" or "answer"
     - limit: how many results to retrieve from Valyu
-    - raw: if true, ask Valyu to include full contents (when supported)
+    - raw: if true, ask Valyu to include full contents (return_contents=True)
     - sources: optional CSV like "valyu/valyu-pubmed,valyu/another-set"
     - boost: currently unused, kept for future tuning
 
-    When raw=True we try to:
-      - request full contents from Valyu (return_contents=True)
-      - stash any full text in meta["full_text"]
-      - still use snippet for row["text"] to keep context compact
+    With the updated valyu_client:
+      - vy["results"] is already normalized rows (id, title, url, snippet, content, score, raw, ...)
+      - vy["valyu_meta"] contains tx_id, billing info, etc.
     """
+    # Parse CSV "sources" into the list that valyu_client expects
     included_sources: Optional[List[str]] = None
     if sources:
         included_sources = [s.strip() for s in sources.split(",") if s.strip()]
 
+    # Normalize mode defensively
+    mode = (mode or "search").lower()
+    if mode not in ("search", "answer"):
+        mode = "search"
+
     try:
         vy = await valyu_client.call_valyu(
-            mode=mode or "search",
+            mode=mode,
             q=q,
             k=limit,
             included_sources=included_sources,
-            return_contents=bool(raw),     # 🔑 ask Valyu for full text when raw=1
+            # These are honored for /deepsearch; harmless for /answer
+            return_contents=bool(raw),
             fast_mode=(mode == "search"),
         )
     except Exception:
@@ -3223,37 +3258,50 @@ async def fetch_valyu_results(
         logger.warning("Unexpected Valyu results shape: %r", type(hits))
         return {}
 
+    # Optional: log cost / tx metadata for observability
+    valyu_meta = vy.get("valyu_meta") or {}
+    if valyu_meta:
+        logger.info(
+            "Valyu tx_id=%s total_deduction=$%s chars=%s sources=%s",
+            valyu_meta.get("tx_id"),
+            valyu_meta.get("total_deduction_dollars"),
+            valyu_meta.get("total_characters"),
+            valyu_meta.get("results_by_source"),
+        )
+
     grouped: Dict[str, List[Dict[str, Any]]] = {}
 
     for h in hits:
+        # For now we treat all of these as "valyu_pubmed" on the MKG side.
+        # If you later pass multiple datasets, you can derive a more specific
+        # key from h.get("source") or valyu_meta["results_by_source"].
         src_key = "valyu_pubmed"
 
-        # Try to capture full text when raw=True; different keys depending on backend
+        # With the new valyu_client, full text is in "content" when raw=True,
+        # and the original Valyu row is in "raw".
         full_text = None
         if raw:
-            full_text = (
-                h.get("contents")
-                or h.get("content")
-                or h.get("fulltext")
-                or h.get("full_text")
-            )
+            full_text = h.get("content")
 
         snippet = h.get("snippet") or ""
 
-        # Clone original hit as meta and augment it
+        # Clone original normalized hit as meta and augment it
         meta = dict(h)
         if raw and isinstance(full_text, str) and full_text.strip():
-            meta["full_text"] = full_text  # 🔑 this will flow into citations + fulltext SSE
+            # This is what you’ll feed into any fulltext SSE or offline QA
+            meta["full_text"] = full_text
 
         base = {
             "id": h.get("id"),
             "source": src_key,
             "title": h.get("title") or "",
-            "text": snippet,  # keep snippet as context body for the LLM
+            # Keep snippet as context body for the LLM to avoid blowing up ctx
+            "text": snippet,
             "meta": meta,
             "score": float(h.get("score", 0.0) or 0.0),
         }
 
+        # Your existing normalizer for downstream /rag/eoh pipelines
         norm = normalize_row(base, source=src_key, method="valyu")
         grouped.setdefault(src_key, []).append(norm)
 
@@ -4350,76 +4398,172 @@ def stream_llm_events(
     yield sse(f"{event_prefix}_done", {"text": full_text})
 
 
-# ---------------------------------------------------------------------------
-# Citations helpers
-# ---------------------------------------------------------------------------
-
-
 def _classify_citation_kind(row: Dict[str, Any]) -> str:
     """
-    Classify a context row into a citation kind:
-      - 'valyu'     : Valyu PubMed-style hits
-      - 'ethos'     : Ethos of Health model / preprint chunks
-      - 'guideline' : everything else (guidelines, codes, ontologies, etc.)
-    """
-    source = (row.get("source") or "").lower()
-    method = (row.get("method") or "").lower()
+    Classify a context row into a high-level 'kind' for citations.
 
-    if source.startswith("valyu") or method == "valyu":
+    Priority:
+      1) Explicit meta.kind if it is one of the known kinds
+      2) Special-case internal synthetic sources (timeline, router)
+      3) Heuristics for Valyu vs Ethos vs generic guideline/other
+    """
+    meta_raw = row.get("meta") or {}
+    meta = meta_raw
+    if isinstance(meta_raw, str):
+        try:
+            meta = json.loads(meta_raw)
+        except Exception:
+            meta = {"raw": meta_raw}
+
+    meta_kind = (meta or {}).get("kind")
+    if meta_kind in {"valyu", "ethos", "guideline", "timeline", "router"}:
+        return meta_kind
+
+    src = str(row.get("source", "")).lower()
+    method = str(row.get("method", "")).lower()
+    text = (row.get("text") or "")[:200].lower()
+
+    # 1) Internal synthetic docs
+    if src == "patient_timeline":
+        return "timeline"
+    if src == "eoh_router":
+        return "router"
+
+    # 2) Valyu heuristics
+    if "valyu" in src or method == "valyu":
         return "valyu"
-    if source in {"ethos_model", "ethos"}:
+    if "pmcid" in text or "pubmed" in text:
+        return "valyu"
+
+    # 3) Ethos-of-Health heuristics
+    if "ethos" in src or "ethosofhealth" in text:
         return "ethos"
+
+    # 4) Default bucket for guidelines / other internal docs
     return "guideline"
 
 
 def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Build a citations list from the final context:
+    Build a citation list suitable for the front-end.
 
-    - Each context block [i] becomes a citation with index = i.
-    - Valyu citations are grouped first, then Ethos, then guidelines/other.
-    - `extra.meta` carries through the row's meta so codes/etc. can be surfaced
-      by the UI or report generator.
+    Each context block contributes *at most one* citation.
+
+    - Citations are grouped by kind:
+        valyu  -> ethos -> timeline/router/guideline/other
+    - Within each group, citations are sorted by source + title.
+    - Indices are re-assigned sequentially after sorting, but the
+      original fused-context index is preserved in extra.original_index.
     """
     raw_citations: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
 
-    for i, row in enumerate(context_items, start=1):
-        kind = _classify_citation_kind(row)
-        src = row.get("source", "unknown")
-        meta = row.get("meta") or {}
+    for original_index, row in enumerate(context_items, start=1):
+        src = str(row.get("source", "unknown")).lower()
         method = row.get("method")
 
-        if kind == "valyu":
-            key = (
-                meta.get("pmcid")
-                or meta.get("pmid")
-                or meta.get("pubmed_id")
-                or meta.get("id")
-                or row.get("id")
-            )
-        elif kind == "ethos":
-            key = f"{src}:{row.get('id')}"
+        # Normalize meta to a dict
+        meta_raw = row.get("meta") or {}
+        if isinstance(meta_raw, str):
+            try:
+                meta = json.loads(meta_raw)
+            except Exception:
+                meta = {"raw": meta_raw}
         else:
-            key = f"{src}:{row.get('id')}"
+            meta = meta_raw
+
+        kind = _classify_citation_kind({**row, "meta": meta})
+
+        # --- Build a stable key ---
+        # Prefer an explicit guideline_source / code / id triple
+        source_id = (
+            row.get("source_id")
+            or row.get("code")
+            or row.get("id")
+            or meta.get("pmcid")
+            or meta.get("pmid")
+            or meta.get("guideline_source")
+            or ""
+        )
+        source_id_str = str(source_id).strip()
+
+        if src == "patient_timeline":
+            # Prefer patient_id if present
+            patient_id = meta.get("patient_id") or row.get("id") or source_id_str or "unknown"
+            key = f"patient_timeline:{patient_id}"
+            title = row.get("title") or f"Patient Timeline – {patient_id}"
+        elif src == "eoh_router":
+            plan_id = meta.get("plan_id") or row.get("id") or source_id_str or "plan"
+            key = f"eoh_router:{plan_id}"
+            title = row.get("title") or "EoH Router plan (modules + doc handles)"
+        elif kind == "valyu":
+            # Try to build a key like: valyu_pubmed:pmcid:page
+            pmcid = meta.get("pmcid") or ""
+            pmid = meta.get("pmid") or ""
+            page = meta.get("page") or ""
+            base_id = pmcid or pmid or source_id_str or row.get("title") or "valyu"
+            key = f"{src}:{base_id}:{page}" if page else f"{src}:{base_id}"
+            title = row.get("title") or meta.get("title") or "Valyu evidence"
+        else:
+            # Guidelines & everything else
+            guideline_src = meta.get("guideline_source") or src
+            page = meta.get("page")
+            base_id = source_id_str or meta.get("id") or guideline_src
+            key = f"{guideline_src}:{base_id}"
+            if page:
+                key = f"{guideline_src}:{base_id}:{page}"
+
+            # Title: prefer explicit title, else fall back to source id
+            title = row.get("title") or meta.get("title") or base_id or src
+
+        if not key:
+            # Failsafe: avoid generating empty keys
+            key = f"{src}:{original_index}"
+
+        if key in seen_keys:
+            # De-duplicate by key; keep only the first occurrence
+            continue
+        seen_keys.add(key)
 
         raw_citations.append(
             {
-                "index": i,
+                "index": original_index,  # temporary; will be re-written
                 "kind": kind,
                 "source": src,
-                "key": str(key),
-                "title": row.get("title") or "",
+                "key": key,
+                "title": title,
                 "extra": {
                     "method": method,
                     "meta": meta,
+                    "original_index": original_index,
                 },
             }
         )
 
-    kind_order = {"valyu": 0, "ethos": 1, "guideline": 2}
-    raw_citations.sort(key=lambda c: (kind_order.get(c["kind"], 99), c["index"]))
-    return raw_citations
+    # Group by kind: Valyu -> Ethos -> everything else
+    kind_order = {
+        "valyu": 0,
+        "ethos": 1,
+        # internal narrative scaffolding
+        "timeline": 2,
+        "router": 3,
+        # guidelines and other internal docs
+        "guideline": 4,
+    }
 
+    raw_citations.sort(
+        key=lambda c: (
+            kind_order.get(c["kind"], 99),
+            c.get("source") or "",
+            c.get("title") or "",
+        )
+    )
+
+    # Re-index sequentially for display, preserving original_index
+    for new_idx, cit in enumerate(raw_citations, start=1):
+        cit["index"] = new_idx
+
+    return raw_citations
 
 # ---------------------------------------------------------------------------
 # SSE helper

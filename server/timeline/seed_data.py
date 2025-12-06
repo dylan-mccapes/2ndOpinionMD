@@ -973,7 +973,7 @@ def generate_psa_like_patient(patient_id: str = "DEMO_PSA_001") -> List[Timeline
 def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
     """
     Seed patient timeline data into the database using a synchronous psycopg2
-    connection (like other MKG ingest scripts).
+    connection (like other MKG ingest scripts), including OpenAI embeddings.
 
     Args:
         patient_id: Patient identifier
@@ -982,7 +982,14 @@ def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
     Returns:
         Number of events inserted
     """
-    # Generate events based on patient type
+    from openai import OpenAI
+    import json
+
+    client = OpenAI()
+
+    # ---------------------------------------------------------
+    # 1. Generate synthetic events
+    # ---------------------------------------------------------
     if patient_type == "ra":
         events = generate_ra_like_patient(patient_id)
     elif patient_type == "sle":
@@ -993,15 +1000,34 @@ def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
         raise ValueError(f"Unknown patient type: {patient_type}")
 
     logger.info(f"Generated {len(events)} events for patient {patient_id} ({patient_type})")
-
     if not events:
         return 0
 
-    # Prepare rows for INSERT
+    # ---------------------------------------------------------
+    # 2. Prepare rows with embeddings
+    # ---------------------------------------------------------
     rows = []
     for e in events:
         event_type = e.event_type.value if hasattr(e.event_type, "value") else e.event_type
         source = e.source.value if hasattr(e.source, "value") else e.source
+
+        # ---- Build text for embedding ---------------------------------------
+        emb_input = json.dumps({
+            "text": e.text,
+            "structured": e.structured,
+            "event_type": event_type,
+            "source": source,
+        }, ensure_ascii=False)
+
+        # ---- Compute embedding ----------------------------------------------
+        try:
+            emb = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=emb_input
+            ).data[0].embedding
+        except Exception as exc:
+            logger.error(f"Embedding failed for event {e}: {exc}")
+            emb = None  # store NULL, still useful for debugging
 
         rows.append(
             (
@@ -1011,29 +1037,33 @@ def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
                 source,
                 Json(e.structured) if e.structured is not None else Json({}),
                 e.text,
+                emb,   # <---- embedding VECTOR
                 Json(e.meta) if e.meta is not None else Json({}),
             )
         )
 
-    conn = psycopg2.connect(get_db_url())
+    # ---------------------------------------------------------
+    # 3. Insert via psycopg2
+    # ---------------------------------------------------------
+    sql = """
+        INSERT INTO ehr.patient_timeline
+            (patient_id, ts, event_type, source, structured, text, embedding, meta)
+        VALUES %s
+    """
+
+    conn = psycopg2.connect(get_db_url().replace("+asyncpg", ""))
     try:
         with conn.cursor() as cur:
-            execute_values(
-                cur,
-                """
-                INSERT INTO ehr.patient_timeline
-                    (patient_id, ts, event_type, source, structured, text, meta)
-                VALUES %s
-                """,
-                rows,
-            )
+            execute_values(cur, sql, rows)
         conn.commit()
         logger.info(f"Stored {len(rows)} events in ehr.patient_timeline for {patient_id}")
         return len(rows)
+
     except Exception as exc:
         conn.rollback()
         logger.error(f"Error inserting timeline events for {patient_id}: {exc}")
         raise
+
     finally:
         conn.close()
 
