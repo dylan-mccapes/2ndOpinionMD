@@ -32,6 +32,7 @@ from .stream_config import (
     CODING_DEFAULT_SOURCES,
     CODING_SOURCES,
     BASE_RRF_K,
+    BASE_LIMIT,
     EOH_STREAM_DEFAULT_SOURCES,
     CHAT_MODEL,
     CHAT_MODEL_GUIDELINES,
@@ -84,6 +85,11 @@ from .rag_stream_routes import (
     cluster_coding_concepts,
     build_canonical_keep_map,
     build_ledger_only_citations,
+)
+
+from .eoh_gap_retrieval import (
+    EOH_GAP_RETRIEVAL_SYSTEM_PROMPT,
+    build_eoh_gap_retrieval_payload,
 )
 
 logger = logging.getLogger(__name__)
@@ -1849,7 +1855,7 @@ async def coding_stream(
             "from stream_config is used."
         ),
     ),
-    limit: int = Query(8, ge=1, le=64),
+    limit: int = Query(BASE_LIMIT, ge=1, le=64),
     ctx_k: int = Query(
         max(BASE_RRF_K, 128),
         ge=1,
@@ -2125,10 +2131,15 @@ async def load_eoh_patient_state_from_db(pool: Any, patient_id: str) -> Dict[str
         d["raw"] = raw
         return d
 
-# Case-analog retrieval settings (EoH-specific)
 CASE_ANALOG_SOURCE = "mimic4_note"
-CASE_ANALOG_QUESTION_TYPES = {"B", "C", "OTHER"}  # where analogs help most
-CASE_ANALOG_K = 3  # keep very small to avoid bloating context
+# Keep analogs for flare-vs-noise and "other" exploratory questions only
+CASE_ANALOG_QUESTION_TYPES = {"B", "OTHER"}
+CASE_ANALOG_K = 3
+
+# New: TS/ANN fusion tuning for case analogs
+CASE_ANALOG_TS_MULTIPLIER = 3   # how many TS rows to grab per K
+CASE_ANALOG_MIN_TS_SCORE = 0.0  # optional floor, can raise later
+CASE_ANALOG_MIN_ANN_SCORE = 0.0
 
 # ---------------------------------------------------------------------------
 # EoH Router System Prompt Extension
@@ -2141,8 +2152,7 @@ Your role:
 - Interpret patient state using the EoH Gold Standard v2 (2025): stacks, stability bands, drift,
   trajectories, PSI, CBM, suppression logic, and module outputs *in concept only*.
 - Ground all clinical statements strictly in the retrieved context (router plan, patient timelines,
-  guideline snippets, and any EoH/Ethos documents). You may echo themes that are explicitly shown,
-  but you must NOT invent citations, page numbers, or details that do not appear in context.
+  guideline snippets, EoH/Ethos documents, and any diagnostic landscape artifacts).
 - Treat the prepended **EoH Router Plan** as the blueprint for your reasoning.
 
 You never query a database. You only see what is in the fused context.
@@ -2152,7 +2162,7 @@ EOH ROUTER PLAN INSTRUCTIONS
 --------------------------------------------------------------------------------
 You ALWAYS receive a high-level router plan near the top of context. It includes:
 - Question type (A–E or OTHER)
-- EoH modules involved (e.g., M1–M3B, M4, M13, etc.)
+- EoH modules involved (e.g., M1–M3B, M4, M13, M48, M48B, M48C, etc.)
 - Document handles retrieved for each module
 - Conceptual purpose of each module
 
@@ -2161,7 +2171,7 @@ When answering:
 1. Explicitly tie your reasoning to the router plan.
    Use language such as:
    - "Step 1 (M1–M3B) is designed to…"
-   - "M13 would typically generate a prognostic vector by integrating…"
+   - "M13 would typically generate a prognostic landscape weight vector by integrating…"
    - "In this framework, M4 applies suppression-auditing logic to…"
 
 2. Stay within the router plan scope.
@@ -2169,34 +2179,122 @@ When answering:
    or elsewhere in the fused context.
 
 3. Treat all module outputs as *conceptual*.
-   - You cannot see live DB values, PSI scores, tiers, or model coefficients.
+   - You cannot see live DB values, PSI scores, tiers, or model coefficients unless they
+     appear explicitly in a patient_state JSON or another visible artifact.
    - You may describe what a module is designed to do, and how it *would* use the
      available context, but not what it "actually computed" unless it is explicitly shown.
 
-4. If `patient_state` JSON is provided, integrate it, but treat it as user-supplied,
-   not as verified DB output.
+4. If `patient_state` JSON is provided, integrate it, but treat it as user- or system-supplied
+   metadata that may be partial. Never infer hidden fields.
 
 --------------------------------------------------------------------------------
-PATIENT TIMELINE CONTEXT SOURCES
+QUESTION TYPE (A–E) INTERPRETATION
 --------------------------------------------------------------------------------
+
+The router plan always includes a "question_type" field. You MUST use it to shape your answer:
+
+- Type A (Flare risk / baseline & trajectory)
+  Focus on where the patient sits in stability bands / stacks and their near-term
+  flare risk and trajectory. Emphasize temporal patterns in the timeline and
+  how those patterns conceptually map into higher vs lower risk ranges.
+
+- Type B (Flare vs noise / artefact)  **(HARD CONSTRAINT + TAGGING)**
+  Focus on whether a specific episode looks like a true flare vs fibro/symbolic
+  pain, lab artefact, infection, or other noise. Explicitly weigh flare features
+  vs suppression logic.
+
+  HARD CONSTRAINT:
+  - You MUST provide a machine-readable tag line of the form:
+      `TypeB_event_tag: flare_likely`
+      or `TypeB_event_tag: noise_likely`
+      or `TypeB_event_tag: indeterminate`
+    This tag MUST appear once, on its own line, in Section 2 or Section 5.
+
+  - Even when you are uncertain, you must still pick ONE of these three tags,
+    and then explain the uncertainty in natural language.
+
+- Type C (Explainability / diagnostic landscape)
+  Focus on explaining WHY the EoH view (terrain/landscape) leans toward certain
+  diagnoses or tiers. Use diagnostic landscape objects and features explicitly.
+  You must describe which disease labels have non-zero or non-negligible weights,
+  and which labels conceptually dominate (e.g., "RA-like clearly outweighs SLE-like").
+
+  STANDARDIZED SHAPE (Type C):
+  - You MUST include a subsection explicitly titled:
+      `### Diagnostic Landscape Snapshot (Type C)`
+    containing a bullet list or mini-table that:
+      * Lists each visible label (e.g., RA-like, SLE-like, PsA-like, other).
+      * States its qualitative level using words like "dominant", "secondary",
+        "minor", or "background".
+      * Optionally quotes numeric values or ranges *only if present* in the context.
+
+- Type D (Plan adjustment)
+  Focus on how to adjust care intensity, maintenance therapy, or monitoring over
+  the next 3–12+ months, grounded in the timeline and any guideline snippets.
+  Describe adjustments using *ranges* of frequency or intensity when those are
+  clearly implied (e.g., "closer to the high-frequency monitoring end" vs "at the low end").
+
+- Type E (Meta / calibration / QA)
+  Focus on calibration, missed flares vs false positives, and landscape drift.
+  Use governance modules (e.g., M19, M41, M48, M48B, M48C) conceptually to
+  talk about under- or over-sensitivity and suppression patterns.
+
+  For Type E you should, where possible:
+  - Relate at least one concrete flare episode and its visible features to the
+    intended behavior of the calibration/suppression stack.
+  - If diagnostic landscape history is present, comment qualitatively on how the
+    weights appear to have shifted over time (e.g., "RA-like has gradually become
+    more prominent while SLE-like has faded").
+
+If question_type is OTHER, still apply EoH concepts where reasonable, but you
+may lean more on plain guideline Q&A using the retrieved guideline snippets.
+Use the timeline and any diagnostic landscape artifacts if they are present.
+
+--------------------------------------------------------------------------------
+GOVERNANCE / QA MODULES (M48, M48B, M48C)
+--------------------------------------------------------------------------------
+
+When modules such as M48, M48B, or M48C appear in the router plan, interpret them as:
+
+- M48: global calibration and suppression governance across the whole system.
+- M48B: condition-level calibration and flare suppression audit for specific
+  diseases/phenotypes (e.g. RA, SLE, IBD).
+- M48C: diagnostic landscape stability and drift over time (e.g. shifting weights
+  between RA-like, SLE-like, PsA-like, etc.).
+
+In Type E questions (and sometimes Type C), use these modules conceptually to talk
+about:
+- whether EoH might be over-suppressing or under-detecting flares in this condition,
+- whether the diagnostic landscape appears stable vs drifting based on the
+  visible history,
+- and what kinds of QA questions a board or safety committee should be asking.
+
+You MUST NOT call the landscape or governance vectors "probability vectors".
+Refer to them as "diagnostic landscape weight vectors" or "weight maps", and
+treat them as conceptual, calibrated weightings rather than literal probabilities.
+
+--------------------------------------------------------------------------------
+PATIENT TIMELINE CONTEXT SOURCES (MANDATORY USE WHEN PRESENT)
+--------------------------------------------------------------------------------
+
 You may see patient timeline data in two forms:
 
-1. **Demo timeline**  
+1. **Demo timeline**
    A context item with `source = "eoh_demo_timeline"` contains a synthetic but canonical
    patient event log for this demo.
 
-2. **Database-backed timeline**  
+2. **Database-backed timeline**
    A context item with `source = "patient_timeline"` (or an SSE summary such as
    `timeline_loaded`, `timeline_signals`, `timeline_flare_features`,
    `timeline_probabilistic_differential`) represents events loaded from
    `ehr.patient_timeline` and summarized for you in text/JSON.
 
-When a timeline is present (demo or patient_timeline):
+When ANY timeline is present (demo or patient_timeline):
 
 - Treat it as the patient’s event-level history (e.g., flares, labs, visits, journals).
 - Parse it into dated events with:
-  - date / time
-  - event type (e.g., visit, lab, flare, symptom, med change, journal)
+  - date / time (approximate phrases like "early 2019" are fine),
+  - event type (e.g., visit, lab, flare, symptom, med change, journal),
   - key details (e.g., "CRP 50 and ESR 60 during knee flare", "labs near normal",
     "feeling stable", "missed methotrexate doses for 2 weeks").
 
@@ -2213,45 +2311,32 @@ When a timeline is present (demo or patient_timeline):
   - conceptual flare risk and disease control,
   - misdiagnosis patterns or hidden comorbidities when those are explicitly described.
 
-If a timeline is present, you MUST NOT say that “no patient data” or “no fused rows”
-are visible. Instead, clearly describe which events you see and how you use them.
+MANDATORY TIMELINE USE (WHEN PRESENT)
 
-RESEARCH CONTEXT (VALYU/PUBMED)
+If you see ANY context items whose `source` is `"patient_timeline"` or `"eoh_demo_timeline"`:
 
-- Some context items may come from research publications (e.g., source names
-  containing 'valyu' or 'pubmed').
-- Treat these as **supporting evidence** for mechanisms, risk factors, and
-  management principles, not as patient-specific predictions.
-- You may:
-    - Summarize trends and mechanisms that are clearly visible in the excerpts.
-    - Say that a pattern in this patient “is consistent with” or “differs from”
-      patterns described in the research snippets.
-- You must NOT:
-    - Invent new statistics, effect sizes, or study conclusions that are not
-      shown in the text.
-    - Turn research snippets directly into numeric risk estimates for this
-      specific patient.
+- In **Section 1 (High-Signal Summary)** or **Section 2 (Router-Aligned EoH Reasoning)** you MUST
+  explicitly describe at least **2–3 concrete timeline events** in natural language, for example:
+  - approximate date or phase (e.g., "early 2019", "around day 165–180"),
+  - event type (flare, visit, lab, med change, journal entry),
+  - and 1–2 key details (e.g., "CRP 50 / ESR 60 during knee flare", "missed MTX for 2 weeks",
+    "bloody diarrhea with weight loss", "near-normal labs with good function").
 
-ICU NOTE CORPORA (MIMIC-4 AND SIMILAR)
+- When both earlier and more recent events are visible, you should **contrast them** to show trajectory:
+  - e.g., "A severe flare in early 2021 with high inflammatory markers, followed by a more stable
+    period later with near-normal labs and fewer symptoms."
 
-- Some context items may come from de-identified ICU note corpora such as
-  'mimic4_note'. These are **case-analog notes**, not guidelines or calibrated
-  risk tools.
-- Use them only to illustrate how similar patterns have appeared in anonymized
-  ICU patients, for example:
-    - “In de-identified ICU notes from MIMIC-4, similar flare patterns often
-       appeared in the setting of severe infection rather than autoimmune flare.”
-- You MUST:
-    - Clearly label them as ICU case analogs (e.g., “MIMIC-4 ICU case notes”).
-    - Avoid treating them as authoritative or prospective evidence.
-- You MUST NOT:
-    - Convert their patterns into quantitative risk estimates.
-    - Override guideline-based reasoning or EoH conceptual logic with MIMIC data.
-    - Portray them as if they were validated EoH modules or prospective trials.
+- You MUST treat these timeline events as the **primary evidence** for:
+  - stability vs instability,
+  - flare vs noise,
+  - near-term vs longer-term trajectory,
+  - adherence versus non-adherence patterns,
+  whenever such patterns are explicitly visible in the text.
 
 --------------------------------------------------------------------------------
-TIMELINE-DERIVED EOH ARTIFACTS
+TIMELINE-DERIVED EOH ARTIFACTS & HISTORY
 --------------------------------------------------------------------------------
+
 You may see EoH-specific timeline artifacts in context (e.g. as SSE snippets or
 embedded JSON):
 
@@ -2259,24 +2344,47 @@ embedded JSON):
   stability periods, med changes, misdiagnosis patterns, hidden comorbidities, etc.).
 - `timeline_flare_features` – structured features describing flare patterns
   (recency, severity, triggers, lab behavior, recovery).
-- `timeline_probabilistic_differential` – a conceptual "diagnostic landscape" object
+- `timeline_probabilistic_differential` – a conceptual diagnostic landscape weight object
   (e.g., fields such as `ra_like`, `sle_like`, `psa_like`, `sjogren_like`,
   `mixed_ctd_like`, `vasculitis_like`, `other`, or similar).
+- `patient_diagnostic_landscape_history` – a history of diagnostic landscape snapshots
+  over time for this patient.
 
 When these appear:
 
 - You may *describe* their structure and use them as qualitative evidence
-  (e.g., "EoH’s internal landscape leans RA-like rather than SLE-like for this timeline"),
+  (e.g., "EoH’s internal landscape currently leans RA-like rather than SLE-like"),
   but you must still obey the numeric rules below.
 - If numeric fields are shown explicitly (e.g., 0.8 vs 0.1), you may qualitatively
-  describe the relative ordering ("RA-like greater than SLE-like") but avoid treating
-  them as validated clinical probabilities.
+  describe the relative ordering ("RA-like greater than SLE-like") and, if helpful,
+  refer to the visible numbers or ranges. You must NOT invent new numbers.
+
+When a dedicated context document with `source = "patient_timeline_diagnostic_landscape"`
+is present, treat it as the canonical representation of the current diagnostic
+landscape snapshot for this answer.
+
+When a `patient_diagnostic_landscape_history` document is present:
+
+- Treat it as a time series of diagnostic landscape weight vectors.
+- Describe the *direction* of change qualitatively, such as:
+  - "RA-like weights have gradually risen relative to SLE-like and PsA-like",
+  - "The landscape has moved from mixed to more clearly RA-dominant."
+- You must still avoid inventing numeric probabilities or trajectories.
 
 --------------------------------------------------------------------------------
-STRICT EPISTEMICS RULES (MANDATORY)
+NUMERIC RANGES & STRICT EPISTEMICS (MANDATORY)
 --------------------------------------------------------------------------------
 
-1. **No numeric hallucinations**
+1. **Use numeric ranges when possible but NEVER hallucinate them**
+   - When the context provides explicit numeric values (e.g., 0.21, 0.34, 0.55)
+     or obvious bands, you should prefer summarizing them as ranges or relative levels:
+       * "low-to-moderate range around 0.2–0.3 (per the visible fields)".
+   - You may aggregate closely related values into a range **only using the values
+     you actually see**. Do NOT invent new endpoints.
+   - You may also express relative comparisons without numbers:
+       * "clearly higher than", "slightly lower than", "in the upper tier of what is shown".
+
+2. **No numeric hallucinations**
    - Do NOT invent probabilities, percentages, risk tiers, PSI values, drift magnitudes,
      or specific thresholds.
    - You may repeat numeric values only if they appear directly in the context
@@ -2284,30 +2392,32 @@ STRICT EPISTEMICS RULES (MANDATORY)
    - For diagnostic landscapes, you may describe *relative* emphasis
      ("more RA-like than SLE-like") only if the underlying text or JSON indicates that.
 
-2. **No invented guideline details**
+3. **No invented guideline details**
    - Do NOT invent references such as "Refs 23, 50–58".
    - Do NOT invent URLs, tables, specific doses, or page numbers.
    - Only state therapy or management details if they are clearly present
      in the retrieved guideline excerpts.
 
-3. **No pretending to observe hidden module outputs**
+4. **No pretending to observe hidden module outputs**
    You must NOT assert:
    - "M13 predicted 40% flare risk",
    - "The system classified the patient as Tier 3",
    - "PSI score is elevated",
    unless those exact values appear in the visible context.
 
-4. **No overreach**
+5. **No overreach**
    - If guideline excerpts are high-level, keep your statements high-level.
    - If the diagnostic landscape is coarse or incomplete, say so.
 
-5. **Uncertainty is REQUIRED when context is limited or partial**
+6. **Uncertainty is REQUIRED when context is limited or partial**
    - Always state what evidence you actually have:
      - router plan,
      - patient timeline events,
      - timeline signals/flare features,
-     - diagnostic landscape JSON (if any),
-     - guideline snippets.
+     - diagnostic landscape JSON or history (if any),
+     - patient_state JSON (if any),
+     - guideline snippets,
+     - research excerpts or ICU case-analog notes (if any).
    - If you have only the router plan and minimal clinical text, say that your
      reasoning is largely conceptual.
    - If you DO have patient timeline data and guideline excerpts, you MUST NOT claim
@@ -2316,19 +2426,95 @@ STRICT EPISTEMICS RULES (MANDATORY)
        - Emphasize that quantitative EoH metrics (PSI, calibrated risks, etc.)
          remain conceptual and are not directly observed.
 
-6. **Handling numeric module outputs**
-    - You may see a `patient_state` JSON blob containing numeric outputs from EoH modules
-    (e.g., flare risks, diagnostic landscape weights).
-    - You are allowed to repeat these numeric values and explain them, as long as:
-        - You do NOT alter them.
-        - You do NOT invent new numeric values that are not present.
-    - Always attribute them to EoH modules or patient_state, for example:
-        - “According to the current patient_state, the RA-like weight is higher than SLE-like.”
-        - “The stored flare risk snapshot shows higher near-term risk than long-term risk.”
-    - You must NOT create any numeric risk estimates or weights if none are provided
-    in patient_state or other visible JSON/text.
+7. **Handling numeric module outputs**
+   - You may see a `patient_state` JSON blob containing numeric outputs from EoH modules
+     (e.g., flare risks, diagnostic landscape weights).
+   - You are allowed to repeat these numeric values and explain them, as long as:
+       - You do NOT alter them.
+       - You do NOT invent new numeric values that are not present.
+   - Always attribute them to EoH modules or patient_state, for example:
+       - “According to the current patient_state, the RA-like weight is higher than SLE-like.”
+       - “The stored flare risk snapshot shows higher near-term risk than long-term risk.”
+   - Prefer describing them as ranges or relative levels when appropriate, e.g.,
+       - "near the upper part of the non-zero range for this patient."
+   - You must NOT create any numeric risk estimates or weights if none are provided
+     in patient_state or other visible JSON/text.
 
+8. **No false "no data" claims**
+   - You must NOT say that there is "no patient data", "no patient timeline", "no timeline events", "no fused rows", or "no module outputs visible" if you can see ANY of the following in context:
+     - a `patient_timeline` or `eoh_demo_timeline` context item,
+     - `timeline_signals`, `timeline_flare_features`, or `timeline_probabilistic_differential` snippets,
+     - a diagnostic landscape or history document,
+     - an `eoh_patient_state` JSON blob.
+
+   - When such artifacts ARE present but feel incomplete, you must instead say things like:
+     - "There is some timeline data, but it appears partial or summarized."
+     - "There is a stored patient_state snapshot, but the visible fields are limited."
+
+--------------------------------------------------------------------------------
+TYPE-SPECIFIC BEHAVIOR (MANDATORY)
+--------------------------------------------------------------------------------
+
+- For question_type = "A" (Flare risk / baseline & trajectory):
+  - Emphasize:
+      * phases of stability vs instability,
+      * near-term vs longer-term flare patterns,
+      * how the trajectory would conceptually place the patient in low / moderate / higher
+        risk bands, without inventing numerical thresholds.
+  - Always anchor your discussion to specific timeline events and phases.
+
+- For question_type = "B" (Flare vs noise / artefact):
+  - Focus on:
+      * timeline-aligned flare features (recency, severity, lab behavior),
+      * noise features (infection, fibro, isolated lab blips, measurement artefact),
+      * how suppression logic (M4, M48*) is designed to handle ambiguous spikes.
+  - You MUST output a single machine tag line:
+      `TypeB_event_tag: flare_likely` or `TypeB_event_tag: noise_likely` or `TypeB_event_tag: indeterminate`.
+    This tag is required even when uncertainty is high; explain your uncertainty
+    in natural language separately.
+
+- For question_type = "C" (Explainability / diagnostic landscape):
+  - You MUST inspect any visible diagnostic landscape object or history and describe:
+      * which disease labels are present,
+      * which labels dominate (e.g., "RA-like > SLE-like > PsA-like"),
+      * whether you see ONE snapshot vs MULTIPLE timepoints.
+  - You MUST include a subsection titled:
+      `### Diagnostic Landscape Snapshot (Type C)`
+    that presents a bullet list or simple table summarizing the landscape.
+  - If you only see a single snapshot, you MUST NOT claim that the
+    landscape is "stable over time" or "drifting"; instead say that
+    stability vs drift cannot be directly observed and that your
+    comments about stability are conceptual.
+  - If multiple timepoints are visible, you may describe the *direction*
+    of change, but still avoid numeric extrapolation beyond what you
+    see (no invented probabilities or trajectories).
+
+- For question_type = "D" (Plan adjustment):
+  - Focus on:
+      * how the current timeline and landscape argue for more vs less intensive
+        therapy, monitoring, and safety checks,
+      * how guideline excerpts constrain or support those adjustments.
+  - Use qualitative ranges (e.g., "closer to the high-intensity monitoring end")
+    rather than invented numbers.
+
+- For question_type = "E" (Meta / calibration):
+  - You must explicitly state whether you see any calibration- or
+    suppression-related rows (e.g., from eoh_m48*, patient_state, diagnostic
+    landscape history).
+  - If none are visible, say so clearly and frame your answer as
+    conceptual meta reasoning only.
+  - If some numeric values are visible (e.g., flare probabilities,
+    stability_band, landscape weights), you may repeat them and comment on whether
+    they seem internally coherent, but you MUST NOT invent new numbers.
+  - When timeline_flare_features are present, you MUST connect at least
+    one concrete flare episode (severity, triggers, recovery) to your
+    calibration/suppression reasoning.
+
+--------------------------------------------------------------------------------
 STRUCTURED OUTPUT FORMAT (REQUIRED)
+--------------------------------------------------------------------------------
+
+Your output MUST follow this structure:
 
 ### 1. High-Signal Summary (2–4 sentences)
 - Provide a direct qualitative interpretation using EoH concepts and the router plan.
@@ -2342,30 +2528,42 @@ STRUCTURED OUTPUT FORMAT (REQUIRED)
 - Use bullets aligned to router plan steps, for example:
   - "Step 1 (M1–M3B): would typically assess terrain, stability band, and stack level…"
   - "Step 2 (M4): would apply suppression/auditing to avoid overreacting to noisy spikes…"
-  - "Step 4 (M13): is designed to generate a conceptual prognostic vector by integrating…"
+  - "Step 4 (M13): is designed to assemble a diagnostic landscape weight vector by integrating…"
 - Explicitly describe how each step *would* use:
   - the timeline events,
   - the extracted signals/flare features,
-  - any diagnostic landscape object,
+  - any diagnostic landscape object or history,
   - and any guideline excerpts that were retrieved.
+- For question_type = "B", include the `TypeB_event_tag: ...` line somewhere in this section.
+- For question_type = "C", you may also place the diagnostic landscape snapshot here,
+  but you must still include the dedicated subsection below.
 
 ### 3. Evidence answer (guidelines, research, case-analogs)
-
-- **Guideline backbone (if present)**  
+- **Guideline backbone (if present)**
   - Briefly recap which guideline sets appear in context and how they support (or
     constrain) the EoH reasoning (e.g., ACR/EULAR, KDIGO, GOLD, IDSA, ACC/AHA).
   - Refer to them by human-readable labels, not fabricated numbers.
 
-- **Research / trials (Valyu/PubMed, if present)**  
+- **Diagnostic Landscape Snapshot (Type C)** (MANDATORY for Type C; optional but allowed for others)
+  - A short, structured summary of the diagnostic landscape using the title:
+      `### Diagnostic Landscape Snapshot (Type C)`
+  - Include:
+      * A list or table of labels and their qualitative levels.
+      * Any visible numeric values or ranges, quoted exactly when used.
+
+- **Research / trials (Valyu/PubMed, if present)**
   - Summarize how any research snippets refine your conceptual reasoning
     (mechanisms, flare risks, special populations).
   - Use short labels for clarity (e.g., “RA-ILD cohort”, “HF RCT with SGLT2i”).
 
-- **ICU / EHR case-analog notes (MIMIC, if used)**  
+- **ICU / EHR case-analog notes (MIMIC, if used)**
   - If you use MIMIC/EHR analogs, clearly label them as “ICU case analogs”.
   - Describe only qualitative patterns; never convert them into numeric EoH risks.
   - Emphasize they are supportive illustrations, not replacements for EoH modules
     or guidelines.
+  - When a patient_timeline or timeline-derived features are present,
+    you must treat them as PRIMARY evidence. ICU case analogs are optional
+    supporting examples only and must not dominate your reasoning.
 
 If a category is absent in context, state briefly that there is no retrieved content of that type.
 
@@ -2379,13 +2577,24 @@ If a category is absent in context, state briefly that there is no retrieved con
 ### 5. Limits & Uncertainty
 - Explicitly state:
   - What evidence you DO have (router plan, timeline events, signals, flare features,
-    diagnostic landscape JSON, guideline snippets, research excerpts, case-analog notes).
-  - What you do NOT have (no direct PSI values, no calibrated risk curves, no full
-    EHR chart, no real-world validation data).
+    diagnostic landscape snapshot and/or history, patient_state JSON, guideline snippets,
+    research excerpts, case-analog notes).
+  - What you do NOT have (no direct PSI values unless shown, no calibrated risk curves
+    beyond what is visible, no full EHR chart, no real-world validation data).
   - Any important gaps (e.g., incomplete treatment history, no imaging details,
     partial guideline excerpts).
-- Reiterate that your reasoning is **conceptual and qualitative** even when
-  timeline data, patient_state JSON, or research snippets are visible.
+- For Type B, you may reiterate why you chose the specific `TypeB_event_tag`.
+- For Type E calibration questions, you must explicitly state:
+  - Whether any calibration / suppression tables or views (e.g. eoh_m48*, patient_state,
+    diagnostic landscape history) are visible.
+  - If they are visible:
+      * Mention at least one concrete numeric value or range (as-is from context)
+        and how it fits your qualitative assessment (e.g., "RA-like weight
+        consistently higher than SLE-like across the visible history").
+  - If they are not visible:
+      * Say that no direct calibration tables are available and that your
+        reasoning is purely conceptual based on module design, timelines, and any
+        visible landscapes.
 
 --------------------------------------------------------------------------------
 ABSOLUTE PROHIBITIONS
@@ -2533,6 +2742,7 @@ async def eoh_stream_event_generator(
     use_timeline: bool = False,
     timeline_patient_id: Optional[str] = None,
     research: int = 0,
+    enable_gap: int = 1,
 ) -> AsyncIterator[Dict[str, str]]:
     """
     Dedicated event generator for /eoh_stream with EoH LLM Router integration.
@@ -2558,6 +2768,12 @@ async def eoh_stream_event_generator(
         except Exception:
             logger.warning("eoh_stream: failed to parse patient_state JSON", exc_info=True)
             patient_state_summary = None
+    if use_timeline and timeline_patient_id:
+        if patient_state_summary is None:
+            patient_state_summary = {}
+        # Do not overwrite if the caller already supplied explicit flags
+        patient_state_summary.setdefault("eoh_has_timeline", True)
+        patient_state_summary.setdefault("eoh_timeline_patient_id", timeline_patient_id)
 
     # 0) Initial event
     yield sse(
@@ -3239,15 +3455,76 @@ async def eoh_stream_event_generator(
 
             # Emit timeline_probabilistic_differential event
             if timeline_ctx.diagnostic_landscape:
-                yield sse(
-                    "timeline_probabilistic_differential",
-                    {
-                        "patient_id": timeline_patient_id,
-                        "diagnostic_landscape": (
-                            timeline_ctx.diagnostic_landscape.to_normalized_dict()
-                        ),
-                    },
-                )
+                try:
+                    diag_landscape = timeline_ctx.diagnostic_landscape
+
+                    # Normalize to a plain dict
+                    if hasattr(diag_landscape, "to_normalized_dict") and callable(
+                        diag_landscape.to_normalized_dict
+                    ):
+                        diag_payload = diag_landscape.to_payload()
+                    elif isinstance(diag_landscape, dict):
+                        diag_payload = diag_landscape
+                    else:
+                        # If it's some other object, bail out gracefully
+                        diag_payload = None
+
+                    if diag_payload is not None:
+                        # SSE event for the UI / logs
+                        yield sse(
+                            "timeline_probabilistic_differential",
+                            {
+                                "patient_id": timeline_patient_id,
+                                "diagnostic_landscape": diag_payload,
+                            },
+                        )
+
+                        # Inject as a dedicated context document
+                        diag_doc = {
+                            "id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
+                            "source": "patient_timeline_diagnostic_landscape",
+                            "source_id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
+                            "title": f"Diagnostic landscape – {timeline_patient_id}",
+                            "text": json.dumps(diag_payload, ensure_ascii=False),
+                            "score": 1.0,
+                            "method": "timeline_diagnostic_landscape",
+                        }
+
+                        # Prepend so it sits right under patient_state/router/timeline
+                        final_ctx = [diag_doc] + final_ctx
+
+                        history = engine.compute_landscape_history_from_events(
+                            events, timeline_patient_id
+                        )
+                        if history:
+                            history_doc = {
+                                "id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
+                                "source": "patient_diagnostic_landscape_history",
+                                "source_id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
+                                "title": f"Diagnostic landscape history – {timeline_patient_id}",
+                                "text": json.dumps(history, ensure_ascii=False),
+                                "score": 1.0,
+                                "method": "timeline_diagnostic_landscape_history",
+                            }
+                            # Prepend so it sits high in context
+                            final_ctx = [history_doc] + final_ctx
+
+                            # NEW: SSE event for the history document
+                            yield sse(
+                                "timeline_diagnostic_landscape_history",
+                                {
+                                    "patient_id": timeline_patient_id,
+                                    "history_length": len(history)
+                                        if hasattr(history, "__len__")
+                                        else None,
+                                },
+                            )
+
+                except Exception as e:
+                    logger.exception(
+                        "Failed to serialize diagnostic_landscape for %s",
+                        timeline_patient_id,
+                    )
 
             # Create timeline context document for injection
             timeline_doc = {
@@ -3281,12 +3558,18 @@ async def eoh_stream_event_generator(
     
 
     # ---------------------------------------------------------------------------
-    # 9d) Case-analog retrieval from MIMIC-4 notes (mimic4_note)
+    # 9d) Case-analog retrieval from MIMIC-4 notes (mimic4_note) — ANN-only
     # ---------------------------------------------------------------------------
-    case_analog_docs: List[Dict[str, Any]] = []
+    case_analog_docs: list[dict[str, Any]] = []
 
-    # Only do this for question types where analogs are particularly useful
-    if question_type in CASE_ANALOG_QUESTION_TYPES:
+    # Only do this for question types where analogs are particularly useful.
+    # We now let Valyu be independent; include_case_analogs is the explicit flag.
+    use_case_analogs = (
+        question_type in CASE_ANALOG_QUESTION_TYPES
+        and research
+    )
+
+    if use_case_analogs:
         yield sse(
             "status",
             {
@@ -3296,13 +3579,18 @@ async def eoh_stream_event_generator(
         )
 
         try:
-            # Simple ANN-only retrieval to keep things cheap and lean
-            ann_rows = await search_source_ann(
-                pool=pool,
-                source=CASE_ANALOG_SOURCE,
-                q_vec_literal=q_vec_literal,
-                limit=CASE_ANALOG_K,
-            )
+            # ANN-only retrieval for speed; we don't run TS over mimic4_note here.
+            ann_rows: List[Dict[str, Any]] = []
+            try:
+                ann_rows = await search_source_ann(
+                    pool=pool,
+                    source=CASE_ANALOG_SOURCE,
+                    q_vec_literal=q_vec_literal,
+                    limit=CASE_ANALOG_K,
+                )
+            except Exception as e:
+                logger.exception("case analog ANN search failed for %s", CASE_ANALOG_SOURCE)
+                ann_rows = []
 
             if ann_rows:
                 # SSE summary for UI / telemetry
@@ -3315,26 +3603,28 @@ async def eoh_stream_event_generator(
                                 "id": r["id"],
                                 "source": r["source"],
                                 "source_id": r.get("source_id") or "",
-                                "title": r.get("title", ""),
+                                "title": (r.get("title") or "") or "ICU case analog from MIMIC-4 note",
                                 "score": float(r.get("score") or 0.0),
                                 "method": "case_analog",
                             }
-                            for r in ann_rows
+                            for r in ann_rows[:CASE_ANALOG_K]
                         ],
                     },
                 )
 
-                # Convert into context docs appended after router+timeline+guidelines
-                for r in ann_rows:
+                for r in ann_rows[:CASE_ANALOG_K]:
+                    ann_score = float(r.get("score") or 0.0)
+                    capped_score = min(ann_score, 0.30)  # keep them below core evidence
+
                     case_analog_docs.append(
                         {
                             "id": r["id"],
                             "source": r.get("source", CASE_ANALOG_SOURCE),
                             "source_id": r.get("source_id"),
                             "title": (r.get("title") or "").strip()
-                            or "Case analog from MIMIC-4 note",
+                            or "ICU case analog from MIMIC-4 note",
                             "text": r.get("text", ""),
-                            "score": float(r.get("score") or 0.0),
+                            "score": capped_score,
                             "method": "case_analog",
                         }
                     )
@@ -3454,6 +3744,217 @@ async def eoh_stream_event_generator(
                 ]
             },
         )
+
+    if await request.is_disconnected():
+        return
+
+    # ---------------------------------------------------------------------------
+    # 9f) EoH gap retrieval LLM pass — refine context before final answer
+    # ---------------------------------------------------------------------------
+    if enable_gap and final_ctx:
+        extra_gap_docs: List[Dict[str, Any]] = []
+        gap_plan: Dict[str, Any] = {}
+
+        try:
+            # Build payload for gap planner
+            gap_payload = build_eoh_gap_retrieval_payload(
+                question=q,
+                router_plan=router_plan,
+                final_ctx=final_ctx,
+                max_slots=6,
+            )
+
+            gap_messages = [
+                {
+                    "role": "system",
+                    "content": EOH_GAP_RETRIEVAL_SYSTEM_PROMPT.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(gap_payload, ensure_ascii=False),
+                },
+            ]
+
+            yield sse(
+                "status",
+                {"status": "eoh_gap_planning", "detail": "LLM planning targeted gap retrievals."},
+            )
+
+            gap_resp = await _chat_completion_async(
+                _openai_client,
+                model=CHAT_MODEL_UTIL,
+                messages=gap_messages,
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+            gap_raw = gap_resp.choices[0].message.content or "{}"
+
+            try:
+                gap_plan = json.loads(gap_raw)
+            except Exception:
+                logger.exception("Failed to parse EoH gap plan JSON")
+                gap_plan = {}
+
+            if gap_plan.get("needs_gap_retrieval"):
+                slots = gap_plan.get("slots") or []
+
+                yield sse(
+                    "eoh_gap_plan",
+                    {
+                        "reason": gap_plan.get("reason", ""),
+                        "slot_count": len(slots),
+                        "slots": slots,
+                    },
+                )
+
+                # Execute slots one by one, producing extra context docs
+                for slot in slots:
+                    kind = str(slot.get("kind") or "other")
+                    slot_id = str(slot.get("slot_id") or "")
+                    suggested_sources = slot.get("suggested_sources") or []
+                    terms = slot.get("terms") or []
+                    per_slot_limit = int(slot.get("limit") or 2)
+
+                    # Small safety clamps
+                    if per_slot_limit < 1:
+                        per_slot_limit = 1
+                    if per_slot_limit > 4:
+                        per_slot_limit = 4
+
+                    # If LLM didn't pick a source, skip this slot (keeps behavior predictable)
+                    if not suggested_sources:
+                        continue
+
+                    for src in suggested_sources:
+                        src = str(src or "").strip()
+                        if not src:
+                            continue
+
+                        # Only run gap retrieval for sources we actually know how to query
+                        # (i.e., that participated in retrieval or are valid internal sources).
+                        # You can relax this if you want more aggressive exploration.
+                        if src not in db_sources and src not in [d["source"] for d in final_ctx]:
+                            continue
+
+                        yield sse(
+                            "status",
+                            {
+                                "status": "eoh_gap_retrieving",
+                                "slot_id": slot_id,
+                                "kind": kind,
+                                "source": src,
+                            },
+                        )
+
+                        try:
+                            # Special handling for case_analog-like slots
+                            if kind == "case_analog" and src == CASE_ANALOG_SOURCE:
+                                ann_rows = await search_source_ann(
+                                    pool=pool,
+                                    source=CASE_ANALOG_SOURCE,
+                                    q_vec_literal=q_vec_literal,
+                                    limit=per_slot_limit,
+                                )
+                                for r in ann_rows:
+                                    ann_score = float(r.get("score") or 0.0)
+                                    capped_score = min(ann_score, 0.30)
+                                    extra_gap_docs.append(
+                                        {
+                                            "id": f"gap:{slot_id}:{r['id']}",
+                                            "source": r.get("source", CASE_ANALOG_SOURCE),
+                                            "source_id": r.get("source_id"),
+                                            "title": (r.get("title") or "").strip()
+                                            or "ICU case analog from MIMIC-4 note (gap)",
+                                            "text": r.get("text", ""),
+                                            "score": capped_score,
+                                            "method": "gap_case_analog",
+                                        }
+                                    )
+
+                            else:
+                                # Guideline / EoH / timeline / other: TS-first, then ANN fallback
+                                query_text = q
+                                if terms:
+                                    # Simple term-join; if you want, you can include q here too
+                                    query_text = " ".join(terms)
+
+                                ts_rows = await search_source_ts(
+                                    pool=pool,
+                                    source=src,
+                                    q=query_text,
+                                    limit=per_slot_limit,
+                                )
+
+                                if not ts_rows:
+                                    # ANN fallback
+                                    ann_rows = await search_source_ann(
+                                        pool=pool,
+                                        source=src,
+                                        q_vec_literal=q_vec_literal,
+                                        limit=per_slot_limit,
+                                    )
+                                    ts_rows = ann_rows
+
+                                for r in ts_rows:
+                                    extra_gap_docs.append(
+                                        {
+                                            "id": f"gap:{slot_id}:{r['id']}",
+                                            "source": r.get("source", src),
+                                            "source_id": r.get("source_id"),
+                                            "title": (r.get("title") or "").strip()
+                                            or f"Gap retrieval from {src}",
+                                            "text": r.get("text", ""),
+                                            "score": float(r.get("score") or 0.0),
+                                            "method": f"gap_{kind}",
+                                        }
+                                    )
+
+                        except Exception:
+                            logger.exception("EoH gap retrieval failed for slot=%r source=%r", slot_id, src)
+                            continue
+
+            if extra_gap_docs:
+                yield sse(
+                    "timing",
+                    {
+                        "phase": "gap_retrieval",
+                        "elapsed_ms": int((time.perf_counter() - t0) * 1000),
+                    },
+                )
+                # Light de-dup: avoid re-adding exact same id/source/text
+                seen_keys = {
+                    (d["id"], d["source"])
+                    for d in final_ctx
+                }
+                deduped: List[Dict[str, Any]] = []
+                for d in extra_gap_docs:
+                    key = (d["id"], d["source"])
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    deduped.append(d)
+
+                extra_gap_docs = deduped
+
+                final_ctx = final_ctx + extra_gap_docs
+
+                yield sse(
+                    "eoh_gap_retrieval",
+                    {
+                        "added_docs": len(extra_gap_docs),
+                        "slots_used": len(gap_plan.get("slots") or []),
+                    },
+                )
+
+        except Exception:
+            logger.exception("EoH gap retrieval planning or execution failed")
+            # Fall back gracefully; no gap docs added
+
+    if await request.is_disconnected():
+        return
+
+    # Build citations AFTER gap docs have been added
+    citations = build_citations(final_ctx)
 
     if await request.is_disconnected():
         return
@@ -3687,7 +4188,13 @@ async def eoh_stream(
         0,
         ge=0,
         le=1,
-        description="1=enable Valyu research context (PubMed, etc.) for this query",
+        description="1=enable case analogs (MIMIC-4 ICU notes) and optional research helpers for this query",
+    ),
+    enable_gap: int = Query(
+        1,
+        ge=0,
+        le=1,
+        description="1=run EoH gap retrieval pass, 0=skip (for perf/debug).",
     ),
 ) -> EventSourceResponse:
     """
@@ -3756,6 +4263,7 @@ async def eoh_stream(
             use_timeline=bool(use_timeline),
             timeline_patient_id=timeline_patient_id,
             research=research,
+            enable_gap=enable_gap,
         ):
             yield ev
 

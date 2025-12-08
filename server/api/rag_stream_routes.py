@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple, Se
 from dataclasses import dataclass
 import re
 import difflib
+import datetime
 
 import asyncpg
 import httpx
@@ -3865,7 +3866,11 @@ async def extract_code_terms(q: str) -> List[str]:
     if code_candidates_clean:
         logger.info("extract_code_terms: code_candidates=%s", code_candidates_clean)
 
-    terms = sorted(terms_set)
+    if terms_set:
+        terms = sorted(terms_set)
+    else:
+        terms = q.lower().replace(",", " ").split()
+
     logger.info("extract_code_terms: terms=%s", terms)
     return terms
 
@@ -3913,7 +3918,7 @@ async def extract_qna_terms(
     all_terms = build_all_terms(term_data)
 
     return {
-        "terms": term_data.get("terms", []) or [],
+        "terms": term_data.get("terms", []) or q.lower().replace(",", " ").split(),
         "expansions": term_data.get("expansions", {}) or {},
         "all_terms": all_terms or [],
     }
@@ -4569,14 +4574,25 @@ def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 # SSE helper
 # ---------------------------------------------------------------------------
 
+def _json_default(o: Any) -> str:
+    # Fallback for non-serializable types
+    try:
+        if isinstance(o, (datetime.datetime, datetime.date)):
+            return o.isoformat()
+        # If object exposes a "to_dict" / "to_normalized_dict", use it
+        if hasattr(o, "to_dict") and callable(o.to_dict):
+            return o.to_dict()
+        if hasattr(o, "to_normalized_dict") and callable(o.to_normalized_dict):
+            return o.to_normalized_dict()
+    except Exception:
+        pass
+    # Last resort: string representation (avoids TypeError)
+    return repr(o)
 
 def sse(event: str, payload: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Format a Server-Sent Event (SSE) message as a dict that sse_starlette understands.
-    """
     return {
         "event": event,
-        "data": json.dumps(payload, default=str),
+        "data": json.dumps(payload, default=_json_default, ensure_ascii=False),
     }
     
 # ---------------------------------------------------------------------------

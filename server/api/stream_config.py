@@ -42,7 +42,8 @@ CHAT_MODEL_CODING_CORE = os.getenv("CHAT_MODEL_CODING_CORE", CHAT_MODEL)
 CHAT_MODEL_UTIL = os.getenv("CHAT_MODEL_UTIL", CHAT_MODEL)
 
 # How many total internal context chunks to give the LLM
-BASE_RRF_K = 24
+BASE_RRF_K = 32
+BASE_LIMIT = 10
 
 # Hard cap on context size passed to LLM (chars; rough guard vs token overflows)
 MAX_CONTEXT_CHARS = 64_000

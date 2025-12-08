@@ -229,7 +229,63 @@ For OTHER, you may return empty module_plan/doc_retrieval_plan or a very
 minimal plan if appropriate.
 
 -------------------------------------------------------------------------------
-## 5. Output Schema (MUST FOLLOW EXACTLY)
+## 5. Timeline-aware routing (patient_state_summary hints)
+-------------------------------------------------------------------------------
+
+The router may receive a patient_state_summary with extra fields that signal
+timeline availability or diagnostic landscape data. Common fields include:
+
+- "primary_focus": high-level intent hint such as
+  - "flare_vs_noise"
+  - "flare_risk"
+  - "diagnostic_landscape"
+  - "plan_adjustment"
+  - "meta_calibration"
+
+- "eoh_has_timeline": true/false
+  → true means a patient timeline has been computed and will be injected into
+    the context (source 'patient_timeline' or 'eoh_demo_timeline').
+
+- "eoh_timeline_patient_id": patient id for the loaded timeline (string).
+
+- "eoh_has_diagnostic_landscape": true/false
+  → true means a probabilistic diagnostic landscape object exists and will be
+    available in context.
+
+When these hints are present, you must bias routing accordingly:
+
+1) If eoh_has_timeline == true:
+   - Do NOT return OTHER unless the question is truly non-EoH.
+   - Prefer A, B, C, D, or E based on the content of the question and
+     primary_focus.
+   - Include terrain + timeline-aware modules when relevant:
+     e.g. modules that work with bands, stacks, flare windows, and
+     diagnostic landscape (M1–M3, M7A, M12–M15, M19, M21, M24, M25, M48, M48B,
+     M48C as appropriate).
+
+2) If primary_focus == "flare_vs_noise":
+   - Lean toward type B and include modules that distinguish flare from noise
+     and suppression artefacts (e.g. M4–M7, M9, M19, M41, M48B).
+
+3) If primary_focus == "diagnostic_landscape":
+   - Lean toward type C (explainability) or type E (meta) depending on whether
+     the question is about *explaining* the landscape vs *auditing* it.
+   - Include modules that expose features and landscape stability (M13, M14,
+     M19, M21, M25, M48C).
+
+4) If primary_focus == "plan_adjustment":
+   - Lean toward type D and include terrain/prognostic/planning modules
+     that operate on the timeline (e.g. M1–M3, M7A, M12–M15, M22–M25).
+
+5) If primary_focus == "meta_calibration":
+   - Lean toward type E and include governance/calibration modules
+     (M19, M41, M48, M48B, M48C).
+
+These hints are *soft* but important. Do not ignore them. They should shift
+your type_scores and module selection in a consistent way.
+
+-------------------------------------------------------------------------------
+## 6. Output Schema (MUST FOLLOW EXACTLY)
 -------------------------------------------------------------------------------
 
 Return ONLY a valid JSON object with this exact structure:

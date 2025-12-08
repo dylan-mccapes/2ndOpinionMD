@@ -116,3 +116,20 @@ failed_ids.txt
 *.pdf
 =*
 docker/certs-local/
+
+# --- Local EoH / infra artifacts (do NOT commit) ---
+docker_env_report/
+mkg_backup_*.dump
+
+# Temp scratch dirs/files
+extracting
+reading
+resolve
+transferring
+
+# Hash / checksum temp files
+sha256:*
+
+# Local auth/internal scratch (escaped brackets so Git doesn't treat them as char classes)
+\[auth\]/
+\[internal\]/

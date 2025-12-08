@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
@@ -112,7 +113,7 @@ class DiagnosticLandscape:
     vasculitis_like: float = 0.0
     other: float = 1.0
 
-    def to_normalized_dict(self) -> Dict[str, float]:
+    def _normalized_weights(self) -> Dict[str, float]:
         raw = {
             "ra_like": float(self.ra_like or 0.0),
             "sle_like": float(self.sle_like or 0.0),
@@ -124,7 +125,6 @@ class DiagnosticLandscape:
         }
         total = sum(v for v in raw.values() if v > 0)
         if total <= 0:
-            # fall back to other=1.0 if nothing fired
             return {
                 "ra_like": 0.0,
                 "sle_like": 0.0,
@@ -136,6 +136,46 @@ class DiagnosticLandscape:
             }
         return {k: v / total for k, v in raw.items()}
 
+    def to_normalized_dict(self) -> Dict[str, float]:
+        # keep this for backward compatibility
+        return self._normalized_weights()
+
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        Richer JSON payload for EoH:
+        - normalized weights
+        - top label(s)
+        - entropy / concentration as a rough confidence proxy
+        """
+        norm = self._normalized_weights()
+        items = sorted(norm.items(), key=lambda kv: kv[1], reverse=True)
+        top_label, top_weight = items[0]
+
+        # Shannon entropy (base e), max when uniform
+        entropy = -sum(v * math.log(v) for v in norm.values() if v > 0)
+        # Normalize entropy to [0, 1] relative to 7-way uniform
+        max_entropy = math.log(len(norm)) if norm else 1.0
+        entropy_norm = entropy / max_entropy if max_entropy > 0 else 0.0
+
+        # crude confidence flag: concentrated + top not "other"
+        confidence = "low"
+        if top_weight >= 0.6 and top_label != "other" and entropy_norm <= 0.7:
+            confidence = "high"
+        elif top_weight >= 0.4 and entropy_norm <= 0.9:
+            confidence = "medium"
+
+        return {
+            "weights": norm,
+            "top_label": top_label,
+            "top_weight": top_weight,
+            "entropy": entropy,
+            "entropy_norm": entropy_norm,
+            "confidence": confidence,
+            "_legend": (
+                "Probabilistic diagnostic landscape; weights sum to 1.0. "
+                "This is qualitative (EoH landscape), not calibrated probabilities."
+            ),
+        }
 
 # ---------------------------------------------------------------------------
 # Diagnostic landscape computation helper
@@ -158,13 +198,12 @@ def compute_diagnostic_landscape_from_events(
     out later for a calibrated model.
     """
     # 1) Respect any pre-computed landscape in structured
-    for e in events:
+    for e in reversed(events):
         structured = e.get("structured") or {}
         if not isinstance(structured, dict):
             continue
         dl = structured.get("diagnostic_landscape")
         if isinstance(dl, dict) and dl:
-            # Use only known keys; ignore extras
             return DiagnosticLandscape(
                 ra_like=dl.get("ra_like", 0.0) or 0.0,
                 sle_like=dl.get("sle_like", 0.0) or 0.0,
@@ -258,6 +297,37 @@ def compute_diagnostic_landscape_from_events(
         # Mild default bump to "other" for non-empty clinical content
         if text.strip():
             _bump("other", 0.2)
+        
+        # After the loop, dampen "other" if we have strong autoimmune signals
+        signal_sum = (
+            weights["ra_like"]
+            + weights["sle_like"]
+            + weights["psa_like"]
+            + weights["sjogren_like"]
+            + weights["mixed_ctd_like"]
+            + weights["vasculitis_like"]
+        )
+
+        if signal_sum > 0:
+            # keep other non-zero but don't let it swamp
+            weights["other"] = min(weights["other"], signal_sum * 0.8)
+        
+        labs = structured.get("labs") or {}
+        if isinstance(labs, dict):
+            # RA: RF/anti-CCP
+            if labs.get("anti_ccp_positive") or labs.get("rf_high"):
+                _bump("ra_like", 1.0)
+
+            # SLE: dsDNA, low complement
+            if labs.get("anti_dsDNA_positive") or labs.get("low_complement"):
+                _bump("sle_like", 1.0)
+
+            # Vasculitis: ANCA
+            if labs.get("anca_positive") or labs.get("pr3_anca_positive") or labs.get("mpo_anca_positive"):
+                _bump("vasculitis_like", 1.0)
+        # after the main loop, before returning
+        if weights["ra_like"] >= 2.0 and weights["sle_like"] >= 2.0:
+            _bump("mixed_ctd_like", 2.0)
 
     return DiagnosticLandscape(
         ra_like=weights["ra_like"],
@@ -350,9 +420,25 @@ class TimelineEngine:
         ctx_lines: List[str] = []
         for e in events:
             ts = e.get("ts")
-            etype = e.get("event_type")
-            text = e.get("text") or ""
-            ctx_lines.append(f"[{ts}] ({etype}) {text}")
+            etype = (e.get("event_type") or "").lower()
+            text = (e.get("text") or "").strip()
+            structured = e.get("structured") or {}
+
+            # optional: short derived label
+            dx_labels = []
+            if isinstance(structured, dict):
+                for k in ("diagnoses", "diagnosis_labels"):
+                    v = structured.get(k)
+                    if isinstance(v, list):
+                        dx_labels.extend([str(x) for x in v])
+                    elif isinstance(v, str):
+                        dx_labels.append(v)
+
+            dx_str = f" | dx={'; '.join(dx_labels)}" if dx_labels else ""
+            snippet = text[:400]  # cap per event
+
+            ctx_lines.append(f"[{ts}] ({etype}){dx_str} {snippet}")
+
         context_text = "\n".join(ctx_lines)
 
         return TimelineContext(
@@ -379,6 +465,52 @@ class TimelineEngine:
         """
         # No heavy CPU here, so just call directly.
         return self._build_context_from_events(events, patient_id)
+    
+    def compute_landscape_history_from_events(
+        self,
+        events: List[Dict[str, Any]],
+        patient_id: str,
+        n_windows: int = 4,
+    ) -> List[Dict[str, Any]]:
+        """
+        Slice the timeline into n_windows by time and compute a landscape per slice.
+        Returns a JSON-friendly list: [{as_of_ts, weights...}, ...]
+        """
+        if not events or n_windows <= 0:
+            return []
+
+        ts_values = [e.get("ts") for e in events if e.get("ts") is not None]
+        if not ts_values:
+            return []
+
+        ts_values = sorted(ts_values)
+        start, end = ts_values[0], ts_values[-1]
+        total_days = max((end - start).days, 1)
+        window_days = max(total_days // n_windows, 1)
+
+        buckets: List[List[Dict[str, Any]]] = [[] for _ in range(n_windows)]
+        for e in events:
+            ts = e.get("ts")
+            if ts is None:
+                continue
+            idx = min((ts - start).days // window_days, n_windows - 1)
+            buckets[idx].append(e)
+
+        history: List[Dict[str, Any]] = []
+        for idx, bucket in enumerate(buckets):
+            if not bucket:
+                continue
+            dl = compute_diagnostic_landscape_from_events(bucket)
+            mid_ts = bucket[len(bucket) // 2].get("ts")
+            history.append(
+                {
+                    "patient_id": patient_id,
+                    "window_index": idx,
+                    "as_of_ts": mid_ts,
+                    "landscape": dl.to_payload(),  # rich payload
+                }
+            )
+        return history
 
     # ------------------------------------------------------------------
     # Read path (existing API)
