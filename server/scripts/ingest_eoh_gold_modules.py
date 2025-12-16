@@ -38,7 +38,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Now this import should work
-from server.eoh import module_49b_policy, module_49c_policy  # type: ignore
+from server.eoh import module_49b_policy, module_49c_policy, module_50_policy  # type: ignore
 
 # Use same DSN pattern as ingest_guideline_pdf
 DSN = os.getenv("SYNC_DATABASE_URL", "postgresql://localhost/2ndopinionmd")
@@ -119,6 +119,28 @@ def build_rows() -> List[Dict[str, Any]]:
                 "title": "EoH Gold 2025 – Module 49C Diagnostic Update Reactor Policy",
                 "text": text_49c,
                 "meta": json.dumps(meta_49c),
+            }
+        )
+
+    # 50
+    text_50 = _extract_policy_text(module_50_policy, "module_50_policy")
+    if text_50:
+        meta_50: Dict[str, Any] = {
+            "guideline_source": SOURCE,
+            "ethos_module_id": "50",
+            "year": 2025,
+            "topic": "ethos_of_health",
+            "disease": "multimorbidity",
+            "society": "EoH",
+            "kind": "ethos_module",
+            "module_label": "EoH Gold 2025 – Module 50 DxLandscapeFromEoH",
+        }
+        rows.append(
+            {
+                "source_id": f"{SOURCE}:mod_50",
+                "title": "EoH Gold 2025 – Module 50 DxLandscapeFromEoH Policy",
+                "text": text_50,
+                "meta": json.dumps(meta_50),
             }
         )
 

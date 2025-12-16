@@ -303,6 +303,24 @@ MODULE_INDEX: Dict[str, Dict[str, Any]] = {
             {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_49c"},
         ],
     },
+    "M50": {
+        "id": "M50",
+        "name": "DxLandscapeFromEoH – Diagnostic Landscape Engine",
+        "layer": "governance",
+        "llm_use_when": (
+            "You need to derive or reason about a structured diagnostic landscape "
+            "for an Episode of Health: clustered candidate diagnoses with scores, "
+            "evidence back to timeline facts, and suggested next diagnostic moves. "
+            "Use this when the question asks for a differential / diagnostic landscape "
+            "in an EoH-aware way (often type C or E questions, sometimes A/D when "
+            "the focus is on how diagnosis and flare interact)."
+        ),
+        "doc_handles": [
+            # Runtime / DB-facing views will be added later as we implement them.
+            # For now, we at least expose the policy text from eoh_gold_2025.
+            {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_50"},
+        ],
+    },
 }
 
 
@@ -321,7 +339,7 @@ QUESTION_TYPES: Dict[str, Dict[str, Any]] = {
     "C": {
         "description": "Why did the system predict / escalate a flare? (Explainability)",
         "goal": "Reconstruct the decision chain.",
-        "canonical_modules": ["M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19", "M25", "M48B", "M48C"],
+        "canonical_modules": ["M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19", "M25", "M48", "M48B", "M48C", "M50"],
     },
     "D": {
         "description": "Given this state, how should we adjust the plan? (non-emergency)",
@@ -331,7 +349,7 @@ QUESTION_TYPES: Dict[str, Dict[str, Any]] = {
     "E": {
         "description": "Is the model still calibrated / are we over-suppressing flares? (meta)",
         "goal": "Meta on performance, not per-patient.",
-        "canonical_modules": ["M19", "M41", "M48", "M48B", "M48C"],
+        "canonical_modules": ["M19", "M41", "M48", "M48B", "M48C", "M50"],
     },
 }
 

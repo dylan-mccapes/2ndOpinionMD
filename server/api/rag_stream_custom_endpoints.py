@@ -3,30 +3,47 @@
 from typing import Optional, List, Any, AsyncIterator, Dict
 import json
 import logging
+import time
+from datetime import datetime, date
 
 from fastapi import APIRouter, Query, Request, Depends
 from sse_starlette.sse import EventSourceResponse
 from server.timeline.engine import TimelineEngine, load_patient_timeline
+from server.timeline.engine import TimelineContext
+from server.eoh.timeline_summarizer import summarize_timeline_for_eoh, TimelineSummaries, SUMMARY_MAX_CHARS
+from server.llm.llm_client import chat_completion_async, embedding_async
+
+timeline_engine = TimelineEngine()
 
 from openai import OpenAI
 import inspect
 import anyio
 
-async def _chat_completion_async(client, **kwargs):
-    """
-    Call client.chat.completions.create in an async-friendly way,
-    whether the client is sync (OpenAI) or async (AsyncOpenAI).
-    """
-    create = client.chat.completions.create
+_openai_client = OpenAI(timeout=60.0)
 
-    # If it's an async function (AsyncOpenAI), just await it
-    if inspect.iscoroutinefunction(create):
-        return await create(**kwargs)
+class DateTimeJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime and date objects."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
-    # Otherwise run the sync call in a worker thread
-    return await anyio.to_thread.run_sync(lambda: create(**kwargs))
+async def _chat_completion_async(**kwargs):
+    """
+    Thin wrapper so existing call sites don't have to change.
+    All chat completions now go through the shared rate-limited client.
+    """
+    return await chat_completion_async(**kwargs)
+
+
+async def _embedding_async(**kwargs):
+    """
+    Same idea for embeddings: use shared concurrency limits + backoff.
+    """
+    return await embedding_async(**kwargs)
 
 from .stream_config import (
+    GUIDELINE_SOURCE_META,
     GUIDELINE_SOURCES,
     ETHOS_SOURCE_NAME,
     CODING_DEFAULT_SOURCES,
@@ -42,11 +59,13 @@ from .stream_config import (
     is_strict_code_source,
     EOH_SYSTEM_PROMPT,
     GUIDELINE_ANSWER_SYSTEM_PROMPT,
-    EVIDENCE_MAPPING_SYSTEM_PROMPT
+    EVIDENCE_MAPPING_SYSTEM_PROMPT,
+    EOH_DETECTIVE_PLANNER_SYSTEM_PROMPT,
+    EOH_DETECTIVE_REPORT_SYSTEM_PROMPT,
 )
 
 # EoH Router imports
-from server.eoh.router_llm import eoh_llm_router
+from server.eoh.router_llm import eoh_llm_router, build_compact_patient_state_for_router
 from server.eoh.module_index import MODULE_INDEX
 
 from .stream_gating import apply_source_gating, apply_code_row_filter
@@ -97,7 +116,7 @@ router = APIRouter(prefix="/api/rag", tags=["rag-custom"])
 
 # Default ask_stream sources: all guideline-ish sources, but EXCLUDE Ethos by default.
 ASK_STREAM_DEFAULT_SOURCES = sorted(
-    [s for s in GUIDELINE_SOURCES if s != ETHOS_SOURCE_NAME]
+    [s for s in list(GUIDELINE_SOURCE_META.keys()) if s != ETHOS_SOURCE_NAME]
 )
 
 
@@ -162,10 +181,6 @@ Output STRICT JSON with this exact shape:
   }
 }
 """
-
-# OpenAI client for QA grader
-from openai import OpenAI
-_openai_client = OpenAI(timeout=60.0)
 
 
 def _build_qa_ledger(
@@ -2053,7 +2068,6 @@ async def synthesize_valyu_evidence(
 
     try:
         resp = await _chat_completion_async(
-            client,
             model=VALYU_EVIDENCE_MODEL,
             messages=messages,
             response_format={"type": "json_object"},
@@ -2097,6 +2111,70 @@ async def synthesize_valyu_evidence(
 
     return docs
 
+# ---------------------------------------------------------------------------
+# EoH helper: fetch ethos_module_doc policy text from rag_corpus
+# ---------------------------------------------------------------------------
+
+async def _fetch_ethos_module_docs_text(
+    pool,
+    router_plan: Dict[str, Any],
+) -> str:
+    """
+    Look at doc_retrieval_plan for any handles with kind == 'ethos_module_doc'
+    and pull their policy text from rag_corpus.
+
+    Handle names are of the form 'source:source_id_suffix', e.g.:
+      'eoh_gold_2025:mod_50'
+
+    We use:
+      source      = left of ':'
+      source_id   = full handle name
+    """
+    handles: List[Dict[str, str]] = []
+    for item in router_plan.get("doc_retrieval_plan", []):
+        for h in item.get("handles", []):
+            if h.get("kind") == "ethos_module_doc":
+                handles.append(h)
+
+    if not handles:
+        return ""
+
+    texts: List[str] = []
+    async with pool.acquire() as conn:
+        for h in handles:
+            name = h.get("name")
+            if not name:
+                continue
+            try:
+                source, _ = name.split(":", 1)
+            except ValueError:
+                logger.warning("Invalid ethos_module_doc handle name: %r", name)
+                continue
+
+            row = await conn.fetchrow(
+                """
+                SELECT title, text
+                FROM rag_corpus
+                WHERE source = $1
+                  AND source_id = $2
+                """,
+                source,
+                name,
+            )
+            if not row:
+                logger.warning(
+                    "No rag_corpus row found for ethos_module_doc source=%s source_id=%s",
+                    source,
+                    name,
+                )
+                continue
+
+            title, text = row["title"], row["text"]
+            title_str = title or name
+            texts.append(f"### Ethos Module Policy – {title_str}\n\n{text}")
+
+    return "\n\n".join(texts)
+
 # Helper: load EoH patient_state snapshot from DB via asyncpg pool
 async def load_eoh_patient_state_from_db(pool: Any, patient_id: str) -> Dict[str, Any]:
     async with pool.acquire() as conn:
@@ -2131,6 +2209,75 @@ async def load_eoh_patient_state_from_db(pool: Any, patient_id: str) -> Dict[str
         d["raw"] = raw
         return d
 
+async def get_timeline_context_for_patient(patient_id: str) -> Optional[TimelineContext]:
+    """
+    Load all timeline events for a patient and build a TimelineContext.
+
+    We keep this separate so we can reuse it for EoH, case-analog
+    retrieval, etc.
+    """
+    patient_id = (patient_id or "").strip()
+    if not patient_id:
+        return None
+
+    # 1) Load events (sync via to_thread inside load_patient_timeline)
+    events = await load_patient_timeline(patient_id)
+    if not events:
+        return None
+
+    # 2) Build TimelineContext (diagnostic landscape + context_text, etc.)
+    ctx = await timeline_engine.build_timeline_context_from_events(
+        events=events,
+        patient_id=patient_id,
+    )
+    return ctx
+
+
+def build_timeline_router_summary(timeline_ctx: Any, patient_id: str) -> str:
+    """
+    Build a compact, router-friendly summary of a patient's timeline.
+    Keep this short and high-signal so it fits comfortably in the router prompt.
+    """
+    lines: List[str] = []
+
+    lines.append(f"Patient: {patient_id}")
+    lines.append(f"Event_count: {getattr(timeline_ctx, 'event_count', 'unknown')}")
+    lines.append(f"Span_days: {getattr(timeline_ctx, 'span_days', 'unknown')}")
+
+    key_signals = getattr(timeline_ctx, "key_signals", None)
+    if key_signals:
+        lines.append("Key_signals (high-level):")
+        # Trim to keep under control
+        try:
+            snippet = json.dumps(key_signals, ensure_ascii=False, cls=DateTimeJSONEncoder)
+            if len(snippet) > 800:
+                snippet = snippet[:800] + " ..."
+            lines.append(snippet)
+        except Exception:
+            pass
+
+    diag = getattr(timeline_ctx, "diagnostic_landscape", None)
+    if diag:
+        try:
+            # Prefer normalized dict if available
+            if hasattr(diag, "to_normalized_dict") and callable(diag.to_normalized_dict):
+                diag_dict = diag.to_normalized_dict()
+            elif isinstance(diag, dict):
+                diag_dict = diag
+            else:
+                diag_dict = None
+
+            if diag_dict:
+                diag_snippet = json.dumps(diag_dict, ensure_ascii=False, cls=DateTimeJSONEncoder)
+                if len(diag_snippet) > 600:
+                    diag_snippet = diag_snippet[:600] + " ..."
+                lines.append("Diagnostic_landscape (weights, truncated):")
+                lines.append(diag_snippet)
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
 CASE_ANALOG_SOURCE = "mimic4_note"
 # Keep analogs for flare-vs-noise and "other" exploratory questions only
 CASE_ANALOG_QUESTION_TYPES = {"B", "OTHER"}
@@ -2156,6 +2303,19 @@ Your role:
 - Treat the prepended **EoH Router Plan** as the blueprint for your reasoning.
 
 You never query a database. You only see what is in the fused context.
+
+You receive:
+- A clinical question.
+- A fused context of documents from multiple sources (guidelines, Ethos/EoH internal docs, patient timeline, diagnostic landscape, Valyu research, etc.).
+
+When using context:
+- Treat guideline and Ethos/EoH sources as primary normative references.
+- Treat patient timeline and diagnostic landscape as the ground truth about this specific patient.
+- Treat Valyu research sources (source names beginning with 'valyu/' or method containing 'valyu') as:
+  - Secondary research evidence that can support or challenge internal guidelines.
+  - Never the sole basis for a clinical recommendation when it conflicts with strong guideline consensus.
+- When you rely on Valyu research for a key claim, make that clear in your reasoning (e.g., "external research suggests...").
+
 
 --------------------------------------------------------------------------------
 EOH ROUTER PLAN INSTRUCTIONS
@@ -2673,7 +2833,6 @@ async def _run_evidence_mapping(
 
     try:
         resp = await _chat_completion_async(
-            _openai_client,
             model=model,
             messages=messages,
             response_format={"type": "json_object"},
@@ -2715,11 +2874,59 @@ async def _run_evidence_mapping(
 
     return {"claims": clean_claims}
 
+# Heuristic: does this context already include any Valyu research docs?
+def _has_valyu_doc(ctx: List[Dict[str, Any]]) -> bool:
+    for d in ctx:
+        src = str(d.get("source") or "").lower()
+        # Adjust if your Valyu sources use different names
+        if src.startswith("valyu") or src in ("valyu_default", "valyu_guideline", "valyu_research"):
+            return True
+    return False
+
+
+def _pick_top_valyu_doc(valyu_docs: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not valyu_docs:
+        return None
+    # Prefer highest score if available, else just first
+    sorted_docs = sorted(
+        valyu_docs,
+        key=lambda d: float(d.get("score") or 0.0),
+        reverse=True,
+    )
+    return sorted_docs[0]
+
+
+def _timeline_summaries_from_patient_state(
+    ps: Dict[str, Any],
+) -> Optional[TimelineSummaries]:
+    """
+    Build a TimelineSummaries instance from compact patient_state JSON.
+
+    Expected keys (all optional):
+      - timeline_summary
+      - meds_and_labs_snapshot
+      - valyu_summary
+    """
+    summary = (ps.get("timeline_summary") or "").strip()
+    meds = (ps.get("meds_and_labs_snapshot") or ps.get("meds_andlabs_snapshot") or "").strip()
+    valyu = (ps.get("valyu_summary") or "").strip()
+
+    if not summary and not meds and not valyu:
+        return None
+
+    return TimelineSummaries(
+        timeline_summary=summary,
+        meds_and_labs_snapshot=meds,
+        valyu_summary=valyu,
+    )
+
 
 # ---------------------------------------------------------------------------
 # eoh_stream_event_generator — dedicated EoH event generator with router
 # ---------------------------------------------------------------------------
 
+
+# server/api/rag_stream_routes.py
 
 async def eoh_stream_event_generator(
     *,
@@ -2747,20 +2954,50 @@ async def eoh_stream_event_generator(
     """
     Dedicated event generator for /eoh_stream with EoH LLM Router integration.
 
-    This generator:
-    1. Calls the EoH router early to create a module/doc-handle plan
-    2. Emits the plan via SSE events (eoh_router_plan, eoh_retrieval_plan)
-    3. Injects the plan into the EoH RAG context as a pseudo-context item
-    4. Proceeds with existing EoH RAG behavior (ANN hits, etc.)
-    5. Uses EOH_ROUTED_ANSWER_SYSTEM_PROMPT for the LLM answer
+    High-level phases:
+
+    0) Initial events / warnings
+    1) Parse patient_state + timeline flags
+    2) EoH router (module/doc-handle plan)
+    3) Embed query
+    4) Valyu fetch + (optional) evidence synthesis
+    5) Extract Q&A query terms
+    6) Timeline load (single pass: signals, landscape, router summary)
+    7) Guideline/EoH source routing (stream_router.route_sources)
+    8) Per-source retrieval (TS + ANN)
+    9) Gating, fused internal context
+    10) Assemble final_ctx (router, ethos, timeline, Valyu, internal, case analogs, patient_state)
+    11) Optional EoH gap retrieval
+    12) LLM answer (or metadata-only mode)
     """
+    t0 = time.perf_counter()
+
     VALYU_K_MAX = 4
     requested_valyu_k = valyu_k
     valyu_k = max(0, min(valyu_k, VALYU_K_MAX))
 
     term_expansions: Dict[str, List[str]] = {}
 
-    # Parse patient_state if provided
+    # Will hold an ethos_module_doc context item if router requests any:
+    ethos_module_docs_ctx_item: Optional[Dict[str, Any]] = None
+
+    # Timeline-related state (single load used for both routing + context)
+    timeline_ctx: Optional[TimelineContext] = None
+    timeline_summary_for_router: Optional[str] = None
+    timeline_diag_doc: Optional[Dict[str, Any]] = None
+    timeline_history_doc: Optional[Dict[str, Any]] = None
+    timeline_doc: Optional[Dict[str, Any]] = None
+    timeline_summaries: Optional[TimelineSummaries] = None
+
+    # Patient state doc (for later context injection)
+    eoh_patient_state_doc: Optional[Dict[str, Any]] = None
+
+    # Case analog docs (for later context injection)
+    case_analog_docs: List[Dict[str, Any]] = []
+
+    # ---------------------------------------------------------------------------
+    # 1) Parse patient_state JSON + timeline flags
+    # ---------------------------------------------------------------------------
     patient_state_summary: Optional[Dict[str, Any]] = None
     if patient_state:
         try:
@@ -2768,6 +3005,19 @@ async def eoh_stream_event_generator(
         except Exception:
             logger.warning("eoh_stream: failed to parse patient_state JSON", exc_info=True)
             patient_state_summary = None
+    
+    if patient_state_summary:
+        try:
+            ps_summaries = _timeline_summaries_from_patient_state(patient_state_summary)
+        except Exception:
+            logger.exception("eoh_stream: failed to build TimelineSummaries from patient_state")
+            ps_summaries = None
+
+        if ps_summaries is not None:
+            timeline_summaries = ps_summaries
+            if ps_summaries.timeline_summary:
+                timeline_summary_for_router = ps_summaries.timeline_summary
+
     if use_timeline and timeline_patient_id:
         if patient_state_summary is None:
             patient_state_summary = {}
@@ -2775,7 +3025,9 @@ async def eoh_stream_event_generator(
         patient_state_summary.setdefault("eoh_has_timeline", True)
         patient_state_summary.setdefault("eoh_timeline_patient_id", timeline_patient_id)
 
-    # 0) Initial event
+    # ---------------------------------------------------------------------------
+    # 0) Initial SSE event + soft warnings (kept as phase 0 in SSE)
+    # ---------------------------------------------------------------------------
     yield sse(
         "start",
         {
@@ -2791,18 +3043,8 @@ async def eoh_stream_event_generator(
         },
     )
 
-    # 0.1) Soft warnings
     warnings: List[str] = []
-    # if len(db_sources) > 8:
-    #     warnings.append(
-    #         f"High number of sources requested ({len(db_sources)}). "
-    #         "This may dilute relevance; consider narrowing the 'sources=' list."
-    #     )
-    # if limit > 15:
-    #     warnings.append(
-    #         f"High per-source limit={limit}. This may increase noise; "
-    #         "consider a smaller 'limit' for sharper focus."
-    #     )
+    # (optional tuning warnings can live here if you want to re-enable them)
     if warnings:
         yield sse("warning", {"messages": warnings})
 
@@ -2810,7 +3052,8 @@ async def eoh_stream_event_generator(
         return
 
     # ---------------------------------------------------------------------------
-    # 1) EoH Router Call — create module/doc-handle plan
+    # 2) EoH Router Call — create module/doc-handle plan
+    #     (uses patient_state_summary, not yet dependent on Valyu/timeline)
     # ---------------------------------------------------------------------------
     yield sse(
         "status",
@@ -2871,7 +3114,6 @@ async def eoh_stream_event_generator(
         },
     )
 
-    # Emit post-routing effective sources count
     n_effective_modules = len(doc_plan_summary)
     n_effective_handles = sum(len(item.get("handles", [])) for item in doc_plan_summary)
     yield sse(
@@ -2887,9 +3129,8 @@ async def eoh_stream_event_generator(
     if await request.is_disconnected():
         return
 
-
     # ---------------------------------------------------------------------------
-    # 2) Build router plan context item (to prepend to context)
+    # 2b) Build router plan context item (to prepend to context later)
     # ---------------------------------------------------------------------------
     question_type = router_plan.get("question_type", "OTHER")
     qt_expl = router_plan.get("question_type_explanation", "")
@@ -2934,6 +3175,39 @@ async def eoh_stream_event_generator(
     }
 
     # ---------------------------------------------------------------------------
+    # 2c) Fetch Ethos module policy docs requested by router (ethos_module_doc)
+    # ---------------------------------------------------------------------------
+    ethos_module_docs_text = await _fetch_ethos_module_docs_text(pool, router_plan)
+
+    if ethos_module_docs_text:
+        ethos_module_docs_ctx_item = {
+            "id": "ethos_module_docs:eoh_gold_2025",
+            "source": "ethos_module_doc",
+            "source_id": "eoh_gold_2025",
+            "title": "Ethos module governance / policy text (EoH Gold 2025)",
+            "text": ethos_module_docs_text,
+            "score": 1.0,
+            "method": "ethos_module_doc",
+        }
+
+        ethos_handles: List[str] = []
+        for item in router_plan.get("doc_retrieval_plan", []):
+            for h in item.get("handles", []):
+                if h.get("kind") == "ethos_module_doc":
+                    name = h.get("name")
+                    if name:
+                        ethos_handles.append(name)
+
+        yield sse(
+            "ethos_module_docs",
+            {
+                "handles": ethos_handles,
+                "count": len(ethos_handles),
+                "note": "Loaded ethos_module_doc policy text from rag_corpus.",
+            },
+        )
+
+    # ---------------------------------------------------------------------------
     # 3) Embed query
     # ---------------------------------------------------------------------------
     yield sse("status", {"status": "embedding_query"})
@@ -2950,31 +3224,287 @@ async def eoh_stream_event_generator(
 
     if await request.is_disconnected():
         return
+    
 
     # ---------------------------------------------------------------------------
-    # 4) Valyu fetch (optional for EoH)
+    # 4) Timeline load (single pass) – signals + diagnostic landscape + summary
+    #     Used both for context and to influence guideline routing / Valyu.
     # ---------------------------------------------------------------------------
-    # Router-guided Valyu usage: only for certain question types
-    effective_use_valyu = use_valyu
-    if use_valyu:
-        # Example: research support only for certain classes of questions
-        if question_type not in ("B", "C", "OTHER"):
-            # A: pure flare detection; D/E: maybe pure coding or bookkeeping
-            effective_use_valyu = False
+    if use_timeline and timeline_patient_id:
+        yield sse(
+            "status",
+            {"status": "loading_timeline", "patient_id": timeline_patient_id},
+        )
 
+        try:
+            events = await load_patient_timeline(timeline_patient_id)
+
+            yield sse(
+                "timeline_events_loaded",
+                {
+                    "patient_id": timeline_patient_id,
+                    "event_count": len(events),
+                },
+            )
+
+            timeline_ctx_local = await timeline_engine.build_timeline_context_from_events(
+                events, timeline_patient_id
+            )
+
+            yield sse(
+                "timeline_loaded",
+                {
+                    "patient_id": timeline_patient_id,
+                    "event_count": timeline_ctx_local.event_count,
+                    "span_days": timeline_ctx_local.span_days,
+                },
+            )
+
+            # Signals
+            yield sse(
+                "timeline_signals_summary",
+                {
+                    "patient_id": timeline_patient_id,
+                    "n_signals": len(timeline_ctx_local.key_signals or []),
+                    "sample_signals": (timeline_ctx_local.key_signals or [])[:5],
+                },
+            )
+
+            if debug:
+                yield sse(
+                    "timeline_signals",
+                    {
+                        "patient_id": timeline_patient_id,
+                        "key_signals": timeline_ctx_local.key_signals,
+                    },
+                )
+
+            if timeline_ctx_local.flare_features:
+                yield sse(
+                    "timeline_flare_features",
+                    {
+                        "patient_id": timeline_patient_id,
+                        "flare_features": timeline_ctx_local.flare_features,
+                    },
+                )
+
+            # Diagnostic landscape + history
+            if timeline_ctx_local.diagnostic_landscape:
+                try:
+                    dl = timeline_ctx_local.diagnostic_landscape
+
+                    if hasattr(dl, "to_payload") and callable(dl.to_payload):
+                        diag_payload = dl.to_payload()
+                    elif hasattr(dl, "to_normalized_dict") and callable(dl.to_normalized_dict):
+                        diag_payload = {"weights": dl.to_normalized_dict()}
+                    elif isinstance(dl, dict):
+                        diag_payload = dl
+                    else:
+                        diag_payload = None
+
+                    if diag_payload is not None:
+                        yield sse(
+                            "timeline_probabilistic_differential",
+                            {
+                                "patient_id": timeline_patient_id,
+                                "diagnostic_landscape": diag_payload,
+                            },
+                        )
+
+                        timeline_diag_doc = {
+                            "id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
+                            "source": "patient_timeline_diagnostic_landscape",
+                            "source_id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
+                            "title": f"Diagnostic landscape – {timeline_patient_id}",
+                            "text": json.dumps(diag_payload, ensure_ascii=False, cls=DateTimeJSONEncoder),
+                            "score": 1.0,
+                            "method": "timeline_diagnostic_landscape",
+                        }
+
+                        history = timeline_engine.compute_landscape_history_from_events(
+                            events, timeline_patient_id
+                        )
+                        if history:
+                            timeline_history_doc = {
+                                "id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
+                                "source": "patient_diagnostic_landscape_history",
+                                "source_id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
+                                "title": f"Diagnostic landscape history – {timeline_patient_id}",
+                                "text": json.dumps(history, ensure_ascii=False, cls=DateTimeJSONEncoder),
+                                "score": 1.0,
+                                "method": "timeline_diagnostic_landscape_history",
+                            }
+
+                            yield sse(
+                                "timeline_diagnostic_landscape_history",
+                                {
+                                    "patient_id": timeline_patient_id,
+                                    "history_length": len(history),
+                                },
+                            )
+
+                except Exception:
+                    logger.exception(
+                        "Failed to serialize diagnostic_landscape for %s",
+                        timeline_patient_id,
+                    )
+
+            # -------------------------------------------------------------------
+            # 4a) Timeline summarizer LLM – compress raw context for all downstream LLMs
+            #      BUT if detective already gave us a canonical summary in patient_state,
+            #      reuse it and DO NOT re-call the LLM.
+            # -------------------------------------------------------------------
+            try:
+                # If no precomputed summary, call the summarizer once here
+                if timeline_summaries is None:
+                    timeline_summaries = await summarize_timeline_for_eoh(
+                        client=_openai_client,
+                        question=q,
+                        timeline_text=timeline_ctx_local.context_text,
+                        pool=pool,
+                        patient_id=timeline_patient_id,
+                    )
+
+                if timeline_summaries and timeline_summaries.timeline_summary:
+                    logger.info(
+                        "EoH: using timeline_summary (len=%d) instead of raw timeline (len=%d)",
+                        len(timeline_summaries.timeline_summary),
+                        len(timeline_ctx_local.context_text or ""),
+                    )
+                    # compress raw timeline for downstream LLMs
+                    timeline_ctx_local.context_text = timeline_summaries.timeline_summary
+
+                # Router summary: canonical summary or fallback
+                timeline_summary_for_router = (
+                    (timeline_summaries.timeline_summary if timeline_summaries else None)
+                    or build_timeline_router_summary(timeline_ctx_local, timeline_patient_id)
+                )
+
+                if timeline_summary_for_router:
+                    yield sse(
+                        "timeline_router_summary",
+                        {
+                            "patient_id": timeline_patient_id,
+                            "summary": timeline_summary_for_router[:1200],
+                        },
+                    )
+
+                # Emit meds/labs snapshot for debugging / UI if present
+                if timeline_summaries and timeline_summaries.meds_and_labs_snapshot:
+                    yield sse(
+                        "timeline_meds_labs_snapshot",
+                        {
+                            "patient_id": timeline_patient_id,
+                            "snapshot": timeline_summaries.meds_and_labs_snapshot[:1600],
+                        },
+                    )
+
+            except Exception:
+                logger.exception("EoH: timeline summarizer failed; using raw timeline context.")
+                # Fall back to old router summary helper
+                try:
+                    timeline_summary_for_router = build_timeline_router_summary(
+                        timeline_ctx_local,
+                        timeline_patient_id,
+                    )
+                    if timeline_summary_for_router:
+                        yield sse(
+                            "timeline_router_summary",
+                            {
+                                "patient_id": timeline_patient_id,
+                                "summary": timeline_summary_for_router[:1200],
+                            },
+                        )
+                except Exception:
+                    logger.exception(
+                        "Failed to build timeline summary for router for %s",
+                        timeline_patient_id,
+                    )
+                    timeline_summary_for_router = None
+
+            # -------------------------------------------------------------------
+            # 4b) Timeline context doc – now uses compressed context_text
+            # -------------------------------------------------------------------
+            timeline_doc = {
+                "id": f"patient_timeline:{timeline_patient_id}",
+                "source": "patient_timeline",
+                "source_id": f"patient_timeline:{timeline_patient_id}",
+                "title": f"Patient Timeline – {timeline_patient_id}",
+                "text": timeline_ctx_local.context_text,
+                "meds_and_labs": timeline_summaries.meds_and_labs_snapshot,
+                "score": 1.0,
+                "method": "timeline",
+            }
+
+            yield sse(
+                "patient_timeline_ctx",
+                {
+                    "source": "patient_timeline",
+                    "patient_id": timeline_patient_id,
+                    "event_count": timeline_ctx_local.event_count,
+                },
+            )
+
+        except Exception as e:
+            logger.exception("Failed to load patient timeline for %s", timeline_patient_id)
+            yield sse(
+                "status",
+                {"status": "timeline_load_failed", "detail": str(e)},
+            )
+
+    if await request.is_disconnected():
+        return
+
+    # ---------------------------------------------------------------------------
+    # 5) Valyu fetch (optional for EoH)
+    # ---------------------------------------------------------------------------
+    effective_use_valyu = bool(use_valyu or research)
     valyu_matches: List[Dict[str, Any]] = []
+
+    # Build an augmented query for Valyu using *compact* valyu_summary if available.
+    # Fallback to meds/labs snapshot, then to plain question.
+    valyu_query = q.strip()
+    valyu_signals = ""
+
+    if timeline_summaries:
+        if timeline_summaries.valyu_summary:
+            valyu_signals = timeline_summaries.valyu_summary
+        elif timeline_summaries.meds_and_labs_snapshot:
+            valyu_signals = timeline_summaries.meds_and_labs_snapshot
+
+    if valyu_signals:
+        # Hard cap length so we don't trip Valyu query limits
+        MAX_VALYU_SIGNALS_CHARS = 1200
+        valyu_signals = valyu_signals[:MAX_VALYU_SIGNALS_CHARS]
+
+        valyu_query = (
+            f"{q.strip()}\n\n"
+            "PATIENT_VALYU_SIGNAL_SUMMARY (meds/labs/diagnoses, compressed):\n"
+            f"{valyu_signals}"
+        )
 
     if effective_use_valyu and valyu_k > 0:
         yield sse("status", {"status": "valyu_fetch"})
         try:
+            t0 = time.perf_counter()
+            logger.info("Valyu: calling fetch_valyu_results(q=%r, mode=%r, limit=%r, sources=%r)",
+                        valyu_query[:200], valyu_mode, valyu_k, valyu_sources)
+
             valyu_by_source = await fetch_valyu_results(
-                q=q,
+                q=valyu_query,
                 mode=valyu_mode,
                 limit=valyu_k,
                 raw=valyu_raw,
                 sources=valyu_sources,
                 boost=valyu_boost,
             )
+
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            logger.info("Valyu: fetch returned sources=%s in %d ms",
+                        list((valyu_by_source or {}).keys()), elapsed_ms)
+
+            yield sse("timing", {"phase": "valyu_fetch", "elapsed_ms": elapsed_ms})
+
         except Exception as e:
             logger.exception("Valyu fetch failed")
             yield sse(
@@ -3010,12 +3540,9 @@ async def eoh_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # -----------------------------------------------------------------------
-    # 4b) Optional: second LLM call to distill Valyu full-text into
-    #      short evidence snippets aligned to the router plan.
-    #      Only do this when we have full_text (valyu_raw=1) and research mode.
-    # -----------------------------------------------------------------------
-
+    # ---------------------------------------------------------------------------
+    # 5b) Optional Valyu evidence synthesis aligned to router plan
+    # ---------------------------------------------------------------------------
     valyu_evidence_docs: List[Dict[str, Any]] = []
 
     if (
@@ -3025,8 +3552,6 @@ async def eoh_stream_event_generator(
         and research
     ):
         try:
-            # Use the same router_plan_text we later stuff into router_ctx_item
-            # (we haven't built router_ctx_item yet, but we can reuse the lines).
             question_type = router_plan.get("question_type", "OTHER")
             qt_expl = router_plan.get("question_type_explanation", "")
 
@@ -3080,11 +3605,11 @@ async def eoh_stream_event_generator(
                 "status",
                 {"status": "valyu_evidence_error", "detail": str(e)},
             )
+
     # ---------------------------------------------------------------------------
-    # 4c) Optional: cheap fallback for Valyu snippets (if no synthesis)
+    # 5c) Cheap fallback for Valyu snippets (if no synthesis)
     # ---------------------------------------------------------------------------
     if not valyu_evidence_docs and valyu_matches:
-        # Cheap fallback: push raw Valyu rows into context
         fallback_docs: List[Dict[str, Any]] = []
         for r in valyu_matches:
             text = (r.get("text") or "") or ((r.get("meta") or {}).get("snippet") or "")
@@ -3114,7 +3639,7 @@ async def eoh_stream_event_generator(
             )
 
     # ---------------------------------------------------------------------------
-    # 5) Extract Q&A-oriented query terms
+    # 6) Extract query terms (optionally using Valyu snippets)
     # ---------------------------------------------------------------------------
     qna_terms: Dict[str, Any] = {"terms": [], "expansions": {}, "all_terms": []}
     all_terms: List[str] = []
@@ -3157,8 +3682,9 @@ async def eoh_stream_event_generator(
     if await request.is_disconnected():
         return
 
+
     # ---------------------------------------------------------------------------
-    # 6) Routing (source selection) — use existing router for source selection
+    # 7) Guideline/EoH source routing – use Valyu + timeline summary to bias
     # ---------------------------------------------------------------------------
     router_plan_sources: CodingRouterPlan | None = None
     effective_sources: List[str] = list(db_sources)
@@ -3171,6 +3697,7 @@ async def eoh_stream_event_generator(
             code_terms=[],
             candidate_sources=db_sources,
             valyu_context=(valyu_matches if valyu_matches else None),
+            timeline_summary=timeline_summary_for_router,
         )
     except Exception as e:
         logger.exception("route_sources failed; using all db_sources")
@@ -3205,7 +3732,7 @@ async def eoh_stream_event_generator(
     )
 
     # ---------------------------------------------------------------------------
-    # 7) Retrieve per source (TS + ANN)
+    # 8) Retrieve per source (TS + ANN)
     # ---------------------------------------------------------------------------
     yield sse("status", {"status": "retrieving_candidates"})
     results_by_source: Dict[str, List[Dict[str, Any]]] = {}
@@ -3302,7 +3829,6 @@ async def eoh_stream_event_generator(
                 },
             )
 
-        # Combine and dedupe
         combined = dedupe_matches(ts_rows + ann_rows)
         if combined:
             results_by_source[src] = combined
@@ -3312,9 +3838,8 @@ async def eoh_stream_event_generator(
 
     raw_source_count = len(results_by_source)
 
-
     # ---------------------------------------------------------------------------
-    # 8) Gating (source-level pruning)
+    # 9) Gating (source-level pruning) + fused internal context
     # ---------------------------------------------------------------------------
     yield sse("status", {"status": "gating_sources"})
     gated_results_by_source, gating_info = apply_source_gating(
@@ -3329,9 +3854,6 @@ async def eoh_stream_event_generator(
     if await request.is_disconnected():
         return
 
-    # ---------------------------------------------------------------------------
-    # 9) Fuse internal contexts
-    # ---------------------------------------------------------------------------
     yield sse("status", {"status": "fusing_context"})
     ROW_ABS_MIN_SCORE = 0.05
 
@@ -3348,222 +3870,9 @@ async def eoh_stream_event_generator(
         coding_mode=False,
     )
 
-    # Start with router plan
-    final_ctx: list[dict[str, Any]] = [router_ctx_item]
-
-    # Then Valyu evidence snippets (if any and research mode), so they sit
-    # near the top but *after* the router plan.
-    if valyu_evidence_docs:
-        final_ctx = final_ctx + valyu_evidence_docs
-
-    # Then the usual fused internal context (guidelines, Ethos docs, etc.)
-    final_ctx = final_ctx + internal_ctx
-
     # ---------------------------------------------------------------------------
-    # 9b) EoH Demo Timeline – inject as a synthetic context doc
+    # 10) Case-analog retrieval from MIMIC-4 notes (ANN-only)
     # ---------------------------------------------------------------------------
-    params = request.query_params
-    demo_timeline = params.get("eoh_demo_timeline")
-    demo_patient_id = params.get("eoh_demo_patient_id")
-
-    if demo_timeline:
-        patient_label = demo_patient_id or "demo"
-
-        timeline_doc = {
-            "id": f"eoh_demo_timeline:{patient_label}",
-            "source": "eoh_demo_timeline",
-            "source_id": f"eoh_demo_timeline:{patient_label}",
-            "title": f"EoH demo timeline – {patient_label}",
-            # IMPORTANT: use 'text', not 'content'
-            "text": demo_timeline,
-            # Give it a strong score so any sorting keeps it near the top
-            "score": 1.0,
-            "method": "timeline",
-        }
-
-        # Put it right after the router context (or at the very front if you prefer)
-        # index 0 is router_ctx_item, so insert at 1
-        final_ctx = [timeline_doc] + final_ctx
-
-        # Optional: explicit SSE so the UI knows we injected it
-        yield sse(
-            "patient_timeline_ctx",
-            {
-                "source": "eoh_demo_timeline",
-                "patient_id": demo_patient_id,
-            },
-        )
-
-    # ---------------------------------------------------------------------------
-    # 9c) Database Timeline – load from ehr.patient_timeline if use_timeline=1
-    # ---------------------------------------------------------------------------
-    if use_timeline and timeline_patient_id:
-        yield sse(
-            "status",
-            {"status": "loading_timeline", "patient_id": timeline_patient_id},
-        )
-
-        try:
-            from server.timeline.engine import TimelineEngine, load_patient_timeline
-
-            engine = TimelineEngine()
-
-            # 1) Load events directly from ehr.patient_timeline
-            events = await load_patient_timeline(timeline_patient_id)
-
-            yield sse(
-                "timeline_events_loaded",
-                {
-                    "patient_id": timeline_patient_id,
-                    "event_count": len(events),
-                },
-            )
-
-            # 2) Build timeline context from those events
-            timeline_ctx = await engine.build_timeline_context_from_events(
-                events, timeline_patient_id
-            )
-
-            # Emit timeline_loaded event
-            yield sse(
-                "timeline_loaded",
-                {
-                    "patient_id": timeline_patient_id,
-                    "event_count": timeline_ctx.event_count,
-                    "span_days": timeline_ctx.span_days,
-                },
-            )
-
-            # Emit timeline_signals event
-            yield sse(
-                "timeline_signals",
-                {
-                    "patient_id": timeline_patient_id,
-                    "key_signals": timeline_ctx.key_signals,
-                },
-            )
-
-            # Emit timeline_flare_features event
-            if timeline_ctx.flare_features:
-                yield sse(
-                    "timeline_flare_features",
-                    {
-                        "patient_id": timeline_patient_id,
-                        "flare_features": timeline_ctx.flare_features,
-                    },
-                )
-
-            # Emit timeline_probabilistic_differential event
-            if timeline_ctx.diagnostic_landscape:
-                try:
-                    diag_landscape = timeline_ctx.diagnostic_landscape
-
-                    # Normalize to a plain dict
-                    if hasattr(diag_landscape, "to_normalized_dict") and callable(
-                        diag_landscape.to_normalized_dict
-                    ):
-                        diag_payload = diag_landscape.to_payload()
-                    elif isinstance(diag_landscape, dict):
-                        diag_payload = diag_landscape
-                    else:
-                        # If it's some other object, bail out gracefully
-                        diag_payload = None
-
-                    if diag_payload is not None:
-                        # SSE event for the UI / logs
-                        yield sse(
-                            "timeline_probabilistic_differential",
-                            {
-                                "patient_id": timeline_patient_id,
-                                "diagnostic_landscape": diag_payload,
-                            },
-                        )
-
-                        # Inject as a dedicated context document
-                        diag_doc = {
-                            "id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
-                            "source": "patient_timeline_diagnostic_landscape",
-                            "source_id": f"patient_timeline_diagnostic_landscape:{timeline_patient_id}",
-                            "title": f"Diagnostic landscape – {timeline_patient_id}",
-                            "text": json.dumps(diag_payload, ensure_ascii=False),
-                            "score": 1.0,
-                            "method": "timeline_diagnostic_landscape",
-                        }
-
-                        # Prepend so it sits right under patient_state/router/timeline
-                        final_ctx = [diag_doc] + final_ctx
-
-                        history = engine.compute_landscape_history_from_events(
-                            events, timeline_patient_id
-                        )
-                        if history:
-                            history_doc = {
-                                "id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
-                                "source": "patient_diagnostic_landscape_history",
-                                "source_id": f"patient_diagnostic_landscape_history:{timeline_patient_id}",
-                                "title": f"Diagnostic landscape history – {timeline_patient_id}",
-                                "text": json.dumps(history, ensure_ascii=False),
-                                "score": 1.0,
-                                "method": "timeline_diagnostic_landscape_history",
-                            }
-                            # Prepend so it sits high in context
-                            final_ctx = [history_doc] + final_ctx
-
-                            # NEW: SSE event for the history document
-                            yield sse(
-                                "timeline_diagnostic_landscape_history",
-                                {
-                                    "patient_id": timeline_patient_id,
-                                    "history_length": len(history)
-                                        if hasattr(history, "__len__")
-                                        else None,
-                                },
-                            )
-
-                except Exception as e:
-                    logger.exception(
-                        "Failed to serialize diagnostic_landscape for %s",
-                        timeline_patient_id,
-                    )
-
-            # Create timeline context document for injection
-            timeline_doc = {
-                "id": f"patient_timeline:{timeline_patient_id}",
-                "source": "patient_timeline",
-                "source_id": f"patient_timeline:{timeline_patient_id}",
-                "title": f"Patient Timeline – {timeline_patient_id}",
-                "text": timeline_ctx.context_text,
-                "score": 1.0,
-                "method": "timeline",
-            }
-
-            # Prepend timeline context to final_ctx
-            final_ctx = [timeline_doc] + final_ctx
-
-            yield sse(
-                "patient_timeline_ctx",
-                {
-                    "source": "patient_timeline",
-                    "patient_id": timeline_patient_id,
-                    "event_count": timeline_ctx.event_count,
-                },
-            )
-
-        except Exception as e:
-            logger.exception("Failed to load patient timeline for %s", timeline_patient_id)
-            yield sse(
-                "status",
-                {"status": "timeline_load_failed", "detail": str(e)},
-            )
-    
-
-    # ---------------------------------------------------------------------------
-    # 9d) Case-analog retrieval from MIMIC-4 notes (mimic4_note) — ANN-only
-    # ---------------------------------------------------------------------------
-    case_analog_docs: list[dict[str, Any]] = []
-
-    # Only do this for question types where analogs are particularly useful.
-    # We now let Valyu be independent; include_case_analogs is the explicit flag.
     use_case_analogs = (
         question_type in CASE_ANALOG_QUESTION_TYPES
         and research
@@ -3579,7 +3888,6 @@ async def eoh_stream_event_generator(
         )
 
         try:
-            # ANN-only retrieval for speed; we don't run TS over mimic4_note here.
             ann_rows: List[Dict[str, Any]] = []
             try:
                 ann_rows = await search_source_ann(
@@ -3593,7 +3901,6 @@ async def eoh_stream_event_generator(
                 ann_rows = []
 
             if ann_rows:
-                # SSE summary for UI / telemetry
                 yield sse(
                     "case_analogs",
                     {
@@ -3636,19 +3943,12 @@ async def eoh_stream_event_generator(
                 {"status": "case_analog_error", "detail": str(e)},
             )
 
-    # Append case analogs at the end of the fused context to avoid drowning guidelines/timeline
-    if case_analog_docs:
-        final_ctx = final_ctx + case_analog_docs
-
     # ---------------------------------------------------------------------------
-    # 9e) EoH patient_state – inject numeric module outputs (if available)
+    # 11) EoH patient_state – inject numeric module outputs (if available)
     # ---------------------------------------------------------------------------
-    # Priority order:
-    # 1) Explicit patient_state JSON passed as query param
-    # 2) If a timeline_patient_id is provided, try to load eoh.patient_state from DB
-    eoh_patient_state_doc = None
-
-    # a) explicit param
+    # Priority:
+    #  1) explicit patient_state JSON param
+    #  2) snapshot from eoh.patient_state in DB
     if patient_state_summary:
         eoh_patient_state_doc = {
             "id": f"eoh_patient_state_param:{timeline_patient_id or 'unknown'}",
@@ -3668,7 +3968,6 @@ async def eoh_stream_event_generator(
             },
         )
 
-    # b) DB snapshot (only if no explicit JSON was passed and we have a patient_id)
     elif timeline_patient_id:
         try:
             db_state = await load_eoh_patient_state_from_db(pool, timeline_patient_id)
@@ -3695,11 +3994,73 @@ async def eoh_stream_event_generator(
                 },
             )
 
-    # Prepend patient_state to context if we have it
-    if eoh_patient_state_doc is not None:
-        final_ctx = [eoh_patient_state_doc] + final_ctx
+    # ---------------------------------------------------------------------------
+    # 12) Assemble final_ctx in a coherent order
+    # ---------------------------------------------------------------------------
+    final_ctx: List[Dict[str, Any]] = []
 
-    # Valyu context accounting (unchanged)
+    # 1) EoH router plan always present
+    final_ctx.append(router_ctx_item)
+
+    # 2) Ethos module governance/policy if requested
+    if ethos_module_docs_ctx_item is not None:
+        final_ctx.append(ethos_module_docs_ctx_item)
+
+    # 3) Patient state snapshot at the very front (if present)
+    if eoh_patient_state_doc is not None:
+        final_ctx.insert(0, eoh_patient_state_doc)
+
+    # 4) Valyu evidence (if any)
+    if valyu_evidence_docs:
+        final_ctx.extend(valyu_evidence_docs)
+
+    # 5) Fused internal guideline/EoH context
+    final_ctx.extend(internal_ctx)
+
+    # 6) Demo timeline (query param) – highest precedence if present
+    params = request.query_params
+    demo_timeline = params.get("eoh_demo_timeline")
+    demo_patient_id = params.get("eoh_demo_patient_id")
+
+    if demo_timeline:
+        patient_label = demo_patient_id or "demo"
+
+        demo_timeline_doc = {
+            "id": f"eoh_demo_timeline:{patient_label}",
+            "source": "eoh_demo_timeline",
+            "source_id": f"eoh_demo_timeline:{patient_label}",
+            "title": f"EoH demo timeline – {patient_label}",
+            "text": demo_timeline,
+            "score": 1.0,
+            "method": "timeline",
+        }
+
+        final_ctx.insert(0, demo_timeline_doc)
+
+        yield sse(
+            "patient_timeline_ctx",
+            {
+                "source": "eoh_demo_timeline",
+                "patient_id": demo_patient_id,
+            },
+        )
+
+    # 7) Database-backed timeline docs (history, landscape, full timeline)
+    #    Injected near the very top, but after any explicit demo_timeline.
+    if timeline_doc is not None:
+        final_ctx.insert(0, timeline_doc)
+
+    if timeline_diag_doc is not None:
+        final_ctx.insert(0, timeline_diag_doc)
+
+    if timeline_history_doc is not None:
+        final_ctx.insert(0, timeline_history_doc)
+
+    # 8) Case analog docs at the tail to avoid drowning core guideline/timeline
+    if case_analog_docs:
+        final_ctx.extend(case_analog_docs)
+
+    # Valyu context accounting
     valyu_ctx_count = 0
     if use_valyu and valyu_k > 0 and valyu_matches:
         valyu_ctx_count = len(valyu_matches[:valyu_k])
@@ -3725,7 +4086,7 @@ async def eoh_stream_event_generator(
             },
         )
 
-    # Debug mode: emit full context text for deep debugging
+    # Debug: emit full context text
     if debug and final_ctx:
         yield sse(
             "context_fused",
@@ -3749,14 +4110,14 @@ async def eoh_stream_event_generator(
         return
 
     # ---------------------------------------------------------------------------
-    # 9f) EoH gap retrieval LLM pass — refine context before final answer
+    # 13) EoH gap retrieval LLM pass — refine context before final answer
     # ---------------------------------------------------------------------------
     if enable_gap and final_ctx:
         extra_gap_docs: List[Dict[str, Any]] = []
         gap_plan: Dict[str, Any] = {}
+        t0 = time.perf_counter()
 
         try:
-            # Build payload for gap planner
             gap_payload = build_eoh_gap_retrieval_payload(
                 question=q,
                 router_plan=router_plan,
@@ -3781,7 +4142,6 @@ async def eoh_stream_event_generator(
             )
 
             gap_resp = await _chat_completion_async(
-                _openai_client,
                 model=CHAT_MODEL_UTIL,
                 messages=gap_messages,
                 response_format={"type": "json_object"},
@@ -3807,7 +4167,6 @@ async def eoh_stream_event_generator(
                     },
                 )
 
-                # Execute slots one by one, producing extra context docs
                 for slot in slots:
                     kind = str(slot.get("kind") or "other")
                     slot_id = str(slot.get("slot_id") or "")
@@ -3815,13 +4174,11 @@ async def eoh_stream_event_generator(
                     terms = slot.get("terms") or []
                     per_slot_limit = int(slot.get("limit") or 2)
 
-                    # Small safety clamps
                     if per_slot_limit < 1:
                         per_slot_limit = 1
                     if per_slot_limit > 4:
                         per_slot_limit = 4
 
-                    # If LLM didn't pick a source, skip this slot (keeps behavior predictable)
                     if not suggested_sources:
                         continue
 
@@ -3830,9 +4187,6 @@ async def eoh_stream_event_generator(
                         if not src:
                             continue
 
-                        # Only run gap retrieval for sources we actually know how to query
-                        # (i.e., that participated in retrieval or are valid internal sources).
-                        # You can relax this if you want more aggressive exploration.
                         if src not in db_sources and src not in [d["source"] for d in final_ctx]:
                             continue
 
@@ -3847,7 +4201,6 @@ async def eoh_stream_event_generator(
                         )
 
                         try:
-                            # Special handling for case_analog-like slots
                             if kind == "case_analog" and src == CASE_ANALOG_SOURCE:
                                 ann_rows = await search_source_ann(
                                     pool=pool,
@@ -3872,10 +4225,8 @@ async def eoh_stream_event_generator(
                                     )
 
                             else:
-                                # Guideline / EoH / timeline / other: TS-first, then ANN fallback
                                 query_text = q
                                 if terms:
-                                    # Simple term-join; if you want, you can include q here too
                                     query_text = " ".join(terms)
 
                                 ts_rows = await search_source_ts(
@@ -3886,7 +4237,6 @@ async def eoh_stream_event_generator(
                                 )
 
                                 if not ts_rows:
-                                    # ANN fallback
                                     ann_rows = await search_source_ann(
                                         pool=pool,
                                         source=src,
@@ -3921,7 +4271,6 @@ async def eoh_stream_event_generator(
                         "elapsed_ms": int((time.perf_counter() - t0) * 1000),
                     },
                 )
-                # Light de-dup: avoid re-adding exact same id/source/text
                 seen_keys = {
                     (d["id"], d["source"])
                     for d in final_ctx
@@ -3935,7 +4284,6 @@ async def eoh_stream_event_generator(
                     deduped.append(d)
 
                 extra_gap_docs = deduped
-
                 final_ctx = final_ctx + extra_gap_docs
 
                 yield sse(
@@ -3948,21 +4296,107 @@ async def eoh_stream_event_generator(
 
         except Exception:
             logger.exception("EoH gap retrieval planning or execution failed")
-            # Fall back gracefully; no gap docs added
 
-    if await request.is_disconnected():
-        return
 
-    # Build citations AFTER gap docs have been added
-    citations = build_citations(final_ctx)
+    # ---------------------------------------------------------------------------
+    # 13b) Ensure Valyu research docs are present in final_ctx when research=1
+    # ---------------------------------------------------------------------------
+    try:
+        # research is usually an int flag (0/1) in the query params
+        if research and use_valyu and final_ctx:
+            has_valyu = _has_valyu_doc(final_ctx)
 
+            # If we have Valyu evidence at all, we want it in final_ctx.
+            # In research mode we bias toward including *all* Valyu docs (deduped),
+            # but you can cap this if context ever gets too big.
+            if valyu_evidence_docs:
+                # Deduplicate against existing context
+                seen_keys = {(d["id"], d["source"]) for d in final_ctx}
+                backfilled: List[Dict[str, Any]] = []
+                for doc in valyu_evidence_docs[:3]:
+                    key = (doc.get("id"), doc.get("source"))
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+
+                    # Tag explicitly as Valyu research so prompts can treat them correctly
+                    d = dict(doc)
+                    if not d.get("id"):
+                        d["id"] = f"valyu_doc:{len(seen_keys)}"
+                    d["method"] = (d.get("method") or "valyu") + "+valyu_research"
+                    backfilled.append(d)
+
+                if backfilled:
+                    final_ctx = final_ctx + backfilled
+                    yield sse(
+                        "status",
+                        {
+                            "status": "valyu_backfill",
+                            "detail": (
+                                "Added Valyu research docs to final context "
+                                "(research=1, use_valyu=1)."
+                            ),
+                            "added_docs": len(backfilled),
+                            "had_valyu_before": bool(has_valyu),
+                        },
+                    )
+
+            # If we somehow have no valyu_evidence_docs but we do have raw Valyu matches,
+            # fall back to at least the best 1–2.
+            elif valyu_matches:
+                # sort/clip if needed – for now just take top 2 by score
+                sorted_matches = sorted(
+                    valyu_matches,
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )[:2]
+
+                seen_keys = {(d["id"], d["source"]) for d in final_ctx}
+                backfilled: List[Dict[str, Any]] = []
+                for r in sorted_matches:
+                    key = (r.get("id"), r.get("source", "valyu_pubmed"))
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    text = (r.get("text") or "") or ((r.get("meta") or {}).get("snippet") or "")
+                    if not text:
+                        continue
+                    backfilled.append(
+                        {
+                            "id": f"valyu_backfill:{r.get('id')}",
+                            "source": r.get("source", "valyu_pubmed"),
+                            "source_id": r.get("id"),
+                            "title": (r.get("title") or "Valyu article").strip(),
+                            "text": text,
+                            "score": float(r.get("score") or 0.0),
+                            "method": "valyu_raw+valyu_backfill",
+                        }
+                    )
+
+                if backfilled:
+                    final_ctx = final_ctx + backfilled
+                    yield sse(
+                        "status",
+                        {
+                            "status": "valyu_backfill_raw",
+                            "detail": (
+                                "Backfilled top Valyu raw snippets into context "
+                                "(research=1, use_valyu=1, no synthesized evidence)."
+                            ),
+                            "added_docs": len(backfilled),
+                        },
+                    )
+
+    except Exception:
+        logger.exception("EoH: failed to backfill Valyu doc(s) into final_ctx")
+    
     if await request.is_disconnected():
         return
 
     citations = build_citations(final_ctx)
 
     # ---------------------------------------------------------------------------
-    # 10) with_llm == False -> just metadata
+    # 14) with_llm == False -> just metadata
     # ---------------------------------------------------------------------------
     if not with_llm:
         yield sse("status", {"status": "done_no_llm"})
@@ -4013,12 +4447,11 @@ async def eoh_stream_event_generator(
         return
 
     # ---------------------------------------------------------------------------
-    # 11) LLM streaming with EoH-routed system prompt
+    # 15) LLM streaming with EoH-routed system prompt
     # ---------------------------------------------------------------------------
     yield sse("phase_start", {"source": "fusion", "method": "llm"})
     yield sse("status", {"status": "generating_eoh_answer"})
 
-    # Accumulate answer text for post-hoc evidence mapping
     answer_buffer: List[str] = []
 
     try:
@@ -4036,14 +4469,11 @@ async def eoh_stream_event_generator(
             if await request.is_disconnected():
                 return
 
-            # Best-effort accumulation: we assume the SSE "data" payload
-            # is a JSON string with a "text" or "delta" field for content.
             try:
                 if ev.get("event", "").startswith("llm"):
                     data_str = ev.get("data", "")
                     if data_str:
                         payload = json.loads(data_str)
-                        # Adjust these keys if your stream_llm_events format differs
                         chunk = (
                             payload.get("text")
                             or payload.get("delta")
@@ -4053,7 +4483,6 @@ async def eoh_stream_event_generator(
                         if isinstance(chunk, str):
                             answer_buffer.append(chunk)
             except Exception:
-                # Don't break streaming if parsing fails
                 logger.debug("Failed to parse llm event payload for answer_buffer", exc_info=True)
 
             yield ev
@@ -4065,13 +4494,11 @@ async def eoh_stream_event_generator(
         )
 
     yield sse("phase_end", {"source": "fusion", "method": "llm"})
-
-    # Build citations as before
     yield sse("citations", {"citations": citations})
 
-    # -----------------------------------------------------------------------
-    # Evidence-to-claim mapping (post-hoc, optional best-effort)
-    # -----------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # 16) Evidence-to-claim mapping (optional)
+    # ---------------------------------------------------------------------------
     try:
         answer_text = "".join(answer_buffer).strip()
         if answer_text:
@@ -4122,10 +4549,10 @@ async def eoh_stream(
             "sources plus the Ethos/EoH source."
         ),
     ),
-    limit: int = Query(12, ge=1, le=64),
-    ctx_k: int = Query(24, ge=1, le=128),
+    limit: int = Query(10, ge=1, le=64),
+    ctx_k: int = Query(32, ge=1, le=128),
     valyu_k: int = Query(
-        0,
+        3,
         ge=0,
         le=16,
         description="Default 0 for EoH mode (no Valyu); can be overridden."
@@ -4141,7 +4568,7 @@ async def eoh_stream(
         description="chunk=stream chunks, delta=tiny tokens (llm_delta), ctx=only context",
     ),
     use_valyu: int = Query(
-        0,
+        1,
         ge=0,
         le=1,
         description="1=include Valyu matches, 0=disable (default for EoH).",
@@ -4174,7 +4601,7 @@ async def eoh_stream(
         description="Emit extra debug events including fused context text (context_fused)",
     ),
     use_timeline: int = Query(
-        0,
+        1,
         ge=0,
         le=1,
         description="1=load patient timeline from DB and inject into context, 0=disable (default).",
@@ -4185,7 +4612,7 @@ async def eoh_stream(
     ),
     pool: Any = Depends(resolve_pg_pool),
     research: int = Query(
-        0,
+        1,
         ge=0,
         le=1,
         description="1=enable case analogs (MIMIC-4 ICU notes) and optional research helpers for this query",
@@ -4268,3 +4695,861 @@ async def eoh_stream(
             yield ev
 
     return EventSourceResponse(event_gen(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# EoH Detective Helper Functions
+# ---------------------------------------------------------------------------
+
+async def eoh_detective_planner(
+    *,
+    client: Optional[OpenAI] = None,
+    patient_id: str,
+    focus: str,
+    high_level_question: str,
+    max_steps: int = 6,
+    patient_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    LLM-based planner for EoH Detective.
+
+    Now timeline-aware via `patient_snapshot`, which may contain:
+      - key_signals
+      - diagnostic_landscape
+      - diagnostic_landscape_history
+      - span_days
+      - timeline_summary (if available)
+
+    Returns a JSON plan with:
+    - patient_id
+    - focus
+    - steps: list of {step_id, kind, question_type, q, debug}
+    """
+    if client is None:
+        client = OpenAI(timeout=60.0)
+
+    # Payload sent to the planner LLM
+    planner_input = {
+        "patient_id": patient_id,
+        "focus": focus,
+        "high_level_question": high_level_question,
+        "max_steps": max_steps,
+        "patient_snapshot": patient_snapshot or {},
+    }
+
+    messages = [
+        {
+            "role": "system",
+            "content": EOH_DETECTIVE_PLANNER_SYSTEM_PROMPT.strip(),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                planner_input,
+                ensure_ascii=False,
+                cls=DateTimeJSONEncoder,
+            ),
+        },
+    ]
+
+    try:
+        resp = await _chat_completion_async(
+            model=CHAT_MODEL_UTIL,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
+        raw = resp.choices[0].message.content or "{}"
+        plan = json.loads(raw)
+    except Exception as e:
+        logger.exception("eoh_detective_planner: LLM planning failed, using fallback plan")
+        plan = {
+            "patient_id": patient_id,
+            "focus": focus,
+            "steps": [
+                {
+                    "step_id": "A1",
+                    "kind": "terrain_risk",
+                    "question_type": "A",
+                    "q": (
+                        "Using this patient's entire timeline, summarize their major "
+                        "clinical arcs and current Ethos-of-Health terrain. What were "
+                        "the main inflection points (new diagnoses, major complications, "
+                        "ICU transfers, surgeries, code events), and what are the 3–5 "
+                        "dominant problems now? Ground your answer in the timeline, "
+                        "including approximate dates and key labs/vitals/events. Do NOT "
+                        "propose management yet; focus on mapping the terrain."
+                    ),
+                    "debug": False,
+                }
+            ],
+            "planner_error": str(e),
+        }
+
+    # Normalize steps
+    steps = plan.get("steps") or []
+    normalized_steps: List[Dict[str, Any]] = []
+
+    for i, step in enumerate(steps, start=1):
+        sid = str(step.get("step_id") or f"S{i}")
+        q = (step.get("q") or "").strip()
+        if not q:
+            continue
+        normalized_steps.append(
+            {
+                "step_id": sid,
+                "kind": str(step.get("kind") or "other"),
+                "question_type": str(step.get("question_type") or "OTHER"),
+                "q": q,
+                "debug": bool(step.get("debug", False)),
+            }
+        )
+
+    # Ensure A1 terrain step exists; if not, prepend one
+    has_terrain = any(
+        s.get("kind") == "terrain_risk" or s.get("step_id") == "A1"
+        for s in normalized_steps
+    )
+    if not has_terrain:
+        terrain_q = (
+            "Using this patient's entire timeline, summarize their major "
+            "clinical arcs and current Ethos-of-Health terrain. What were "
+            "the main inflection points (new diagnoses, major complications, "
+            "ICU transfers, surgeries, code events), and what are the 3–5 "
+            "dominant problems now? Ground your answer in the timeline, "
+            "including approximate dates and key labs/vitals/events. Do NOT "
+            "propose management yet; focus on mapping the terrain."
+        )
+        normalized_steps.insert(
+            0,
+            {
+                "step_id": "A1",
+                "kind": "terrain_risk",
+                "question_type": "A",
+                "q": terrain_q,
+                "debug": False,
+            },
+        )
+
+    # Respect max_steps (planner is encouraged to use up to this, but we hard-cap here)
+    if len(normalized_steps) > max_steps:
+        normalized_steps = normalized_steps[:max_steps]
+
+    plan["patient_id"] = patient_id
+    plan["focus"] = plan.get("focus") or focus
+    plan["steps"] = normalized_steps
+
+    return plan
+
+
+async def detective_report_llm(
+    client: OpenAI,
+    report_payload: Dict[str, Any],
+) -> str:
+    """
+    Final EoH Detective report LLM.
+
+    Input:
+      - report_payload: {
+          "high_level_question": str,
+          "patient_id": str,
+          "focus": str,
+          "timeline_snapshot": {...},
+          "steps": [ {step_summaries...} ],
+        }
+
+    Returns:
+      - report_text: markdown-like string following EOH_DETECTIVE_REPORT_SYSTEM_PROMPT
+    """
+    resp = await _chat_completion_async(
+        model=CHAT_MODEL_GUIDELINES,
+        messages=[
+            {
+                "role": "system",
+                "content": EOH_DETECTIVE_REPORT_SYSTEM_PROMPT.strip(),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    report_payload,
+                    ensure_ascii=False,
+                    cls=DateTimeJSONEncoder,
+                ),
+            },
+        ],
+        temperature=0.2,
+    )
+
+    return (resp.choices[0].message.content or "").strip()
+
+# ---------------------------------------------------------------------------
+# EoH Detective – over-arching multi-step stream
+# ---------------------------------------------------------------------------
+
+async def eoh_detective_stream_event_generator(
+    *,
+    request: Request,
+    q: str,
+    timeline_patient_id: str,
+    pool: Any,
+    focus: Optional[str] = None,
+    max_steps: int = 6,
+    # you can pass through flags that will be used for each step
+    db_sources: Optional[List[str]] = None,
+    limit: int = 10,
+    ctx_k: int = 32,
+    valyu_k: int = 3,
+    with_llm: bool = True,
+    llm_mode: str = "chunk",
+    use_valyu: bool = True,
+    valyu_mode: str = "search",
+    valyu_raw: bool = True,
+    valyu_sources: Optional[str] = None,
+    valyu_boost: float = 1.0,
+    research: int = 0,
+    enable_gap: int = 1,
+) -> AsyncIterator[Dict[str, str]]:
+    """
+    Over-arching detective stream:
+      1. Create a multi-step investigation plan via eoh_detective_planner.
+      2. Execute each step by calling eoh_stream_event_generator internally.
+      3. Stream all intermediate SSE with step_ids embedded in data payloads,
+         plus final meta and a top-level EoH Detective report.
+
+    NOTE: This is a thin orchestrator. It delegates heavy lifting to /eoh_stream
+    and only adds planning + step-level + final-report structure.
+    """
+
+    t0 = time.perf_counter()
+
+    if not timeline_patient_id:
+        yield sse(
+            "error",
+            {"error": "missing_timeline_patient_id", "detail": "timeline_patient_id is required"},
+        )
+        return
+
+    # If db_sources not provided, fall back to your usual EoH default sources
+    if db_sources is None:
+        db_sources = list(EOH_STREAM_DEFAULT_SOURCES)
+
+    # -----------------------------------------------------------------------
+    # 0) Start event
+    # -----------------------------------------------------------------------
+    yield sse(
+        "start",
+        {
+            "mode": "eoh_detective",
+            "q": q,
+            "patient_id": timeline_patient_id,
+            "max_steps": max_steps,
+            "db_sources": db_sources,
+        },
+    )
+
+    if await request.is_disconnected():
+        return
+
+    # -----------------------------------------------------------------------
+    # 1) Build timeline snapshot for planner + final report
+    #     (Detective is the owner of the one-time timeline summarizer call.)
+    # -----------------------------------------------------------------------
+    timeline_snapshot: Optional[Dict[str, Any]] = None
+    diag_payload: Optional[Dict[str, Any]] = None
+    timeline_summary_for_planner: Optional[str] = None
+
+    try:
+        events = await load_patient_timeline(timeline_patient_id)
+        timeline_ctx_local = await timeline_engine.build_timeline_context_from_events(
+            events, timeline_patient_id
+        )
+
+        # Diagnostic landscape payload
+        if timeline_ctx_local.diagnostic_landscape:
+            dl = timeline_ctx_local.diagnostic_landscape
+            if hasattr(dl, "to_payload") and callable(dl.to_payload):
+                diag_payload = dl.to_payload()
+            elif hasattr(dl, "to_normalized_dict") and callable(dl.to_normalized_dict):
+                diag_payload = {"weights": dl.to_normalized_dict()}
+            elif isinstance(dl, dict):
+                diag_payload = dl
+            else:
+                diag_payload = None
+        else:
+            diag_payload = None
+
+        # Landscape history
+        history = timeline_engine.compute_landscape_history_from_events(
+            events, timeline_patient_id
+        )
+
+        # -------------------------------------------------------------------
+        # 1a) One-time timeline summarizer LLM (Detective owns this)
+        # -------------------------------------------------------------------
+        timeline_summaries: Optional[TimelineSummaries] = None
+        try:
+            # Emit a status event before we call the summarizer
+            try:
+                yield sse(
+                    "status",
+                    {
+                        "status": "timeline_summarizer_start",
+                        "detail": "Running timeline summarizer (PROBE+RAG or hierarchical, depending on size and flags).",
+                        "patient_id": timeline_patient_id,
+                        "timeline_chars": len(timeline_ctx_local.context_text or ""),
+                        "event_count": len(events or []),
+                    },
+                )
+            except Exception:
+                logger.debug(
+                    "eoh_detective: failed to emit timeline_summarizer_start SSE",
+                    exc_info=True,
+                )
+
+            timeline_summaries = await summarize_timeline_for_eoh(
+                client=_openai_client,
+                question=q,
+                timeline_text=timeline_ctx_local.context_text,
+                pool=pool,
+                patient_id=timeline_patient_id,
+            )
+        except Exception:
+            logger.exception("eoh_detective: timeline summarizer failed")
+            timeline_summaries = None
+
+        # Emit SSE describing what the summarizer produced
+        try:
+            if timeline_summaries is not None:
+                full_len = len(timeline_summaries.timeline_summary or "")
+                router_len = len(timeline_summaries.timeline_summary or "")
+                valyu_len = len(timeline_summaries.valyu_summary or "")
+                query_terms_len = len(
+                    timeline_summaries.timeline_summary or ""
+                )
+                meds_labs_len = len(
+                    timeline_summaries.meds_and_labs_snapshot or ""
+                )
+
+                # High-level meta event
+                yield sse(
+                    "timeline_summarizer_result",
+                    {
+                        "patient_id": timeline_patient_id,
+                        "full_len": full_len,
+                        "router_len": router_len,
+                        "valyu_len": valyu_len,
+                        "query_terms_len": query_terms_len,
+                        "meds_and_labs_len": meds_labs_len,
+                        "has_full": bool(full_len),
+                        "has_router": bool(router_len),
+                        "has_valyu": bool(valyu_len),
+                        "has_query_terms": bool(query_terms_len),
+                        "has_meds_and_labs": bool(meds_labs_len),
+                    },
+                )
+
+                # Optional: send a compact view of query-term helper text
+                if timeline_summaries.timeline_summary:
+                    yield sse(
+                        "timeline_summarizer_query_terms",
+                        {
+                            "patient_id": timeline_patient_id,
+                            # Trim so we don’t blow up the stream; this is for UI/debug.
+                            "summary": timeline_summaries.timeline_summary[
+                                :4000
+                            ],
+                        },
+                    )
+
+                # Optional: send meds/labs snapshot as its own event
+                if timeline_summaries.meds_and_labs_snapshot:
+                    yield sse(
+                        "timeline_summarizer_meds_labs_snapshot",
+                        {
+                            "patient_id": timeline_patient_id,
+                            "snapshot": timeline_summaries.meds_and_labs_snapshot[
+                                :4000
+                            ],
+                        },
+                    )
+
+                # Small status marker so UI can show "timeline summarizer done"
+                yield sse(
+                    "status",
+                    {
+                        "status": "timeline_summarizer_done",
+                        "detail": "Timeline summarizer completed.",
+                        "patient_id": timeline_patient_id,
+                    },
+                )
+
+        except Exception:
+            logger.debug(
+                "eoh_detective: failed to emit timeline summarizer SSE events",
+                exc_info=True,
+            )
+
+        if await request.is_disconnected():
+            return
+
+        # Router-style summary for planner / router (fallback-safe)
+        try:
+            # Canonical summary for ALL downstream LLMs (router, Valyu, EoH steps)
+            # TimelineSummaries already gives you a single canonical story, but we
+            # defensively fall back if needed.
+            canonical_summary = (
+                (timeline_summaries.timeline_summary if timeline_summaries else None)
+                or timeline_summary_for_planner
+                or timeline_ctx_local.context_text
+                or ""
+            )
+
+            if len(canonical_summary) > SUMMARY_MAX_CHARS:
+                canonical_summary = canonical_summary[:SUMMARY_MAX_CHARS]
+
+            if not canonical_summary:
+                canonical_summary = timeline_ctx_local.context_text or ""
+
+            probe_debug = getattr(timeline_summaries, "probe_debug", None) if timeline_summaries else None
+
+            timeline_snapshot = {
+                "patient_id": timeline_patient_id,
+                "span_days": timeline_ctx_local.span_days,
+                "key_signals": timeline_ctx_local.key_signals,
+                "flare_features": timeline_ctx_local.flare_features,
+                "diagnostic_landscape": diag_payload,
+                "diagnostic_landscape_history": history,
+                "timeline_summary": canonical_summary,
+                "timeline_meds_and_labs_snapshot": (
+                    timeline_summaries.meds_and_labs_snapshot if timeline_summaries else ""
+                ),
+            }
+
+            if probe_debug is not None:
+                timeline_snapshot["timeline_probe"] = probe_debug
+
+            # Optional SSE for detective UI
+            yield sse(
+                "detective_timeline_snapshot",
+                {
+                    "patient_id": timeline_patient_id,
+                    "span_days": timeline_ctx_local.span_days,
+                    "has_diag_landscape": bool(diag_payload),
+                    "has_timeline_summary": bool(canonical_summary),
+                    "key_signals": timeline_ctx_local.key_signals,
+                },
+            )
+
+        except Exception:
+            logger.exception("eoh_detective: failed to build router-style summary for timeline snapshot")
+            # Fallback: use raw context_text if available
+            if timeline_ctx_local:
+                canonical_summary = timeline_ctx_local.context_text or ""
+                timeline_snapshot = {
+                    "patient_id": timeline_patient_id,
+                    "span_days": timeline_ctx_local.span_days,
+                    "key_signals": timeline_ctx_local.key_signals,
+                    "flare_features": timeline_ctx_local.flare_features,
+                    "diagnostic_landscape": diag_payload,
+                    "diagnostic_landscape_history": history,
+                    "timeline_summary": canonical_summary,
+                }
+            else:
+                timeline_snapshot = None
+
+    except Exception:
+        logger.exception("eoh_detective: failed to build timeline snapshot")
+        timeline_snapshot = None
+        diag_payload = None
+        timeline_summary_for_planner = None
+
+    # -----------------------------------------------------------------------
+    # 2) Plan creation (planner sees timeline snapshot)
+    # -----------------------------------------------------------------------
+    focus_label = focus or "eoh_detective_run"
+
+    yield sse(
+        "status",
+        {
+            "status": "planning",
+            "detail": "Creating EoH detective plan",
+            "patient_id": timeline_patient_id,
+        },
+    )
+
+    try:
+        plan = await eoh_detective_planner(
+            client=_openai_client,
+            patient_id=timeline_patient_id,
+            focus=focus_label,
+            high_level_question=q,
+            max_steps=max_steps,
+            patient_snapshot=timeline_snapshot,
+        )
+    except Exception as e:
+        logger.exception("eoh_detective: planner failed")
+        yield sse(
+            "error",
+            {"error": "planner_failed", "detail": str(e)},
+        )
+        return
+
+    steps = plan.get("steps") or []
+
+    yield sse(
+        "detective_plan",
+        {
+            "patient_id": plan.get("patient_id"),
+            "focus": plan.get("focus"),
+            "steps": [
+                {
+                    "step_id": s["step_id"],
+                    "kind": s["kind"],
+                    "question_type": s["question_type"],
+                    "debug": s.get("debug", False),
+                }
+                for s in steps
+            ],
+        },
+    )
+
+    if await request.is_disconnected():
+        return
+
+    # -----------------------------------------------------------------------
+    # 3) Execute steps sequentially
+    # -----------------------------------------------------------------------
+    detective_meta: Dict[str, Any] = {
+        "patient_id": timeline_patient_id,
+        "focus": plan.get("focus"),
+        "n_steps": len(steps),
+        "step_summaries": [],
+    }
+
+    for step in steps:
+        step_id = step["step_id"]
+        step_q = step["q"]
+        step_debug = bool(step.get("debug", False))
+
+        # Step start marker (top-level SSE from detective)
+        yield sse(
+            "detective_step_start",
+            {
+                "step_id": step_id,
+                "kind": step["kind"],
+                "question_type": step["question_type"],
+                "q": step_q,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+        step_citations = None
+        step_meta = None
+
+        # Build a compact, router-safe patient_state JSON
+        compact_patient_state = (
+            build_compact_patient_state_for_router(timeline_snapshot)
+            if timeline_snapshot
+            else None
+        )
+
+        # Inner EoH stream generator
+        inner_gen = eoh_stream_event_generator(
+            request=request,
+            q=step_q,
+            db_sources=db_sources,
+            limit=limit,
+            ctx_k=ctx_k,
+            valyu_k=valyu_k,
+            with_llm=with_llm,
+            llm_mode=llm_mode,
+            use_valyu=use_valyu,
+            valyu_mode=valyu_mode,
+            valyu_raw=valyu_raw,
+            valyu_sources=valyu_sources,
+            valyu_boost=valyu_boost,
+            pool=pool,
+            patient_state=compact_patient_state,
+            debug=step_debug,
+            use_timeline=True,
+            timeline_patient_id=timeline_patient_id,
+            research=research,
+            enable_gap=enable_gap,
+        )
+
+        async for ev in inner_gen:
+            # ev is {"event": ..., "data": "..."} from sse()
+            wrapped_ev = dict(ev)
+            wrapped_ev.setdefault("event", "")
+            wrapped_ev.setdefault("data", "")
+
+            # Try to read data as JSON once so we can both intercept and annotate it
+            data_obj = None
+            data_str = wrapped_ev["data"]
+
+            if isinstance(data_str, str) and data_str:
+                try:
+                    data_obj = json.loads(data_str)
+                except Exception:
+                    data_obj = None
+
+            # Intercept citations/meta for detective summary
+            try:
+                if wrapped_ev["event"] == "citations" and isinstance(data_obj, dict):
+                    step_citations = data_obj.get("citations")
+                elif wrapped_ev["event"] == "end" and isinstance(data_obj, dict):
+                    step_meta = data_obj.get("meta")
+            except Exception:
+                logger.debug(
+                    "eoh_detective: failed to parse inner event for summary",
+                    exc_info=True,
+                )
+
+            # Inject step_id into *data payload*, not as top-level SSE kwarg
+            if isinstance(data_obj, dict):
+                data_obj.setdefault("step_id", step_id)
+                wrapped_ev["data"] = json.dumps(data_obj, ensure_ascii=False)
+
+            # IMPORTANT: do NOT add wrapped_ev["step_id"] – that breaks ServerSentEvent
+            # Only event/data/id/retry/comment are allowed at this level.
+
+            yield wrapped_ev
+
+            if await request.is_disconnected():
+                return
+
+        # Per-step detective summary
+        detective_meta["step_summaries"].append(
+            {
+                "step_id": step_id,
+                "kind": step["kind"],
+                # planner’s guess
+                "planner_question_type": step["question_type"],
+                # router’s actual classification, if present in meta
+                "router_question_type": (step_meta or {}).get("question_type"),
+                "q": step_q,
+                "citations": step_citations,
+                "meta": step_meta,
+            }
+        )
+
+        # Step end marker (top-level SSE)
+        yield sse(
+            "detective_step_end",
+            {
+                "step_id": step_id,
+                "citations_present": bool(step_citations),
+                "has_meta": step_meta is not None,
+            },
+        )
+
+        if await request.is_disconnected():
+            return
+
+    # -----------------------------------------------------------------------
+    # 4) Final detective meta + timing
+    # -----------------------------------------------------------------------
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+
+    yield sse(
+        "detective_summary",
+        {
+            "patient_id": detective_meta["patient_id"],
+            "focus": detective_meta["focus"],
+            "n_steps": detective_meta["n_steps"],
+            "elapsed_ms": elapsed_ms,
+            "steps": detective_meta["step_summaries"],
+        },
+    )
+
+    if await request.is_disconnected():
+        return
+
+    # -----------------------------------------------------------------------
+    # 5) Generate final detective report (final EoH Detective LLM)
+    # -----------------------------------------------------------------------
+    if with_llm:
+        try:
+            report_payload = {
+                "high_level_question": q,
+                "patient_id": timeline_patient_id,
+                "focus": detective_meta["focus"],
+                "timeline_snapshot": timeline_snapshot,
+                "steps": detective_meta["step_summaries"],
+            }
+
+            yield sse(
+                "status",
+                {
+                    "status": "detective_llm_reporting",
+                    "detail": "Generating final EoH Detective report",
+                    "patient_id": timeline_patient_id,
+                },
+            )
+
+            report_text = await detective_report_llm(
+                _openai_client,
+                report_payload,
+            )
+
+            yield sse(
+                "detective_report",
+                {
+                    "patient_id": timeline_patient_id,
+                    "focus": detective_meta["focus"],
+                    "report": report_text,
+                },
+            )
+
+        except Exception:
+            logger.exception("eoh_detective: final report generation failed")
+            yield sse(
+                "status",
+                {
+                    "status": "detective_llm_error",
+                    "detail": "Failed to generate final detective report",
+                },
+            )
+
+    # Final end marker
+    yield sse(
+        "end",
+        {
+            "meta": {
+                "mode": "eoh_detective",
+                "patient_id": timeline_patient_id,
+                "focus": detective_meta["focus"],
+                "n_steps": detective_meta["n_steps"],
+                "elapsed_ms": elapsed_ms,
+            }
+        },
+    )
+
+# ---------------------------------------------------------------------------
+# EoH Detective Stream
+# ---------------------------------------------------------------------------
+
+@router.get("/eoh_detective_stream")
+async def eoh_detective_stream(
+    request: Request,
+
+    # ----------------------------
+    # Canonical required inputs
+    # ----------------------------
+    q: Optional[str] = Query(None, description="High-level detective question or focus"),
+    timeline_patient_id: Optional[str] = Query(None, description="Patient id in ehr.patient_timeline"),
+
+    # ----------------------------
+    # Aliases for nicer UX / backwards-compat
+    # ----------------------------
+    question: Optional[str] = Query(None, description="Alias for q"),
+    patient_id: Optional[str] = Query(None, description="Alias for timeline_patient_id"),
+
+    # ----------------------------
+    # Run label / controls
+    # ----------------------------
+    focus: Optional[str] = Query(None, description="Optional short label for this detective run"),
+    max_steps: int = Query(6, ge=1, le=12),
+
+    # ----------------------------
+    # Source selection / retrieval knobs
+    # ----------------------------
+    sources: Optional[str] = Query(
+        None,
+        description="Comma-separated internal sources (same semantics as /eoh_stream)",
+    ),
+    limit: int = Query(10, ge=1, le=32),
+    ctx_k: int = Query(32, ge=4, le=128),
+
+    # ----------------------------
+    # Valyu knobs
+    # ----------------------------
+    valyu_k: int = Query(3, ge=0, le=4),
+    use_valyu: bool = Query(True),
+    valyu_mode: str = Query("search"),
+    valyu_raw: bool = Query(True),
+    valyu_sources: Optional[str] = Query(None),
+    valyu_boost: float = Query(1.0),
+
+    # ----------------------------
+    # LLM controls
+    # ----------------------------
+    with_llm: bool = Query(True),
+    llm_mode: str = Query("chunk"),
+
+    # ----------------------------
+    # Research + gap
+    # ----------------------------
+    research: int = Query(0, ge=0, le=1),
+    enable_gap: int = Query(1, ge=0, le=1),
+
+    # alias for enable_gap (so old curls keep working)
+    use_gap: Optional[int] = Query(None, description="Alias for enable_gap (0/1)"),
+
+    # ----------------------------
+    # Dependencies
+    # ----------------------------
+    pool: Any = Depends(resolve_pg_pool),  # noqa: F821 (keep your existing import)
+):
+    """
+    Detective wrapper endpoint.
+    Supports both canonical params:
+      - q, timeline_patient_id
+    and friendly aliases:
+      - question, patient_id
+    """
+
+    # ----------------------------
+    # Normalize aliases
+    # ----------------------------
+    q_final = (q or question or "").strip()
+    pid_final = (timeline_patient_id or patient_id or "").strip()
+
+    # allow old "use_gap" param to override enable_gap
+    if use_gap is not None:
+        enable_gap = int(use_gap)
+
+    if not q_final:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required query param: q (or alias question)",
+        )
+    if not pid_final:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required query param: timeline_patient_id (or alias patient_id)",
+        )
+    focus = (focus or "").strip() or None
+    sources = (sources or "").strip() or None
+    valyu_mode = (valyu_mode or "search").strip()
+    llm_mode = (llm_mode or "chunk").strip()
+    # Parse sources similar to your existing eoh_stream route
+    if sources:
+        db_sources = [s.strip() for s in sources.split(",") if s.strip()]
+    else:
+        db_sources = list(EOH_STREAM_DEFAULT_SOURCES)
+
+    gen = eoh_detective_stream_event_generator(
+        request=request,
+        q=q,
+        timeline_patient_id=timeline_patient_id,
+        pool=pool,
+        focus=focus,
+        max_steps=max_steps,
+        db_sources=db_sources,
+        limit=limit,
+        ctx_k=ctx_k,
+        valyu_k=valyu_k,
+        with_llm=with_llm,
+        llm_mode=llm_mode,
+        use_valyu=use_valyu,
+        valyu_mode=valyu_mode,
+        valyu_raw=valyu_raw,
+        valyu_sources=valyu_sources,
+        valyu_boost=valyu_boost,
+        research=research,
+        enable_gap=enable_gap,
+    )
+    return EventSourceResponse(gen)

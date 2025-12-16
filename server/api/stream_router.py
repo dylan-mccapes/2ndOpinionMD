@@ -1,34 +1,32 @@
 # server/api/stream_router.py
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 import json
 
-from .stream_config import CHAT_MODEL, CHAT_MODEL_UTIL, STRICT_CODE_SOURCES, is_strict_code_source, GUIDELINE_SOURCE_META
+from .stream_config import CHAT_MODEL_UTIL, GUIDELINE_SOURCE_META
 
 client = OpenAI()
 
 
-# ---------------------------------------------------------------------------
-# Router system prompts
-# ---------------------------------------------------------------------------
-
 RAG_ROUTER_SYSTEM_PROMPT = """
 You are the 2ndOpinionMD routing brain for guideline Q&A and internal Ethos-of-Health reasoning.
 
-You receive a JSON object with fields including:
+You receive a JSON-like description with fields including:
 - "question": the clinician's question.
 - "guideline_catalog": a list of guideline metadata. Each entry has:
   - "source": the internal source id (matches rag_corpus.source).
   - "title": the guideline title.
   - "condition": the main condition or topic.
-  - "domain": clinical domain (cardiology, rheumatology, nephrology, etc.).
+  - "domain": clinical domain (cardiology, rheumatology, nephrology, hepatology, etc.).
   - "year": publication or last major update year (if available).
 - "available_guideline_sources": list of guideline source ids that are eligible.
+- Optionally, a "timeline_summary": a short summary of the patient’s clinical
+  trajectory (diagnoses, labs, trends, complications), derived from the EHR timeline.
+- Optionally, short external evidence snippets (e.g., from Valyu) that highlight
+  which topics and guideline families appear most relevant.
 
 Your job:
 1. Decide which guideline source ids are most relevant to the question.
@@ -36,10 +34,13 @@ Your job:
    - Prefer the most recent guideline when multiple cover the same condition.
    - Include multiple guidelines if the question explicitly asks for comparison
      (e.g., "ACR vs EULAR", "KDIGO vs ADA").
-2. Optionally include internal EoH sources if the question is clearly about
+2. Use the timeline_summary and external evidence snippets, when provided, to
+   bias routing toward guideline sources that match the actual patient trajectory
+   (e.g., portal hypertension in decompensated cirrhosis, sepsis in ICU, etc.).
+3. Optionally include internal EoH sources if the question is clearly about
    disease trajectories, flares, or shared decision-making beyond a single
    guideline.
-3. Return STRICT JSON with this schema:
+4. Return STRICT JSON with this schema:
 
 {
   "task_type": "guideline_only" | "guideline_plus_eoh" | "eoh_only" | "none",
@@ -90,15 +91,23 @@ async def route_sources(
     code_terms: List[str],
     candidate_sources: List[str],
     valyu_context: Optional[List[Dict[str, Any]]] = None,
+    timeline_summary: Optional[str] = None,
 ) -> CodingRouterPlan:
-    # Build a compact description of candidate sources
+    """
+    Guideline/EoH source router.
+
+    Uses question text, candidate source metadata, optional coding terms,
+    optional Valyu evidence snippets, and optional patient timeline summary
+    to select which guideline / EoH sources to query.
+    """
+    # Compact description of candidate sources
     src_lines = [f"- {s}" for s in sorted(candidate_sources)]
     source_desc_block = _build_source_description_block(candidate_sources)
 
     # Optional Valyu summary for the router prompt
     valyu_lines: List[str] = []
     if valyu_context:
-        valyu_lines.append("External Valyu evidence snippets:")
+        valyu_lines.append("External Valyu evidence snippets (for routing only):")
         for i, r in enumerate(valyu_context[:8], start=1):
             title = (r.get("title") or "").strip()
             snippet = (r.get("text") or r.get("snippet") or "").strip()
@@ -108,10 +117,15 @@ async def route_sources(
             valyu_lines.append(line)
 
         valyu_lines.append(
-            "Use these Valyu snippets only as a signal of which guideline "
-            "or internal sources are likely relevant. Do NOT hallucinate "
-            "new source names."
+            "Use these Valyu snippets only as a signal of which guideline or internal "
+            "sources are likely relevant. Do NOT hallucinate new source names."
         )
+
+    # Optional timeline summary
+    timeline_lines: List[str] = []
+    if timeline_summary:
+        timeline_lines.append("Patient timeline summary (for routing only):")
+        timeline_lines.append(timeline_summary.strip())
 
     code_term_lines: List[str] = []
     if code_terms:
@@ -129,9 +143,15 @@ async def route_sources(
         "Source descriptions:",
         source_desc_block,
     ]
+
     if code_term_lines:
         user_chunks.append("")
         user_chunks.extend(code_term_lines)
+
+    if timeline_lines:
+        user_chunks.append("")
+        user_chunks.extend(timeline_lines)
+
     if valyu_lines:
         user_chunks.append("")
         user_chunks.extend(valyu_lines)

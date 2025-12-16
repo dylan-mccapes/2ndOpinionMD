@@ -16,8 +16,17 @@ import json
 import logging
 import textwrap
 from typing import Any, Dict, List, Optional
+from datetime import datetime, date
 
 from openai import OpenAI
+
+
+class DateTimeJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime and date objects."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 from .module_index import (
     MODULE_INDEX,
@@ -32,6 +41,10 @@ import os
 EOH_ROUTER_ENABLE_GUARDRAIL = os.getenv("EOH_ROUTER_ENABLE_GUARDRAIL", "1") == "1"
 
 logger = logging.getLogger(__name__)
+
+TIMELINE_SUMMARY_MAX_CHARS = 40_000
+
+MAX_ROUTER_PATIENT_STATE_CHARS = 20_000
 
 # =============================================================================
 # SYSTEM PROMPT FOR THE EOH ROUTER
@@ -55,7 +68,7 @@ You may receive:
 Treat patient_state_summary as a hint, not ground truth.
 
 -------------------------------------------------------------------------------
-## 1. EoH-FIRST BIAS (CRITICAL)
+## 1. EoH-FIRST BIAS (BUT NOT AT ALL COSTS)
 -------------------------------------------------------------------------------
 
 EoH exists to reason about:
@@ -65,12 +78,14 @@ EoH exists to reason about:
 - plan adjustment over time,
 - explainability and system QA.
 
-In this environment, ALMOST ALL questions are intended to exercise EoH.
+In this environment, MANY questions are intended to exercise EoH.
+However, some questions really *are* pure guideline Q&A or coding/abstraction,
+and in those cases it is better to return OTHER than to force an awkward A–E.
 
 You must follow these rules:
 
-1) If the question mentions ANY of these ideas, you MUST choose A, B, C, D or E
-   (NOT OTHER):
+1) If the question is explicitly about ANY of these ideas, you MUST choose
+   A, B, C, D or E (NOT OTHER):
 
    FLARE / RISK / TRAJECTORY:
    - "flare", "flares", "flare risk", "flare prediction", "flare prevention"
@@ -96,8 +111,11 @@ You must follow these rules:
    - "Ethos", "EoH", "Ethos-of-Health",
    - "tier", "tiering", "risk tier", "stability tier"
 
-2) Pregnancy + chronic disease are AUTOMATICALLY EoH-like unless they are
-   obviously pure guideline trivia.
+   When these triggers are present, do NOT use OTHER.
+   Pick the best-fitting EoH type (A–E) and build a real plan.
+
+2) Pregnancy + chronic disease are AUTOMATICALLY EoH-like unless the question
+   is obviously pure guideline trivia.
 
    If the question mentions pregnancy or related terms:
    - "pregnancy", "pregnant", "preconception", "conception",
@@ -113,7 +131,8 @@ You must follow these rules:
 
    then you MUST treat it as an EoH question (A, C, or especially D), because
    it inherently involves remission maintenance, flare prevention, and
-   long-horizon risk around pregnancy.
+   long-horizon risk around pregnancy — UNLESS the wording clearly asks only
+   for narrow guideline trivia (e.g. a single dose, one-time recommendation).
 
    Examples that MUST be A–E (usually D), NOT OTHER:
    - "In biologic-refractory ulcerative colitis, what long-term maintenance
@@ -124,10 +143,11 @@ You must follow these rules:
       and immunosuppression before, during, and after pregnancy to prevent
       flares and complications?"
 
-3) OTHER is only allowed when ALL of the following are true:
-   - The question does NOT fit A, B, C, D, or E, AND
-   - It does NOT contain any of the triggers above (flare, remission, plan,
-     pregnancy+chronic disease, EoH/tier language), AND
+3) OTHER is appropriate when ALL of the following are true:
+   - The question does NOT clearly fit A, B, C, D, or E, AND
+   - It does NOT contain any of the specific EoH triggers above
+     (flare/remission/trajectory/tier language, pregnancy+chronic disease in a
+      longitudinal or plan-focused sense), AND
    - It is best handled as:
      * pure guideline Q&A (e.g. "What do the RA guidelines say about MTX dose?"),
        or
@@ -135,7 +155,17 @@ You must follow these rules:
        or
      * clearly outside chronic disease / flare / care-plan scope.
 
-When in doubt, pick an EoH type (A–E) instead of OTHER.
+   Examples that SHOULD be OTHER:
+   - "What do the RA guidelines say about maximum weekly methotrexate dose?"
+   - "Assign ICD-10 codes for this discharge summary."
+   - "Summarize the ADA 2024 diabetes guideline screening recommendations."
+
+4) When in doubt:
+   - If the question *does* contain EoH triggers (flare/remission/trajectory,
+     pregnancy+chronic disease, Ethos/tier language), favor A–E.
+   - If the question has NO EoH triggers and reads like pure guideline or
+     coding trivia, it is safer and more honest to choose OTHER than to
+     force a weak A–E plan.
 
 -------------------------------------------------------------------------------
 ## 2. Question Types (Short Definitions)
@@ -160,9 +190,9 @@ D) Plan Adjustment (non-emergency)
 E) Meta / Calibration / System QA
    - "Is the model calibrated, over-suppressing, drifting, or missing flares?"
 
-OTHER) Very rare. Only for pure guideline/coding/other questions with NO
-       EoH-style triggers and no flare/remission/plan/pregnancy+chronic disease
-       trajectory intent.
+OTHER) For pure guideline/coding/other questions with NO EoH-style triggers and
+       no flare/remission/plan/pregnancy+chronic disease trajectory intent.
+       OTHER is not an error; it’s a signal to fall back to non-EoH systems.
 
 -------------------------------------------------------------------------------
 ## 3. Simple Type Selection Algorithm
@@ -191,6 +221,9 @@ Use this mechanical decision order:
 In question_type_explanation, briefly say why your chosen type fits better
 than the alternatives (especially when you choose A or OTHER).
 
+If you feel you are "stretching" to justify an EoH type and the question has
+no EoH triggers, strongly consider choosing OTHER instead of forcing A–E.
+
 -------------------------------------------------------------------------------
 ## 4. Using MODULE_INDEX (Routing Plan)
 -------------------------------------------------------------------------------
@@ -217,16 +250,16 @@ Example patterns (not strict, just common):
   e.g. M1–M3, M7A, M4, M5, M9, M6, M14, M7B
 
 - Type C (Explainability): decision packets + features + tier mapping
-  e.g. M21, M13, M12, M4, M5, M14, M25, M19, M41
+  e.g. M21, M13, M12, M4, M5, M14, M25, M19, M41, M48, M48B, M48C, M50
 
 - Type D (Plan adjustment): terrain + prognostics + care planning
   e.g. M1–M3, M7A, M12, M13, M14, M15, M7B, M22, M23, M24, M25
 
 - Type E (Meta / calibration): calibration + suppression audit
-  e.g. M19, M41, M48, plus any relevant terrain/decision modules.
+  e.g. M19, M41, M48, M48B, M48C, M50, plus any relevant terrain/decision modules.
 
 For OTHER, you may return empty module_plan/doc_retrieval_plan or a very
-minimal plan if appropriate.
+minimal plan if appropriate. Do NOT invent EoH modules just to fill space.
 
 -------------------------------------------------------------------------------
 ## 5. Timeline-aware routing (patient_state_summary hints)
@@ -255,13 +288,14 @@ timeline availability or diagnostic landscape data. Common fields include:
 When these hints are present, you must bias routing accordingly:
 
 1) If eoh_has_timeline == true:
-   - Do NOT return OTHER unless the question is truly non-EoH.
+   - Do NOT return OTHER unless the question is clearly non-EoH
+     (pure guideline trivia, pure coding, or clearly outside flare/plan scope).
    - Prefer A, B, C, D, or E based on the content of the question and
      primary_focus.
    - Include terrain + timeline-aware modules when relevant:
      e.g. modules that work with bands, stacks, flare windows, and
      diagnostic landscape (M1–M3, M7A, M12–M15, M19, M21, M24, M25, M48, M48B,
-     M48C as appropriate).
+     M48C, M50 as appropriate).
 
 2) If primary_focus == "flare_vs_noise":
    - Lean toward type B and include modules that distinguish flare from noise
@@ -271,7 +305,7 @@ When these hints are present, you must bias routing accordingly:
    - Lean toward type C (explainability) or type E (meta) depending on whether
      the question is about *explaining* the landscape vs *auditing* it.
    - Include modules that expose features and landscape stability (M13, M14,
-     M19, M21, M25, M48C).
+     M19, M21, M25, M48C, M50).
 
 4) If primary_focus == "plan_adjustment":
    - Lean toward type D and include terrain/prognostic/planning modules
@@ -279,7 +313,7 @@ When these hints are present, you must bias routing accordingly:
 
 5) If primary_focus == "meta_calibration":
    - Lean toward type E and include governance/calibration modules
-     (M19, M41, M48, M48B, M48C).
+     (M19, M41, M48, M48B, M48C, M50).
 
 These hints are *soft* but important. Do not ignore them. They should shift
 your type_scores and module selection in a consistent way.
@@ -324,16 +358,18 @@ Requirements for type_scores:
 - Even if the application ignores type_scores, you must still fill them.
 
 -------------------------------------------------------------------------------
-## 6. Critical Constraints
+## 7. Critical Constraints
 -------------------------------------------------------------------------------
 
 1) ONLY use module IDs that exist in MODULE_INDEX.
 2) ONLY use doc handles that exist in MODULE_INDEX.
 3) Do NOT invent module IDs or doc handle names.
 4) Keep the plan focused and small; do not add clearly unrelated modules.
-5) For A–E questions, you should usually include at least one module in
-   module_plan. Empty module_plan for A–E should be very rare.
-6) For OTHER questions, a minimal or empty plan is acceptable.
+5) For A–E questions, you should almost always include at least one module in
+   module_plan and at least one entry in doc_retrieval_plan.
+   An empty plan for A–E is a red flag and should be avoided.
+6) For OTHER questions, a minimal or empty plan is acceptable and often best,
+   because a non-EoH system will typically handle these questions.
 7) Always include question_type_explanation to justify your classification,
    especially when you choose A or OTHER.
 
@@ -469,6 +505,70 @@ def _apply_posthoc_eoh_guardrail(
 
     return plan
 
+def build_compact_patient_state_for_router(
+    snapshot: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """
+    Take a rich timeline_snapshot dict and compress it into a small, router-safe
+    JSON string with:
+      - patient_id
+      - span_days
+      - a single timeline_summary string
+      - optional tiny diagnostic_landscape + a handful of key_signals
+
+    Everything is aggressively truncated so the router prompt stays small.
+    """
+    if not snapshot:
+        return None
+
+    compact: Dict[str, Any] = {}
+
+    compact["patient_id"] = snapshot.get("patient_id")
+    compact["span_days"] = snapshot.get("span_days")
+
+    # Always prefer the canonical summary
+    summary = (
+        snapshot.get("timeline_summary")
+        or ""
+    )
+    summary = str(summary)
+    if len(summary) > MAX_ROUTER_PATIENT_STATE_CHARS // 2:
+        summary = summary[: MAX_ROUTER_PATIENT_STATE_CHARS // 2]
+    compact["timeline_summary"] = summary
+
+    meds_and_labs_snapshot = (
+        snapshot.get("meds_and_labs_snapshot")
+        or ""
+    )
+    meds_and_labs_snapshot = str(meds_and_labs_snapshot)
+    if len(meds_and_labs_snapshot) > MAX_ROUTER_PATIENT_STATE_CHARS // 2:
+        meds_and_labs_snapshot = meds_and_labs_snapshot[: MAX_ROUTER_PATIENT_STATE_CHARS // 2]
+    compact["meds_and_labs_snapshot"] = meds_and_labs_snapshot
+
+    # Include a very small diagnostic_landscape if present
+    dl = snapshot.get("diagnostic_landscape") or {}
+    if isinstance(dl, dict):
+        compact["diagnostic_landscape"] = dl
+
+    # A few key_signals only
+    ks = snapshot.get("key_signals") or []
+    if isinstance(ks, list):
+        compact["key_signals"] = ks[:8]
+
+    # *** IMPORTANT ***
+    # We intentionally DO NOT include:
+    # - diagnostic_landscape_history
+    # - flare_features
+    # - timeline_query_terms
+    # - timeline_meds_and_labs_snapshot
+    # - raw events / context_text
+
+    s = json.dumps(compact, ensure_ascii=False, cls=DateTimeJSONEncoder)
+    if len(s) > MAX_ROUTER_PATIENT_STATE_CHARS:
+        s = s[:MAX_ROUTER_PATIENT_STATE_CHARS]
+    return s
+    
+
 def _build_module_index_context(module_index: Dict[str, Any]) -> str:
     """Build a formatted MODULE_INDEX context for the LLM prompt."""
     lines = ["## MODULE_INDEX\n"]
@@ -486,17 +586,76 @@ def _build_module_index_context(module_index: Dict[str, Any]) -> str:
 
 def _build_user_message(
     question: str,
+    module_index: Dict[str, Any],
     patient_state_summary: Optional[Dict[str, Any]] = None,
+    extra_context: Optional[str] = None,
 ) -> str:
-    """Build the user message for the LLM."""
-    parts = [f"## QUESTION\n{question}"]
-    
+    """
+    Build the user message for the EoH Router LLM.
+
+    We keep this tight:
+      - QUESTION
+      - PATIENT TIMELINE SUMMARY (single text field)
+      - DIAGNOSTIC LANDSCAPE (small JSON), if present
+      - Any extra_context
+      - MODULE_INDEX (JSON)
+    """
+    parts: List[str] = []
+
+    parts.append("EoH Router Input")
+    parts.append("")
+    parts.append("QUESTION:")
+    parts.append(question.strip())
+    parts.append("")
+
+    # --- PATIENT STATE ----------------------------------------------------
+    timeline_summary_text = ""
     if patient_state_summary:
-        parts.append(f"\n## PATIENT_STATE_SUMMARY\n{json.dumps(patient_state_summary, indent=2)}")
-    
-    parts.append("\n## TASK\nAnalyze this question and create an execution plan following the routing recipes.")
-    parts.append("Return ONLY valid JSON matching the output schema. No markdown, no code fences.")
-    
+        timeline_summary_text = str(
+            patient_state_summary.get("timeline_summary") or ""
+        ).strip()
+    diag_landscape = None
+
+    if patient_state_summary:
+        timeline_summary_text = str(
+            patient_state_summary.get("timeline_summary") or ""
+        ).strip()
+        diag_landscape = patient_state_summary.get("diagnostic_landscape")
+
+    if len(timeline_summary_text) > TIMELINE_SUMMARY_MAX_CHARS:
+        logger.warning(
+            "Router: trimming timeline_summary from %d to %d chars for safety",
+            len(timeline_summary_text),
+            TIMELINE_SUMMARY_MAX_CHARS,
+        )
+        timeline_summary_text = timeline_summary_text[:TIMELINE_SUMMARY_MAX_CHARS]
+
+    if timeline_summary_text:
+        parts.append("PATIENT TIMELINE SUMMARY")
+        parts.append(timeline_summary_text)
+        parts.append("")
+
+    if diag_landscape:
+        parts.append("DIAGNOSTIC LANDSCAPE (JSON)")
+        parts.append(json.dumps(diag_landscape, ensure_ascii=False, indent=2))
+        parts.append("")
+
+    # If you kept probe_debug in the snapshot and want router to see it:
+    # probe_debug = (patient_state_summary or {}).get("timeline_probe")
+    # if probe_debug:
+    #     parts.append("TIMELINE PROBE (TS/ANN/gap debug, JSON)")
+    #     parts.append(json.dumps(probe_debug, ensure_ascii=False, indent=2))
+    #     parts.append("")
+
+    if extra_context:
+        parts.append("EXTRA CONTEXT")
+        parts.append(extra_context)
+        parts.append("")
+
+    # --- MODULE INDEX -----------------------------------------------------
+    parts.append("MODULE_INDEX (JSON)")
+    parts.append(json.dumps(module_index, ensure_ascii=False, indent=2))
+
     return "\n".join(parts)
 
 

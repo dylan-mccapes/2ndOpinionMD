@@ -143,6 +143,11 @@ def _extract_results(vy: Dict[str, Any]) -> List[Dict[str, Any]]:
     # If they ever return a bare list at the top level.
     if isinstance(vy, list):
         return [x for x in vy if isinstance(x, dict)]  # type: ignore[return-value]
+    
+    # Shortcut: if top-level has a list-of-dicts under 'results', just use it.
+    top_results = vy.get("results")
+    if isinstance(top_results, list) and all(isinstance(x, dict) for x in top_results):
+        return top_results
 
     candidates: List[Dict[str, Any]] = []
 
@@ -180,15 +185,20 @@ def _extract_results(vy: Dict[str, Any]) -> List[Dict[str, Any]]:
         _add(data_val)
 
     if not candidates:
-        # If the call "succeeded" but there are no obvious result arrays,
-        # this is often fine (e.g., /answer with only a 'raw' field).
         level = logger.info if vy.get("success") else logger.warning
+        raw_results = vy.get("results")
         level(
-            "Valyu: no results-array found in payload; top-level keys=%s",
+            "Valyu: no results-array found in payload; "
+            "top-level keys=%s; results_type=%s; results_preview=%r",
             list(vy.keys()),
+            type(raw_results).__name__,
+            (str(raw_results)[:200] if raw_results is not None else None),
         )
 
-    return candidates
+        return candidates
+
+    if not candidates and vy.get("success") and vy.get("results") in ("", None, []):
+        logger.info("Valyu: successful call but zero documents returned for query=%r", vy.get("query"))
 
 
 def _norm_row(r: Dict[str, Any]) -> Dict[str, Any]:

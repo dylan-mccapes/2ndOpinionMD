@@ -969,6 +969,692 @@ def generate_psa_like_patient(patient_id: str = "DEMO_PSA_001") -> List[Timeline
     
     return events
 
+def generate_sjogren_like_patient(patient_id: str = "DEMO_SJOGREN_001") -> List[TimelineEventCreate]:
+    """
+    Generate a synthetic Sjögren-like patient timeline.
+
+    Pattern:
+    - Longstanding sicca symptoms (dry eyes, dry mouth)
+    - Positive SSA/SSB, mild RF, ANA often positive
+    - Fatigue, arthralgias without frank erosive arthritis
+    - Treatment with artificial tears, saliva substitutes, +/- hydroxychloroquine
+    """
+    events: List[TimelineEventCreate] = []
+    base_date = datetime.now(timezone.utc) - timedelta(days=365)
+
+    # Initial sicca visit
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date,
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="new_patient",
+            provider="Dr. Lee",
+            location="Rheumatology Clinic",
+            chief_complaint="Dry eyes, dry mouth, fatigue",
+            diagnoses=["Sjögren syndrome, suspected"],
+        ).model_dump(),
+        text="New patient with 2-year history of dry eyes, dry mouth, and profound fatigue. Reports needing water to swallow dry foods.",
+        meta={},
+    ))
+
+    # Sicca symptoms
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=1),
+        event_type=EventType.SYMPTOM,
+        source=EventSource.CLINICIAN_NOTE,
+        structured=SymptomData(
+            symptom_name="sicca_symptoms",
+            severity=7,
+            location="ocular, oral",
+            duration="2 years",
+            pattern="persistent",
+            associated_symptoms=["fatigue", "arthralgias"],
+        ).model_dump(),
+        text="Complains of gritty sensation in eyes, uses artificial tears multiple times daily. Dry mouth requiring frequent sips of water.",
+        meta={},
+    ))
+
+    # Initial labs: SSA/SSB, RF, ANA
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="Anti-SSA (Ro)",
+                value=120,
+                unit="U/mL",
+                reference_range="<20",
+                flag="high",
+            ).model_dump(),
+            text="Anti-SSA antibodies strongly positive at 120 U/mL.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="Anti-SSB (La)",
+                value=80,
+                unit="U/mL",
+                reference_range="<20",
+                flag="high",
+            ).model_dump(),
+            text="Anti-SSB antibodies positive at 80 U/mL.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="ANA",
+                value=320,
+                unit="titer",
+                reference_range="<1:40",
+                flag="high",
+                qualitative="positive, speckled",
+            ).model_dump(),
+            text="ANA positive at 1:320, speckled pattern.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="RF",
+                value=35,
+                unit="IU/mL",
+                reference_range="<14",
+                flag="high",
+            ).model_dump(),
+            text="Rheumatoid Factor mildly positive at 35 IU/mL.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+    ])
+
+    # Schirmer test
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=7),
+        event_type=EventType.IMAGING,
+        source=EventSource.EHR,
+        structured=ImagingData(
+            modality="Schirmer_test",
+            body_part="eyes",
+            findings=["5 mm wetting in 5 minutes in both eyes"],
+            impression="Objective evidence of reduced tear production.",
+            comparison="No prior Schirmer testing.",
+        ).model_dump(),
+        text="Schirmer test demonstrates markedly reduced tear production, consistent with keratoconjunctivitis sicca.",
+        meta={},
+    ))
+
+    # Start symptomatic treatment
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=10),
+        event_type=EventType.MEDICATION,
+        source=EventSource.EHR,
+        structured=MedicationData(
+            medication_name="Pilocarpine",
+            dose="5mg",
+            frequency="three times daily",
+            route="oral",
+            status="started",
+            indication="Primary Sjögren syndrome with sicca symptoms",
+        ).model_dump(),
+        text="Started pilocarpine 5mg TID plus scheduled artificial tears and saliva substitutes.",
+        meta={},
+    ))
+
+    # Journal entry about fatigue and coping
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=60),
+        event_type=EventType.JOURNAL,
+        source=EventSource.JOURNAL,
+        structured={
+            "mood": "tired",
+            "energy_level": 4,
+            "content": "Eyes and mouth feel somewhat better on medication, but I am still exhausted by late afternoon.",
+        },
+        text="Patient journal: reports persistent fatigue despite improvement in dryness.",
+        meta={},
+    ))
+
+    # Follow-up visit with stable disease
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=180),
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="follow_up",
+            provider="Dr. Lee",
+            location="Rheumatology Clinic",
+            chief_complaint="Sjögren follow-up",
+            diagnoses=["Primary Sjögren syndrome"],
+        ).model_dump(),
+        text="Follow-up for Sjögren syndrome. Sicca symptoms improved on pilocarpine and supportive measures. Still moderate fatigue.",
+        meta={"visit_number": 3},
+    ))
+
+    return events
+
+
+def generate_mctd_like_patient(patient_id: str = "DEMO_MCTD_001") -> List[TimelineEventCreate]:
+    """
+    Generate a synthetic mixed connective tissue disease (MCTD)-like timeline.
+
+    Pattern:
+    - Raynaud phenomenon, arthralgias, myalgias
+    - Positive ANA with high-titer anti-U1 RNP
+    - Overlap features of SLE, myositis, and scleroderma
+    """
+    events: List[TimelineEventCreate] = []
+    base_date = datetime.now(timezone.utc) - timedelta(days=420)
+
+    # Initial visit with Raynaud and joint pains
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date,
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="new_patient",
+            provider="Dr. Patel",
+            location="Rheumatology Clinic",
+            chief_complaint="Raynaud's, joint pains, and fatigue",
+            diagnoses=["Mixed connective tissue disease, suspected"],
+        ).model_dump(),
+        text="New patient with 1-year history of Raynaud phenomenon, arthralgias, and fatigue. Intermittent hand swelling and myalgias.",
+        meta={},
+    ))
+
+    # Symptoms: Raynaud and hand swelling
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=2),
+        event_type=EventType.SYMPTOM,
+        source=EventSource.CLINICIAN_NOTE,
+        structured=SymptomData(
+            symptom_name="Raynaud_phenomenon",
+            severity=6,
+            location="fingers, toes",
+            duration="1 year",
+            pattern="episodic, cold-induced",
+            associated_symptoms=["hand_swelling", "fatigue"],
+        ).model_dump(),
+        text="Describes triphasic color changes in fingers with cold exposure, with pain and numbness.",
+        meta={},
+    ))
+
+    # Autoimmune labs: ANA, anti-U1 RNP, complements
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=2, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="ANA",
+                value=1280,
+                unit="titer",
+                reference_range="<1:40",
+                flag="high",
+                qualitative="positive, speckled",
+            ).model_dump(),
+            text="ANA strongly positive at 1:1280, speckled pattern.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=2, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="Anti-U1 RNP",
+                value=200,
+                unit="U/mL",
+                reference_range="<20",
+                flag="high",
+            ).model_dump(),
+            text="Anti-U1 RNP antibodies markedly elevated at 200 U/mL.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=2, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="CK",
+                value=350,
+                unit="U/L",
+                reference_range="30-200",
+                flag="high",
+            ).model_dump(),
+            text="Mildly elevated creatine kinase suggesting myositis component.",
+            meta={"lab_panel": "muscle_enzymes"},
+        ),
+    ])
+
+    # Start treatment: low-dose steroids + hydroxychloroquine
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=7),
+        event_type=EventType.MEDICATION,
+        source=EventSource.EHR,
+        structured=MedicationData(
+            medication_name="Hydroxychloroquine",
+            dose="400mg",
+            frequency="daily",
+            route="oral",
+            status="started",
+            indication="Mixed connective tissue disease",
+        ).model_dump(),
+        text="Started hydroxychloroquine 400mg daily with low-dose prednisone for MCTD features.",
+        meta={},
+    ))
+
+    # Flare with myositis and dyspnea
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=180),
+            event_type=EventType.FLARE,
+            source=EventSource.CLINICIAN_NOTE,
+            structured=FlareData(
+                severity=6,
+                duration_days=21,
+                joints_involved=["hands", "wrists"],
+                triggers=["infection"],
+                treatment_response="increased steroids, added mycophenolate",
+                organ_involvement=["muscle", "lungs"],
+            ).model_dump(),
+            text="MCTD flare with myalgias, proximal muscle weakness, and new exertional dyspnea.",
+            meta={},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=180, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="CK",
+                value=900,
+                unit="U/L",
+                reference_range="30-200",
+                flag="high",
+            ).model_dump(),
+            text="CK markedly elevated at 900 U/L during flare.",
+            meta={"lab_panel": "muscle_enzymes"},
+        ),
+    ])
+
+    # Later stable follow-up
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=360),
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="follow_up",
+            provider="Dr. Patel",
+            location="Rheumatology Clinic",
+            chief_complaint="MCTD follow-up",
+            diagnoses=["Mixed connective tissue disease"],
+        ).model_dump(),
+        text="Symptoms improved on hydroxychloroquine and mycophenolate. Raynaud controlled with lifestyle measures and calcium channel blocker.",
+        meta={"visit_number": 4},
+    ))
+
+    return events
+
+
+def generate_vasculitis_like_patient(patient_id: str = "DEMO_VASC_001") -> List[TimelineEventCreate]:
+    """
+    Generate a synthetic small-vessel vasculitis-like timeline (e.g., ANCA-associated).
+
+    Pattern:
+    - Constitutional symptoms, purpura, neuropathy or renal involvement
+    - Elevated inflammatory markers, positive ANCA
+    - Treated with high-dose steroids and rituximab/cyclophosphamide
+    """
+    events: List[TimelineEventCreate] = []
+    base_date = datetime.now(timezone.utc) - timedelta(days=300)
+
+    # Initial presentation
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date,
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="hospital_admission",
+            provider="Dr. Nguyen",
+            location="Inpatient Rheumatology Service",
+            chief_complaint="Fever, weight loss, rash on legs, and hematuria",
+            diagnoses=["Small vessel vasculitis, suspected"],
+        ).model_dump(),
+        text="Admitted with fevers, unintentional weight loss, palpable purpura on lower extremities, and new hematuria.",
+        meta={},
+    ))
+
+    # Rash and neuropathy symptoms
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(hours=12),
+            event_type=EventType.SYMPTOM,
+            source=EventSource.CLINICIAN_NOTE,
+            structured=SymptomData(
+                symptom_name="purpura",
+                severity=7,
+                location="bilateral legs",
+                duration="2 weeks",
+                pattern="progressive",
+            ).model_dump(),
+            text="Palpable purpura over bilateral lower extremities, non-blanching.",
+            meta={},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(hours=18),
+            event_type=EventType.SYMPTOM,
+            source=EventSource.CLINICIAN_NOTE,
+            structured=SymptomData(
+                symptom_name="peripheral_neuropathy",
+                severity=6,
+                location="feet",
+                duration="2 weeks",
+                pattern="burning, tingling",
+            ).model_dump(),
+            text="Reports burning and tingling in feet, consistent with mononeuritis multiplex.",
+            meta={},
+        ),
+    ])
+
+    # Labs: ANCA, inflammatory markers, renal
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="CRP",
+                value=6.5,
+                unit="mg/dL",
+                reference_range="<0.5",
+                flag="high",
+            ).model_dump(),
+            text="CRP markedly elevated at 6.5 mg/dL.",
+            meta={"lab_panel": "inflammatory_markers"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="ESR",
+                value=85,
+                unit="mm/hr",
+                reference_range="0-20",
+                flag="high",
+            ).model_dump(),
+            text="ESR elevated at 85 mm/hr.",
+            meta={"lab_panel": "inflammatory_markers"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="PR3-ANCA",
+                value=90,
+                unit="U/mL",
+                reference_range="<20",
+                flag="high",
+            ).model_dump(),
+            text="PR3-ANCA positive at 90 U/mL, consistent with ANCA-associated vasculitis.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="Urine protein/creatinine ratio",
+                value=0.8,
+                unit="g/g",
+                reference_range="<0.2",
+                flag="high",
+            ).model_dump(),
+            text="Proteinuria with UPCR 0.8 g/g; microscopic hematuria on urinalysis.",
+            meta={"lab_panel": "renal"},
+        ),
+    ])
+
+    # Start high-dose steroids
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=1, hours=6),
+        event_type=EventType.MEDICATION,
+        source=EventSource.EHR,
+        structured=MedicationData(
+            medication_name="Methylprednisolone",
+            dose="1g",
+            frequency="daily",
+            route="IV",
+            status="started",
+            indication="Suspected ANCA-associated vasculitis with renal involvement",
+        ).model_dump(),
+        text="Started pulse-dose IV methylprednisolone 1g daily x3 days.",
+        meta={},
+    ))
+
+    # Rituximab induction
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=7),
+        event_type=EventType.MEDICATION,
+        source=EventSource.EHR,
+        structured=MedicationData(
+            medication_name="Rituximab",
+            dose="375mg/m2",
+            frequency="weekly",
+            route="IV",
+            status="started",
+            indication="ANCA-associated vasculitis induction",
+        ).model_dump(),
+        text="Initiated rituximab induction regimen for ANCA-associated vasculitis.",
+        meta={},
+    ))
+
+    # Follow-up with improved markers
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=180),
+        event_type=EventType.LAB,
+        source=EventSource.EHR,
+        structured=LabResult(
+            test_name="CRP",
+            value=0.7,
+            unit="mg/dL",
+            reference_range="<0.5",
+            flag="borderline",
+        ).model_dump(),
+        text="CRP improved to 0.7 mg/dL on maintenance therapy.",
+        meta={"lab_panel": "inflammatory_markers"},
+    ))
+
+    return events
+
+
+def generate_fibro_like_patient(patient_id: str = "DEMO_FIBRO_001") -> List[TimelineEventCreate]:
+    """
+    Generate a synthetic fibromyalgia-like timeline.
+
+    Pattern:
+    - Chronic widespread pain and fatigue
+    - Non-restorative sleep, cognitive fog
+    - Normal inflammatory and autoimmune labs
+    - Managed with exercise, sleep hygiene, and neuropathic pain agents
+    """
+    events: List[TimelineEventCreate] = []
+    base_date = datetime.now(timezone.utc) - timedelta(days=365)
+
+    # Initial visit
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date,
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="new_patient",
+            provider="Dr. Gomez",
+            location="Rheumatology Clinic",
+            chief_complaint="Chronic widespread pain and fatigue",
+            diagnoses=["Fibromyalgia, suspected"],
+        ).model_dump(),
+        text="New patient with several years of diffuse musculoskeletal pain, non-restorative sleep, and cognitive fog.",
+        meta={},
+    ))
+
+    # Widespread pain symptom
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=1),
+        event_type=EventType.SYMPTOM,
+        source=EventSource.CLINICIAN_NOTE,
+        structured=SymptomData(
+            symptom_name="widespread_pain",
+            severity=8,
+            location="neck, shoulders, back, hips",
+            duration="3 years",
+            pattern="daily, worse with stress",
+            associated_symptoms=["fatigue", "poor_sleep", "cognitive_fog"],
+        ).model_dump(),
+        text="Reports diffuse aching pain in neck, shoulders, back, and hips with significant fatigue and non-restorative sleep.",
+        meta={},
+    ))
+
+    # Normal inflammatory labs
+    events.extend([
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="CRP",
+                value=0.3,
+                unit="mg/dL",
+                reference_range="<0.5",
+                flag="normal",
+            ).model_dump(),
+            text="CRP normal at 0.3 mg/dL.",
+            meta={"lab_panel": "inflammatory_markers"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="ESR",
+                value=10,
+                unit="mm/hr",
+                reference_range="0-20",
+                flag="normal",
+            ).model_dump(),
+            text="ESR within normal limits.",
+            meta={"lab_panel": "inflammatory_markers"},
+        ),
+        TimelineEventCreate(
+            patient_id=patient_id,
+            ts=base_date + timedelta(days=1, hours=2),
+            event_type=EventType.LAB,
+            source=EventSource.EHR,
+            structured=LabResult(
+                test_name="ANA",
+                value=1,
+                unit="titer",
+                reference_range="<1:40",
+                flag="normal",
+                qualitative="negative",
+            ).model_dump(),
+            text="ANA negative; no serologic evidence of systemic autoimmune disease.",
+            meta={"lab_panel": "autoimmune_panel"},
+        ),
+    ])
+
+    # Start non-pharmacologic and pharmacologic therapy
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=7),
+        event_type=EventType.MEDICATION,
+        source=EventSource.EHR,
+        structured=MedicationData(
+            medication_name="Duloxetine",
+            dose="30mg",
+            frequency="daily",
+            route="oral",
+            status="started",
+            indication="Fibromyalgia",
+        ).model_dump(),
+        text="Started duloxetine 30mg daily, advised graded exercise and sleep hygiene.",
+        meta={},
+    ))
+
+    # Sleep-focused journal entry
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=90),
+        event_type=EventType.JOURNAL,
+        source=EventSource.JOURNAL,
+        structured={
+            "mood": "hopeful",
+            "energy_level": 5,
+            "content": "Still sore most days but sleep is slowly improving with a regular schedule and stretching before bed.",
+        },
+        text="Patient journal: reports modest improvement in sleep and energy with consistent bedtime routine.",
+        meta={},
+    ))
+
+    # Follow-up with improved but persistent symptoms
+    events.append(TimelineEventCreate(
+        patient_id=patient_id,
+        ts=base_date + timedelta(days=180),
+        event_type=EventType.VISIT,
+        source=EventSource.EHR,
+        structured=VisitData(
+            visit_type="follow_up",
+            provider="Dr. Gomez",
+            location="Rheumatology Clinic",
+            chief_complaint="Fibromyalgia follow-up",
+            diagnoses=["Fibromyalgia"],
+        ).model_dump(),
+        text="Pain remains chronic but severity improved to 5/10. Patient tolerating duloxetine and engaging in low-impact exercise.",
+        meta={"visit_number": 3},
+    ))
+
+    return events
+
 
 def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
     """
@@ -996,6 +1682,14 @@ def seed_patient_data(patient_id: str, patient_type: str = "ra") -> int:
         events = generate_lupus_like_patient(patient_id)
     elif patient_type == "psa":
         events = generate_psa_like_patient(patient_id)
+    elif patient_type == "sjogren":
+        events = generate_sjogren_like_patient(patient_id)
+    elif patient_type == "mctd":
+        events = generate_mctd_like_patient(patient_id)
+    elif patient_type == "vasc":
+        events = generate_vasculitis_like_patient(patient_id)
+    elif patient_type == "fibro":
+        events = generate_fibro_like_patient(patient_id)
     else:
         raise ValueError(f"Unknown patient type: {patient_type}")
 
@@ -1082,7 +1776,7 @@ def main():
     parser.add_argument(
         "--type",
         type=str,
-        choices=["ra", "sle", "psa", "all"],
+        choices=["ra", "sle", "psa", "sjogren", "mctd", "vasc", "fibro", "all"],
         default="ra",
         help="Type of patient data to generate (default: ra)",
     )
@@ -1096,43 +1790,57 @@ def main():
         type=str,
         help="Output JSON file for dry run (optional)",
     )
-    
+
     args = parser.parse_args()
-    
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
+    # ---------------------------------------------------------
+    # Determine which patient types to generate
+    # ---------------------------------------------------------
     if args.type == "all":
-        patient_types = ["ra", "sle", "psa"]
+        # full zoo of patterns
+        patient_types = ["ra", "sle", "psa", "sjogren", "mctd", "vasc", "fibro"]
     else:
         patient_types = [args.type]
-    
+
     all_events: List[Dict[str, Any]] = []
-    
+
     for pt in patient_types:
         if args.type == "all":
             pid = f"{args.patient_id}_{pt.upper()}"
         else:
             pid = args.patient_id
-        
-        if pt == "ra":
-            events = generate_ra_like_patient(pid)
-        elif pt == "sle":
-            events = generate_lupus_like_patient(pid)
-        elif pt == "psa":
-            events = generate_psa_like_patient(pid)
-        else:
-            continue
-        
-        logger.info(f"Generated {len(events)} events for patient {pid} ({pt})")
-        
+
         if args.dry_run:
+            # -----------------------------
+            # Dry-run: generate only
+            # -----------------------------
+            if pt == "ra":
+                events = generate_ra_like_patient(pid)
+            elif pt == "sle":
+                events = generate_lupus_like_patient(pid)
+            elif pt == "psa":
+                events = generate_psa_like_patient(pid)
+            elif pt == "sjogren":
+                events = generate_sjogren_like_patient(pid)
+            elif pt == "mctd":
+                events = generate_mctd_like_patient(pid)
+            elif pt == "vasc":
+                events = generate_vasculitis_like_patient(pid)
+            elif pt == "fibro":
+                events = generate_fibro_like_patient(pid)
+            else:
+                raise ValueError(f"Unknown patient type: {pt}")
+
+            logger.info(f"Generated {len(events)} events for patient {pid} ({pt})")
+
             for e in events:
-                # event_type and source may be strings or enums depending on Config
-                event_type = e.event_type.value if hasattr(e.event_type, 'value') else e.event_type
-                source = e.source.value if hasattr(e.source, 'value') else e.source
+                event_type = e.event_type.value if hasattr(e.event_type, "value") else e.event_type
+                source = e.source.value if hasattr(e.source, "value") else e.source
                 all_events.append({
                     "patient_id": e.patient_id,
                     "ts": e.ts.isoformat(),
@@ -1142,10 +1850,14 @@ def main():
                     "text": e.text,
                     "meta": e.meta,
                 })
+
         else:
+            # ---------------------------------------
+            # Normal mode: generate + embed + insert
+            # ---------------------------------------
             count = seed_patient_data(pid, pt)
             logger.info(f"Seeded {count} events for patient {pid}")
-    
+
     if args.dry_run:
         if args.output:
             with open(args.output, "w") as f:
@@ -1153,7 +1865,6 @@ def main():
             logger.info(f"Wrote {len(all_events)} events to {args.output}")
         else:
             print(json.dumps(all_events, indent=2))
-
 
 if __name__ == "__main__":
     main()

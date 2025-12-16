@@ -340,6 +340,51 @@ def compute_diagnostic_landscape_from_events(
     )
 
 
+def _load_patient_state_landscape(patient_id: str) -> Optional["DiagnosticLandscape"]:
+    """
+    Optional override: if eoh.patient_state.raw->'diagnostic_landscape' exists,
+    use that as the baseline diagnostic landscape instead of inferring from events.
+
+    This is sync and uses the same DB URL as the timeline loader.
+    """
+    url = get_timeline_db_url()
+    conn = psycopg2.connect(url)
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT raw -> 'diagnostic_landscape' AS dl
+                FROM eoh.patient_state
+                WHERE patient_id = %s
+                """,
+                (patient_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            dl = row.get("dl")
+            if not isinstance(dl, dict):
+                return None
+
+            # Accept both "mixed_ctd_like" and older "mctd_like" naming
+            mixed_ctd = dl.get("mixed_ctd_like")
+            if mixed_ctd is None:
+                mixed_ctd = dl.get("mctd_like")
+
+            return DiagnosticLandscape(
+                ra_like=float(dl.get("ra_like", 0.0) or 0.0),
+                sle_like=float(dl.get("sle_like", 0.0) or 0.0),
+                psa_like=float(dl.get("psa_like", 0.0) or 0.0),
+                sjogren_like=float(dl.get("sjogren_like", 0.0) or 0.0),
+                mixed_ctd_like=float(mixed_ctd or 0.0),
+                vasculitis_like=float(dl.get("vasculitis_like", 0.0) or 0.0),
+                other=float(dl.get("other", 0.0) or 0.0),
+            )
+    finally:
+        conn.close()
+
+
 @dataclass
 class TimelineContext:
     patient_id: str
@@ -413,8 +458,16 @@ class TimelineEngine:
                     }
                 )
 
-        # Diagnostic landscape derived from timeline (weak prior)
-        diag = compute_diagnostic_landscape_from_events(events)
+        # 1) Prefer any seeded / stored diagnostic landscape from eoh.patient_state
+        diag: DiagnosticLandscape
+        state_diag = _load_patient_state_landscape(patient_id)
+
+        if state_diag is not None:
+            # Use the DB-backed landscape as the primary signal
+            diag = state_diag
+        else:
+            # Fallback: derive a weak landscape from timeline events
+            diag = compute_diagnostic_landscape_from_events(events)
 
         # Build a simple context text blob
         ctx_lines: List[str] = []
@@ -497,16 +550,23 @@ class TimelineEngine:
             buckets[idx].append(e)
 
         history: List[Dict[str, Any]] = []
+
         for idx, bucket in enumerate(buckets):
             if not bucket:
                 continue
             dl = compute_diagnostic_landscape_from_events(bucket)
             mid_ts = bucket[len(bucket) // 2].get("ts")
+
+            if isinstance(mid_ts, datetime):
+                as_of_ts = mid_ts.isoformat()
+            else:
+                as_of_ts = mid_ts
+
             history.append(
                 {
                     "patient_id": patient_id,
                     "window_index": idx,
-                    "as_of_ts": mid_ts,
+                    "as_of_ts": as_of_ts,
                     "landscape": dl.to_payload(),  # rich payload
                 }
             )
