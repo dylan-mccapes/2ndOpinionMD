@@ -1,0 +1,178 @@
+[
+  {
+    "topic": "FullMetalPacket provenance graph and artifact lineage investigation",
+    "key_findings": [
+      "Architecture description mentions multi-stage artifact generation and governance invariants but concrete data structures for provenance graphs and lineage links are not visible, leaving the core model under-specified.",
+      "The role boundaries between Bash orchestration and Python reasoning components are unclear, especially how provenance metadata is passed, transformed, and validated across layers.",
+      "Details of clinical reasoning traceability (e.g., how inferred states, confidence vectors, and governance decisions are encoded and linked per artifact) are underexplored.",
+      "Error handling, robustness of path resolution, and schema validation for JSON-based provenance artifacts are not evidenced, despite being called out as potential risks.",
+      "Testing strategy and coverage for provenance invariants and lineage transitions are not apparent, making it hard to assess reliability of the triage and invariant system."
+    ],
+    "recommended_actions": [
+      "Locate and review Python modules or classes that explicitly model provenance graphs, artifact nodes, and lineage edges to clarify the core data model.",
+      "Inspect Bash scripts that orchestrate ai_probe_output and ai_coder_output flows to understand cross-layer data contracts and temporal sequencing.",
+      "Identify JSON schema definitions and validation utilities used to encode inferred states, confidence metrics, and governance decisions for clinical reasoning traceability.",
+      "Search for tests related to provenance, lineage, and governance invariants to assess coverage and how invariants are asserted or enforced.",
+      "Investigate how directory and suffix naming conventions are centralized (constants or helpers) versus duplicated across components to assess and potentially reduce fragile connascence."
+    ],
+    "connascence_signals": [
+      "Strong connascence on suffix-based directory paths between ai_probe_output and ai_coder_output",
+      "Naming convetions for reports, patches, and summaries enforce expected file locations",
+      "Provenance and inferred state lineage model tightly coupled with confidence vectors and governance decisions",
+      "Common use of JSON schema artifacts for inter-component communication",
+      "Shared use of Bash and Python layers to manage and query artifact provenance",
+      "cross_layer_dto",
+      "temporal_dependency",
+      "shared_constant",
+      "transitive"
+    ],
+    "confidence": "medium",
+    "gap_ann": "provenance graph model implementation",
+    "gap_ts": [
+      "provenance_graph",
+      "lineage_edge"
+    ]
+  },
+  {
+    "topic": "agentic workflow orchestration",
+    "key_findings": [
+      "Architecture description of FullMetalPacket as a fully autonomous engineering orchestrator is high-level; concrete control flow between coder_goal_agent and coder_scrum_agent (including failure modes, retries, and branching) remains unclear.",
+      "The provenance of artifacts (goals.json, epic.json, and other JSON intermediates) is underexplored: who owns their schema, how they evolve across steps, and how integrity/consistency is enforced is not documented.",
+      "Clinical reasoning or domain-specific reasoning hooks (e.g., diagnostic landscape modeling, invariants, drift detection) are only hinted at via scripts like run_eoh_v5_2_probe.sh and lack clear integration into the main orchestration pipeline.",
+      "Human-in-the-loop checkpoints are mentioned but the exact edit/approval loop, and how those edits propagate back into the automated agents, is unspecified.",
+      "Cost/model optimization behavior (model selection, lean-run flags, environment-variable driven modes) is referenced but not concretely tied to decision logic or configuration structures."
+    ],
+    "recommended_actions": [
+      "Inspect the main orchestrator script (e.g., full_metal_packet.py) and agent entrypoints to map precise sequencing, branching, error handling, and retry strategies between coder_goal_agent and coder_scrum_agent.",
+      "Locate and review the definitions and usage sites of goals.json, epic.json, and any related DTOs or schemas to clarify artifact lifecycle, validation, and versioning mechanisms.",
+      "Search for modules or scripts implementing EoH, mechanical constraints, or diagnostic landscape modeling to understand how clinical reasoning components are invoked within the orchestration.",
+      "Investigate configuration management (environment variables, CLI flags, config files) that control lean-run, model selection, and triage/debug loops to assess coupling between CLI and internal agents.",
+      "Look for explicit checkpoint or approval functions/classes to determine how human edits are merged, overridden, or rejected within the automated workflow."
+    ],
+    "connascence_signals": [
+      "subprocess invocation for agent communication",
+      "JSON artifacts (goals.json, epic.json) shared between agents",
+      "environment variables control flags for lean-run modes",
+      "interactive checkpoints rely on serialized goal/ticket data",
+      "strong coupling between user CLI config and agent parameters",
+      "cross_layer_dto",
+      "temporal_dependency",
+      "transitive"
+    ],
+    "confidence": "medium-high",
+    "gap_ann": "coder_scrum_agent orchestration details",
+    "gap_ts": [
+      "full_metal_packet",
+      "goals_artifact"
+    ]
+  },
+  {
+    "topic": "FullMetalPacket clinical reasoning framework analysis",
+    "key_findings": [
+      "The overall vision suggests a rich clinical reasoning and triage architecture (agents, governance, provenance, confidence mediation, suppression lifecycle), but the available evidence is almost entirely high-level and lacks concrete code-level examples of these mechanisms.",
+      "Provenance and audit trails are claimed as core features, yet the specific data structures (e.g., provenance records, audit event models) and how they are linked to inferred clinical states, artifacts, and timestamps are not visible, leaving the implementation of traceability unclear.",
+      "The governance and decision layers (abstention, suppression, update ordering) are described conceptually, but the enforcement logic, rule representation, and any conflict-resolution strategies between concurrent inferred states are not directly evidenced.",
+      "Confidence vector handling and mediation appear central to diagnostic state management, but the exact representation (scalar vs. vector, per-symptom vs. global), update algorithms, and integration with suppression/governance rules remain underexplored.",
+      "Concurrency and state lifecycle controls for inferred clinical states are mentioned, but supporting mechanisms (locking, versioning, timestamp ordering, or conflict tolerance policies) are not concretely shown, making robustness and determinism difficult to assess.",
+      "The CLI UX is said to orchestrate probes, triage, debugging, and workflows with extensive logging and artifact management, but the extent of coverage for error paths, failure modes, and operator interventions is unclear.",
+      "Test coverage and validation of clinical workflows (unit, integration, scenario-based, or simulation harnesses) are not evident, amplifying the risk that complex state and governance behaviors are unverified.",
+      "The diagnostic landscape and inferred state models appear tightly coupled to governance and confidence mechanisms, suggesting non-trivial connascence across layers, but the explicit DTO boundaries and modular separation are not yet confirmed."
+    ],
+    "recommended_actions": [
+      "Locate and review modules implementing provenance/audit logging to understand how inferred states, clinical artifacts, and timestamps are linked and whether provenance is enforced uniformly across workflows.",
+      "Investigate the governance/decision layer code to identify how abstention, suppression, and update ordering rules are represented, evaluated, and applied to concurrent inferred states.",
+      "Identify the data models and algorithms for confidence vectors, including how they are computed, aggregated across agents, and used in conjunction with governance decisions.",
+      "Search for concurrency or state-management components (e.g., state stores, locks, or versioning logic) that handle concurrent inferred states and ensure deterministic triage outcomes.",
+      "Examine CLI and orchestration code paths that manage probes, triage workflows, debugging, and artifact/log management to assess operational usability and failure handling.",
+      "Assess presence and depth of test suites or scenario simulations that exercise diagnostic landscape evolution, suppression lifecycle, and confidence-mediated governance decisions.",
+      "Clarify DTO boundaries between diagnostic landscape, inferred states, governance rules, and CLI/orchestration layers to evaluate and, if needed, reduce cross-layer coupling.",
+      "Document and, where appropriate, refactor areas with strong temporal dependency (e.g., suppression windows, audit timestamps, state validity intervals) to ensure they are explicit and testable."
+    ],
+    "connascence_signals": [
+      "Diagnostic Landscape <-> inferred state data model coupling",
+      "Governance ordering tied to explicit state update and confidence mediation",
+      "Provenance linkage between inferred states, source artifacts, and timestamps",
+      "Concurrent inferred states handled with conflict tolerance and weighted confidence",
+      "Suppression lifecycle enforcement without historical data deletion",
+      "cross_layer_dto",
+      "temporal_dependency",
+      "algorithmic_duplication"
+    ],
+    "confidence": "low",
+    "gap_ann": "provenance audit trail implementation",
+    "gap_ts": [
+      "DiagnosticLandscape",
+      "provenance_record"
+    ]
+  },
+  {
+    "topic": "Observability and logging safeguards",
+    "key_findings": [
+      "Logging is centralized in a minimal RunLogger that writes JSONL lines with fixed keys like timestamp and event, emphasizing simplicity and post-hoc traceability over operational robustness.",
+      "Utility helpers convert dataclasses and nested structures to JSON-serializable payloads, indicating an expectation of structured, typed log events but without explicit schema validation or versioning.",
+      "Shell scripts wire logging into higher-level AI triage and debugging workflows via fixed log file paths, reflecting an assumption of single-process, append-only usage without concurrency controls.",
+      "There is no visible support for log rotation, backpressure, asynchronous I/O, or integrity guarantees (e.g., checksums, write-ahead strategies), leaving gaps for long-running or multi-agent clinical workflows.",
+      "Security, privacy, and PHI/PII concerns for logged clinical reasoning artifacts are not surfaced in the logging API, suggesting that provenance is tracked but safeguards and redaction are underexplored."
+    ],
+    "recommended_actions": [
+      "Clarify and document expected concurrency model for RunLogger usage, including whether multi-process or multi-threaded agents may append to the same JSONL file.",
+      "Introduce or at least design for log rotation and size limits to prevent unbounded growth in long-running clinical or diagnostic sessions.",
+      "Define a lightweight event schema or versioned envelope for logged records to stabilize downstream analytics and provenance reconstruction.",
+      "Assess and, if necessary, add mechanisms for sensitive data handling (e.g., optional redaction, field-level controls) in logging of clinical reasoning and agent decisions.",
+      "Evaluate whether higher-level workflows (triage, debug loops) need richer correlation identifiers or session IDs to stitch multi-step agentic reasoning from the flat JSONL stream."
+    ],
+    "connascence_signals": [
+      "Strong temporal coupling: timestamps appended to logs",
+      "Data format connascence: JSONL serialization consistency",
+      "Name/value connascence: fixed log record keys ('ts', 'event')",
+      "Filepath connascence: path consistency with mkdir ensured",
+      "Type connascence: requirement that payloads be JSON serializable",
+      "temporal_dependency",
+      "shared_constant",
+      "cross_layer_dto"
+    ],
+    "confidence": "high",
+    "gap_ann": "triage debug workflow logging",
+    "gap_ts": [
+      "utc_now_iso",
+      "RunLogger.__init__"
+    ]
+  },
+  {
+    "topic": "FullMetalPacket embedding context auto-detection and repo vision",
+    "key_findings": [
+      "The current vision emphasizes context routing (e.g., switching to 'fmp_dogfood') when ai_code_pipelines-related failures are detected, but provides little explicit description of how this integrates with the broader triage and invariant system mentioned in the package header.",
+      "Provenance of decisions (why a particular embedding context was chosen) is underexplored; there is no clear indication of structured logging, audit trails, or artifacts capturing routing rationale for downstream analysis.",
+      "The separation of routing logic from reasoning functions is mentioned, but the boundary, interfaces, and data contracts between routing and reasoning modules remain unclear (e.g., what DTOs or schemas are passed between them).",
+      "Clinical reasoning or domain-specific reasoning pathways are not described; it is unclear how, if at all, the system models multi-step diagnostic or triage workflows beyond simple context switching.",
+      "Coverage of entry points (run_probe.py, run_triage.py, run_coder.py) is referenced, but the orchestration and error-handling patterns across these tools, including how they share or derive embedding contexts, are not documented.",
+      "Resilience aspects are underexplored: how the system behaves under partial failures (e.g., missing directories, novel error formats, or new tools) and how fallback or default contexts are selected are not evident.",
+      "The repo vision hints at modularity, but unit boundaries, ownership of configuration (e.g., context registry), and extensibility patterns (adding new contexts or heuristics) are not articulated."
+    ],
+    "recommended_actions": [
+      "Document the end-to-end context routing workflow, including inputs (errors, paths, repo_root), intermediate representations (decision DTOs), and outputs (selected context, confidence), and how these are used by triage and coder pipelines.",
+      "Introduce explicit provenance logging for context decisions (e.g., which heuristics matched, what evidence was used) to support debugging, audit, and future learning-based improvements.",
+      "Define and centralize shared constants for known contexts, directory prefixes, and error-signature patterns to reduce stringly-typed coupling and ease evolution of routing rules.",
+      "Specify clear interfaces between context routing and reasoning agents, including typed data-transfer objects and lifecycle hooks for pre- and post-reasoning steps.",
+      "Analyze and refactor error-signature and file-path checks into reusable matchers or rule objects to reduce algorithmic duplication and make connascence more explicit and testable.",
+      "Add tests that simulate structural changes (directory moves, renamed scripts, altered error messages) to assess the robustness of embedding context detection and refine fallback behavior.",
+      "Clarify how clinical or triage reasoning flows are composed on top of context routing (e.g., multi-step agents, scenario-specific policies) and where in the architecture those flows are implemented."
+    ],
+    "connascence_signals": [
+      "Error excerpt string matching 'ai_code_pipelines' to determine context",
+      "File path prefixes required for context detection",
+      "Runtime environment directory structure (repo_root) checks",
+      "Separation of routing logic from reasoning functions",
+      "Dependency on specific scripts ('run_probe.py', 'run_triage.py', 'run_coder.py') for population of repo_vision",
+      "shared_constant",
+      "algorithmic_duplication",
+      "transitive"
+    ],
+    "confidence": "high",
+    "gap_ann": "context routing heuristics implementation",
+    "gap_ts": [
+      "repo_vision",
+      "context_router"
+    ]
+  }
+]

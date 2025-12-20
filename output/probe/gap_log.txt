@@ -1,0 +1,13 @@
+
+▶️  Gap phase started at 15:21:10
+😎 Loaded vision context: query + 10 matches
+😎 Repo vision loaded: 0 files documented
+📥 Loaded 5 probe topics
+📂 Loading embeddings for gap retrieval...
+Traceback (most recent call last):
+  File "/Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_probe/gap_agent.py", line 285, in <module>
+    run_gap()
+  File "/Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_probe/gap_agent.py", line 64, in run_gap
+    embeddings = json.load(open(index_path))
+                           ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_probe_index/embeddings.json'

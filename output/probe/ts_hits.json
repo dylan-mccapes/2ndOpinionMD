@@ -1,0 +1,1102 @@
+[
+  {
+    "path": "./run_fmp_file_resolution_probe.sh",
+    "line": 2,
+    "text": "# Probe to investigate file resolution and repo_vision issues in FullMetalPacket"
+  },
+  {
+    "path": "./run_fmp_file_resolution_probe.sh",
+    "line": 7,
+    "text": "--query \"Investigate FullMetalPacket triage and coder pipeline file resolution failures: why run_probe.py cannot be found despite being in issue JSON file_errors, and why repo_vision loads as empty despite being saved with files. Analyze the canonical path resolution logic, repo_vision loading/savin..."
+  },
+  {
+    "path": "./run_fmp_file_resolution_probe.sh",
+    "line": 11,
+    "text": "'{\"topic\":\"Analyze how file paths like run_probe.py are resolved from bare filenames to canonical repo-relative paths. Investigate resolve_canonical_file_path function, how it searches repo_vision, embeddings, and git ls-files. Identify why run_probe.py from issue JSON file_errors fails to resolve t..."
+  },
+  {
+    "path": "./run_fmp_file_resolution_probe.sh",
+    "line": 12,
+    "text": "'{\"topic\":\"Investigate repo_vision loading and saving: why repo_vision saves with files but loads as empty. Analyze GLOBAL_REPO_VISION_PATH vs PROBE_REPO_VISION_PATH usage, when repo_vision is saved vs loaded, and why ticket agent sees 0 files despite triage agent saving 1 file. Check load_repo_visi..."
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 106,
+    "text": "echo -e \"\\n${GREEN}=== REVIEWED (HIGH/MEDIUM confidence) ===${NC}\\n\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 117,
+    "text": "echo -e \"\\n${YELLOW}=== SUPPRESSED (LOW confidence) ===${NC}\\n\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 155,
+    "text": "if [ -f \"$PROBE_DIR/vision_context.json\" ]; then"
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 156,
+    "text": "file_header \"$PROBE_DIR/vision_context.json\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 157,
+    "text": "head -n 100 \"$PROBE_DIR/vision_context.json\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 164,
+    "text": "if [ -f \"$dir/repo_vision.json\" ]; then"
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 165,
+    "text": "file_header \"$dir/repo_vision.json\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 166,
+    "text": "head -n 100 \"$dir/repo_vision.json\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 229,
+    "text": "if [ -f \"$dir/ts_hits.json\" ]; then"
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 230,
+    "text": "file_header \"$dir/ts_hits.json\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 231,
+    "text": "echo \"Lines: $(wc -l < \"$dir/ts_hits.json\")\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 232,
+    "text": "echo \"Size: $(du -h \"$dir/ts_hits.json\" | cut -f1)\""
+  },
+  {
+    "path": "./show_artifacts.sh",
+    "line": 235,
+    "text": "head -n 20 \"$dir/ts_hits.json\""
+  },
+  {
+    "path": "./run_debug_from_triage.py",
+    "line": 99,
+    "text": "print(f\"   Confidence: {triage_decision.get('confidence', 0.0):.2f}\")"
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 8,
+    "text": "'{\"topic\":\"Define the canonical Diagnostic Landscape data model with required fields and update rules, including temporal span, confidence vector, provenance references, suppression status, and explicit comparison to prior inferred states.\",\"ts_terms\":[\"Diagnostic Landscape\",\"inferred state\",\"tempor..."
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 10,
+    "text": "'{\"topic\":\"Constrain drift detection by defining at least one canonical operational embodiment, including drift magnitude, direction, persistence, and a minimum actionable rule based on confidence threshold crossing over defined temporal intervals.\",\"ts_terms\":[\"drift detection\",\"confidence threshol..."
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 12,
+    "text": "'{\"topic\":\"Document governance decision ordering within EoH, including mandatory sequencing of abstention checks, suppression evaluation, state update comparison, and confidence mediation prior to any external output generation.\",\"ts_terms\":[\"governance ordering\",\"abstention\",\"suppression evaluation..."
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 14,
+    "text": "'{\"topic\":\"Constrain concurrent inferred state handling by specifying rules for non-exclusive state coexistence, conflict tolerance, confidence weighting across states, and prohibition of forced collapse into a single diagnosis.\",\"ts_terms\":[\"concurrent inferred states\",\"non-exclusive states\",\"confi..."
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 15,
+    "text": "'{\"topic\":\"Define explicit authority boundaries between the Medical Knowledge Engine (MKE) and EoH, including rules that retrieved knowledge artifacts are non-authoritative until elevated by EoH through time- and confidence-mediated reasoning.\",\"ts_terms\":[\"Medical Knowledge Engine\",\"MKE\",\"authority..."
+  },
+  {
+    "path": "./run_eoh_v5_2_probe.sh",
+    "line": 16,
+    "text": "'{\"topic\":\"Specify provenance and audit invariants for EoH reasoning, including mandatory linkage between inferred states, source artifacts, timestamps, confidence vectors, and governance decisions suitable for regulatory and patent examination.\",\"ts_terms\":[\"provenance\",\"audit trail\",\"invariants\",\"..."
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 12,
+    "text": "5. Gap analysis (uncertainty pass)"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 267,
+    "text": "default=\"Investigate this codebase\u2019s modular architecture, identifying coupling and connascence quantitatively and qualitatively.\","
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 283,
+    "text": "help=\"Use fmp_dogfood embedding context (for FullMetalPacket self-analysis)\","
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 287,
+    "text": "help=\"Explicit embedding context name (overrides --dogfood)\","
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 329,
+    "text": "stage2 = query_agent_result.get(\"stage2\", {})"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 330,
+    "text": "chosen_path = stage2.get(\"chosen_path\", \"FULL_PROBE\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 332,
+    "text": "print(f\"\u2705 Query agent decision: {chosen_path}\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 334,
+    "text": "if chosen_path == \"UPDATE_ONLY\":"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 336,
+    "text": "elif chosen_path == \"PARTIAL_EXPANSION\":"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 338,
+    "text": "elif chosen_path == \"TARGETED_PROBE\":"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 340,
+    "text": "topics = stage2.get(\"topics\", [])"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 349,
+    "text": "elif chosen_path == \"FULL_PROBE\":"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 351,
+    "text": "topics = stage2.get(\"topics\", [])"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 361,
+    "text": "print(f\"\u26a0\ufe0f Unknown path '{chosen_path}', falling back to default probe\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 379,
+    "text": "# Resolve embedding context up-front so we know where the index should land"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 408,
+    "text": "print(f\"\u26a0\ufe0f Could not resolve embedding context: {e}\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 424,
+    "text": "# Create temp filtered index file for embed_incremental.py"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 437,
+    "text": "print(f\"\ud83d\udfe1 Filtered index: {after}/{before} files retained (ai_probe_index/embeddings_diff.json)\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 438,
+    "text": "os.environ[\"AI_PROBE_INDEX_PATH\"] = os.path.join(PROBE_DIR_STR, \"ai_probe_index\", \"embeddings_diff.json\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 444,
+    "text": "repo_structure_path = os.path.join(run_output_dir_str, f\"repo_structure{suffix_tag}.json\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 450,
+    "text": "# 0b. Initialize repo_vision artifact (will be updated by agents)"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 451,
+    "text": "repo_vision_path = os.path.join(run_output_dir_str, f\"repo_vision{suffix_tag}.json\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 455,
+    "text": "repo_vision = {"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 461,
+    "text": "\"phase_log\": [],"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 464,
+    "text": "json.dump(repo_vision, f, indent=2)"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 468,
+    "text": "# If the index was previously pruned/small, embed_incremental will auto-rebuild."
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 478,
+    "text": "if \"AI_PROBE_INDEX_PATH\" in os.environ:"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 479,
+    "text": "index_path = os.environ[\"AI_PROBE_INDEX_PATH\"]"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 482,
+    "text": "print(f\"\ud83d\udce6 Resolved index via embedding context: {index_path}\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 486,
+    "text": "print(f\"\ud83d\udce6 Resolved index via resolver: {index_path}\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 492,
+    "text": "print(f\"\ud83d\udce6 Resolved index via default path: {index_path}\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 494,
+    "text": "raise SystemExit(\"\u274c Index not found after embedding. Provide --index or ensure ai_probe_index/embeddings.json exists.\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 495,
+    "text": "os.environ[\"AI_PROBE_INDEX_PATH\"] = index_path"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 496,
+    "text": "run_vision_query(args.query, index_path=index_path, out_path=os.path.join(run_output_dir_str, \"vision_context.json\"))"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 500,
+    "text": "chosen_path = None"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 502,
+    "text": "chosen_path = query_agent_result.get(\"stage2\", {}).get(\"chosen_path\", \"\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 503,
+    "text": "if chosen_path in [\"UPDATE_ONLY\", \"PARTIAL_EXPANSION\"]:"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 505,
+    "text": "print(f\"\u23ed\ufe0f  Skipping probe/gap phases (path: {chosen_path})\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 512,
+    "text": "run(f\"{py} -u {os.path.join(PROBE_DIR_STR, 'probe_agent.py')} 2>&1 | tee {os.path.join(run_output_dir_str, f'probe_log{suffix_tag}.txt')}\", \"Running probe phase\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 514,
+    "text": "# 4. Gap analysis"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 515,
+    "text": "run(f\"{py} -u {os.path.join(PROBE_DIR_STR, 'gap_agent.py')} 2>&1 | tee {os.path.join(run_output_dir_str, f'gap_log{suffix_tag}.txt')}\", \"Running gap analysis\")"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 520,
+    "text": "# For UPDATE_ONLY/PARTIAL_EXPANSION, report_agent will handle the update"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 522,
+    "text": "report_cmd = f\"{py} -u {os.path.join(PROBE_DIR_STR, 'report_agent.py')} --suffix {suffix_arg or 'default'}\""
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 523,
+    "text": "if query_agent_result and skip_probe_gap and chosen_path:"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 524,
+    "text": "# Pass query agent decision to report_agent via environment variable"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 525,
+    "text": "os.environ[\"QUERY_AGENT_DECISION\"] = json.dumps(query_agent_result.get(\"stage2\", {}))"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 526,
+    "text": "os.environ[\"QUERY_AGENT_PATH\"] = chosen_path"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 531,
+    "text": "# Create run ledger for traceability"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 533,
+    "text": "ledger = {"
+  },
+  {
+    "path": "./run_probe.py",
+    "line": 542,
+    "text": "# Try to attach a summary of connascence signals if probe output exists"
+  },
+  {
+    "path": "./run_diagnose_file_resolution.sh",
+    "line": 11,
+    "text": "'{\"topic\":\"Trace the file resolution path for run_probe.py in coder_code_agent.py: how does resolve_canonical_file_path get called, what paths does it check (repo_vision, embeddings, git ls-files), and why does it return None? Analyze the filesystem search fallback logic and why it fails to find ai_..."
+  },
+  {
+    "path": "./run_fmp_dogfood_probe.sh",
+    "line": 2,
+    "text": "# Run probe on FullMetalPacket (dogfood) to populate repo_vision and fix file resolution issues"
+  },
+  {
+    "path": "./run_fmp_dogfood_probe.sh",
+    "line": 7,
+    "text": "--query \"FullMetalPacket triage and coder pipeline: analyze file resolution, repo_vision population, embedding context handling, and ensure all entry-point scripts (run_probe.py, run_triage.py, run_coder.py) are properly documented in repo_vision\" \\"
+  },
+  {
+    "path": "./run_fmp_dogfood_probe.sh",
+    "line": 14,
+    "text": "echo \"   - ai_coder_output/repo_vision.json (should be populated)\""
+  },
+  {
+    "path": "./run_fmp_dogfood_probe.sh",
+    "line": 15,
+    "text": "echo \"   - ai_probe_index/fmp_dogfood/embeddings.json (should have all files)\""
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 28,
+    "text": "\"run_log\": \"output/runs/test/events.jsonl\","
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 64,
+    "text": "from fmp.agents.triage_agent import TriageConfig, run_triage_agent"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 66,
+    "text": "from fmp.logging.run_log import RunLogger"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 164,
+    "text": "description=\"Triage agent: decide next action based on failure signals\""
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 239,
+    "text": "help=\"Path to repo_vision.json file (optional, will try to find if not provided)\","
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 248,
+    "text": "help=\"Use fmp_dogfood embedding context (for FullMetalPacket self-analysis)\","
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 282,
+    "text": "if \"run_log\" in query_data:"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 283,
+    "text": "args.run_log = query_data[\"run_log\"]"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 325,
+    "text": "# \ud83e\ude79 TRIAGE STARTUP LOGGING"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 334,
+    "text": "if not args.run_log:"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 344,
+    "text": "run_log_path = args.run_log"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 365,
+    "text": "def emit(self, event, payload):"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 366,
+    "text": "print(f\"[LOG] {event}: {json.dumps(payload)}\", file=sys.stderr)"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 419,
+    "text": "# Extract file paths early for logging (before expensive operations)"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 425,
+    "text": "peek[\"file_paths\"] = file_paths  # Add to peek for triage_agent"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 437,
+    "text": "# Find GLOBAL repo_vision path (single source of truth in ai_code_pipelines/)"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 440,
+    "text": "canonical_repo_vision = os.path.join(BASE_DIR, \"repo_vision.json\")"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 443,
+    "text": "elif os.path.exists(os.path.join(BASE_DIR, \"ai_coder_output\", \"repo_vision.json\")):"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 445,
+    "text": "repo_vision_path_to_use = os.path.join(BASE_DIR, \"ai_coder_output\", \"repo_vision.json\")"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 450,
+    "text": "# Will be created/updated by triage_agent if files are seeded"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 457,
+    "text": "# \ud83e\ude79 COMPREHENSIVE PRE-TRIAGE LOGGING (before expensive operations)"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 508,
+    "text": "print(f\"   Has repo_vision flag: {'\u2705' if peek.get('has_repo_vision', False) else '\u274c'}\")"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 510,
+    "text": "effective_msg = \"\u2705 fmp_dogfood\" if dogfood_final else \"\u274c default\""
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 573,
+    "text": "# Include embedding context if dogfood detected/flagged"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 575,
+    "text": "result[\"embedding_context\"] = \"fmp_dogfood\""
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 581,
+    "text": "# Include embedding context in result if detected"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 583,
+    "text": "result[\"embedding_context\"] = \"fmp_dogfood\""
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 601,
+    "text": "print(f\"   \ud83d\udce6 Embedding context: {result['embedding_context']}\")"
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 606,
+    "text": "\"confidence\": \"\ud83d\udcca\","
+  },
+  {
+    "path": "./run_triage.py",
+    "line": 774,
+    "text": "# If logging fails, at least write to stderr"
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 8,
+    "text": "--query \"Document the 2ndOpinionMD API architecture, focusing on RAG stream endpoints (/rag/ask_stream, /rag/coding_stream, /rag/eoh_stream, /rag/eoh_detective_stream) with comprehensive detail, and other API endpoints (SNOMED, DisGeNET, etc.) with brief 1-2 sentence summaries per item. Structure th..."
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 14,
+    "text": "'{\"topic\": \"Comprehensively document /rag/eoh_detective_stream endpoint: request/response format, multi-step investigation workflow, orchestration pattern, internal delegation to eoh_stream, step-by-step reasoning, and detective-specific behavior.\", \"ts_terms\": [\"eoh_detective_stream\", \"eoh_detectiv..."
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 15,
+    "text": "'{\"topic\": \"Document the Frontend Contract Summary for all RAG stream endpoints: shared SSE contract (text/event-stream transport), event.type semantic meaning, event.data JSON structure, and how a single EventSource handler can support all modes (ask_stream, coding_stream, eoh_stream, eoh_detective..."
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 16,
+    "text": "'{\"topic\": \"Document Event Schema Stability requirements: how SSE event payloads are semi-structured and may evolve, frontend client requirements (tolerate unknown event types, tolerate additional fields, treat missing optional fields as non-fatal), and schema versioning approach.\", \"ts_terms\": [\"ev..."
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 25,
+    "text": "\"EventSourceResponse\" \"SSE\" \"streaming\" \"text/event-stream\" \\"
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 26,
+    "text": "\"event.type\" \"event.data\" \"EventSource\" \"sse_starlette\" \\"
+  },
+  {
+    "path": "./run_probe_api_docs.sh",
+    "line": 27,
+    "text": "\"event\" \"schema\" \"payload\" \"optional\" \"fields\" \"versioning\" \\"
+  },
+  {
+    "path": "./run_mke_landing_page.sh",
+    "line": 8,
+    "text": "--user-query \"Build a world-class, production-grade landing page for 2ndOpinionMD's Medical Knowledge Engine that lets a user see the engine thinking in real time. The page must visually stream the system's internal process during a search \u2014 source selection, retrieval, extraction, synthesis, proven..."
+  },
+  {
+    "path": "./fmp_cli.py",
+    "line": 130,
+    "text": "\"confidence\": 0.51,"
+  },
+  {
+    "path": "./fmp_cli.py",
+    "line": 427,
+    "text": "print(f\"  Confidence : {decision['confidence']:.2f}\")"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 80,
+    "text": "If non-canonical paths are found, resolve them using repo_vision/git/fs and overwrite the file."
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 100,
+    "text": "repo_vision = load_repo_vision()"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 102,
+    "text": "repo_vision = None"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 113,
+    "text": "repo_vision=repo_vision,"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 216,
+    "text": "print(f\"\u23ed\ufe0f  Skipping embedding - index was updated {age_minutes:.1f} minutes ago (recent run_probe?)\")"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 427,
+    "text": "run(f\"{py} {os.path.join(BASE_DIR,'ai_coder','coder_gap_agent.py')}\", \"Running coder gap analysis\")"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 434,
+    "text": "notes=\"Gap intentionally skipped; no gap analysis performed.\","
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 459,
+    "text": "ts_hits_path = os.path.join(base_dir, \"ts_hits.json\")"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 479,
+    "text": "print(\"\u274c Phase-gating invariant failed: probe_hits.json or ts_hits.json required but missing\")"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 505,
+    "text": "# Review agent: filters/tiers patches, adds metadata headers, clusters by hypothesis"
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 526,
+    "text": "notes=\"Gap intentionally skipped; no gap analysis performed.\","
+  },
+  {
+    "path": "./run_coder.py",
+    "line": 545,
+    "text": "print(f\"   \ud83c\udfaf Top hypothesis: {review.get('top_hypothesis')}\")"
+  },
+  {
+    "path": "./run_triage_to_debug.sh",
+    "line": 2,
+    "text": "# Complete workflow: Triage -> DEBUG_LOOP for dogfooding"
+  },
+  {
+    "path": "./run_triage_to_debug.sh",
+    "line": 8,
+    "text": "RUN_LOG=\"output/runs/test_citation/events.jsonl\""
+  },
+  {
+    "path": "./run_triage_to_debug.sh",
+    "line": 11,
+    "text": "mkdir -p \"$(dirname \"$RUN_LOG\")\""
+  },
+  {
+    "path": "./run_triage_to_debug.sh",
+    "line": 17,
+    "text": "--run-log \"$RUN_LOG\" \\"
+  },
+  {
+    "path": "./run_triage_to_debug.sh",
+    "line": 27,
+    "text": "echo \"\u2705 Triage -> Debug workflow complete\""
+  },
+  {
+    "path": "./RUN_TRIAGE_DEBUG.sh",
+    "line": 2,
+    "text": "# Complete workflow: Triage -> DEBUG_LOOP for citation_agent.py error"
+  },
+  {
+    "path": "./RUN_TRIAGE_DEBUG.sh",
+    "line": 7,
+    "text": "RUN_LOG=\"output/runs/test_citation/events.jsonl\""
+  },
+  {
+    "path": "./RUN_TRIAGE_DEBUG.sh",
+    "line": 10,
+    "text": "mkdir -p \"$(dirname \"$RUN_LOG\")\""
+  },
+  {
+    "path": "./RUN_TRIAGE_DEBUG.sh",
+    "line": 16,
+    "text": "--run-log \"$RUN_LOG\" \\"
+  },
+  {
+    "path": "./RUN_TRIAGE_DEBUG.sh",
+    "line": 26,
+    "text": "echo \"\u2705 Triage -> Debug workflow complete\""
+  },
+  {
+    "path": "./full_metal_packet.py",
+    "line": 13,
+    "text": "--user-query \"make timeline provenance first-class\" \\"
+  },
+  {
+    "path": "./full_metal_packet.py",
+    "line": 40,
+    "text": "help=\"High-level user request (e.g., 'make timeline provenance first-class')\""
+  },
+  {
+    "path": "./full_metal_packet.py",
+    "line": 77,
+    "text": "\"--human-confidence\","
+  },
+  {
+    "path": "./full_metal_packet.py",
+    "line": 80,
+    "text": "help=\"Human input confidence weighting (0.0-1.0, default: 0.5)\""
+  },
+  {
+    "path": "./full_metal_packet.py",
+    "line": 109,
+    "text": "print(f\"\u274c --human-confidence must be between 0.0 and 1.0 (got {args.human_confidence})\")"
+  },
+  {
+    "path": "./invariants/invariant_loader.py",
+    "line": 23,
+    "text": "raise RuntimeError(f\"\u274c Invalid invariant at index {i}: missing keys {sorted(missing)}\")"
+  },
+  {
+    "path": "./fmp/config/software_invariants.py",
+    "line": 55,
+    "text": "- Failure to localize \u2260 failure to reason; downgrade confidence, do not abort."
+  },
+  {
+    "path": "./fmp/config/software_invariants.py",
+    "line": 67,
+    "text": "\"user_preference_variant_path\": \"User selection always overrides internal confidence heuristics; confidence informs recommendation, never permission.\","
+  },
+  {
+    "path": "./fmp/config/software_invariants.py",
+    "line": 68,
+    "text": "\"escalation_requires_explanation\": \"Any change in model tier or workflow path must be justified and present alternatives.\","
+  },
+  {
+    "path": "./fmp/config/software_invariants.py",
+    "line": 69,
+    "text": "\"never_give_up\": \"Zero confidence still triggers a 4.1 debug attempt; confidence is a signal, not a kill switch.\","
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 12,
+    "text": "from fmp.logging.run_log import RunLogger, to_jsonable"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 21,
+    "text": "\"confidence\": 0.0,"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 39,
+    "text": "return f\"\"\"You are triage_agent for FullMetalPacket."
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 58,
+    "text": "1. Failure signals"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 60,
+    "text": "- error output or stack trace excerpts"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 63,
+    "text": "- repo_vision (semantic index of files, entities, responsibilities)"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 66,
+    "text": "3. Trace-derived hooks (if available)"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 74,
+    "text": "- model override signals"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 87,
+    "text": "- repo_vision summaries"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 89,
+    "text": "- trace-linked file/function hints"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 94,
+    "text": "- Escalate ONLY if confidence is low or signals conflict."
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 98,
+    "text": "- broader repo_vision context"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 113,
+    "text": "- Stack trace or error points clearly to a small fix"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 120,
+    "text": "- repo_vision + trace hooks provide sufficient context"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 127,
+    "text": "- Probe + vision + gap analysis is justified"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 143,
+    "text": "repo_vision: Optional[Dict[str, Any]] = None,"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 148,
+    "text": "Uses repo_vision to resolve filenames to full paths when available."
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 174,
+    "text": "found_filenames = set()  # Track bare filenames for repo_vision lookup"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 200,
+    "text": "# Might be just a filename - try to resolve via repo_vision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 203,
+    "text": "# Use repo_vision to resolve bare filenames"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 204,
+    "text": "if repo_vision and found_filenames:"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 211,
+    "text": "from ai_coder.repo_vision import RepoVision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 213,
+    "text": "if isinstance(repo_vision, dict):"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 214,
+    "text": "vision = RepoVision.from_dict(repo_vision)"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 216,
+    "text": "vision = repo_vision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 267,
+    "text": "Build user prompt with peek, repo_vision, and file snippets."
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 272,
+    "text": "parts.append(\"TRIAGE_PEEK (FAILURE SIGNALS)\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 278,
+    "text": "parts.append(\"REPO_VISION CONTEXT\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 284,
+    "text": "parts.append(\"FILE SNIPPETS (from error trace)\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 310,
+    "text": "If it fails, treat as low-confidence and escalate or fail fast."
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 366,
+    "text": "repo_vision_path: Path to repo_vision.json file (optional, will try to find if not provided)"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 372,
+    "text": "# Load or create repo_vision context"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 385,
+    "text": "# Import from ai_coder.utils and ai_coder.repo_vision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 387,
+    "text": "from ai_coder.repo_vision import RepoVision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 389,
+    "text": "# Try to load GLOBAL repo_vision (single source of truth at ai_code_pipelines/repo_vision.json)"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 391,
+    "text": "canonical_repo_vision = os.path.join(base_dir, \"repo_vision.json\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 394,
+    "text": "elif os.path.exists(os.path.join(base_dir, \"ai_coder_output\", \"repo_vision.json\")):"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 396,
+    "text": "repo_vision_path = os.path.join(base_dir, \"ai_coder_output\", \"repo_vision.json\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 406,
+    "text": "# Create new repo_vision if it doesn't exist"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 410,
+    "text": "# CRITICAL: Seed repo_vision with files from issue if available"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 419,
+    "text": "confidence = 0.95  # Very high confidence since it's from structured error"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 428,
+    "text": "discovered_by=\"triage_agent\","
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 433,
+    "text": "repo_vision_obj.update_file_importance(file_path, importance, confidence, \"triage_agent\")"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 438,
+    "text": "\"confidence\": confidence,"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 444,
+    "text": "# Extract file paths early to seed repo_vision"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 453,
+    "text": "# Files from error trace also get high importance if they're crash-related"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 455,
+    "text": "confidence = 0.85"
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 458,
+    "text": "summary=f\"File referenced in error trace\","
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 459,
+    "text": "discovered_by=\"triage_agent\","
+  },
+  {
+    "path": "./fmp/agents/triage_agent.py",
+    "line": 464,
+    "text": "repo_vision_obj.update_file_importance(file_path, importance, confidence, \"triage_agent\")"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 13,
+    "text": "\"confidence\": float,"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 19,
+    "text": "- PROBE: keywords {\"probe\", \"report\", \"repo vision\", \"repo_vision\", \"repo report\"}"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 40,
+    "text": "probe_keys = {\"probe\", \"report\", \"repo vision\", \"repo_vision\", \"repo report\", \"vision\"}"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 63,
+    "text": "\"confidence\": 0.1,"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 67,
+    "text": "confidence = min(0.9, 0.4 + 0.1 * best_score)"
+  },
+  {
+    "path": "./fmp/agents/global_triage_agent.py",
+    "line": 70,
+    "text": "\"confidence\": confidence,"
+  },
+  {
+    "path": "./fmp/agents/issue.py",
+    "line": 91,
+    "text": "Convert to peek dict format expected by triage_agent."
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 5,
+    "text": "Auto-detection utilities for embedding context selection."
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 7,
+    "text": "Detects when to use fmp_dogfood context based on failure signals."
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 20,
+    "text": "Auto-detect which embedding context to use based on failure signals."
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 23,
+    "text": "\"fmp_dogfood\" if failure originates in ai_code_pipelines"
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 30,
+    "text": "return \"fmp_dogfood\""
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 38,
+    "text": "return \"fmp_dogfood\""
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 47,
+    "text": "return \"fmp_dogfood\""
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 54,
+    "text": "Determine if fmp_dogfood context should be used based on peek signals."
+  },
+  {
+    "path": "./fmp/utils/context_detection.py",
+    "line": 67,
+    "text": "return detected == \"fmp_dogfood\""
+  },
+  {
+    "path": "./fmp/logging/__init__.py",
+    "line": 1,
+    "text": "# Logging modules"
+  },
+  {
+    "path": "./fmp/logging/run_log.py",
+    "line": 25,
+    "text": "def emit(self, event: str, payload: Dict[str, Any]) -> None:"
+  },
+  {
+    "path": "./fmp/logging/run_log.py",
+    "line": 28,
+    "text": "\"event\": event,"
+  }
+]

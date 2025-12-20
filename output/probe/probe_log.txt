@@ -1,0 +1,10 @@
+😎 Loaded vision context: query + 10 matches
+😎 Repo vision: 0 files, 0 entities
+
+▶️  Probe phase started at 15:35:16
+🦾 System invariants loaded: 16 (invariants/system_invariants.yaml)
+📦 Using context-aware index: /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_probe_index/fmp_dogfood/embeddings.json
+📥 Loaded 29 embeddings, 220 TS hits
+
+🧠 [1/5] Probing → Provenance graph and artifact lineage
+   🔎 60 TS hits from 7 terms

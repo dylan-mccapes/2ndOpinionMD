@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "actions": {
+    "run_probe": {
+      "count": 38,
+      "avg_duration_sec": 19.05384179165489,
+      "avg_cost": 15.243073433323909
+    },
+    "run_coder": {
+      "count": 28,
+      "avg_duration_sec": 23.0426407456398,
+      "avg_cost": 46.0852814912796
+    },
+    "debug_loop": {
+      "count": 2,
+      "avg_duration_sec": 0.9972991943359375,
+      "avg_cost": 1.4959487915039062
+    }
+  },
+  "user_decisions": {
+    "continue": 0,
+    "abort": 0,
+    "revise": 0
+  },
+  "confidence_overrides": {
+    "count": 0,
+    "avg_confidence": null
+  }
+}
