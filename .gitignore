@@ -133,3 +133,6 @@ sha256:*
 # Local auth/internal scratch (escaped brackets so Git doesn't treat them as char classes)
 \[auth\]/
 \[internal\]/
+
+# Nested repo companion
+ai_code_pipelines/
