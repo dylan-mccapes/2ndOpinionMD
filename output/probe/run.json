@@ -1,14 +1,12 @@
 {
-  "timestamp": "2025-12-19T23:18:55.357143+00:00",
-  "query": "FullMetalPacket: investigate provenance, agentic workflow, and clinical reasoning architecture",
+  "timestamp": "2025-12-22T23:30:57.459882+00:00",
+  "query": "Investigate this codebase\u2019s modular architecture, identifying coupling and connascence quantitatively and qualitatively.",
   "suffix": "default",
-  "custom_queries": [
-    "[\n  {\"topic\":\"Provenance graph and artifact lineage\",\"ts_terms\":[\"provenance\",\"lineage\",\"artifact graph\",\"repo_vision\",\"citations_index\",\"ledger\",\"run ledger\"]},\n  {\"topic\":\"Agentic workflow orchestration\",\"ts_terms\":[\"agent orchestration\",\"triage_agent\",\"probe_agent\",\"gap_agent\",\"report_agent\",\"stage2\",\"chosen_path\",\"workflow\"]},\n  {\"topic\":\"Clinical reasoning framework\",\"ts_terms\":[\"clinical reasoning\",\"differential\",\"hypothesis\",\"gap analysis\",\"connascence\",\"signals\",\"confidence\"]},\n  {\"topic\":\"Observability and logging safeguards\",\"ts_terms\":[\"observability\",\"logging\",\"trace\",\"run_log\",\"event\",\"phase_log\",\"telemetry\"]},\n  {\"topic\":\"Embedding and vision context handling\",\"ts_terms\":[\"embedding context\",\"fmp_dogfood\",\"AI_PROBE_INDEX_PATH\",\"vision_context\",\"ts_hits\",\"repo_structure\",\"index\"]}\n]"
-  ],
+  "custom_queries": [],
   "custom_terms": [],
-  "cwd": "/Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines",
+  "cwd": "/Users/2ndopinionmd/Sites/2ndOpinionMD-MVP",
   "connascence_summary": {
     "topics": 5,
-    "total_signals": 25
+    "total_signals": 24
   }
 }

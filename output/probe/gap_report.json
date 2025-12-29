@@ -1,178 +1,169 @@
 [
   {
-    "topic": "FullMetalPacket provenance graph and artifact lineage investigation",
+    "topic": "Data layer and storage",
     "key_findings": [
-      "Architecture description mentions multi-stage artifact generation and governance invariants but concrete data structures for provenance graphs and lineage links are not visible, leaving the core model under-specified.",
-      "The role boundaries between Bash orchestration and Python reasoning components are unclear, especially how provenance metadata is passed, transformed, and validated across layers.",
-      "Details of clinical reasoning traceability (e.g., how inferred states, confidence vectors, and governance decisions are encoded and linked per artifact) are underexplored.",
-      "Error handling, robustness of path resolution, and schema validation for JSON-based provenance artifacts are not evidenced, despite being called out as potential risks.",
-      "Testing strategy and coverage for provenance invariants and lineage transitions are not apparent, making it hard to assess reliability of the triage and invariant system."
+      "No concrete evidence yet of how data access is structured (repositories, DAOs, direct queries), leaving coupling patterns between domain and storage unclear.",
+      "Schema definition and migration mechanisms are not visible, so assumptions about schema evolution, backward compatibility, and migration coupling remain speculative.",
+      "There is no observed code for serialization/deserialization or DTO mapping, so connascence around field names, types, and versions is underexplored.",
+      "Cross-layer data contracts (e.g., network \u2192 persistence \u2192 domain) have not been located, preventing quantitative measurement of dependency fan-in/fan-out.",
+      "Error handling and transaction boundaries for storage interactions are not yet observed, leaving temporal dependencies and execution connascence between operations unclear."
     ],
     "recommended_actions": [
-      "Locate and review Python modules or classes that explicitly model provenance graphs, artifact nodes, and lineage edges to clarify the core data model.",
-      "Inspect Bash scripts that orchestrate ai_probe_output and ai_coder_output flows to understand cross-layer data contracts and temporal sequencing.",
-      "Identify JSON schema definitions and validation utilities used to encode inferred states, confidence metrics, and governance decisions for clinical reasoning traceability.",
-      "Search for tests related to provenance, lineage, and governance invariants to assess coverage and how invariants are asserted or enforced.",
-      "Investigate how directory and suffix naming conventions are centralized (constants or helpers) versus duplicated across components to assess and potentially reduce fragile connascence."
+      "Locate and inspect any persistence gateway or repository-like abstractions to understand how strongly domain logic is coupled to specific storage technologies.",
+      "Identify schema or model definitions and corresponding migration or upgrade scripts to concretely assess connascence of meaning, type, and execution across versions.",
+      "Search for serialization utilities or adapters to evaluate how tightly coupled callers are to payload shape, ordering, and type assumptions.",
+      "Map dependencies between data access modules and higher layers (services, view models) to quantify coupling and identify potential cross-layer DTO usage.",
+      "Review configuration and constants related to storage (e.g., table names, collection names, file paths) to detect shared constant and temporal dependency patterns."
     ],
     "connascence_signals": [
-      "Strong connascence on suffix-based directory paths between ai_probe_output and ai_coder_output",
-      "Naming convetions for reports, patches, and summaries enforce expected file locations",
-      "Provenance and inferred state lineage model tightly coupled with confidence vectors and governance decisions",
-      "Common use of JSON schema artifacts for inter-component communication",
-      "Shared use of Bash and Python layers to manage and query artifact provenance",
-      "cross_layer_dto",
-      "temporal_dependency",
+      "Connascence of Meaning in schema field names",
+      "Connascence of Position in event payload field order",
+      "Connascence of Execution between migration scripts and schema versions",
+      "Connascence of Type in serialization/deserialization methods",
+      "Connascence of Algorithm in version handling logic",
       "shared_constant",
-      "transitive"
-    ],
-    "confidence": "medium",
-    "gap_ann": "provenance graph model implementation",
-    "gap_ts": [
-      "provenance_graph",
-      "lineage_edge"
-    ]
-  },
-  {
-    "topic": "agentic workflow orchestration",
-    "key_findings": [
-      "Architecture description of FullMetalPacket as a fully autonomous engineering orchestrator is high-level; concrete control flow between coder_goal_agent and coder_scrum_agent (including failure modes, retries, and branching) remains unclear.",
-      "The provenance of artifacts (goals.json, epic.json, and other JSON intermediates) is underexplored: who owns their schema, how they evolve across steps, and how integrity/consistency is enforced is not documented.",
-      "Clinical reasoning or domain-specific reasoning hooks (e.g., diagnostic landscape modeling, invariants, drift detection) are only hinted at via scripts like run_eoh_v5_2_probe.sh and lack clear integration into the main orchestration pipeline.",
-      "Human-in-the-loop checkpoints are mentioned but the exact edit/approval loop, and how those edits propagate back into the automated agents, is unspecified.",
-      "Cost/model optimization behavior (model selection, lean-run flags, environment-variable driven modes) is referenced but not concretely tied to decision logic or configuration structures."
-    ],
-    "recommended_actions": [
-      "Inspect the main orchestrator script (e.g., full_metal_packet.py) and agent entrypoints to map precise sequencing, branching, error handling, and retry strategies between coder_goal_agent and coder_scrum_agent.",
-      "Locate and review the definitions and usage sites of goals.json, epic.json, and any related DTOs or schemas to clarify artifact lifecycle, validation, and versioning mechanisms.",
-      "Search for modules or scripts implementing EoH, mechanical constraints, or diagnostic landscape modeling to understand how clinical reasoning components are invoked within the orchestration.",
-      "Investigate configuration management (environment variables, CLI flags, config files) that control lean-run, model selection, and triage/debug loops to assess coupling between CLI and internal agents.",
-      "Look for explicit checkpoint or approval functions/classes to determine how human edits are merged, overridden, or rejected within the automated workflow."
-    ],
-    "connascence_signals": [
-      "subprocess invocation for agent communication",
-      "JSON artifacts (goals.json, epic.json) shared between agents",
-      "environment variables control flags for lean-run modes",
-      "interactive checkpoints rely on serialized goal/ticket data",
-      "strong coupling between user CLI config and agent parameters",
-      "cross_layer_dto",
       "temporal_dependency",
+      "cross_layer_dto",
       "transitive"
     ],
-    "confidence": "medium-high",
-    "gap_ann": "coder_scrum_agent orchestration details",
+    "confidence": "low",
+    "gap_ann": "persistence gateway interfaces",
     "gap_ts": [
-      "full_metal_packet",
-      "goals_artifact"
+      "storage adapter",
+      "database client"
     ]
   },
   {
-    "topic": "FullMetalPacket clinical reasoning framework analysis",
+    "topic": "API and backend services",
     "key_findings": [
-      "The overall vision suggests a rich clinical reasoning and triage architecture (agents, governance, provenance, confidence mediation, suppression lifecycle), but the available evidence is almost entirely high-level and lacks concrete code-level examples of these mechanisms.",
-      "Provenance and audit trails are claimed as core features, yet the specific data structures (e.g., provenance records, audit event models) and how they are linked to inferred clinical states, artifacts, and timestamps are not visible, leaving the implementation of traceability unclear.",
-      "The governance and decision layers (abstention, suppression, update ordering) are described conceptually, but the enforcement logic, rule representation, and any conflict-resolution strategies between concurrent inferred states are not directly evidenced.",
-      "Confidence vector handling and mediation appear central to diagnostic state management, but the exact representation (scalar vs. vector, per-symptom vs. global), update algorithms, and integration with suppression/governance rules remain underexplored.",
-      "Concurrency and state lifecycle controls for inferred clinical states are mentioned, but supporting mechanisms (locking, versioning, timestamp ordering, or conflict tolerance policies) are not concretely shown, making robustness and determinism difficult to assess.",
-      "The CLI UX is said to orchestrate probes, triage, debugging, and workflows with extensive logging and artifact management, but the extent of coverage for error paths, failure modes, and operator interventions is unclear.",
-      "Test coverage and validation of clinical workflows (unit, integration, scenario-based, or simulation harnesses) are not evident, amplifying the risk that complex state and governance behaviors are unverified.",
-      "The diagnostic landscape and inferred state models appear tightly coupled to governance and confidence mechanisms, suggesting non-trivial connascence across layers, but the explicit DTO boundaries and modular separation are not yet confirmed."
+      "The /rag/eoh_stream endpoint architecture appears modular, with routing, timeline summarization, source selection, and an EoH LLM router separated into distinct modules, but the exact module boundaries and dependency directions remain underdocumented.",
+      "Inter-module dependencies rely heavily on shared domain models (e.g., patient_state, timeline structures) and implied data contracts, creating moderate connascence of meaning and type that is not explicitly enforced via interfaces or schemas.",
+      "Streaming behavior (event shapes, sequencing, backpressure or error semantics) is only partially characterized; details of how events are produced, ordered, and consumed, and how these map across modules, are unclear.",
+      "Test coverage is effectively absent around the /rag/eoh_stream flow, which amplifies the risk introduced by moderate coupling and makes the current connascence level more fragile.",
+      "No concrete evidence yet indicates hard architectural cycles or singleton-style global coordinators, but the LLM router and stream orchestration components are likely de facto hubs that could conceal temporal and algorithmic coupling."
     ],
     "recommended_actions": [
-      "Locate and review modules implementing provenance/audit logging to understand how inferred states, clinical artifacts, and timestamps are linked and whether provenance is enforced uniformly across workflows.",
-      "Investigate the governance/decision layer code to identify how abstention, suppression, and update ordering rules are represented, evaluated, and applied to concurrent inferred states.",
-      "Identify the data models and algorithms for confidence vectors, including how they are computed, aggregated across agents, and used in conjunction with governance decisions.",
-      "Search for concurrency or state-management components (e.g., state stores, locks, or versioning logic) that handle concurrent inferred states and ensure deterministic triage outcomes.",
-      "Examine CLI and orchestration code paths that manage probes, triage workflows, debugging, and artifact/log management to assess operational usability and failure handling.",
-      "Assess presence and depth of test suites or scenario simulations that exercise diagnostic landscape evolution, suppression lifecycle, and confidence-mediated governance decisions.",
-      "Clarify DTO boundaries between diagnostic landscape, inferred states, governance rules, and CLI/orchestration layers to evaluate and, if needed, reduce cross-layer coupling.",
-      "Document and, where appropriate, refactor areas with strong temporal dependency (e.g., suppression windows, audit timestamps, state validity intervals) to ensure they are explicit and testable."
+      "Document and formalize the /rag/eoh_stream request/response contracts, including patient_state structure and stream event schemas, to reduce implicit connascence of meaning and type.",
+      "Introduce explicit interface layers or DTOs between routing, timeline summarization, source selection, and the LLM router to localize changes and lower cross-module connascence of name and type.",
+      "Define and test the streaming lifecycle explicitly (event ordering, error events, completion semantics, and timing guarantees) to manage connascence of timing and temporal dependencies across producer and consumer modules.",
+      "Add targeted tests around the /rag/eoh_stream path (including integration tests with mocked LLM router and source selection) to detect regressions stemming from inter-module changes.",
+      "Review router and orchestration components for potential over-centralization; if they act as implicit singletons or god-objects, refactor responsibilities to reduce algorithmic and temporal coupling."
     ],
     "connascence_signals": [
-      "Diagnostic Landscape <-> inferred state data model coupling",
-      "Governance ordering tied to explicit state update and confidence mediation",
-      "Provenance linkage between inferred states, source artifacts, and timestamps",
-      "Concurrent inferred states handled with conflict tolerance and weighted confidence",
-      "Suppression lifecycle enforcement without historical data deletion",
+      "Connascence of Name between request model and handler",
+      "Connascence of Meaning between timeline fields across summarization and stream modules",
+      "Connascence of Algorithm in source selection and timeline summarization modules",
+      "Connascence of Type between patient_state dict and LLM router processor",
+      "Connascence of Timing in streaming event generation and client consumption",
       "cross_layer_dto",
       "temporal_dependency",
       "algorithmic_duplication"
     ],
+    "confidence": "medium",
+    "gap_ann": "eoh_stream implementation details",
+    "gap_ts": [
+      "eoh_stream handler",
+      "timeline_event_model"
+    ]
+  },
+  {
+    "topic": "Frontend architecture and UX flows",
+    "key_findings": [
+      "The current picture of the frontend modular architecture is high-level and backend-centric (RAG streams, SSE contract) but lacks concrete mapping to actual UI modules, components, or navigation/flow structures; UX flows are barely explored.",
+      "Key abstractions such as the unified EventSource handler, stream mode selectors, and any view-model/state management layer are not explicitly identified in code, so the precise dependency graph and coupling points between UI and streaming layer remain unclear.",
+      "The connascence assessment is inferred conceptually (event.type, event.data) without concrete examples of where in the code those fields are consumed, making the quantitative score (7/12) weakly supported by specific evidence.",
+      "Error handling, reconnection logic, and user feedback patterns for streaming failures are underexplored, even though they likely contribute to temporal and cross-layer coupling between frontend behavior and backend stream lifecycle.",
+      "There is no direct evidence yet of how shared constants or DTO-like structures (TypeScript interfaces or JS schemas) are defined and used across components, which is essential to judge cross_layer_dto or shared_constant connascence.",
+      "Test coverage is estimated as very low but no specific absence of unit/integration tests for the SSE/event handling modules is documented, leaving that risk assertion somewhat speculative."
+    ],
+    "recommended_actions": [
+      "Locate and analyze the core frontend modules that instantiate and manage the unified EventSource abstraction, mapping out which components depend on which stream modes and what data they expect from each event type.",
+      "Identify any central state/store (e.g., Redux/Vuex/Zustand/custom) or controller-like layer responsible for coordinating SSE events with UI state transitions, and document the coupling between these layers and the backend event schema.",
+      "Search for definitions of event-related types, interfaces, or constants (e.g., enums of event types, typed payloads) to determine whether connascence is mitigated via central contracts or scattered literal usage.",
+      "Review error-handling and reconnection logic around SSE to understand temporal dependencies (e.g., required ordering of events, retry timing) and how tightly frontend behavior is bound to backend lifecycle assumptions.",
+      "Confirm the absence or presence of tests for the EventSource handler and stream consumers; if missing, recommend adding contract tests and schema validation around streaming payloads to reduce regression risk.",
+      "Refine the quantitative connascence score after grounding it in specific code locations (files, modules, functions) where semantic, positional, and type coupling to event.type and event.data occur."
+    ],
+    "connascence_signals": [
+      "Semantic connascence of meaning on event.type across components",
+      "Connascence of position in consuming event.data JSON keys",
+      "Connascence of type due to inferred semiformal event schema",
+      "Temporal connascence requiring synchronized deployment of frontend and backend contract changes",
+      "Connascence of convention for handling optional/missing fields in payloads",
+      "cross_layer_dto",
+      "shared_constant",
+      "temporal_dependency"
+    ],
     "confidence": "low",
-    "gap_ann": "provenance audit trail implementation",
+    "gap_ann": "Frontend SSE consumer components",
     "gap_ts": [
-      "DiagnosticLandscape",
-      "provenance_record"
+      "EventSourceManager",
+      "streamEventHandler"
     ]
   },
   {
-    "topic": "Observability and logging safeguards",
+    "topic": "Authentication and access control",
     "key_findings": [
-      "Logging is centralized in a minimal RunLogger that writes JSONL lines with fixed keys like timestamp and event, emphasizing simplicity and post-hoc traceability over operational robustness.",
-      "Utility helpers convert dataclasses and nested structures to JSON-serializable payloads, indicating an expectation of structured, typed log events but without explicit schema validation or versioning.",
-      "Shell scripts wire logging into higher-level AI triage and debugging workflows via fixed log file paths, reflecting an assumption of single-process, append-only usage without concurrency controls.",
-      "There is no visible support for log rotation, backpressure, asynchronous I/O, or integrity guarantees (e.g., checksums, write-ahead strategies), leaving gaps for long-running or multi-agent clinical workflows.",
-      "Security, privacy, and PHI/PII concerns for logged clinical reasoning artifacts are not surfaced in the logging API, suggesting that provenance is tracked but safeguards and redaction are underexplored."
+      "Current description of the auth/access-control architecture is high-level and not grounded in specific classes, packages, or flows from this repo, leaving unclear which modules actually implement identity, session, or permission logic.",
+      "Quantitative aspects of coupling and connascence (e.g., number of call sites, shared types, or constants across modules) are not measured; the analysis only labels types of connascence abstractly.",
+      "There is no concrete evidence for token or session handling code (e.g., token models, interceptors, or storage mechanisms) within the documented files so far, so assumptions about token formats and lifecycle may not reflect reality.",
+      "Test coverage claims for authentication are speculative; no test directories, test classes, or specific test cases have been cited to substantiate low coverage.",
+      "The interaction between any authentication layer and access control/authorization (e.g., role or permission checks, feature gating) is underexplored, with no references to policy objects, guards, or middleware-like components."
     ],
     "recommended_actions": [
-      "Clarify and document expected concurrency model for RunLogger usage, including whether multi-process or multi-threaded agents may append to the same JSONL file.",
-      "Introduce or at least design for log rotation and size limits to prevent unbounded growth in long-running clinical or diagnostic sessions.",
-      "Define a lightweight event schema or versioned envelope for logged records to stabilize downstream analytics and provenance reconstruction.",
-      "Assess and, if necessary, add mechanisms for sensitive data handling (e.g., optional redaction, field-level controls) in logging of clinical reasoning and agent decisions.",
-      "Evaluate whether higher-level workflows (triage, debug loops) need richer correlation identifiers or session IDs to stitch multi-step agentic reasoning from the flat JSONL stream."
+      "Locate concrete authentication-related classes or functions (e.g., Login, AuthInterceptor, TokenProvider, UserSession) and map their package/module boundaries to assess real coupling patterns.",
+      "Identify shared DTOs, models, and constants that span UI, data, and auth layers to measure cross-layer and name/type connascence rather than inferring it abstractly.",
+      "Search for configuration-driven or Gradle-level dependencies (e.g., auth libraries, security modules) that might introduce gradle_dependency or transitive coupling between modules.",
+      "Inspect any networking or API client layer for authentication enforcement points (e.g., request interceptors, header injectors) to clarify temporal and execution-order dependencies in the login \u2192 call sequence.",
+      "Survey existing test sources for authentication and access control (unit, instrumentation, or integration tests) to validate or revise assumptions about low coverage and identify missing test cases around edge conditions."
     ],
     "connascence_signals": [
-      "Strong temporal coupling: timestamps appended to logs",
-      "Data format connascence: JSONL serialization consistency",
-      "Name/value connascence: fixed log record keys ('ts', 'event')",
-      "Filepath connascence: path consistency with mkdir ensured",
-      "Type connascence: requirement that payloads be JSON serializable",
+      "Name connascence: likely shared method names for login, logout, and token refresh across auth, networking, and session modules, but not yet tied to specific symbols in this repo.",
+      "Type connascence: presumed reuse of credential, token, and user-related types across layers, though concrete class or data-structure names remain unidentified.",
+      "Execution order connascence: inferred requirement that authentication or login complete before authorized API calls, but the actual orchestration or pipeline is not yet evidenced.",
+      "Temporal connascence: hypothesized linkage between session lifecycle and token validity windows, including expiration and refresh timing, without locating the actual expiry/refresh logic.",
+      "Algorithmic connascence: suspected shared or duplicated token validation or signing logic between client-side modules and any server-communication adapters, but no direct code examples yet.",
+      "shared_constant: potential use of common auth-related keys (e.g., header names, preference keys, token field names) shared across multiple modules, not yet enumerated.",
+      "temporal_dependency: implied reliance on time-based factors (expiry, refresh intervals, session timeouts) that couple modules managing session state and request authorization.",
+      "gradle_dependency: possible coupling via authentication/security libraries or modules declared in Gradle build files, which could propagate auth concerns transitively across the app.",
+      "cross_layer_dto: likely presence of user or auth DTOs that traverse data, domain, and presentation layers, creating structural coupling that has not yet been cataloged."
+    ],
+    "confidence": "low",
+    "gap_ann": "authorization policy enforcement classes",
+    "gap_ts": [
+      "AuthInterceptor",
+      "UserSessionManager"
+    ]
+  },
+  {
+    "topic": "Observability, testing, and delivery",
+    "key_findings": [
+      "Observability is partially implemented via a modular logging and metrics layer, but only the interaction between RunLogger and metrics is visible, leaving the broader observability surface (tracing, structured events, log routing) unclear.",
+      "The relationship between logging and metrics appears tightly coupled, with shared error-handling paths and common data structures, but concrete module boundaries, interfaces, and dependency directions are not documented.",
+      "Automation around quality (tests, coverage) and delivery (CI/CD config, release pipelines) is either missing or not yet discovered, which creates risk that observability behaviors are not validated in a repeatable way.",
+      "The scope of runtime metadata enrichment (e.g., what run context is captured, how it is propagated) is underexplored, limiting understanding of how observability concerns cross module boundaries."
+    ],
+    "recommended_actions": [
+      "Catalog all modules that import or wrap RunLogger and metrics utilities, and map their direct dependencies to clarify layering and identify where observability concerns leak across boundaries.",
+      "Search for and review any test directories, CI configuration files, or pipeline definitions to determine how observability behavior is verified and how failures are surfaced in delivery flows.",
+      "Refactor shared error-handling and metrics-recording patterns behind explicit interfaces or helper utilities to reduce implicit coupling and make connascence of meaning and algorithm more intentional.",
+      "Introduce or document contracts for run metadata structures passed between logging and metrics components to reduce fragile shared-structure coupling and support evolution of observability features."
+    ],
+    "connascence_signals": [
+      "RunLogger tightly linked to metrics loading and recording",
+      "Error handling routines interwoven for both logging and metrics",
+      "Repeated metric recording operations with similar error patterns",
+      "Dependency on shared metrics data structure across modules",
+      "cross_layer_dto",
+      "shared_constant",
       "temporal_dependency",
-      "shared_constant",
-      "cross_layer_dto"
+      "algorithmic_duplication"
     ],
-    "confidence": "high",
-    "gap_ann": "triage debug workflow logging",
+    "confidence": "medium",
+    "gap_ann": "observability module interactions",
     "gap_ts": [
-      "utc_now_iso",
-      "RunLogger.__init__"
-    ]
-  },
-  {
-    "topic": "FullMetalPacket embedding context auto-detection and repo vision",
-    "key_findings": [
-      "The current vision emphasizes context routing (e.g., switching to 'fmp_dogfood') when ai_code_pipelines-related failures are detected, but provides little explicit description of how this integrates with the broader triage and invariant system mentioned in the package header.",
-      "Provenance of decisions (why a particular embedding context was chosen) is underexplored; there is no clear indication of structured logging, audit trails, or artifacts capturing routing rationale for downstream analysis.",
-      "The separation of routing logic from reasoning functions is mentioned, but the boundary, interfaces, and data contracts between routing and reasoning modules remain unclear (e.g., what DTOs or schemas are passed between them).",
-      "Clinical reasoning or domain-specific reasoning pathways are not described; it is unclear how, if at all, the system models multi-step diagnostic or triage workflows beyond simple context switching.",
-      "Coverage of entry points (run_probe.py, run_triage.py, run_coder.py) is referenced, but the orchestration and error-handling patterns across these tools, including how they share or derive embedding contexts, are not documented.",
-      "Resilience aspects are underexplored: how the system behaves under partial failures (e.g., missing directories, novel error formats, or new tools) and how fallback or default contexts are selected are not evident.",
-      "The repo vision hints at modularity, but unit boundaries, ownership of configuration (e.g., context registry), and extensibility patterns (adding new contexts or heuristics) are not articulated."
-    ],
-    "recommended_actions": [
-      "Document the end-to-end context routing workflow, including inputs (errors, paths, repo_root), intermediate representations (decision DTOs), and outputs (selected context, confidence), and how these are used by triage and coder pipelines.",
-      "Introduce explicit provenance logging for context decisions (e.g., which heuristics matched, what evidence was used) to support debugging, audit, and future learning-based improvements.",
-      "Define and centralize shared constants for known contexts, directory prefixes, and error-signature patterns to reduce stringly-typed coupling and ease evolution of routing rules.",
-      "Specify clear interfaces between context routing and reasoning agents, including typed data-transfer objects and lifecycle hooks for pre- and post-reasoning steps.",
-      "Analyze and refactor error-signature and file-path checks into reusable matchers or rule objects to reduce algorithmic duplication and make connascence more explicit and testable.",
-      "Add tests that simulate structural changes (directory moves, renamed scripts, altered error messages) to assess the robustness of embedding context detection and refine fallback behavior.",
-      "Clarify how clinical or triage reasoning flows are composed on top of context routing (e.g., multi-step agents, scenario-specific policies) and where in the architecture those flows are implemented."
-    ],
-    "connascence_signals": [
-      "Error excerpt string matching 'ai_code_pipelines' to determine context",
-      "File path prefixes required for context detection",
-      "Runtime environment directory structure (repo_root) checks",
-      "Separation of routing logic from reasoning functions",
-      "Dependency on specific scripts ('run_probe.py', 'run_triage.py', 'run_coder.py') for population of repo_vision",
-      "shared_constant",
-      "algorithmic_duplication",
-      "transitive"
-    ],
-    "confidence": "high",
-    "gap_ann": "context routing heuristics implementation",
-    "gap_ts": [
-      "repo_vision",
-      "context_router"
+      "RunLogger.init",
+      "metrics.context"
     ]
   }
 ]

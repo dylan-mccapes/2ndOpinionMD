@@ -1,0 +1,59 @@
+{"id":"681255a8d2","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\u26a0\ufe0f Vision context skipped: embeddings index is neither list nor dict (type={type(embeddings_raw).__name__}).\")"}
+{"id":"852d67ddfb","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"# Filter out invalid entries instead of rejecting entire index"}
+{"id":"0d169aa588","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\u26a0\ufe0f Dropped {dropped_count} invalid embedding entries from vision index\")"}
+{"id":"6b34aab6af","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"# Resolve embedding context up-front so we know where the index should land"}
+{"id":"6ade667b78","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"# Create temp filtered index file for embed_incremental.py"}
+{"id":"d3587eecb1","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\ud83d\udfe1 Filtered index: {after}/{before} files retained (ai_probe_index/embeddings_diff.json)\")"}
+{"id":"199ea5c675","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\ud83d\udce6 Resolved index via embedding context: {index_path}\")"}
+{"id":"a20813141c","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\ud83d\udce6 Resolved index via resolver: {index_path}\")"}
+{"id":"c86c050b96","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(f\"\ud83d\udce6 Resolved index via default path: {index_path}\")"}
+{"id":"3212977ceb","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(\"\u26a0\ufe0f Index not found after embedding. Provide --index or ensure ai_probe_index/embeddings.json exists. Continuing without vision context.\")"}
+{"id":"8a013a68a3","topic":"Data layer and storage","path":"run_probe.py","lines":[0,0],"excerpt":"print(\"\u26a0\ufe0f Skipping vision query because no index is available.\")"}
+{"id":"52142a8c72","topic":"Data layer and storage","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"'{\"topic\": \"Document Event Schema Stability requirements: how SSE event payloads are semi-structured and may evolve, frontend client requirements (tolerate unkn"}
+{"id":"316918caa3","topic":"Data layer and storage","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"\"event\" \"schema\" \"payload\" \"optional\" \"fields\" \"versioning\" \\"}
+{"id":"7c81445be4","topic":"Data layer and storage","path":"run_setup.py","lines":[0,0],"excerpt":"print(\"  Good: 'fix: correct embedding index format for vision context'\")"}
+{"id":"6df90d5797","topic":"Data layer and storage","path":"run_coder.py","lines":[0,0],"excerpt":"print(f\"\u23ed\ufe0f  Skipping embedding - index was updated {age_minutes:.1f} minutes ago (recent run_probe?)\")"}
+{"id":"35bb6dc142","topic":"Data layer and storage","path":"invariants/invariant_loader.py","lines":[0,0],"excerpt":"raise RuntimeError(f\"\u274c Invalid invariant at index {i}: missing keys {sorted(missing)}\")"}
+{"id":"3f06d5fdf3","topic":"Data layer and storage","path":"fmp/agents/triage_agent.py","lines":[0,0],"excerpt":"- repo_vision (semantic index of files, entities, responsibilities)"}
+{"id":"76fef325ee","topic":"API and backend services","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"# Run probe to comprehensively document RAG stream endpoints and briefly document rest of API"}
+{"id":"8d5edef78a","topic":"API and backend services","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"'{\"topic\": \"Comprehensively document /rag/eoh_stream endpoint: request/response format, patient_state parameter, EoH LLM router integration, module routing, tim"}
+{"id":"e5897ba173","topic":"API and backend services","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"\"APIRouter\" \"router.get\" \"router.post\" \\"}
+{"id":"6cd4802ef1","topic":"Frontend architecture and UX flows","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"'{\"topic\": \"Document the Frontend Contract Summary for all RAG stream endpoints: shared SSE contract (text/event-stream transport), event.type semantic meaning,"}
+{"id":"52142a8c72","topic":"Frontend architecture and UX flows","path":"run_probe_api_docs.sh","lines":[0,0],"excerpt":"'{\"topic\": \"Document Event Schema Stability requirements: how SSE event payloads are semi-structured and may evolve, frontend client requirements (tolerate unkn"}
+{"id":"16c1fc9c1b","topic":"Frontend architecture and UX flows","path":"run_coder.py","lines":[0,0],"excerpt":"# Lifecycle hook: Check invariants before pipeline execution"}
+{"id":"d4baee34f8","topic":"Frontend architecture and UX flows","path":"run_coder.py","lines":[0,0],"excerpt":"# Lifecycle hook: Check invariants before run_probe (skip for syntax errors)"}
+{"id":"40534fe2c7","topic":"Frontend architecture and UX flows","path":"run_coder.py","lines":[0,0],"excerpt":"# Lifecycle hook: Check invariants before run_coder (phase-gating)"}
+{"id":"145cc1c248","topic":"Frontend architecture and UX flows","path":"run_coder.py","lines":[0,0],"excerpt":"# Lifecycle hook: Check invariants before debug loop"}
+{"id":"85a2586744","topic":"Authentication and access control","path":"run_setup.py","lines":[0,0],"excerpt":"\"role\": \"system\","}
+{"id":"9d8772a4a8","topic":"Authentication and access control","path":"run_setup.py","lines":[0,0],"excerpt":"{\"role\": \"user\", \"content\": prompt},"}
+{"id":"9f160c41f2","topic":"Authentication and access control","path":"setup_chat_agents.py","lines":[0,0],"excerpt":"\"Your role is EDUCATIONAL ONLY - explain concepts, don't suggest actions.\","}
+{"id":"baaa4ccbbb","topic":"Authentication and access control","path":"setup_chat_agents.py","lines":[0,0],"excerpt":"context_parts.append(\"FILE RETRIEVAL POLICY:\")"}
+{"id":"488902ae11","topic":"Authentication and access control","path":"fmp/config/software_invariants.py","lines":[0,0],"excerpt":"\"user_preference_variant_path\": \"User selection always overrides internal confidence heuristics; confidence informs recommendation, never permission.\","}
+{"id":"12c99ffb80","topic":"Authentication and access control","path":"fmp/agents/triage_agent.py","lines":[0,0],"excerpt":"ROLE (STRICT):"}
+{"id":"6bf8ceee03","topic":"Authentication and access control","path":"fmp/agents/triage_agent.py","lines":[0,0],"excerpt":"{\"role\": \"system\", \"content\": system_prompt},"}
+{"id":"346176e87d","topic":"Authentication and access control","path":"fmp/agents/triage_agent.py","lines":[0,0],"excerpt":"{\"role\": \"user\", \"content\": user_prompt},"}
+{"id":"520b61234b","topic":"Observability, testing, and delivery","path":"run_triage.py","lines":[0,0],"excerpt":"from fmp.logging.run_log import RunLogger"}
+{"id":"7f10053627","topic":"Observability, testing, and delivery","path":"run_triage.py","lines":[0,0],"excerpt":"# \ud83e\ude79 TRIAGE STARTUP LOGGING"}
+{"id":"e459fc29df","topic":"Observability, testing, and delivery","path":"run_triage.py","lines":[0,0],"excerpt":"# Extract file paths early for logging (before expensive operations)"}
+{"id":"194cd06905","topic":"Observability, testing, and delivery","path":"run_triage.py","lines":[0,0],"excerpt":"# \ud83e\ude79 COMPREHENSIVE PRE-TRIAGE LOGGING (before expensive operations)"}
+{"id":"30c75dd6bd","topic":"Observability, testing, and delivery","path":"run_triage.py","lines":[0,0],"excerpt":"# If logging fails, at least write to stderr"}
+{"id":"1f904d092f","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"# Enrich with metrics data"}
+{"id":"5dbc86f809","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"from ai_coder.metrics import load_metrics"}
+{"id":"0478670d4b","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"metrics = load_metrics()"}
+{"id":"7cbe310d35","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"meta[\"metrics\"] = {"}
+{"id":"20a49e00bd","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"\"actions\": metrics.get(\"actions\", {}),"}
+{"id":"94a9d75d47","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"\"user_decisions\": metrics.get(\"user_decisions\", {}),"}
+{"id":"927eb1130d","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"\"confidence_overrides\": metrics.get(\"confidence_overrides\", {}),"}
+{"id":"4583e55cc2","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"print(f\"[METRICS] Warning: Could not enrich run_meta.json with metrics: {e}\")"}
+{"id":"a6a424d8ea","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"# Record metrics"}
+{"id":"41ae4a29d8","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"from ai_coder.metrics import record_action_execution, save_metrics, load_metrics"}
+{"id":"23e7e0e55b","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"metrics = record_action_execution(\"run_probe\", probe_duration, metrics)"}
+{"id":"1c1f31771f","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"save_metrics(metrics)"}
+{"id":"a5f912b9fa","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"print(f\"[METRICS] Warning: Failed to record run_probe metrics: {e}\")"}
+{"id":"81f4ea8e21","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"metrics = record_action_execution(\"run_coder\", coder_duration, metrics)"}
+{"id":"85b4b64cfa","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"print(f\"[METRICS] Warning: Failed to record run_coder metrics: {e}\")"}
+{"id":"d9dd84c429","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"# Record metrics (total duration for the loop)"}
+{"id":"addeda2684","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"metrics = record_action_execution(\"debug_loop\", debug_duration, metrics)"}
+{"id":"4bb42c3f03","topic":"Observability, testing, and delivery","path":"run_coder.py","lines":[0,0],"excerpt":"print(f\"[METRICS] Warning: Failed to record debug_loop metrics: {e}\")"}
+{"id":"36331ab9e9","topic":"Observability, testing, and delivery","path":"fmp/agents/triage_agent.py","lines":[0,0],"excerpt":"from fmp.logging.run_log import RunLogger, to_jsonable"}
+{"id":"989f6be9cd","topic":"Observability, testing, and delivery","path":"fmp/logging/__init__.py","lines":[0,0],"excerpt":"# Logging modules"}
