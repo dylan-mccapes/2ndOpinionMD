@@ -1,0 +1,17 @@
+{
+  "artifact_id": "F7547171BFD9D646",
+  "content_hash": "802a748f57c69600bb9de65ba1678449f7afa5d0f5e0f578316d6b130321df66",
+  "html_content": "\n    <html>\n    <head><title>Test Medical Report</title></head>\n    <body>\n        <h1>Clinical Evidence Summary</h1>\n        <h2>Differential Diagnoses</h2>\n        <ul>\n            <li>Rheumatoid Arthritis (ICD-10: M06.9)</li>\n            <li>Systemic Lupus Erythematosus (ICD-10: M32.9)</li>\n            <li>Fibromyalgia (ICD-10: M79.7)</li>\n        </ul>\n        <h2>Evidence</h2>\n        <p>Based on ACR 2021 guidelines for rheumatoid arthritis...</p>\n    </body>\n    </html>\n    ",
+  "created_at": "2026-01-03T14:43:59.857112+00:00",
+  "provenance": {
+    "mode": "ask",
+    "query": "What are differential diagnoses for chronic fatigue and joint pain?",
+    "timestamp": "2025-01-03T12:00:00Z",
+    "sources_used": 5,
+    "confidence": 0.85
+  },
+  "metadata": {
+    "operator": "test_operator",
+    "session": "test_session_001"
+  }
+}

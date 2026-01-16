@@ -1,0 +1,14 @@
+{
+  "artifact_id": "4DFAB185D38E3F11",
+  "content_hash": "05f1f88d96b8fb0f099ca6b62a0ee037211aaedad6267b5b337af09b0181f9d7",
+  "html_content": "\n    <html>\n    <head><title>Medical Report</title></head>\n    <body>\n        <h1>Clinical Assessment</h1>\n        <p>Patient presents with chronic fatigue and joint pain.</p>\n        <h2>Findings</h2>\n        <ul>\n            <li>Bilateral joint inflammation</li>\n            <li>Morning stiffness lasting over 1 hour</li>\n            <li>Positive rheumatoid factor</li>\n        </ul>\n        <h2>Recommendation</h2>\n        <p>Refer to rheumatology for further evaluation.</p>\n    </body>\n    </html>\n    ",
+  "created_at": "2026-01-03T14:56:09.162366+00:00",
+  "provenance": {
+    "mode": "ask",
+    "query": "Test audio export",
+    "timestamp": "2025-01-03T12:00:00Z"
+  },
+  "metadata": {
+    "test": true
+  }
+}

@@ -40,11 +40,6 @@ This repository has been restructured into a clean modular architecture for bett
     ├── postgresql/         # PostgreSQL models
     └── mongodb/            # MongoDB models
 
-/frontend/                  # Multi-platform frontend
-├── react/                  # Current React application
-├── ios/                    # Future iOS development
-└── android/                # Future Android development
-
 /shared/                    # Common utilities
 ├── config/                 # Configuration management
 │   └── settings.py         # Unified settings
@@ -64,19 +59,13 @@ This repository has been restructured into a clean modular architecture for bett
 ## Getting Started
 
 ### Prerequisites
-- Python 3.8+
-- Node.js v18
+- Python 3.10+
 - PostgreSQL with pgvector extension
-- MongoDB (optional)
 
 ### Installation
 ```bash
 # Install Python dependencies
 pip install -r requirements.txt
-
-# Install frontend dependencies (use yarn, not npm)
-cd frontend/react
-yarn install
 
 # Set up environment variables
 cp .env.example .env
@@ -85,12 +74,9 @@ cp .env.example .env
 
 ### Running the Application
 ```bash
-# Start the unified API server
-python api/main.py
-
-# Start the React frontend
-cd frontend/react
-yarn start
+# Start the API server
+cd server
+python -m uvicorn api.app_postgres:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Configuration
@@ -105,19 +91,14 @@ The application now uses unified configuration management through `shared/config
 
 1. **Ontology Loaders**: Add new medical ontologies in `/ontology_loaders/`
 2. **NLP Engines**: Extend vector search capabilities in `/nlp_engines/`
-3. **API Endpoints**: Add new routes in `/api/routes/`
-4. **Frontend Components**: Develop UI components in `/frontend/react/`
-5. **Database Changes**: Manage schemas in `/database/schemas/`
+3. **API Endpoints**: Add new routes in `/server/api/`
+4. **Database Changes**: Manage schemas in `/database/schemas/`
 
 ## Testing
 
 ```bash
 # Run Python tests
 pytest
-
-# Run frontend tests
-cd frontend/react
-yarn test
 ```
 
 ## Deployment
@@ -125,8 +106,6 @@ yarn test
 The modular structure supports various deployment strategies:
 - Containerized deployment with Docker
 - Serverless deployment for API components
-- Static hosting for React frontend
-- Mobile app deployment for iOS/Android
 
 ## Contributing
 
@@ -139,6 +118,5 @@ The modular structure supports various deployment strategies:
 
 1. Implement SNOMED CT loader in `/ontology_loaders/snomed/`
 2. Add HPO integration in `/ontology_loaders/hpo/`
-3. Develop mobile applications in `/frontend/ios/` and `/frontend/android/`
-4. Enhance vector search capabilities in `/nlp_engines/`
-5. Add comprehensive testing suite
+3. Enhance vector search capabilities in `/nlp_engines/`
+4. Add comprehensive testing suite

@@ -21,32 +21,12 @@ The platform now includes user authentication and a journaling feature to track 
 ## 🛠️ Environment Setup
 
 ### 🧬 Required Versions
-- **Node.js**: `v18`
-- **Yarn**: Installed and used for package management
 - **Python**: `v3.10` or higher for the backend server
-- **MongoDB**: Running instance for user data and journal entries
-
-We recommend using [NVM](https://github.com/nvm-sh/nvm) to manage your Node versions.
-
-To set the correct version:
-```zsh
-nvm use 18
-```
-
-You can also create a .nvmrc file in the root with:
-```bash
-echo "18" > .nvmrc
-```
+- **PostgreSQL**: Running instance for application data
 
 ### 📦 Installation
-After cloning this repo, install dependencies:
+After cloning this repo, install backend dependencies:
 
-**Frontend:**
-```bash
-yarn install
-```
-
-**Backend:**
 ```bash
 cd server
 python -m venv venv
@@ -55,68 +35,19 @@ pip install -r requirements.txt
 ```
 
 ### 💻 Running the App (Local Dev)
-To start the development server:
+To start the backend server:
 
-**Frontend:**
-```bash
-cd frontend/react
-yarn start
-```
-
-**Backend:**
 ```bash
 cd server
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 python -m uvicorn api.app_postgres:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Then open your browser to:
-👉 http://localhost:3000
-
-**Development Proxy Configuration:**
-The React development server (port 3000) includes a proxy configuration in `package.json` that forwards `/api/*` requests to the backend server (port 8000). This proxy is **development-only** and has no effect in production builds.
+API will be available at:
+👉 http://localhost:8000
 
 ### 🔑 Environment Configuration
-Create a `.env` file in the root directory with the following variables:
-
-```
-# === API KEYS ===
-OPENAI_API_KEY=your-openai-api-key-here
-BASTION_API_KEY=your-bastion-api-key-here
-
-# === MODEL ROUTING CONFIG ===
-DEFAULT_AI_MODEL=gpt-4-turbo
-HIPAA_AI_MODEL=bastion
-USE_HIPAA_MODE=true
-
-# === APP CONFIGURATION ===
-PORT=3000
-DOMAIN_URL=http://localhost:3000
-
-# === EMAIL SETTINGS ===
-REPORT_EMAIL_FROM=nate@2ndopinionmd.ai
-ENABLE_DARK_MODE=true
-
-# === MONGODB CONFIGURATION ===
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB_NAME=2ndopinionmd
-SECRET_KEY=your-secret-key-for-jwt
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# === CHROMA DB CONFIGURATION ===
-CHROMA_PERSIST_DIR=./chroma_db
-```
-
-### 🧹 Formatting & Linting
-To auto-format the codebase:
-```bash
-yarn format
-```
-This ensures consistent code style for all components and pages.
-
-### 🧪 Testing
-We are not using a test suite at MVP stage.
-✅ If the app builds and runs (yarn dev), treat it as a successful pass.
+Create a `.env` file in the server directory with required API keys and database configuration.
 
 ### 🔧 Dev Testing - Journal API
 
@@ -177,75 +108,19 @@ curl -i -X DELETE -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/jo
 
 ```
 2ndOpinionMD-MVP/
- ┣ 📂public
- ┃ ┗ 📂images
- ┃   ┣ 2ndOpinionMD-logo.jpg
- ┃   ┗ brain-heartbeat.png
  ┣ 📂server
  ┃ ┣ 📂api
- ┃ ┃ ┣ app.py
+ ┃ ┃ ┣ app_postgres.py
  ┃ ┃ ┣ auth.py
- ┃ ┃ ┗ journal.py
- ┃ ┣ 📂models
- ┃ ┃ ┗ 📂mongodb
- ┃ ┃   ┣ auth.py
- ┃ ┃   ┣ database.py
- ┃ ┃   ┗ models.py
- ┃ ┣ 📂vectordb
- ┃ ┃ ┣ chroma_setup.py
- ┃ ┃ ┗ query_engine.py
+ ┃ ┃ ┗ eoh_gap_retrieval.py
+ ┃ ┣ 📂eoh
+ ┃ ┃ ┗ module_49c_policy.py
  ┃ ┗ requirements.txt
- ┣ 📂src
- ┃ ┣ 📂components
- ┃ ┃ ┣ 📂auth
- ┃ ┃ ┃ ┣ LoginForm.js
- ┃ ┃ ┃ ┣ RegisterForm.js
- ┃ ┃ ┃ ┗ SplashPage.js
- ┃ ┃ ┣ 📂journal
- ┃ ┃ ┃ ┣ JournalDetail.js
- ┃ ┃ ┃ ┣ JournalForm.js
- ┃ ┃ ┃ ┗ JournalList.js
- ┃ ┃ ┣ NavBar.jsx
- ┃ ┃ ┣ HeroSection.jsx
- ┃ ┃ ┣ PricingSection.jsx
- ┃ ┃ ┣ TestimonialCarousel.jsx
- ┃ ┃ ┣ FAQAccordion.jsx
- ┃ ┃ ┣ ReportOverview.jsx
- ┃ ┃ ┣ ConditionCard.jsx
- ┃ ┃ ┗ Footer.jsx
- ┃ ┣ 📂styles
- ┃ ┃ ┣ GlobalStyles.css
- ┃ ┃ ┣ Journal.css
- ┃ ┃ ┗ SplashPage.css
- ┃ ┗ App.js
- ┣ 📄 .env
- ┣ 📄 .nvmrc
- ┣ 📄 package.json
+ ┣ 📂database
+ ┃ ┣ 📂schemas
+ ┃ ┗ 📂sql
  ┗ 📄 README.md
 ```
-
-## 🎨 Style Guide
-### Color Variables
-```css
-:root {
-  --color-primary: #3A7BD5;
-  --color-secondary: #58B09C;
-  --color-bg: #F7F9FA;
-  --color-text-primary: #333333;
-  --color-text-secondary: #666666;
-}
-```
-
-### Fonts
-- Headings: 'Inter', sans-serif (weight 700)
-- Body: 'Roboto', sans-serif (weight 400)
-
-### Font Sizes:
-- Headings: 28–36px
-- Body: 16–18px
-- Line Height: 1.5
-- Border Radius: 8px
-- Spacing Scale: 8px / 16px / 24px
 
 ## 🔐 Security Features
 
@@ -297,17 +172,11 @@ The API implements security middleware to block suspicious requests:
 - Logs blocked requests with source IP address
 - Protects against common scanning and exploitation attempts
 
-## 🧠 Notes for Devin & Future Devs
-- All commands assume Node 18 is active.
-- Yarn must be used instead of npm.
-- No PHI is stored at this stage.
-- PDF reports are generated based on symptom input + structured disease database (100+ conditions).
-- Components are modular to allow reuse + future expansion.
-- We are using React (with potential migration to Next.js or Vercel hosting later).
-- A/B Testing for Hero Variants A & B is built in (pass variant="A" or "B" to the HeroSection component).
-- Journal entries include AI-powered analysis with follow-up questions.
-- Initial symptoms from the intake page are tracked with dates and demographics.
-- MongoDB is used for user authentication and journal storage.
+## 🧠 Notes for Future Devs
+- Backend API provides clinical reasoning and diagnostic support.
+- No PHI is stored without explicit consent.
+- System includes modular Ethos-of-Health (EoH) reasoning framework.
+- PostgreSQL is used for application data storage.
 
 ## 📄 Future To-Do (Post-MVP)
 - Add formal test suite

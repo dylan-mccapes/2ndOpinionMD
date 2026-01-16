@@ -10,12 +10,7 @@ package-lock.json
 npm-debug.log*
 yarn-error.log*
 
-# ---------- Frontend (CRA) ----------
-frontend/react/node_modules/
-frontend/react/.env*
-frontend/react/.cache/
-frontend/react/build/
-# legacy/stray outputs
+# ---------- Build outputs ----------
 build/
 dist/
 .cache/
@@ -54,7 +49,6 @@ server/package-lock.json
 venv*/
 # Node
 node_modules/
-frontend/react/node_modules/
 server/node_modules/
 # Builds & logs
 build/
