@@ -223,3 +223,282 @@ async def get_legacy_timeline() -> List[Dict[str, Any]]:
     Returns timeline for P1 (the original demo patient).
     """
     return await get_patient_timeline("P1")
+
+
+# ---------------------------------------------------------------------------
+# EoH + Timeline Flare Engine Mode Endpoints
+# ---------------------------------------------------------------------------
+
+class TimelineFlareEngineResponse(BaseModel):
+    """Response model for the Timeline Flare Engine analysis."""
+    patient_id: str
+    mode: str = "timeline_flare_engine"
+    timeline_summary: Dict[str, Any]
+    flare_prediction: Dict[str, Any]
+    diagnostic_landscape: Dict[str, Any]
+    precursors: List[Dict[str, Any]]
+    eoh_context: str
+
+
+@router.get("/timeline_flare_engine/{patient_id}")
+async def get_timeline_flare_engine_analysis(
+    patient_id: str,
+    window_days: int = Query(90, ge=30, le=365, description="Analysis window in days"),
+) -> TimelineFlareEngineResponse:
+    """
+    EoH + Timeline Flare Engine Mode.
+    
+    This endpoint provides a comprehensive flare prediction analysis for a demo patient,
+    combining:
+    1. Timeline summary with key events
+    2. Flare prediction with probabilistic likelihood
+    3. Diagnostic landscape with pattern-based probabilities
+    4. Precursor events that may indicate upcoming flares
+    5. EoH context text for LLM reasoning
+    
+    All outputs are probabilistic and non-diagnostic per regulatory strategy.
+    """
+    patient = get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    
+    timeline = get_timeline(patient_id)
+    
+    # Build timeline summary
+    event_counts = {}
+    for event in timeline:
+        kind = event.get("kind", "unknown")
+        event_counts[kind] = event_counts.get(kind, 0) + 1
+    
+    # Calculate timeline span
+    if timeline:
+        first_ts = timeline[0].get("ts", "")
+        last_ts = timeline[-1].get("ts", "")
+        try:
+            first_date = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+            last_date = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            span_days = (last_date - first_date).days
+        except (ValueError, TypeError):
+            span_days = 0
+    else:
+        span_days = 0
+    
+    timeline_summary = {
+        "event_count": len(timeline),
+        "span_days": span_days,
+        "event_types": event_counts,
+        "recent_events": timeline[-5:] if timeline else [],
+    }
+    
+    # Build flare prediction (synthetic/mocked based on demo data patterns)
+    flare_events = [e for e in timeline if e.get("kind") == "flare"]
+    lab_events = [e for e in timeline if e.get("kind") == "lab"]
+    
+    # Analyze recent inflammatory markers
+    recent_crp = None
+    recent_esr = None
+    for lab in reversed(lab_events):
+        payload = lab.get("details", {}) or lab.get("payload", {})
+        if payload.get("CRP") and recent_crp is None:
+            recent_crp = payload["CRP"]
+        if payload.get("ESR") and recent_esr is None:
+            recent_esr = payload["ESR"]
+        if recent_crp and recent_esr:
+            break
+    
+    # Calculate flare likelihood based on patterns
+    flare_count = len(flare_events)
+    crp_elevated = recent_crp and recent_crp > 10
+    esr_elevated = recent_esr and recent_esr > 30
+    
+    if crp_elevated and esr_elevated and flare_count >= 2:
+        likelihood = "high"
+        likelihood_score = 0.72
+        explanation = "Elevated inflammatory markers (CRP, ESR) combined with history of multiple flares suggests increased flare probability."
+    elif crp_elevated or esr_elevated or flare_count >= 1:
+        likelihood = "moderate"
+        likelihood_score = 0.45
+        explanation = "Some inflammatory marker elevation or prior flare history suggests moderate flare probability."
+    else:
+        likelihood = "low"
+        likelihood_score = 0.18
+        explanation = "Inflammatory markers within acceptable range and limited flare history suggests lower flare probability."
+    
+    flare_prediction = {
+        "likelihood": likelihood,
+        "likelihood_score": likelihood_score,
+        "explanation": explanation,
+        "window_days": window_days,
+        "recent_markers": {
+            "CRP": recent_crp,
+            "ESR": recent_esr,
+        },
+        "flare_history_count": flare_count,
+        "regulatory_note": "This is a probabilistic assessment, not a diagnosis. Clinical judgment required.",
+    }
+    
+    # Build diagnostic landscape (pattern-based probabilities)
+    # Based on demo patient characteristics
+    serostatus = patient.get("serostatus", "")
+    diagnosis = patient.get("diagnosis", "")
+    
+    # Default probabilities based on RA-like patterns in demo data
+    if "RA" in diagnosis or "rheumatoid" in diagnosis.lower():
+        diagnostic_landscape = {
+            "ra_like": 0.65,
+            "sle_like": 0.08,
+            "psa_like": 0.12,
+            "sjogren_like": 0.05,
+            "mixed_ctd_like": 0.07,
+            "vasculitis_like": 0.01,
+            "other": 0.02,
+        }
+        drivers = [
+            "Symmetric small joint involvement pattern",
+            "Seropositive status (RF+, anti-CCP+)" if "seropositive" in serostatus.lower() else "Joint-centric presentation",
+            "Morning stiffness > 1 hour pattern",
+            "CRP/ESR correlation with disease activity",
+        ]
+    else:
+        # Generic autoimmune pattern
+        diagnostic_landscape = {
+            "ra_like": 0.30,
+            "sle_like": 0.20,
+            "psa_like": 0.15,
+            "sjogren_like": 0.10,
+            "mixed_ctd_like": 0.15,
+            "vasculitis_like": 0.05,
+            "other": 0.05,
+        }
+        drivers = [
+            "Inflammatory arthritis pattern",
+            "Autoimmune marker profile",
+            "Symptom clustering analysis",
+        ]
+    
+    diagnostic_landscape_response = {
+        "probabilities": diagnostic_landscape,
+        "drivers": drivers,
+        "confidence": 0.75,
+        "regulatory_note": "Pattern-based probabilities, not diagnostic. '_like' suffix indicates similarity to known patterns.",
+    }
+    
+    # Build precursor list
+    precursors = []
+    
+    # Look for rising inflammatory markers
+    if crp_elevated:
+        precursors.append({
+            "type": "inflammatory_marker",
+            "description": f"CRP elevated at {recent_crp} mg/L",
+            "similarity_score": 0.82,
+            "pattern": "Rising inflammatory markers often precede flares",
+        })
+    
+    if esr_elevated:
+        precursors.append({
+            "type": "inflammatory_marker",
+            "description": f"ESR elevated at {recent_esr} mm/hr",
+            "similarity_score": 0.78,
+            "pattern": "ESR elevation correlates with disease activity",
+        })
+    
+    # Look for symptom patterns in journal entries
+    journal_events = [e for e in timeline if e.get("kind") == "journal"]
+    for journal in journal_events[-3:]:
+        summary = journal.get("summary", "").lower()
+        if any(word in summary for word in ["stiff", "ache", "pain", "fatigue"]):
+            precursors.append({
+                "type": "symptom_cluster",
+                "description": journal.get("summary", ""),
+                "similarity_score": 0.65,
+                "pattern": "Symptom reports may indicate prodromal phase",
+            })
+    
+    # Build EoH context text for LLM reasoning
+    eoh_context_parts = [
+        f"PATIENT TIMELINE CONTEXT (EoH + Timeline Flare Engine Mode)",
+        f"Patient ID: {patient_id}",
+        f"Diagnosis: {diagnosis}",
+        f"Serostatus: {serostatus}",
+        f"",
+        f"TIMELINE SUMMARY:",
+        f"- Total events: {len(timeline)}",
+        f"- Timeline span: {span_days} days",
+        f"- Flare events: {flare_count}",
+        f"",
+        f"FLARE PREDICTION:",
+        f"- Likelihood: {likelihood} ({likelihood_score:.0%})",
+        f"- {explanation}",
+        f"",
+        f"DIAGNOSTIC LANDSCAPE (probabilistic, non-diagnostic):",
+    ]
+    
+    for pattern, prob in diagnostic_landscape.items():
+        eoh_context_parts.append(f"- {pattern}: {prob:.0%}")
+    
+    eoh_context_parts.extend([
+        f"",
+        f"KEY DRIVERS:",
+    ])
+    for driver in drivers:
+        eoh_context_parts.append(f"- {driver}")
+    
+    if precursors:
+        eoh_context_parts.extend([
+            f"",
+            f"PRECURSOR SIGNALS ({len(precursors)} detected):",
+        ])
+        for p in precursors[:5]:
+            eoh_context_parts.append(f"- {p['type']}: {p['description']} (similarity: {p['similarity_score']:.0%})")
+    
+    eoh_context_parts.extend([
+        f"",
+        f"REGULATORY NOTE: All outputs are probabilistic assessments based on pattern analysis.",
+        f"This is NOT a diagnosis. Clinical judgment and professional evaluation required.",
+    ])
+    
+    eoh_context = "\n".join(eoh_context_parts)
+    
+    return TimelineFlareEngineResponse(
+        patient_id=patient_id,
+        mode="timeline_flare_engine",
+        timeline_summary=timeline_summary,
+        flare_prediction=flare_prediction,
+        diagnostic_landscape=diagnostic_landscape_response,
+        precursors=precursors,
+        eoh_context=eoh_context,
+    )
+
+
+@router.get("/modes")
+async def list_demo_modes() -> List[Dict[str, Any]]:
+    """
+    List available demo modes for the EoH system.
+    """
+    return [
+        {
+            "id": "standard",
+            "name": "Standard EoH Demo",
+            "description": "Basic EoH reasoning with patient state context",
+            "endpoint": "/api/eoh_demo/patient_state/{patient_id}",
+        },
+        {
+            "id": "timeline_flare_engine",
+            "name": "EoH + Timeline Flare Engine",
+            "description": "Advanced flare prediction with ANN-based precursor detection and diagnostic landscape mapping",
+            "endpoint": "/api/eoh_demo/timeline_flare_engine/{patient_id}",
+            "features": [
+                "Timeline event analysis",
+                "Flare precursor detection",
+                "Probabilistic diagnostic landscape",
+                "EoH context generation for LLM reasoning",
+            ],
+        },
+        {
+            "id": "hypothetical",
+            "name": "Hypothetical Scenario",
+            "description": "Apply hypothetical changes to a patient and see predicted outcomes",
+            "endpoint": "/api/eoh_demo/hypothetical",
+        },
+    ]

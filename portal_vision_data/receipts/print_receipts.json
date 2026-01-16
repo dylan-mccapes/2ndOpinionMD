@@ -1,0 +1,15 @@
+{
+  "receipts": [
+    {
+      "receipt_id": "PRINT-000001-2026-01-03T14-43-59.857727+00-00",
+      "artifact_id": "F7547171BFD9D646",
+      "artifact_hash": "802a748f57c69600bb9de65ba1678449f7afa5d0f5e0f578316d6b130321df66",
+      "operator_id": "test_operator_123",
+      "timestamp": "2026-01-03T14:43:59.857731+00:00",
+      "consent_text": "I consent to print this artifact exactly as rendered.",
+      "note": "Materialized via external printer. No verification performed."
+    }
+  ],
+  "count": 1,
+  "last_updated": "2026-01-03T14:43:59.857738+00:00"
+}

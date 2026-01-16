@@ -1,0 +1,47 @@
+
+▶️  Gap phase started at 15:32:08
+📦 Using context-aware index from env: /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_probe_index/fmp_dogfood/embeddings.json
+😎 Loaded vision context: query + 10 matches
+😎 Repo vision: 122 files, 0 entities
+📥 Loaded 5 probe topics
+📂 Loading embeddings for gap retrieval...
+📥 Loaded 134 embeddings, 88 TS hits
+
+🔬 [1/5] Gap analysis → Data layer and storage
+   📊 Confidence: low, Signals: 9
+   🔮 ANN follow-ups: persistence gateway interfaces
+   🏷️  TS terms: storage adapter, database client
+   📦 Saved → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_followups/Data_layer_and_storage.json
+   ⏱️  Query completed in 6.4s
+
+🔬 [2/5] Gap analysis → API and backend services
+   📊 Confidence: medium, Signals: 8
+   🔮 ANN follow-ups: eoh_stream implementation details
+   🏷️  TS terms: eoh_stream handler, timeline_event_model
+   📦 Saved → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_followups/API_and_backend_services.json
+   ⏱️  Query completed in 5.8s
+
+🔬 [3/5] Gap analysis → Frontend architecture and UX flows
+   📊 Confidence: low, Signals: 8
+   🔮 ANN follow-ups: Frontend SSE consumer components
+   🏷️  TS terms: EventSourceManager, streamEventHandler
+   📦 Saved → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_followups/Frontend_architecture_and_UX_flows.json
+   ⏱️  Query completed in 8.0s
+
+🔬 [4/5] Gap analysis → Authentication and access control
+   📊 Confidence: low, Signals: 9
+   🔮 ANN follow-ups: authorization policy enforcement classes
+   🏷️  TS terms: AuthInterceptor, UserSessionManager
+   📦 Saved → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_followups/Authentication_and_access_control.json
+   ⏱️  Query completed in 9.7s
+
+🔬 [5/5] Gap analysis → Observability, testing, and delivery
+   📊 Confidence: medium, Signals: 8
+   🔮 ANN follow-ups: observability module interactions
+   🏷️  TS terms: RunLogger.init, metrics.context
+   📦 Saved → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_followups/Observability_testing_and_delivery.json
+   ⏱️  Query completed in 8.2s
+😎 Repo vision updated → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/ai_code_pipelines/ai_coder_output/repo_vision.json 🌍 122 files, 0 entities
+🧠 RepoVision annotations added (gap_agent): 25
+
+✅ Gap phase complete at 15:32:46 (5 topics, 38.2s) → /Users/2ndopinionmd/Sites/2ndOpinionMD-MVP/output/probe/gap_report.json

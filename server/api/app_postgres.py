@@ -89,8 +89,12 @@ from .llm_stream_routes import router as llm_stream_router
 from .rag_stream_custom_endpoints import router as rag_stream_custom_router
 from .eoh_router_routes import router as eoh_router_router
 from server.api import eoh_demo_routes
+from server.api.timeline_routes import router as timeline_router
 
 from server.api.kg import router as kg_router
+
+from PortalVision.printer_routes import router as printer_router
+from PortalVision.audio_routes import router as audio_router
 
 from server.api.schemas import DiagnoseResponse
 
@@ -181,7 +185,7 @@ _default_origins = ",".join([
 
 _allowed_origins = os.getenv(
     "CORS_ALLOW_ORIGINS",
-    "https://2ndopinionmd.ai,http://localhost:3000,http://127.0.0.1:8010,http://localhost:8010"
+    "https://2ndopinionmd.ai,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8010,http://localhost:8010"
 )
 allow_origins = [o.strip() for o in _allowed_origins.split(",") if o.strip()]
 
@@ -232,8 +236,11 @@ app.include_router(llm_stream_router)
 app.include_router(rag_stream_custom_router)
 app.include_router(eoh_router_router)
 app.include_router(eoh_demo_routes.router)
+app.include_router(timeline_router)
+app.include_router(printer_router)
+app.include_router(audio_router)
 
-# --- Middlewares ---------------------------------------------------------------
+# --- Middlewares---------------------------------------------------------------
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """First: log all requests and durations (even blocked ones below)."""

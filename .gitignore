@@ -10,12 +10,7 @@ package-lock.json
 npm-debug.log*
 yarn-error.log*
 
-# ---------- Frontend (CRA) ----------
-frontend/react/node_modules/
-frontend/react/.env*
-frontend/react/.cache/
-frontend/react/build/
-# legacy/stray outputs
+# ---------- Build outputs ----------
 build/
 dist/
 .cache/
@@ -54,7 +49,6 @@ server/package-lock.json
 venv*/
 # Node
 node_modules/
-frontend/react/node_modules/
 server/node_modules/
 # Builds & logs
 build/
@@ -72,6 +66,7 @@ snapshots/
 *.sql
 # allow our versioned SQL
 !database/sql/*.sql
+!database/schemas/*.sql
 
 # editor / temp
 *.swp
@@ -115,3 +110,23 @@ failed_ids.txt
 *.pdf
 =*
 docker/certs-local/
+
+# --- Local EoH / infra artifacts (do NOT commit) ---
+docker_env_report/
+mkg_backup_*.dump
+
+# Temp scratch dirs/files
+extracting
+reading
+resolve
+transferring
+
+# Hash / checksum temp files
+sha256:*
+
+# Local auth/internal scratch (escaped brackets so Git doesn't treat them as char classes)
+\[auth\]/
+\[internal\]/
+
+# Nested repo companion
+ai_code_pipelines/

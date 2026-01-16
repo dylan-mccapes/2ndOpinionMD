@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "F7547171BFD9D646": {
+      "artifact_id": "F7547171BFD9D646",
+      "content_hash": "802a748f57c69600bb9de65ba1678449f7afa5d0f5e0f578316d6b130321df66",
+      "created_at": "2026-01-03T14:43:59.857112+00:00",
+      "provenance": {
+        "mode": "ask",
+        "query": "What are differential diagnoses for chronic fatigue and joint pain?",
+        "timestamp": "2025-01-03T12:00:00Z",
+        "sources_used": 5,
+        "confidence": 0.85
+      },
+      "metadata": {
+        "operator": "test_operator",
+        "session": "test_session_001"
+      }
+    },
+    "4DFAB185D38E3F11": {
+      "artifact_id": "4DFAB185D38E3F11",
+      "content_hash": "05f1f88d96b8fb0f099ca6b62a0ee037211aaedad6267b5b337af09b0181f9d7",
+      "created_at": "2026-01-03T14:56:09.162366+00:00",
+      "provenance": {
+        "mode": "ask",
+        "query": "Test audio export",
+        "timestamp": "2025-01-03T12:00:00Z"
+      },
+      "metadata": {
+        "test": true
+      }
+    }
+  }
+}

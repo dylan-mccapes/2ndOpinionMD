@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Consent Gate</title>
+    <style>
+        :root {
+            --color-bg: #ffffff;
+            --color-surface: #f5f5f5;
+            --color-border: #cccccc;
+            --color-text-primary: #1a1a1a;
+            --color-text-secondary: #666666;
+            --color-accent: #0066cc;
+            --color-error: #cc0000;
+            --color-success: #006600;
+            --font-mono: "SF Mono", "Monaco", "Consolas", monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--color-bg);
+            color: var(--color-text-primary);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: var(--color-text-primary);
+        }
+
+        .section {
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--color-text-primary);
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .metadata-label {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .metadata-value {
+            font-family: var(--font-mono);
+            color: var(--color-text-primary);
+            word-break: break-all;
+        }
+
+        .consent-section {
+            margin-top: 32px;
+        }
+
+        .consent-requirement {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+
+        .consent-requirement p {
+            margin-bottom: 8px;
+        }
+
+        .consent-requirement code {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            background-color: white;
+            padding: 8px;
+            margin-top: 8px;
+            border: 1px solid var(--color-border);
+        }
+
+        .consent-input {
+            width: 100%;
+            padding: 12px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            border: 2px solid var(--color-border);
+            margin-bottom: 8px;
+        }
+
+        .consent-input:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+
+        .consent-input.error {
+            border-color: var(--color-error);
+        }
+
+        .consent-input.success {
+            border-color: var(--color-success);
+        }
+
+        .error-message {
+            color: var(--color-error);
+            font-size: 12px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-print {
+            background-color: var(--color-accent);
+            color: white;
+        }
+
+        .btn-print:hover:not(:disabled) {
+            background-color: #0052a3;
+        }
+
+        .btn-cancel {
+            background-color: var(--color-surface);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-border);
+        }
+
+        .btn-cancel:hover {
+            background-color: #e0e0e0;
+        }
+
+        .status-message {
+            margin-top: 16px;
+            padding: 12px;
+            font-size: 13px;
+            border: 1px solid var(--color-border);
+            display: none;
+        }
+
+        .status-message.visible {
+            display: block;
+        }
+
+        .status-message.success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .status-message.error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .preview {
+            border: 1px solid var(--color-border);
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: white;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Print Consent Gate</h1>
+
+        <div class="section">
+            <div class="section-title">Artifact Metadata</div>
+            <div class="metadata-grid">
+                <div class="metadata-label">Artifact ID:</div>
+                <div class="metadata-value" id="artifact-id">Loading...</div>
+
+                <div class="metadata-label">Content Hash:</div>
+                <div class="metadata-value" id="content-hash">Loading...</div>
+
+                <div class="metadata-label">Created:</div>
+                <div class="metadata-value" id="created-at">Loading...</div>
+
+                <div class="metadata-label">Mode:</div>
+                <div class="metadata-value" id="mode">Loading...</div>
+
+                <div class="metadata-label">Query:</div>
+                <div class="metadata-value" id="query">Loading...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Artifact Preview</div>
+            <div class="preview" id="artifact-preview">
+                Loading artifact content...
+            </div>
+        </div>
+
+        <div class="consent-section">
+            <div class="consent-requirement">
+                <p><strong>Required Consent:</strong></p>
+                <p>Type the following text <strong>exactly</strong> to consent to printing:</p>
+                <code>I consent to print this artifact exactly as rendered.</code>
+                <p style="margin-top: 8px; font-size: 12px; color: #856404;">
+                    No fuzzy matching. No auto-fill. No shortcuts.
+                </p>
+            </div>
+
+            <input
+                type="text"
+                id="consent-input"
+                class="consent-input"
+                placeholder="Type consent text here..."
+                autocomplete="off"
+                spellcheck="false"
+            />
+
+            <div class="error-message" id="error-message">
+                Consent text does not match exactly.
+            </div>
+
+            <div class="button-group">
+                <button id="btn-print" class="btn-print" disabled>Print</button>
+                <button id="btn-cancel" class="btn-cancel">Cancel</button>
+            </div>
+
+            <div class="status-message" id="status-message"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        const REQUIRED_CONSENT = "I consent to print this artifact exactly as rendered.";
+        
+        let currentArtifactId = null;
+        let currentArtifact = null;
+
+        // === Load artifact from URL parameter ===
+        async function loadArtifact() {
+            const params = new URLSearchParams(window.location.search);
+            const artifactId = params.get("artifact_id");
+            
+            if (!artifactId) {
+                showError("No artifact_id provided in URL");
+                return;
+            }
+
+            currentArtifactId = artifactId;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/printer/artifacts/${artifactId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load artifact: ${response.statusText}`);
+                }
+
+                const artifact = await response.json();
+                currentArtifact = artifact;
+                displayArtifact(artifact);
+            } catch (error) {
+                showError(`Error loading artifact: ${error.message}`);
+            }
+        }
+
+        // === Display artifact metadata ===
+        function displayArtifact(artifact) {
+            document.getElementById("artifact-id").textContent = artifact.artifact_id;
+            document.getElementById("content-hash").textContent = artifact.content_hash;
+            document.getElementById("created-at").textContent = artifact.created_at;
+            document.getElementById("mode").textContent = artifact.provenance?.mode || "Unknown";
+            document.getElementById("query").textContent = artifact.provenance?.query || "N/A";
+            
+            // Display preview (first 1000 chars)
+            const previewElement = document.getElementById("artifact-preview");
+            const preview = artifact.html_content.substring(0, 1000);
+            previewElement.textContent = preview + (artifact.html_content.length > 1000 ? "..." : "");
+        }
+
+        // === Consent validation ===
+        const consentInput = document.getElementById("consent-input");
+        const btnPrint = document.getElementById("btn-print");
+        const errorMessage = document.getElementById("error-message");
+
+        consentInput.addEventListener("input", () => {
+            const inputValue = consentInput.value;
+            
+            if (inputValue === REQUIRED_CONSENT) {
+                consentInput.classList.remove("error");
+                consentInput.classList.add("success");
+                errorMessage.classList.remove("visible");
+                btnPrint.disabled = false;
+            } else {
+                consentInput.classList.remove("success");
+                btnPrint.disabled = true;
+                
+                if (inputValue.length > 0) {
+                    consentInput.classList.add("error");
+                    errorMessage.classList.add("visible");
+                } else {
+                    consentInput.classList.remove("error");
+                    errorMessage.classList.remove("visible");
+                }
+            }
+        });
+
+        // === Print action ===
+        btnPrint.addEventListener("click", async () => {
+            if (!currentArtifact) {
+                showError("No artifact loaded");
+                return;
+            }
+
+            btnPrint.disabled = true;
+            btnPrint.textContent = "Printing...";
+
+            try {
+                const operatorId = prompt("Enter operator ID:") || "anonymous";
+                
+                const response = await fetch(`${API_BASE}/api/printer/print`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        artifact_id: currentArtifactId,
+                        operator_id: operatorId,
+                        consent_text: consentInput.value,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Print failed");
+                }
+
+                const receipt = await response.json();
+                showSuccess(`Print job submitted. Receipt ID: ${receipt.receipt_id}`);
+                
+                // Disable further interaction
+                consentInput.disabled = true;
+                btnPrint.style.display = "none";
+            } catch (error) {
+                showError(`Print failed: ${error.message}`);
+                btnPrint.disabled = false;
+                btnPrint.textContent = "Print";
+            }
+        });
+
+        // === Cancel action ===
+        document.getElementById("btn-cancel").addEventListener("click", () => {
+            if (confirm("Cancel print operation?")) {
+                window.close();
+            }
+        });
+
+        // === Status messages ===
+        function showStatus(message, type) {
+            const statusEl = document.getElementById("status-message");
+            statusEl.textContent = message;
+            statusEl.className = `status-message visible ${type}`;
+        }
+
+        function showSuccess(message) {
+            showStatus(message, "success");
+        }
+
+        function showError(message) {
+            showStatus(message, "error");
+        }
+
+        // === Initialize ===
+        loadArtifact();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,30 @@
+probe_queries:
+  - title: "Timeline pipeline provenance end-to-end map"
+    query: |
+      Build a map of the timeline pipeline end-to-end – where ehr.patient_timeline events are created, where meta is assembled, where meta.provenance is set or lost, where embeddings are generated, where retrieval returns results, and where the timeline summarizer filters and consumes events.
+
+      Output:
+      1. The exact entry points and files involved at each stage
+      2. The canonical provenance contract that should be enforced
+      3. The top 5 choke points where provenance is dropped, overwritten, or ignored
+      4. Minimal, backward-compatible patches that make provenance consistently populated, preserved, and visible across ingest, retrieval, and summarization
+
+      Constraints:
+      - Prefer documentation and small helpers over behavioral refactors
+      - Do not change summarizer logic unless strictly necessary
+      - Ground all conclusions in real files and evidence
+      - Suppress speculative changes
+    ts_terms:
+      - "ehr.patient_timeline"
+      - "meta.provenance"
+      - "provenance"
+      - "structured"
+      - "embedding"
+      - "embedding_cache"
+      - "decision_log"
+      - "patient_state"
+      - "timeline"
+      - "summarizer"
+      - "ask_stream"
+      - "eoh_*stream"
+      - "gap_retrieval"

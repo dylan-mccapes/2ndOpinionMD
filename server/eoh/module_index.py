@@ -257,12 +257,68 @@ MODULE_INDEX: Dict[str, Dict[str, Any]] = {
         ],
     },
     "M48": {
-        "name": "Learning Kernel / Continuous Learning & Governance Loop",
+        "id": "M48",
+        "name": "Global calibration & suppression governance",
         "layer": "governance",
-        "llm_use_when": "Retraining and policy updates lineage. System-level learning and model governance.",
+        "llm_use_when": (
+            "Type E questions about overall EoH calibration, missed flares vs "
+            "false positives, and suppression policies across the population."
+        ),
         "doc_handles": [
-            {"kind": "pg_view", "name": "eoh_m48_learning_kernel"},
-            {"kind": "pg_table", "name": "eoh_retraining_requests"},
+            {"kind": "pg_view", "name": "eoh_m48_global_calibration"},
+            {"kind": "pg_view", "name": "eoh_m48_suppression_audit"},
+        ],
+    },
+    "M48B": {
+        "id": "M48B",
+        "name": "Condition-level calibration & flare suppression audit (Gold Module 49B)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Type E questions about calibration or suppression for a specific "
+            "disease/phenotype (e.g. RA, SLE, IBD) or for a board-facing QA "
+            "about missed flares / over-suppression in that condition. "
+            "Backed by the EoH Gold 2025 Module 49B policy text."
+        ),
+        "doc_handles": [
+            {"kind": "pg_view", "name": "eoh_m48b_condition_calibration"},
+            {"kind": "pg_view", "name": "eoh_m48b_condition_suppression_audit"},
+            # Sneak-preview governance policy text from rag_corpus:
+            {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_49b"},
+        ],
+    },
+    "M48C": {
+        "id": "M48C",
+        "name": "Diagnostic landscape stability & drift (Gold Module 49C)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Type C or E questions where the focus is on diagnostic landscape "
+            "consistency over time (e.g. shifts in RA-like vs SLE-like vs PsA-like "
+            "weights) and whether EoH is drifting or unstable. "
+            "Backed by the EoH Gold 2025 Module 49C policy text."
+        ),
+        "doc_handles": [
+            {"kind": "pg_view", "name": "eoh_m48c_diagnostic_landscape_qc"},
+            {"kind": "pg_view", "name": "eoh_m48c_drift_monitor"},
+            # Sneak-preview governance policy text from rag_corpus:
+            {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_49c"},
+        ],
+    },
+    "M50": {
+        "id": "M50",
+        "name": "DxLandscapeFromEoH – Diagnostic Landscape Engine",
+        "layer": "governance",
+        "llm_use_when": (
+            "You need to derive or reason about a structured diagnostic landscape "
+            "for an Episode of Health: clustered candidate diagnoses with scores, "
+            "evidence back to timeline facts, and suggested next diagnostic moves. "
+            "Use this when the question asks for a differential / diagnostic landscape "
+            "in an EoH-aware way (often type C or E questions, sometimes A/D when "
+            "the focus is on how diagnosis and flare interact)."
+        ),
+        "doc_handles": [
+            # Runtime / DB-facing views will be added later as we implement them.
+            # For now, we at least expose the policy text from eoh_gold_2025.
+            {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_50"},
         ],
     },
 }
@@ -283,7 +339,7 @@ QUESTION_TYPES: Dict[str, Dict[str, Any]] = {
     "C": {
         "description": "Why did the system predict / escalate a flare? (Explainability)",
         "goal": "Reconstruct the decision chain.",
-        "canonical_modules": ["M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19", "M25"],
+        "canonical_modules": ["M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19", "M25", "M48", "M48B", "M48C", "M50"],
     },
     "D": {
         "description": "Given this state, how should we adjust the plan? (non-emergency)",
@@ -293,7 +349,7 @@ QUESTION_TYPES: Dict[str, Dict[str, Any]] = {
     "E": {
         "description": "Is the model still calibrated / are we over-suppressing flares? (meta)",
         "goal": "Meta on performance, not per-patient.",
-        "canonical_modules": ["M19", "M41", "M48"],
+        "canonical_modules": ["M19", "M41", "M48", "M48B", "M48C", "M50"],
     },
 }
 

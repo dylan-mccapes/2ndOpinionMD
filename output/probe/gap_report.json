@@ -1,0 +1,169 @@
+[
+  {
+    "topic": "Data layer and storage",
+    "key_findings": [
+      "No concrete evidence yet of how data access is structured (repositories, DAOs, direct queries), leaving coupling patterns between domain and storage unclear.",
+      "Schema definition and migration mechanisms are not visible, so assumptions about schema evolution, backward compatibility, and migration coupling remain speculative.",
+      "There is no observed code for serialization/deserialization or DTO mapping, so connascence around field names, types, and versions is underexplored.",
+      "Cross-layer data contracts (e.g., network \u2192 persistence \u2192 domain) have not been located, preventing quantitative measurement of dependency fan-in/fan-out.",
+      "Error handling and transaction boundaries for storage interactions are not yet observed, leaving temporal dependencies and execution connascence between operations unclear."
+    ],
+    "recommended_actions": [
+      "Locate and inspect any persistence gateway or repository-like abstractions to understand how strongly domain logic is coupled to specific storage technologies.",
+      "Identify schema or model definitions and corresponding migration or upgrade scripts to concretely assess connascence of meaning, type, and execution across versions.",
+      "Search for serialization utilities or adapters to evaluate how tightly coupled callers are to payload shape, ordering, and type assumptions.",
+      "Map dependencies between data access modules and higher layers (services, view models) to quantify coupling and identify potential cross-layer DTO usage.",
+      "Review configuration and constants related to storage (e.g., table names, collection names, file paths) to detect shared constant and temporal dependency patterns."
+    ],
+    "connascence_signals": [
+      "Connascence of Meaning in schema field names",
+      "Connascence of Position in event payload field order",
+      "Connascence of Execution between migration scripts and schema versions",
+      "Connascence of Type in serialization/deserialization methods",
+      "Connascence of Algorithm in version handling logic",
+      "shared_constant",
+      "temporal_dependency",
+      "cross_layer_dto",
+      "transitive"
+    ],
+    "confidence": "low",
+    "gap_ann": "persistence gateway interfaces",
+    "gap_ts": [
+      "storage adapter",
+      "database client"
+    ]
+  },
+  {
+    "topic": "API and backend services",
+    "key_findings": [
+      "The /rag/eoh_stream endpoint architecture appears modular, with routing, timeline summarization, source selection, and an EoH LLM router separated into distinct modules, but the exact module boundaries and dependency directions remain underdocumented.",
+      "Inter-module dependencies rely heavily on shared domain models (e.g., patient_state, timeline structures) and implied data contracts, creating moderate connascence of meaning and type that is not explicitly enforced via interfaces or schemas.",
+      "Streaming behavior (event shapes, sequencing, backpressure or error semantics) is only partially characterized; details of how events are produced, ordered, and consumed, and how these map across modules, are unclear.",
+      "Test coverage is effectively absent around the /rag/eoh_stream flow, which amplifies the risk introduced by moderate coupling and makes the current connascence level more fragile.",
+      "No concrete evidence yet indicates hard architectural cycles or singleton-style global coordinators, but the LLM router and stream orchestration components are likely de facto hubs that could conceal temporal and algorithmic coupling."
+    ],
+    "recommended_actions": [
+      "Document and formalize the /rag/eoh_stream request/response contracts, including patient_state structure and stream event schemas, to reduce implicit connascence of meaning and type.",
+      "Introduce explicit interface layers or DTOs between routing, timeline summarization, source selection, and the LLM router to localize changes and lower cross-module connascence of name and type.",
+      "Define and test the streaming lifecycle explicitly (event ordering, error events, completion semantics, and timing guarantees) to manage connascence of timing and temporal dependencies across producer and consumer modules.",
+      "Add targeted tests around the /rag/eoh_stream path (including integration tests with mocked LLM router and source selection) to detect regressions stemming from inter-module changes.",
+      "Review router and orchestration components for potential over-centralization; if they act as implicit singletons or god-objects, refactor responsibilities to reduce algorithmic and temporal coupling."
+    ],
+    "connascence_signals": [
+      "Connascence of Name between request model and handler",
+      "Connascence of Meaning between timeline fields across summarization and stream modules",
+      "Connascence of Algorithm in source selection and timeline summarization modules",
+      "Connascence of Type between patient_state dict and LLM router processor",
+      "Connascence of Timing in streaming event generation and client consumption",
+      "cross_layer_dto",
+      "temporal_dependency",
+      "algorithmic_duplication"
+    ],
+    "confidence": "medium",
+    "gap_ann": "eoh_stream implementation details",
+    "gap_ts": [
+      "eoh_stream handler",
+      "timeline_event_model"
+    ]
+  },
+  {
+    "topic": "Frontend architecture and UX flows",
+    "key_findings": [
+      "The current picture of the frontend modular architecture is high-level and backend-centric (RAG streams, SSE contract) but lacks concrete mapping to actual UI modules, components, or navigation/flow structures; UX flows are barely explored.",
+      "Key abstractions such as the unified EventSource handler, stream mode selectors, and any view-model/state management layer are not explicitly identified in code, so the precise dependency graph and coupling points between UI and streaming layer remain unclear.",
+      "The connascence assessment is inferred conceptually (event.type, event.data) without concrete examples of where in the code those fields are consumed, making the quantitative score (7/12) weakly supported by specific evidence.",
+      "Error handling, reconnection logic, and user feedback patterns for streaming failures are underexplored, even though they likely contribute to temporal and cross-layer coupling between frontend behavior and backend stream lifecycle.",
+      "There is no direct evidence yet of how shared constants or DTO-like structures (TypeScript interfaces or JS schemas) are defined and used across components, which is essential to judge cross_layer_dto or shared_constant connascence.",
+      "Test coverage is estimated as very low but no specific absence of unit/integration tests for the SSE/event handling modules is documented, leaving that risk assertion somewhat speculative."
+    ],
+    "recommended_actions": [
+      "Locate and analyze the core frontend modules that instantiate and manage the unified EventSource abstraction, mapping out which components depend on which stream modes and what data they expect from each event type.",
+      "Identify any central state/store (e.g., Redux/Vuex/Zustand/custom) or controller-like layer responsible for coordinating SSE events with UI state transitions, and document the coupling between these layers and the backend event schema.",
+      "Search for definitions of event-related types, interfaces, or constants (e.g., enums of event types, typed payloads) to determine whether connascence is mitigated via central contracts or scattered literal usage.",
+      "Review error-handling and reconnection logic around SSE to understand temporal dependencies (e.g., required ordering of events, retry timing) and how tightly frontend behavior is bound to backend lifecycle assumptions.",
+      "Confirm the absence or presence of tests for the EventSource handler and stream consumers; if missing, recommend adding contract tests and schema validation around streaming payloads to reduce regression risk.",
+      "Refine the quantitative connascence score after grounding it in specific code locations (files, modules, functions) where semantic, positional, and type coupling to event.type and event.data occur."
+    ],
+    "connascence_signals": [
+      "Semantic connascence of meaning on event.type across components",
+      "Connascence of position in consuming event.data JSON keys",
+      "Connascence of type due to inferred semiformal event schema",
+      "Temporal connascence requiring synchronized deployment of frontend and backend contract changes",
+      "Connascence of convention for handling optional/missing fields in payloads",
+      "cross_layer_dto",
+      "shared_constant",
+      "temporal_dependency"
+    ],
+    "confidence": "low",
+    "gap_ann": "Frontend SSE consumer components",
+    "gap_ts": [
+      "EventSourceManager",
+      "streamEventHandler"
+    ]
+  },
+  {
+    "topic": "Authentication and access control",
+    "key_findings": [
+      "Current description of the auth/access-control architecture is high-level and not grounded in specific classes, packages, or flows from this repo, leaving unclear which modules actually implement identity, session, or permission logic.",
+      "Quantitative aspects of coupling and connascence (e.g., number of call sites, shared types, or constants across modules) are not measured; the analysis only labels types of connascence abstractly.",
+      "There is no concrete evidence for token or session handling code (e.g., token models, interceptors, or storage mechanisms) within the documented files so far, so assumptions about token formats and lifecycle may not reflect reality.",
+      "Test coverage claims for authentication are speculative; no test directories, test classes, or specific test cases have been cited to substantiate low coverage.",
+      "The interaction between any authentication layer and access control/authorization (e.g., role or permission checks, feature gating) is underexplored, with no references to policy objects, guards, or middleware-like components."
+    ],
+    "recommended_actions": [
+      "Locate concrete authentication-related classes or functions (e.g., Login, AuthInterceptor, TokenProvider, UserSession) and map their package/module boundaries to assess real coupling patterns.",
+      "Identify shared DTOs, models, and constants that span UI, data, and auth layers to measure cross-layer and name/type connascence rather than inferring it abstractly.",
+      "Search for configuration-driven or Gradle-level dependencies (e.g., auth libraries, security modules) that might introduce gradle_dependency or transitive coupling between modules.",
+      "Inspect any networking or API client layer for authentication enforcement points (e.g., request interceptors, header injectors) to clarify temporal and execution-order dependencies in the login \u2192 call sequence.",
+      "Survey existing test sources for authentication and access control (unit, instrumentation, or integration tests) to validate or revise assumptions about low coverage and identify missing test cases around edge conditions."
+    ],
+    "connascence_signals": [
+      "Name connascence: likely shared method names for login, logout, and token refresh across auth, networking, and session modules, but not yet tied to specific symbols in this repo.",
+      "Type connascence: presumed reuse of credential, token, and user-related types across layers, though concrete class or data-structure names remain unidentified.",
+      "Execution order connascence: inferred requirement that authentication or login complete before authorized API calls, but the actual orchestration or pipeline is not yet evidenced.",
+      "Temporal connascence: hypothesized linkage between session lifecycle and token validity windows, including expiration and refresh timing, without locating the actual expiry/refresh logic.",
+      "Algorithmic connascence: suspected shared or duplicated token validation or signing logic between client-side modules and any server-communication adapters, but no direct code examples yet.",
+      "shared_constant: potential use of common auth-related keys (e.g., header names, preference keys, token field names) shared across multiple modules, not yet enumerated.",
+      "temporal_dependency: implied reliance on time-based factors (expiry, refresh intervals, session timeouts) that couple modules managing session state and request authorization.",
+      "gradle_dependency: possible coupling via authentication/security libraries or modules declared in Gradle build files, which could propagate auth concerns transitively across the app.",
+      "cross_layer_dto: likely presence of user or auth DTOs that traverse data, domain, and presentation layers, creating structural coupling that has not yet been cataloged."
+    ],
+    "confidence": "low",
+    "gap_ann": "authorization policy enforcement classes",
+    "gap_ts": [
+      "AuthInterceptor",
+      "UserSessionManager"
+    ]
+  },
+  {
+    "topic": "Observability, testing, and delivery",
+    "key_findings": [
+      "Observability is partially implemented via a modular logging and metrics layer, but only the interaction between RunLogger and metrics is visible, leaving the broader observability surface (tracing, structured events, log routing) unclear.",
+      "The relationship between logging and metrics appears tightly coupled, with shared error-handling paths and common data structures, but concrete module boundaries, interfaces, and dependency directions are not documented.",
+      "Automation around quality (tests, coverage) and delivery (CI/CD config, release pipelines) is either missing or not yet discovered, which creates risk that observability behaviors are not validated in a repeatable way.",
+      "The scope of runtime metadata enrichment (e.g., what run context is captured, how it is propagated) is underexplored, limiting understanding of how observability concerns cross module boundaries."
+    ],
+    "recommended_actions": [
+      "Catalog all modules that import or wrap RunLogger and metrics utilities, and map their direct dependencies to clarify layering and identify where observability concerns leak across boundaries.",
+      "Search for and review any test directories, CI configuration files, or pipeline definitions to determine how observability behavior is verified and how failures are surfaced in delivery flows.",
+      "Refactor shared error-handling and metrics-recording patterns behind explicit interfaces or helper utilities to reduce implicit coupling and make connascence of meaning and algorithm more intentional.",
+      "Introduce or document contracts for run metadata structures passed between logging and metrics components to reduce fragile shared-structure coupling and support evolution of observability features."
+    ],
+    "connascence_signals": [
+      "RunLogger tightly linked to metrics loading and recording",
+      "Error handling routines interwoven for both logging and metrics",
+      "Repeated metric recording operations with similar error patterns",
+      "Dependency on shared metrics data structure across modules",
+      "cross_layer_dto",
+      "shared_constant",
+      "temporal_dependency",
+      "algorithmic_duplication"
+    ],
+    "confidence": "medium",
+    "gap_ann": "observability module interactions",
+    "gap_ts": [
+      "RunLogger.init",
+      "metrics.context"
+    ]
+  }
+]
