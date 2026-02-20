@@ -1,7 +1,40 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { StreamingDisplay, type StreamStatus } from '../components/StreamingDisplay';
+import { TransparencyPanel } from '../components/TransparencyPanel';
 
 export function AskPage() {
   const [query, setQuery] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [streamKey, setStreamKey] = useState(0);
+  const [statusBarStatus, setStatusBarStatus] = useState<StreamStatus>('idle');
+  const [, setStatusBarMessage] = useState('');
+  const [externalCallMade, setExternalCallMade] = useState(false);
+  const [callTimestamp, setCallTimestamp] = useState<string | null>(null);
+
+  const handleSubmit = () => {
+    if (!query.trim()) return;
+    setExternalCallMade(false);
+    setCallTimestamp(null);
+    setStreamKey((k) => k + 1);
+    setSubmitted(true);
+  };
+
+  const handleStatusChange = useCallback((status: StreamStatus, message?: string) => {
+    setStatusBarStatus(status);
+    if (message) setStatusBarMessage(message);
+  }, []);
+
+  const handleExternalCall = useCallback(() => {
+    setExternalCallMade(true);
+    setCallTimestamp(new Date().toISOString());
+  }, []);
+
+  const isRunning =
+    statusBarStatus === 'connecting' ||
+    statusBarStatus === 'running' ||
+    statusBarStatus === 'evidence' ||
+    statusBarStatus === 'reasoning' ||
+    statusBarStatus === 'streaming';
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -44,35 +77,46 @@ export function AskPage() {
             color: 'var(--text-primary)',
             minHeight: '80px',
           }}
+          disabled={isRunning}
         />
         <div className="flex justify-end mt-3">
           <button
-            disabled={!query.trim()}
+            onClick={handleSubmit}
+            disabled={!query.trim() || isRunning}
             className="px-4 py-2 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: 'var(--accent-green)',
               color: '#000',
             }}
           >
-            SUBMIT QUERY
+            {isRunning ? 'RUNNING...' : 'SUBMIT QUERY'}
           </button>
         </div>
       </div>
 
-      <div
-        className="p-4 rounded border"
-        style={{
-          backgroundColor: 'var(--bg-secondary)',
-          borderColor: 'var(--border-color)',
-        }}
-      >
-        <p
-          className="text-xs font-mono"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Streaming display will render here. Awaiting Phase 2 implementation.
-        </p>
+      <div className="mb-4">
+        <TransparencyPanel
+          externalCallMade={externalCallMade}
+          callTimestamp={callTimestamp}
+        />
       </div>
+
+      {submitted && (
+        <StreamingDisplay
+          key={streamKey}
+          endpoint="/api/rag/ask_stream"
+          params={{
+            q: query,
+            limit: 12,
+            with_llm: 1,
+            llm_mode: 'chunk',
+          }}
+          mode="ask"
+          active={true}
+          onStatusChange={handleStatusChange}
+          onExternalCall={handleExternalCall}
+        />
+      )}
     </div>
   );
 }
