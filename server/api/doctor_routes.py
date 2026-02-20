@@ -1,25 +1,34 @@
 """
-Doctor portal API (Phase 5c).
+Doctor portal API (Phase 5c + Phase 6.0).
 GET /api/doctor/patients - list patients linked to current doctor
 GET /api/doctor/patients/{id}/journal - journal entries for patient
 GET /api/doctor/patients/{id}/timeline-status - timeline status for patient
+POST /api/doctor/invite-patient - invite a patient by email
+GET /api/doctor/pending-invites - list pending invites sent by this doctor
 """
 import logging
 import uuid
+from datetime import datetime, timedelta
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models.postgresql.models import User, JournalEntry
+from database.models.postgresql.models import User, JournalEntry, DoctorPatientInvite
 from server.api.auth_postgres import get_current_user_postgres
 from server.db.session import get_session
 from server.api.session_routes import get_or_create_operator, get_timeline_id_for_operator
+from server.utils.email.verification import send_invite_email
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class InvitePatientRequest(BaseModel):
+    email: EmailStr
 
 
 def _require_doctor(current_user: Any) -> Any:
@@ -172,3 +181,95 @@ async def get_patient_timeline_status(
         "event_count": count,
         "last_updated": last_updated,
     }
+
+
+@router.post("/invite-patient")
+async def invite_patient(
+    body: InvitePatientRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Any = Depends(get_current_user_postgres),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Doctor invites a patient by email. Creates a pending invite and sends an email.
+    If the patient already exists and is already linked, returns an error.
+    """
+    _require_doctor(current_user)
+
+    if body.email.lower() == current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself")
+
+    existing = await db.execute(
+        select(User).where(User.email == body.email.lower(), User.doctor_id == current_user.id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient already linked to your account")
+
+    pending = await db.execute(
+        select(DoctorPatientInvite).where(
+            DoctorPatientInvite.from_user_id == current_user.id,
+            DoctorPatientInvite.to_email == body.email.lower(),
+            DoctorPatientInvite.invite_type == "doctor_invites_patient",
+            DoctorPatientInvite.status == "pending",
+        )
+    )
+    if pending.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invite already pending for this email")
+
+    invite_token = str(uuid.uuid4())
+    invite = DoctorPatientInvite(
+        from_user_id=current_user.id,
+        to_email=body.email.lower(),
+        invite_type="doctor_invites_patient",
+        token=invite_token,
+        status="pending",
+        expires_at=datetime.utcnow() + timedelta(days=7),
+    )
+    db.add(invite)
+    await db.commit()
+    await db.refresh(invite)
+
+    from_name = current_user.full_name or current_user.email
+    background_tasks.add_task(
+        send_invite_email,
+        to_email=body.email,
+        from_name=from_name,
+        from_role="doctor",
+        invite_type="doctor_invites_patient",
+        token=invite_token,
+    )
+
+    return {
+        "id": str(invite.id),
+        "to_email": invite.to_email,
+        "status": invite.status,
+        "created_at": invite.created_at.isoformat() if invite.created_at else None,
+    }
+
+
+@router.get("/pending-invites")
+async def get_pending_invites(
+    current_user: Any = Depends(get_current_user_postgres),
+    db: AsyncSession = Depends(get_session),
+) -> List[dict]:
+    """List pending invites sent by this doctor."""
+    _require_doctor(current_user)
+
+    q = select(DoctorPatientInvite).where(
+        DoctorPatientInvite.from_user_id == current_user.id,
+        DoctorPatientInvite.invite_type == "doctor_invites_patient",
+        DoctorPatientInvite.status == "pending",
+    ).order_by(DoctorPatientInvite.created_at.desc())
+    result = await db.execute(q)
+    invites = result.scalars().all()
+
+    return [
+        {
+            "id": str(inv.id),
+            "to_email": inv.to_email,
+            "status": inv.status,
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+            "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+        }
+        for inv in invites
+    ]

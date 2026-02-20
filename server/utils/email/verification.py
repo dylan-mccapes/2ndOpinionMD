@@ -165,6 +165,47 @@ def verify_password_reset_token(token: str) -> Optional[str]:
     except Exception:
         return None
 
+async def send_invite_email(
+    to_email: str,
+    from_name: str,
+    from_role: str,
+    invite_type: str,
+    token: str,
+):
+    """Send a doctor-patient connection invite email."""
+    dev_mode = os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")
+    origin = os.getenv("FRONTEND_ORIGIN") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+
+    if invite_type == "doctor_invites_patient":
+        accept_path = f"/auth/accept-doctor-invite?token={token}"
+        subject = f"Dr. {from_name} invites you to connect on 2ndOpinionMD"
+        body_text = (
+            f"Dr. {from_name} has invited you to connect as their patient on 2ndOpinionMD.\n\n"
+            f"Accept the invitation:\n{origin}{accept_path}\n\n"
+            "If you don't have an account, you'll be asked to register first.\n"
+            "This invitation expires in 7 days."
+        )
+    else:
+        accept_path = f"/auth/accept-patient-invite?token={token}"
+        subject = f"{from_name} invites you as their doctor on 2ndOpinionMD"
+        body_text = (
+            f"{from_name} has invited you to connect as their doctor on 2ndOpinionMD.\n\n"
+            f"Accept the invitation:\n{origin}{accept_path}\n\n"
+            "If you don't have an account, you'll be asked to register first.\n"
+            "This invitation expires in 7 days."
+        )
+
+    if dev_mode:
+        logger.warning("[DEV-MODE] Invite email not sent. Link: %s%s", origin, accept_path)
+        return
+
+    await send_email(
+        subject=subject,
+        recipients=[to_email],
+        text_body=body_text,
+    )
+
+
 async def send_password_reset_email(email: EmailStr, name: str, token: str):
     """
     Send a password reset email with a token link

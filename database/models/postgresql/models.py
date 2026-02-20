@@ -49,6 +49,21 @@ class JournalEntry(Base):
     
     user = relationship("User", back_populates="journal_entries")
 
+class DoctorPatientInvite(Base):
+    __tablename__ = "doctor_patient_invites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    to_email = Column(String, nullable=False)
+    invite_type = Column(String(30), nullable=False)  # 'doctor_invites_patient' | 'patient_invites_doctor'
+    token = Column(String, nullable=False, unique=True)
+    status = Column(String(20), nullable=False, server_default="pending")  # 'pending' | 'accepted' | 'declined'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+    from_user = relationship("User", foreign_keys=[from_user_id])
+
+
 class MedicalKnowledge(Base):
     __tablename__ = "medical_knowledge"
     

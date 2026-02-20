@@ -18,6 +18,8 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { VerifyPage } from './pages/auth/VerifyPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
+import { AcceptDoctorInvitePage } from './pages/auth/AcceptDoctorInvitePage';
+import { AcceptPatientInvitePage } from './pages/auth/AcceptPatientInvitePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export default function App() {
@@ -41,6 +43,8 @@ export default function App() {
           <Route path="/auth/verify" element={<VerifyPage />} />
           <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/auth/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="/auth/accept-doctor-invite" element={<AcceptDoctorInvitePage />} />
+          <Route path="/auth/accept-patient-invite" element={<AcceptPatientInvitePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

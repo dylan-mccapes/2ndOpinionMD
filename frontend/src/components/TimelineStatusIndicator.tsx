@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 
 export function TimelineStatusIndicator() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { status, loading } = useTimelineStatus();
   const navigate = useNavigate();
 

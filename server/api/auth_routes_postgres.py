@@ -333,3 +333,121 @@ async def get_current_user_info(
         user_type=user_type,
         created_at=current_user.created_at,
     )
+
+
+# --- Phase 6.0: Accept invite endpoints ---
+
+from database.models.postgresql.models import DoctorPatientInvite
+from datetime import datetime as _dt
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+
+
+@router.post("/accept-doctor-invite")
+async def accept_doctor_invite(
+    body: AcceptInviteRequest,
+    current_user: User = Depends(get_current_user_postgres),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Patient accepts a doctor's invite. Sets doctor_id on the patient.
+    The current user must be a patient.
+    """
+    user_type = getattr(current_user, "user_type", "patient")
+    if user_type != "patient":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only patients can accept doctor invites")
+
+    result = await session.execute(
+        select(DoctorPatientInvite).where(
+            DoctorPatientInvite.token == body.token,
+            DoctorPatientInvite.invite_type == "doctor_invites_patient",
+        )
+    )
+    invite = result.scalar_one_or_none()
+    if not invite:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found or invalid token")
+
+    if invite.status != "pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invite already {invite.status}")
+
+    if invite.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite has expired")
+
+    if invite.to_email.lower() != current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This invite was sent to a different email")
+
+    if current_user.doctor_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You already have a linked doctor")
+
+    current_user.doctor_id = invite.from_user_id
+    invite.status = "accepted"
+    await session.commit()
+
+    doctor_result = await session.execute(select(User).where(User.id == invite.from_user_id))
+    doctor = doctor_result.scalar_one_or_none()
+
+    return {
+        "message": "Connection established",
+        "doctor": {
+            "id": str(doctor.id) if doctor else str(invite.from_user_id),
+            "email": doctor.email if doctor else None,
+            "full_name": doctor.full_name if doctor else None,
+        },
+    }
+
+
+@router.post("/accept-patient-invite")
+async def accept_patient_invite(
+    body: AcceptInviteRequest,
+    current_user: User = Depends(get_current_user_postgres),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Doctor accepts a patient's invite. Sets doctor_id on the patient.
+    The current user must be a doctor.
+    """
+    user_type = getattr(current_user, "user_type", "patient")
+    if user_type != "doctor":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only doctors can accept patient invites")
+
+    result = await session.execute(
+        select(DoctorPatientInvite).where(
+            DoctorPatientInvite.token == body.token,
+            DoctorPatientInvite.invite_type == "patient_invites_doctor",
+        )
+    )
+    invite = result.scalar_one_or_none()
+    if not invite:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found or invalid token")
+
+    if invite.status != "pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invite already {invite.status}")
+
+    if invite.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite has expired")
+
+    if invite.to_email.lower() != current_user.email.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This invite was sent to a different email")
+
+    patient_result = await session.execute(select(User).where(User.id == invite.from_user_id))
+    patient = patient_result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient account not found")
+
+    if patient.doctor_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient already has a linked doctor")
+
+    patient.doctor_id = current_user.id
+    invite.status = "accepted"
+    await session.commit()
+
+    return {
+        "message": "Connection established",
+        "patient": {
+            "id": str(patient.id),
+            "email": patient.email,
+            "full_name": patient.full_name,
+        },
+    }

@@ -11,11 +11,26 @@ interface PatientSummary {
   has_timeline: boolean;
 }
 
+interface PendingInvite {
+  id: string;
+  to_email: string;
+  status: string;
+  created_at: string | null;
+  expires_at: string | null;
+}
+
 export function DoctorPortalPage() {
   const { token, user } = useAuth();
   const [patients, setPatients] = useState<PatientSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSuccess, setInviteSuccess] = useState('');
+
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
 
   useEffect(() => {
     if (!token) return;
@@ -41,8 +56,53 @@ export function DoctorPortalPage() {
       }
     };
 
+    const fetchPendingInvites = async () => {
+      try {
+        const data = await apiFetch<PendingInvite[]>('/api/doctor/pending-invites', {
+          headers: authHeaders(token),
+        });
+        setPendingInvites(data);
+      } catch {
+        // silent — non-critical
+      }
+    };
+
     fetchPatients();
+    fetchPendingInvites();
   }, [token]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !inviteEmail.trim()) return;
+
+    setInviteLoading(true);
+    setInviteError('');
+    setInviteSuccess('');
+
+    try {
+      await apiFetch<{ id: string; to_email: string; status: string }>('/api/doctor/invite-patient', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      });
+      setInviteSuccess(`Invite sent to ${inviteEmail.trim()}`);
+      setInviteEmail('');
+      const data = await apiFetch<PendingInvite[]>('/api/doctor/pending-invites', {
+        headers: authHeaders(token),
+      });
+      setPendingInvites(data);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        let msg = err.body;
+        try { msg = JSON.parse(err.body).detail; } catch { /* use raw */ }
+        setInviteError(msg);
+      } else {
+        setInviteError(err instanceof Error ? err.message : 'Failed to send invite');
+      }
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -58,6 +118,72 @@ export function DoctorPortalPage() {
         </p>
       </div>
 
+      {/* CONNECT PATIENT */}
+      <div
+        className="p-4 rounded border mb-4"
+        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+      >
+        <span className="text-sm font-mono font-bold block mb-3" style={{ color: 'var(--accent-blue)' }}>
+          CONNECT PATIENT
+        </span>
+        <form onSubmit={handleInvite} className="flex gap-2 mb-2">
+          <input
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="patient@example.com"
+            required
+            className="flex-1 px-3 py-2 rounded text-sm font-mono border"
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-primary)',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={inviteLoading || !inviteEmail.trim()}
+            className="px-4 py-2 rounded text-sm font-mono font-bold"
+            style={{
+              backgroundColor: 'var(--accent-blue)',
+              color: '#fff',
+              opacity: inviteLoading || !inviteEmail.trim() ? 0.5 : 1,
+            }}
+          >
+            {inviteLoading ? 'SENDING...' : 'INVITE'}
+          </button>
+        </form>
+        {inviteError && (
+          <p className="text-xs font-mono mt-1" style={{ color: 'var(--accent-red)' }}>{inviteError}</p>
+        )}
+        {inviteSuccess && (
+          <p className="text-xs font-mono mt-1" style={{ color: 'var(--accent-green)' }}>{inviteSuccess}</p>
+        )}
+
+        {pendingInvites.length > 0 && (
+          <div className="mt-3">
+            <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+              PENDING INVITES
+            </span>
+            {pendingInvites.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center justify-between py-1.5 px-2 rounded mb-1"
+                style={{ backgroundColor: 'var(--bg-tertiary)' }}
+              >
+                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
+                  {inv.to_email}
+                </span>
+                <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>
+                  PENDING
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* PATIENTS LIST */}
       <div
         className="p-4 rounded border mb-4"
         style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
@@ -95,7 +221,7 @@ export function DoctorPortalPage() {
               No patients linked to your account.
             </p>
             <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-              Patients will appear here once linked by admin or via invite.
+              Use the form above to invite patients by email.
             </p>
           </div>
         )}
@@ -140,6 +266,7 @@ export function DoctorPortalPage() {
         )}
       </div>
 
+      {/* AMBIENT CODING placeholder */}
       <div
         className="p-4 rounded border"
         style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
@@ -148,7 +275,7 @@ export function DoctorPortalPage() {
           AMBIENT CODING
         </span>
         <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          Audio capture, live transcript, and code suggestions will be available in Phase 6.
+          Audio capture, live transcript, and code suggestions coming soon.
         </p>
       </div>
     </div>

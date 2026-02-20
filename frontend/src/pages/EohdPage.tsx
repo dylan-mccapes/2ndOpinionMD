@@ -38,7 +38,7 @@ interface FlareReportResponse {
 }
 
 export function EohdPage() {
-  const { token, isAuthenticated, user } = useAuth();
+  const { token, isAuthenticated } = useAuth();
   const { status, loading: statusLoading } = useTimelineStatus();
   const navigate = useNavigate();
 
