@@ -7,6 +7,7 @@ class UserCreate(BaseModel):
     password: str
     full_name: Optional[str] = None
     birthdate: Optional[date] = None
+    user_type: Optional[str] = "patient"  # 'patient' | 'doctor'
 
 class User(BaseModel):
     id: str
@@ -14,6 +15,7 @@ class User(BaseModel):
     full_name: Optional[str] = None
     birthdate: Optional[date] = None
     subscription_tier: str = "basic"
+    user_type: str = "patient"
     created_at: datetime
 
 class Token(BaseModel):

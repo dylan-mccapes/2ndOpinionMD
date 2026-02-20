@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     birthdate: Optional[date] = None
     subscription_tier: str
+    user_type: str = "patient"
     created_at: datetime
 
 class EmailVerificationInfo(BaseModel):
@@ -93,12 +94,16 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     
     full_name = payload.get("full_name")
     birthdate = payload.get("birthdate")
+    user_type = payload.get("user_type", "patient")
+    if user_type not in ("patient", "doctor"):
+        user_type = "patient"
     
     db_user = User(
         email=user.email,
         full_name=full_name,
         hashed_password=hashed_password,
         birthdate=birthdate,
+        user_type=user_type,
         verification_token=verification_token,
         verification_token_expires=verification_token_expires
     )
@@ -130,6 +135,7 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
             full_name=db_user.full_name,
             birthdate=db_user.birthdate,
             subscription_tier=db_user.subscription_tier,
+            user_type=user_type,
             created_at=db_user.created_at,
         ),
         email_verification=EmailVerificationInfo(
@@ -317,11 +323,13 @@ async def get_current_user_info(
 ):
     if request.url.path.endswith("/users/me"):
         logger.warning("Deprecated path /api/auth/users/me used")
+    user_type = getattr(current_user, "user_type", None) or "patient"
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
         full_name=current_user.full_name,
         birthdate=current_user.birthdate,
         subscription_tier=current_user.subscription_tier,
+        user_type=user_type,
         created_at=current_user.created_at,
     )

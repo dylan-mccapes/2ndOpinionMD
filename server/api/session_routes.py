@@ -5,6 +5,8 @@ Language: "Start Session" (not Login), "Close Session" (not Logout).
 POST /api/session/instantiate -> { session_token, operator_type, timeline_id }
 POST /api/session/close -> close current session
 POST /api/timeline/initialize -> create patient timeline (requires patient session)
+GET /api/timeline/status -> { has_timeline, timeline_id, event_count, last_updated } (JWT auth)
+POST /api/timeline/import-pdf -> multipart PDF upload (JWT auth)
 """
 import logging
 import secrets
@@ -13,13 +15,13 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, status, UploadFile
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.db.session import get_session
-from server.api.auth_postgres import authenticate_user
+from server.api.auth_postgres import authenticate_user, get_current_user_postgres
 
 logger = logging.getLogger(__name__)
 
@@ -327,3 +329,130 @@ async def timeline_initialize(
         created_at=now,
         status="initialized",
     )
+
+
+# --- GET /api/timeline/status (JWT auth) ----------------------------------------
+
+@timeline_router.get("/status")
+async def timeline_status(
+    current_user: Any = Depends(get_current_user_postgres),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Return whether the current user (JWT) has a timeline and event count.
+    Frontend uses this to show "Upload timeline" vs "Timeline ready".
+    """
+    user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
+    if not user_id:
+        return {"has_timeline": False, "timeline_id": None, "event_count": 0, "last_updated": None}
+
+    operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
+    timeline_id = await get_timeline_id_for_operator(db, operator_id)
+    if not timeline_id:
+        return {"has_timeline": False, "timeline_id": None, "event_count": 0, "last_updated": None}
+
+    # Check ehr.patient_timeline for events (patient_id = str(timeline_id))
+    pid = str(timeline_id)
+    try:
+        r = await db.execute(
+            text(
+                """
+                SELECT COUNT(*) AS n, MAX(ts) AS last_ts
+                FROM ehr.patient_timeline
+                WHERE patient_id = :pid
+                """
+            ),
+            {"pid": pid},
+        )
+        row = r.fetchone()
+        count = row[0] or 0
+        last_ts = row[1]
+        last_updated = last_ts.isoformat() + "Z" if last_ts else None
+    except Exception as e:
+        logger.warning("timeline_status: ehr.patient_timeline query failed: %s", e)
+        count = 0
+        last_updated = None
+
+    return {
+        "has_timeline": count > 0,
+        "timeline_id": timeline_id,
+        "event_count": count,
+        "last_updated": last_updated,
+    }
+
+
+# --- POST /api/timeline/import-pdf (JWT auth) ----------------------------------
+
+@timeline_router.post("/import-pdf")
+async def timeline_import_pdf(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    current_user: Any = Depends(get_current_user_postgres),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Accept PDF upload, extract text, ingest into ehr.patient_timeline.
+    Auth: JWT Bearer. Returns timeline_id, event_count, status.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
+
+    # Resolve user -> operator -> timeline
+    user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
+    timeline_id = await get_timeline_id_for_operator(db, operator_id)
+    if not timeline_id:
+        # Auto-initialize timeline for first upload
+        new_tid = uuid.uuid4()
+        operator_uuid = uuid.UUID(operator_id)
+        await db.execute(
+            text(
+                "INSERT INTO patient_timelines (timeline_id, patient_operator_id, timeline_name, anonymization_consent) "
+                "VALUES (:tid, :oid, :name, :consent)"
+            ),
+            {"tid": new_tid, "oid": operator_uuid, "name": "Patient Timeline", "consent": False},
+        )
+        await db.commit()
+        timeline_id = str(new_tid)
+    else:
+        timeline_id = str(timeline_id)
+
+    # Read and process PDF (minimal: extract text, parse, insert)
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
+
+    if len(contents) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 10MB)")
+
+    # Delegate to timeline ingest module
+    from server.timeline.ingest import run_ingest_from_pdf_bytes
+
+    try:
+        event_count = await run_ingest_from_pdf_bytes(
+            db=db,
+            pdf_bytes=contents,
+            patient_id=str(timeline_id),
+            password=password,
+        )
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="PDF ingestion pipeline not yet wired. Use server/scripts/import_timeline_pdf.py for now.",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.exception("timeline_import_pdf failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    return {
+        "timeline_id": str(timeline_id),
+        "patient_id": str(timeline_id),
+        "event_count": event_count,
+        "status": "ready",
+        "message": "Timeline ingested successfully",
+    }

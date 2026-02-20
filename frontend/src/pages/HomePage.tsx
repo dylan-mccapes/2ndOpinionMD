@@ -65,17 +65,14 @@ export function HomePage() {
     return <Navigate to={portal} replace />;
   }
 
-  const isSystemUser = isAuthenticated && user?.subscription_tier && user.subscription_tier !== 'free';
   const hasTimeline = status?.has_timeline ?? false;
 
   const MODES: ModeCard[] = isAuthenticated
     ? [
         ...BASE_MODES.slice(0, 3),
-        isSystemUser && hasTimeline
+        hasTimeline
           ? { id: 'eohd', label: 'EoHD', description: 'Timeline-aware EoH Detective reasoning.', route: '/eohd', enabled: true }
-          : isSystemUser
-          ? { id: 'eohd', label: 'EoHD', description: 'Upload your timeline to unlock EoHD.', route: '/timeline/upload', enabled: true, disabledReason: 'Upload timeline to enable' }
-          : { id: 'eohd', label: 'EoHD', description: 'Timeline-aware EoH Detective reasoning.', route: '/eohd', enabled: false, disabledReason: 'Requires system user subscription' },
+          : { id: 'eohd', label: 'EoHD', description: 'Upload your timeline to unlock EoHD.', route: '/timeline/upload', enabled: true, disabledReason: 'Upload timeline to enable' },
       ]
     : BASE_MODES;
 

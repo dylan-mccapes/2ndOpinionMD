@@ -91,7 +91,17 @@
 | 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
 | 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
 
-### Phase 6: Doctor Portal (Ambient Coding)
+### Phase 6: Doctor Portal — Patient Connection + Ambient Coding
+
+#### 6.0 Patient–Doctor Connection (Invite Flow)
+
+| # | Task | Routing |
+|---|---|---|
+| 6.0a | **Doctor invites patient (doctor portal)** | Doctor portal: "Connect patient" — enter patient email. System sends email to patient: register or log in and accept the connection. Backend: `POST /api/doctor/invite-patient` (body: `{ email }`). Creates pending link; sends email with magic link or token to `/auth/accept-doctor-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
+| 6.0b | **Patient invites doctor (patient portal)** | Patient portal: "Connect doctor" — enter doctor email. System sends email to doctor: register or log in and accept the connection. Backend: `POST /api/patient/invite-doctor` (body: `{ email }`). Creates pending link; sends email with magic link to `/auth/accept-patient-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
+| 6.0c | **Accept-invite flow** | New routes: `/auth/accept-doctor-invite`, `/auth/accept-patient-invite`. Token in query. If unauthenticated: redirect to login/register, then return to accept. If authenticated: confirm link, create `doctor_patients` (or set `doctor_id`), redirect to portal. Email templates: "Dr. X invites you to connect" / "Patient Y invites you as their doctor". |
+
+#### 6.1+ Ambient Coding (Audio → Transcript → Codes)
 
 | # | Task | Routing |
 |---|---|---|
