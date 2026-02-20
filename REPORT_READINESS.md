@@ -92,16 +92,6 @@
 | 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
 | 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
 
-### Phase 5d: Timeline Graph Charts (Matplotlib)
-
-| # | Task | Routing |
-|---|---|---|
-| 5d.1 | **Windowed graph feature vectors** | Build weekly (or visit-based) vectors from `ehr.patient_timeline` events + connascence aggregates from `PatientTimelineVision` (`temporal`, `diagnostic`, `treatment`, `lab_trend`). |
-| 5d.2 | **Interpretable metrics** | Compute drift `v_t`, curvature `k_t`, connascence load `L_t`, stability score `S_t`; add phase-shift and flare-vs-noise labeling. |
-| 5d.3 | **Matplotlib renderer** | Add server-side chart generation for stability band, event/edge intensity, precedence map, and terrain trajectory. Deterministic export with provenance footer. |
-| 5d.4 | **Portal integration** | Patient portal: calming summary visuals. Doctor portal: high-signal analytics with evidence bundles and lag annotations. |
-| 5d.5 | **Doctor-ready export** | Generate PDF package containing chart set + evidence appendix from timeline event/edge provenance. |
-
 ### Phase 6: Doctor Portal — Patient Connection + Ambient Coding
 
 #### 6.0 Patient–Doctor Connection (Invite Flow)
@@ -112,7 +102,7 @@
 | 6.0b | **Patient invites doctor (patient portal)** | Patient portal: "Connect doctor" — enter doctor email. System sends email to doctor: register or log in and accept the connection. Backend: `POST /api/patient/invite-doctor` (body: `{ email }`). Creates pending link; sends email with magic link to `/auth/accept-patient-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
 | 6.0c | **Accept-invite flow** | New routes: `/auth/accept-doctor-invite`, `/auth/accept-patient-invite`. Token in query. If unauthenticated: redirect to login/register, then return to accept. If authenticated: confirm link, create `doctor_patients` (or set `doctor_id`), redirect to portal. Email templates: "Dr. X invites you to connect" / "Patient Y invites you as their doctor". |
 
-#### 6.1+ Ambient Coding (Audio → Transcript → Codes)
+#### 6a: Ambient Coding (Audio → Transcript → Codes)
 
 | # | Task | Routing |
 |---|---|---|
@@ -121,6 +111,16 @@
 | 6.3 | **Build ClinicalCodingOverlay / CodeSuggestions** | Transcript text → `POST /api/coding`. Live code cards with confidence. Accept/reject per code. Re-code every 60s or on significant new symptom. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 2" and "UI Components → CodeSuggestions". |
 | 6.4 | **Build EncounterSummary** | New endpoint: `POST /api/portal/encounter_note`. Generates structured note from accepted codes + transcript. Export as PDF. Save to journal via `POST /api/journal`. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 3". |
 | 6.5 | **Build Timeline Integration** | Auto-generate timeline events from encounters. Feed into `/api/timeline` endpoints. Enable EoHD when timeline data exists. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 4". |
+
+#### 6b: Timeline Graph Charts (Matplotlib)
+
+| # | Task | Routing |
+|---|---|---|
+| 6b.1 | **Windowed graph feature vectors** | Build weekly (or visit-based) vectors from `ehr.patient_timeline` events + connascence aggregates from `PatientTimelineVision` (`temporal`, `diagnostic`, `treatment`, `lab_trend`). |
+| 6b.2 | **Interpretable metrics** | Compute drift `v_t`, curvature `k_t`, connascence load `L_t`, stability score `S_t`; add phase-shift and flare-vs-noise labeling. |
+| 6b.3 | **Matplotlib renderer** | Add server-side chart generation for stability band, event/edge intensity, precedence map, and terrain trajectory. Deterministic export with provenance footer. |
+| 6b.4 | **Portal integration** | Patient portal: calming summary visuals. Doctor portal: high-signal analytics with evidence bundles and lag annotations. |
+| 6b.5 | **Doctor-ready export** | Generate PDF package containing chart set + evidence appendix from timeline event/edge provenance. |
 
 ### Phase 7: Deployment Wiring
 
