@@ -47,11 +47,15 @@ async def invite_doctor(
     Patient invites a doctor by email. Creates a pending invite and sends an email.
     """
     _require_patient(current_user)
+    patient_result = await db.execute(select(User).where(User.id == uuid.UUID(str(current_user.id))))
+    patient = patient_result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient account not found")
 
     if body.email.lower() == current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself")
 
-    if current_user.doctor_id is not None:
+    if patient.doctor_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="You already have a linked doctor. Disconnect first to link a new one.",
@@ -106,11 +110,15 @@ async def get_my_doctor(
 ) -> dict:
     """Return the linked doctor for the current patient, or null if none."""
     _require_patient(current_user)
+    patient_result = await db.execute(select(User).where(User.id == uuid.UUID(str(current_user.id))))
+    patient = patient_result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient account not found")
 
-    if current_user.doctor_id is None:
+    if patient.doctor_id is None:
         return {"doctor": None}
 
-    result = await db.execute(select(User).where(User.id == current_user.doctor_id))
+    result = await db.execute(select(User).where(User.id == patient.doctor_id))
     doctor = result.scalar_one_or_none()
     if not doctor:
         return {"doctor": None}
