@@ -41,7 +41,9 @@ export function LoginPage() {
   const { setToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const queryRedirect = new URLSearchParams(location.search).get('redirect');
+  const stateRedirect = (location.state as { from?: string } | null)?.from ?? '/';
+  const from = queryRedirect && queryRedirect.startsWith('/') ? queryRedirect : stateRedirect;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -202,7 +204,7 @@ export function LoginPage() {
 
         <div className="flex justify-between mt-4">
           <Link
-            to="/auth/register"
+            to={`/auth/register${from !== '/' ? `?redirect=${encodeURIComponent(from)}` : ''}`}
             className="text-xs font-mono no-underline"
             style={{ color: 'var(--accent-blue)' }}
           >

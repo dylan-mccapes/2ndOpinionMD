@@ -378,10 +378,15 @@ async def accept_doctor_invite(
     if invite.to_email.lower() != current_user.email.lower():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This invite was sent to a different email")
 
-    if current_user.doctor_id is not None:
+    patient_result = await session.execute(select(User).where(User.id == uuid.UUID(str(current_user.id))))
+    patient = patient_result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient account not found")
+
+    if patient.doctor_id is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You already have a linked doctor")
 
-    current_user.doctor_id = invite.from_user_id
+    patient.doctor_id = invite.from_user_id
     invite.status = "accepted"
     await session.commit()
 

@@ -25,7 +25,7 @@ def upgrade() -> None:
     if "doctor_patient_invites" not in tables:
         op.create_table(
             "doctor_patient_invites",
-            sa.Column("id", sa.UUID(), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+            sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
             sa.Column("from_user_id", sa.UUID(), sa.ForeignKey("users.id"), nullable=False),
             sa.Column("to_email", sa.String(), nullable=False),
             sa.Column("invite_type", sa.String(30), nullable=False),

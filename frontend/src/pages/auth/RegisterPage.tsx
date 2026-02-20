@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -20,6 +20,10 @@ function parseErrors(detail: unknown): string {
 }
 
 export function RegisterPage() {
+  const location = useLocation();
+  const queryRedirect = new URLSearchParams(location.search).get('redirect');
+  const redirectTo = queryRedirect && queryRedirect.startsWith('/') ? queryRedirect : null;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -109,7 +113,7 @@ export function RegisterPage() {
           </p>
           <div className="flex items-center gap-3">
             <Link
-              to="/auth/login"
+              to={`/auth/login${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`}
               className="px-3 py-1.5 rounded text-xs font-mono no-underline"
               style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
             >
@@ -305,7 +309,7 @@ export function RegisterPage() {
 
         <div className="mt-4">
           <Link
-            to="/auth/login"
+            to={`/auth/login${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`}
             className="text-xs font-mono no-underline"
             style={{ color: 'var(--accent-blue)' }}
           >
