@@ -3,16 +3,28 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { TimelineStatusIndicator } from './TimelineStatusIndicator';
 
-const NAV_LINKS = [
-  { to: '/', label: 'MODES' },
-  { to: '/journal', label: 'JOURNAL' },
-  { to: '/portal', label: 'PORTAL' },
-] as const;
-
 export function Header() {
   const { theme, toggle } = useTheme();
   const { isAuthenticated, logout, user } = useAuth();
   const location = useLocation();
+
+  const userType = user?.user_type ?? 'patient';
+
+  const navLinks = isAuthenticated
+    ? userType === 'doctor'
+      ? [
+          { to: '/doctor', label: 'PATIENTS' },
+          { to: '/settings', label: 'SETTINGS' },
+        ]
+      : [
+          { to: '/patient', label: 'PORTAL' },
+          { to: '/journal', label: 'JOURNAL' },
+          { to: '/timeline/upload', label: 'TIMELINE' },
+          { to: '/eohd', label: 'EoHD' },
+        ]
+    : [
+        { to: '/', label: 'MODES' },
+      ];
 
   return (
     <header
@@ -42,7 +54,7 @@ export function Header() {
           </span>
         </Link>
         <nav className="flex items-center gap-4">
-          {NAV_LINKS.map(({ to, label }) => (
+          {navLinks.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
