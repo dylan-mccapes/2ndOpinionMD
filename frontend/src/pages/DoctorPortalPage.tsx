@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { AudioCapture } from '../components/AudioCapture';
+import { LiveTranscript } from '../components/LiveTranscript';
+import { CodeSuggestions } from '../components/CodeSuggestions';
+import { EncounterSummary } from '../components/EncounterSummary';
+import type { AudioState } from '../components/AudioCapture';
+import type { TranscriptSegment } from '../components/LiveTranscript';
+import type { SuggestedCode } from '../components/CodeSuggestions';
 
 interface PatientSummary {
   id: string;
@@ -31,6 +38,13 @@ export function DoctorPortalPage() {
   const [inviteSuccess, setInviteSuccess] = useState('');
 
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+
+  const [audioState, setAudioState] = useState<AudioState>('idle');
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [fullTranscript, setFullTranscript] = useState('');
+  const [acceptedCodes, setAcceptedCodes] = useState<SuggestedCode[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -70,6 +84,51 @@ export function DoctorPortalPage() {
     fetchPatients();
     fetchPendingInvites();
   }, [token]);
+
+  const handleAudioChunk = useCallback(async (blob: Blob, index: number) => {
+    if (!token) return;
+    setTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, `chunk-${index}.webm`);
+      if (selectedPatientId) formData.append('patient_id', selectedPatientId);
+      formData.append('chunk_index', String(index));
+
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE ?? ''}/api/portal/transcribe`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        },
+      );
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`Transcribe failed: ${res.status} ${body}`);
+        return;
+      }
+
+      const data = await res.json();
+      if (data.text) {
+        const seg: TranscriptSegment = {
+          text: data.text,
+          chunkIndex: data.chunk_index ?? index,
+          timestamp: data.timestamp ?? new Date().toISOString(),
+        };
+        setSegments((prev) => [...prev, seg]);
+        setFullTranscript((prev) => (prev ? prev + ' ' : '') + data.text);
+      }
+    } catch (err) {
+      console.error('Transcribe chunk error:', err);
+    } finally {
+      setTranscribing(false);
+    }
+  }, [token, selectedPatientId]);
+
+  const handleCodesChange = useCallback((codes: SuggestedCode[]) => {
+    setAcceptedCodes(codes.filter((c) => c.accepted));
+  }, []);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,17 +325,86 @@ export function DoctorPortalPage() {
         )}
       </div>
 
-      {/* AMBIENT CODING placeholder */}
+      {/* AMBIENT CODING */}
       <div
         className="p-4 rounded border"
         style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
       >
-        <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--text-secondary)' }}>
-          AMBIENT CODING
-        </span>
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          Audio capture, live transcript, and code suggestions coming soon.
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-red)' }}>
+            AMBIENT CODING
+          </span>
+          {audioState === 'recording' && (
+            <span
+              className="flex items-center gap-1.5 text-xs font-mono"
+              style={{ color: '#ef4444' }}
+            >
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ backgroundColor: '#ef4444', boxShadow: '0 0 6px #ef4444' }}
+              />
+              LIVE
+            </span>
+          )}
+          {transcribing && (
+            <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>
+              Transcribing...
+            </span>
+          )}
+        </div>
+
+        {patients.length > 0 && (
+          <div className="mb-3">
+            <label className="text-xs font-mono block mb-1" style={{ color: 'var(--text-secondary)' }}>
+              PATIENT CONTEXT
+            </label>
+            <select
+              value={selectedPatientId ?? ''}
+              onChange={(e) => setSelectedPatientId(e.target.value || null)}
+              className="w-full px-3 py-2 rounded text-sm font-mono border"
+              style={{
+                backgroundColor: 'var(--bg-primary)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="">— Select patient (optional) —</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name ?? p.email}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <AudioCapture
+            onChunk={handleAudioChunk}
+            onStateChange={setAudioState}
+            disabled={false}
+          />
+
+          <LiveTranscript
+            segments={segments}
+            isRecording={audioState === 'recording'}
+          />
+
+          <CodeSuggestions
+            transcript={fullTranscript}
+            token={token ?? ''}
+            enabled={fullTranscript.length > 50}
+            onCodesChange={handleCodesChange}
+          />
+
+          <EncounterSummary
+            transcript={fullTranscript}
+            acceptedCodes={acceptedCodes}
+            patientId={selectedPatientId}
+            token={token ?? ''}
+            enabled={audioState === 'stopped' && fullTranscript.length > 0}
+          />
+        </div>
       </div>
     </div>
   );

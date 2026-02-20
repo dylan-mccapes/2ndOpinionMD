@@ -112,7 +112,7 @@
 | 6.0b | **Patient invites doctor (patient portal)** | Patient portal: "Connect doctor" — enter doctor email. System sends email to doctor: register or log in and accept the connection. Backend: `POST /api/patient/invite-doctor` (body: `{ email }`). Creates pending link; sends email with magic link to `/auth/accept-patient-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
 | 6.0c | **Accept-invite flow** | New routes: `/auth/accept-doctor-invite`, `/auth/accept-patient-invite`. Token in query. If unauthenticated: redirect to login/register, then return to accept. If authenticated: confirm link, create `doctor_patients` (or set `doctor_id`), redirect to portal. Email templates: "Dr. X invites you to connect" / "Patient Y invites you as their doctor". |
 
-#### 6.1+ Ambient Coding (Audio → Transcript → Codes)
+#### 6a: Ambient Coding (Audio → Transcript → Codes)
 
 | # | Task | Routing |
 |---|---|---|
