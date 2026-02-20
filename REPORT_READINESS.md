@@ -16,6 +16,7 @@
 | ASK Streaming Contract | `ASK_STREAMING_CONTRACT.md` | 5-event SSE contract (phase_start, retrieval_summary, reasoning_progress, llm_chunk/llm_done, completion), receipt cache integration, UI behavior spec, transparency panel behavior |
 | Frontend Integration | `FRONTEND_INTEGRATION.md` | Current wiring: mode-endpoint mapping, receipt cache event schema, transparency panel states, error handling, UI state management, CORS notes |
 | Doctor Portal Game Plan | `GAME_PLAN_DOCTOR_PORTAL.md` | Ambient coding pipeline: audio capture -> Whisper (local) -> transcript -> NLP extraction -> /api/coding -> code suggestions -> encounter note -> timeline. 4 phases, 8 weeks. 5 new endpoints required. |
+| Patient & Doctor Portals | `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` | Role selection at registration (doctor/patient). Splash page = modes + login. Patient portal: journal, timeline, EoHD. Doctor portal: patient list, read-only patient data. Data model: user_type, doctor_id. |
 | Deploy Better UX | `DEPLOY_BETTER_UX.md` | One-line docker-compose volume swap from `./index.html` to `./rag-demo-ui/index.html` for nginx |
 
 ---
@@ -78,6 +79,18 @@
 | 5a.5 | **Add /timeline/upload route** | Protected route (auth required). Add to App.tsx router. Redirect system users without timeline here after first login. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "User Flow". |
 | 5a.6 | **Update ModeSelector EoHD card** | Replace static "Blocked" message with dynamic state: disabled (free user), "Upload timeline" (system user, no timeline), enabled (system user, has timeline). See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
 
+### Phase 5c: Patient & Doctor Portals
+
+| # | Task | Routing |
+|---|---|---|
+| 5c.1 | **Add user_type to users** | Migration: add `user_type VARCHAR(20) NOT NULL DEFAULT 'patient'`. Values: `patient` \| `doctor`. Add `doctor_id UUID REFERENCES users(id)` to users or create doctor_patients table. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Data Model Changes". |
+| 5c.2 | **Update registration API** | `POST /api/auth/register`: require `user_type` in body. Validate `user_type in ("patient", "doctor")`. Store in users. Update `GET /api/auth/me` to return `user_type`. |
+| 5c.3 | **Add role selector to RegisterPage** | UI: radio or card select "I am a patient" \| "I am a doctor". Submit `user_type` in registration payload. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Registration (New Requirement)". |
+| 5c.4 | **Splash page (modes + login)** | HomePage `/`: unauthenticated → mode cards (ASK, CODING, EoH, EoHD) + LOGIN and REGISTER buttons. Authenticated → redirect to `/patient` or `/doctor` by user_type. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Splash Page". |
+| 5c.5 | **Patient portal shell** | Route `/patient`. Layout: nav (Journal, Timeline, EoHD, Settings). Guard: `user_type === "patient"`. Nest existing JournalPage, TimelineUploadPage, EohdPage. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient Portal". |
+| 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
+| 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
+
 ### Phase 6: Doctor Portal (Ambient Coding)
 
 | # | Task | Routing |
@@ -111,6 +124,7 @@
 | Current frontend wiring | `FRONTEND_INTEGRATION.md` |
 | Receipt cache event schema | `FRONTEND_INTEGRATION.md` → "Receipt Cache Integration" |
 | Timeline upload + EoHD game plan | `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` |
+| Patient & doctor portals game plan | `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` |
 | Doctor portal pipeline | `GAME_PLAN_DOCTOR_PORTAL.md` |
 | New portal endpoints needed | `GAME_PLAN_DOCTOR_PORTAL.md` → "New Endpoints Required" |
 | Ambient transcription tools | `transcription_machine.py`, `wave_modulation_machine.py`, `wave_modulation_agent.py` (repo root) |
