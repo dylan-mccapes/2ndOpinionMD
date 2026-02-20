@@ -126,7 +126,7 @@
 
 | # | Task | Routing |
 |---|---|---|
-| 7.1 | **Update docker-compose.yml** | Swap nginx volume from `./rag-demo-ui/index.html` to React build output (e.g., `./frontend/dist`). See `DEPLOY_BETTER_UX.md` and `2opmd_spellbook.json` → `docker`. |
+| 7.1 | **Deploy React app at `/rag-demo`** | Build React frontend (`frontend/dist`) and serve it from `https://2ndopinionmd.ai/rag-demo` via nginx path routing (not root replacement). Keep existing root behavior intact while exposing the React app under `/rag-demo`. |
 | 7.2 | **Update CORS_ALLOW_ORIGINS** | If frontend dev port changes from 3000/8080, update `architecture.cors_origins` in backend. See `2opmd_spellbook.json` → `architecture.cors_origins`. |
 
 ---

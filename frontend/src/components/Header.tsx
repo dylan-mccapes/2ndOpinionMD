@@ -14,12 +14,13 @@ export function Header() {
     ? userType === 'doctor'
       ? [
           { to: '/doctor', label: 'PATIENTS' },
+          { to: '/timeline', label: 'TIMELINE' },
           { to: '/settings', label: 'SETTINGS' },
         ]
       : [
           { to: '/patient', label: 'PORTAL' },
           { to: '/journal', label: 'JOURNAL' },
-          { to: '/timeline/upload', label: 'TIMELINE' },
+          { to: '/timeline', label: 'TIMELINE' },
           { to: '/eohd', label: 'EoHD' },
         ]
     : [

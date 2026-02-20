@@ -3,13 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { TimelineChartCard } from '../components/TimelineChartCard';
 
 type Tab = 'overview' | 'journal' | 'timeline' | 'eohd' | 'settings';
 
 const TABS: { id: Tab; label: string; route?: string }[] = [
   { id: 'overview', label: 'OVERVIEW' },
   { id: 'journal', label: 'JOURNAL', route: '/journal' },
-  { id: 'timeline', label: 'TIMELINE', route: '/timeline/upload' },
+  { id: 'timeline', label: 'TIMELINE', route: '/timeline' },
   { id: 'eohd', label: 'EoHD', route: '/eohd' },
   { id: 'settings', label: 'SETTINGS', route: '/settings' },
 ];
@@ -241,6 +242,12 @@ export function PatientPortalPage() {
         )}
       </div>
 
+      {hasTimeline && token && status?.timeline_id && (
+        <div className="mb-4">
+          <TimelineChartCard patientId={status.timeline_id} token={token} />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
           to="/journal"
@@ -256,7 +263,7 @@ export function PatientPortalPage() {
         </Link>
 
         <Link
-          to="/timeline/upload"
+          to="/timeline"
           className="p-4 rounded border no-underline block"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >

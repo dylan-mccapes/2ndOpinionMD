@@ -722,7 +722,7 @@
 <body>
     <header>
         <h1>2OPMD</h1>
-        <div class="mode-indicator">EOHD</div>
+        <div class="mode-indicator">ASK</div>
     </header>
 
     <main>
@@ -757,14 +757,13 @@
 
             <!-- Mode Selector -->
             <div class="mode-selector">
-                <button type="button" data-mode="ask">ASK</button>
+                <button type="button" data-mode="ask" class="active">ASK</button>
                 <button type="button" data-mode="coding">CODING</button>
                 <button type="button" data-mode="eoh">EoH</button>
-                <button type="button" data-mode="eohd" class="active">EoHD</button>
     </div>
 
             <!-- Receipts Area -->
-            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to EOHD</div></div>
+            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to ASK</div></div>
 
             <!-- Mode: ASK -->
             <div class="mode-content" data-mode="ask">
@@ -896,58 +895,6 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                 <div id="eoh-results" class="results-area"></div>
             </div>
 
-            <!-- Mode: EoHD -->
-            <div class="mode-content active" data-mode="eohd">
-                <div class="mode-description">
-                    MODE: EoHD<br>
-                    Timeline-aware Ethos-of-Health Detective reasoning.<br>
-                    Requires temporal data. Returns hypothesis evolution across time.
-                </div>
-
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="eohd-patient">
-                            PATIENT IDENTIFIER (OPTIONAL)
-                        </label>
-                        <input type="text" id="eohd-patient" placeholder="Anonymous patient ID or case number">
-                    </div>
-
-                    <div class="input-group">
-                        <label>
-                            TIMELINE DATA <span class="required">*</span>
-                        </label>
-                        <div class="file-upload-container">
-                            <input type="file" id="timeline-pdf-upload" accept=".pdf" style="display: none;">
-                            <button type="button" class="btn btn-secondary" id="upload-pdf-btn">
-                                📄 INGEST TIMELINE PDF
-                            </button>
-                            <span id="uploaded-file-name" class="file-name-display">No file selected.</span>
-                        </div>
-                        <div class="input-group" id="pdf-password-group" style="display: none; margin-top: 0.5rem;">
-                            <label for="pdf-password">PDF Password (if encrypted)</label>
-                            <input type="password" id="pdf-password" placeholder="Enter password">
-                        </div>
-                        <div class="notice" style="margin-top: 0.5rem;">
-                            Session-only processing. Timeline data is cleared after analysis.<br>
-                            Required: Temporal event data with dates, symptoms, interventions, outcomes.
-                        </div>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="eohd-focus">
-                            DETECTIVE FOCUS (OPTIONAL)
-                        </label>
-                        <textarea id="eohd-focus" rows="3" placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"></textarea>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled="">
-                        RUN EOH DETECTIVE (TIMELINE REQUIRED)
-                    </button>
-                </div>
-
-                <div id="eohd-results" class="results-area"></div>
-            </div>
-
             <!-- SSE Receipt Cache Viewer -->
             <div class="receipt-cache-section">
                 <div class="receipt-cache-header">
@@ -977,7 +924,7 @@ Example: Fatigue, joint pain, skin rash"></textarea>
             </div>
             <div class="state-item">
                 <span class="label">MODE:</span>
-                <span class="value">EOHD</span>
+                <span class="value">ASK</span>
             </div>
             <div class="state-item">
                 <span class="label">SESSION:</span>
@@ -1885,7 +1832,10 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
         document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
         document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
-        document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+        const submitEohdButton = document.getElementById('submit-eohd');
+        if (submitEohdButton) {
+            submitEohdButton.addEventListener('click', handleEohdSubmit);
+        }
         
         // EoHD Timeline PDF ingestion
         const uploadPdfBtn = document.getElementById('upload-pdf-btn');
@@ -1896,7 +1846,7 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         
         let selectedTimelinePdf = null;
         
-        if (uploadPdfBtn && timelinePdfFileInput) {
+        if (uploadPdfBtn && timelinePdfFileInput && uploadedFileNameSpan && pdfPasswordGroup) {
             uploadPdfBtn.addEventListener('click', () => {
                 timelinePdfFileInput.click();
             });

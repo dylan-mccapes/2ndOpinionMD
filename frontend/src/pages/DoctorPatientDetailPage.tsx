@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { AnalyticsPanel } from '../components/AnalyticsPanel';
 
 interface JournalEntry {
   id: string;
@@ -205,6 +206,10 @@ export function DoctorPatientDetailPage() {
             Read-only. Journal entries cannot be edited from the doctor portal.
           </p>
         </div>
+
+        {timeline?.has_timeline && token && patientId && (
+          <AnalyticsPanel patientId={patientId} token={token} />
+        )}
       </div>
     </div>
   );

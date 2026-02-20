@@ -43,6 +43,16 @@ docker-compose up -d
 
 **API endpoint:** `http://localhost/api/` (proxied to port 8000)
 
+### 4. Operator deploy to Homebrew web root (manual)
+
+Use this after validating locally:
+
+```bash
+sudo cp /Users/2ndopinionmd/dev/provenance-engines/PortalVision/2ndOpinionMD-MVP/rag-demo-ui/index.html /opt/homebrew/var/www/2opmd/index.html
+```
+
+If your nginx root differs, replace the destination path accordingly.
+
 ---
 
 ## Verify Deployment
@@ -105,7 +115,7 @@ docker stop rag-demo-ui-test && docker rm rag-demo-ui-test
 - Modern dark theme
 - Better SSE event visualization
 - Enhanced debug display
-- Improved UX for EoH Detective mode
+- Simplified console mode UX (ASK, CODING, EoH)
 - 1340 lines of polished interface
 
 ---

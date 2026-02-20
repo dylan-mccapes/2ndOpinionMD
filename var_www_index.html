@@ -742,14 +742,7 @@
 <body>
     <header>
         <h1>2OPMD</h1>
-        <nav class="auth-actions">
-            <button type="button" class="btn btn-auth" id="btn-system-onboarding">System Onboarding</button>
-            <button type="button" class="btn btn-auth" id="btn-initiate-session">Initiate Session</button>
-            <button type="button" class="btn btn-auth" id="btn-close-session" style="display:none;">Close Session</button>
-            <button type="button" class="btn btn-auth" id="btn-journal-entry" style="display:none;">Journal entry</button>
-            <button type="button" class="btn btn-auth" id="viewJournalBtn" style="display:none;">📖 View Journal</button>
-        </nav>
-        <div class="mode-indicator">EOHD</div>
+        <div class="mode-indicator">ASK</div>
     </header>
 
     <main>
@@ -784,14 +777,13 @@
 
             <!-- Mode Selector -->
             <div class="mode-selector">
-                <button type="button" data-mode="ask">ASK</button>
+                <button type="button" data-mode="ask" class="active">ASK</button>
                 <button type="button" data-mode="coding">CODING</button>
                 <button type="button" data-mode="eoh">EoH</button>
-                <button type="button" data-mode="eohd" class="active">EoHD</button>
             </div>
 
             <!-- Receipts Area -->
-            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to EOHD</div></div>
+            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to ASK</div></div>
 
             <!-- Mode: ASK -->
             <div class="mode-content" data-mode="ask">
@@ -923,58 +915,6 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                 <div id="eoh-results" class="results-area"></div>
             </div>
 
-            <!-- Mode: EoHD -->
-            <div class="mode-content active" data-mode="eohd">
-                <div class="mode-description">
-                    MODE: EoHD<br>
-                    Timeline-aware Ethos-of-Health Detective reasoning.<br>
-                    Requires temporal data. Returns hypothesis evolution across time.
-                </div>
-
-                <div class="notice error">
-                    TIMELINE DATA REQUIRED<br>
-                    EoHD requires structured temporal data (symptom timeline, journal entries, or event sequence).<br>
-                    Timeline ingestion interface not yet implemented.
-                </div>
-                
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="eohd-patient">
-                            PATIENT IDENTIFIER (OPTIONAL)
-                        </label>
-                        <input type="text" id="eohd-patient" placeholder="Anonymous patient ID or case number">
-                    </div>
-
-                    <div class="input-group">
-                        <label>
-                            TIMELINE DATA <span class="required">*</span>
-                        </label>
-                        <div class="notice">
-                            Timeline upload mechanism not yet implemented.<br>
-                            Required format: Structured temporal event data with dates, symptoms, interventions, and outcomes.<br>
-                            Minimum: 3+ events spanning at least 14 days.
-                        </div>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="eohd-focus">
-                            DETECTIVE FOCUS (OPTIONAL)
-                        </label>
-                        <textarea id="eohd-focus" rows="3" placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"></textarea>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled="">
-                        RUN EOH DETECTIVE (TIMELINE REQUIRED)
-                    </button>
-                </div>
-
-                <div class="notice error">
-                    EoHD requires timeline data ingestion (not yet implemented).
-                </div>
-
-                <div id="eohd-results" class="results-area"></div>
-            </div>
-
             <!-- SSE Receipt Cache Viewer -->
             <div class="receipt-cache-section">
                 <div class="receipt-cache-header">
@@ -1004,7 +944,7 @@ Example: Fatigue, joint pain, skin rash"></textarea>
             </div>
             <div class="state-item">
                 <span class="label">MODE:</span>
-                <span class="value">EOHD</span>
+                <span class="value">ASK</span>
             </div>
             <div class="state-item">
                 <span class="label">SESSION:</span>
@@ -1424,7 +1364,10 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         function clearMsg(msgId) { const el = document.getElementById(msgId); if (el) { el.textContent = ''; el.style.display = 'none'; el.classList.remove('error'); } }
 
         // System Onboarding (signup)
-        document.getElementById('btn-system-onboarding').addEventListener('click', () => { clearMsg('onboarding-msg'); showModal('modal-onboarding'); });
+        const btnSystemOnboarding = document.getElementById('btn-system-onboarding');
+        if (btnSystemOnboarding) {
+            btnSystemOnboarding.addEventListener('click', () => { clearMsg('onboarding-msg'); showModal('modal-onboarding'); });
+        }
         document.getElementById('onboarding-cancel').addEventListener('click', () => hideModal('modal-onboarding'));
         document.getElementById('onboarding-submit').addEventListener('click', async () => {
             const email = document.getElementById('onboarding-email').value.trim();
@@ -1444,7 +1387,10 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         });
 
         // Initiate Session (login)
-        document.getElementById('btn-initiate-session').addEventListener('click', () => { clearMsg('session-msg'); showModal('modal-session'); });
+        const btnInitiateSession = document.getElementById('btn-initiate-session');
+        if (btnInitiateSession) {
+            btnInitiateSession.addEventListener('click', () => { clearMsg('session-msg'); showModal('modal-session'); });
+        }
         document.getElementById('session-cancel').addEventListener('click', () => hideModal('modal-session'));
         document.getElementById('session-submit').addEventListener('click', async () => {
             const email = document.getElementById('session-email').value.trim();
@@ -1474,21 +1420,27 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         });
 
         // Close Session (logout)
-        document.getElementById('btn-close-session').addEventListener('click', async () => {
-            const token = getSessionToken();
-            if (!token) return;
-            try {
-                await fetch(`${API_BASE}/api/session/close`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-            } catch (_) {}
-            setSessionToken(null);
-        });
+        const btnCloseSession = document.getElementById('btn-close-session');
+        if (btnCloseSession) {
+            btnCloseSession.addEventListener('click', async () => {
+                const token = getSessionToken();
+                if (!token) return;
+                try {
+                    await fetch(`${API_BASE}/api/session/close`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (_) {}
+                setSessionToken(null);
+            });
+        }
         updateCloseSessionVisibility();
 
         // Journal entry (POC)
-        document.getElementById('btn-journal-entry').addEventListener('click', () => { clearMsg('journal-msg'); document.getElementById('journal-text').value = ''; showModal('modal-journal'); });
+        const btnJournalEntry = document.getElementById('btn-journal-entry');
+        if (btnJournalEntry) {
+            btnJournalEntry.addEventListener('click', () => { clearMsg('journal-msg'); document.getElementById('journal-text').value = ''; showModal('modal-journal'); });
+        }
         document.getElementById('journal-cancel').addEventListener('click', () => hideModal('modal-journal'));
         document.getElementById('journal-submit').addEventListener('click', async () => {
             const token = getSessionToken();
@@ -1512,29 +1464,32 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         let journalEntries = [];
         let currentEntryIndex = 0;
 
-        document.getElementById('viewJournalBtn').addEventListener('click', async () => {
-            const token = getSessionToken();
-            if (!token) { alert('Start a session first.'); return; }
-            try {
-                const response = await fetch(`${API_BASE}/api/journal/entries`, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-                });
-                if (!response.ok) throw new Error(`Failed to fetch entries: ${response.status}`);
-                journalEntries = await response.json();
-                if (journalEntries.length === 0) {
-                    alert('No journal entries yet. Create your first entry!');
-                    return;
+        const viewJournalBtn = document.getElementById('viewJournalBtn');
+        if (viewJournalBtn) {
+            viewJournalBtn.addEventListener('click', async () => {
+                const token = getSessionToken();
+                if (!token) { alert('Start a session first.'); return; }
+                try {
+                    const response = await fetch(`${API_BASE}/api/journal/entries`, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`Failed to fetch entries: ${response.status}`);
+                    journalEntries = await response.json();
+                    if (journalEntries.length === 0) {
+                        alert('No journal entries yet. Create your first entry!');
+                        return;
+                    }
+                    currentEntryIndex = 0;
+                    displayJournalEntry();
+                    renderJournalQueryHistory();
+                    document.getElementById('journalViewerModal').style.display = 'flex';
+                } catch (e) {
+                    console.error('Error loading journal entries:', e);
+                    alert('Failed to load journal entries. Please try again.');
                 }
-                currentEntryIndex = 0;
-                displayJournalEntry();
-                renderJournalQueryHistory();
-                document.getElementById('journalViewerModal').style.display = 'flex';
-            } catch (e) {
-                console.error('Error loading journal entries:', e);
-                alert('Failed to load journal entries. Please try again.');
-            }
-        });
+            });
+        }
 
         function displayJournalEntry() {
             if (journalEntries.length === 0) return;
@@ -2325,7 +2280,10 @@ Example: Fatigue, joint pain, skin rash"></textarea>
         document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
         document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
         document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
-        document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+        const submitEohdButton = document.getElementById('submit-eohd');
+        if (submitEohdButton) {
+            submitEohdButton.addEventListener('click', handleEohdSubmit);
+        }
         
         // EoHD Timeline PDF ingestion
         const ingestTimelinePdfBtn = document.getElementById('ingest-timeline-pdf-btn');

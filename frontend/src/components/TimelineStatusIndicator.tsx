@@ -3,11 +3,29 @@ import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 
 export function TimelineStatusIndicator() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { status, loading } = useTimelineStatus();
   const navigate = useNavigate();
 
   if (!isAuthenticated || loading) return null;
+  const isDoctor = user?.user_type === 'doctor';
+
+  if (isDoctor) {
+    return (
+      <button
+        type="button"
+        onClick={() => navigate('/timeline')}
+        className="text-xs font-mono px-2 py-0.5 rounded cursor-pointer"
+        style={{
+          color: 'var(--accent-blue)',
+          backgroundColor: 'var(--bg-tertiary)',
+          border: 'none',
+        }}
+      >
+        PATIENT TIMELINES
+      </button>
+    );
+  }
 
   if (status?.has_timeline) {
     return (
