@@ -5,6 +5,41 @@ import { JournalEditor } from '../components/JournalEditor';
 import { JournalEntryList, type JournalEntryResponse } from '../components/JournalEntryList';
 import { JournalEntryDetail } from '../components/JournalEntryDetail';
 import { JournalAIQuery } from '../components/JournalAIQuery';
+import { JournalTimeline } from '../components/JournalTimeline';
+
+/** Normalize API response to handle both camelCase and snake_case from backend */
+function normalizeJournalEntry(raw: Record<string, unknown>): JournalEntryResponse {
+  const symptomsRaw = (raw.symptoms ?? []) as Array<{ symptom?: string; severity?: number }>;
+  const envFactorsRaw = (raw.environmental_factors ?? raw.environmentalFactors ?? []) as unknown[];
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && !Number.isNaN(v) ? v : null;
+  const envFactors = Array.isArray(envFactorsRaw)
+    ? envFactorsRaw.map((f) =>
+        typeof f === 'string'
+          ? { factor_type: f, description: '' }
+          : typeof f === 'object' && f && 'factor_type' in f
+            ? { factor_type: String((f as { factor_type?: unknown }).factor_type ?? ''), description: String((f as { description?: unknown }).description ?? '') }
+            : typeof f === 'object' && f && 'description' in f
+              ? { factor_type: '', description: String((f as { description?: unknown }).description ?? '') }
+              : { factor_type: '', description: '' }
+      )
+    : [];
+  return {
+    id: String(raw.id ?? ''),
+    user_id: String(raw.user_id ?? raw.userId ?? ''),
+    date: String(raw.date ?? ''),
+    symptoms: Array.isArray(symptomsRaw) ? symptomsRaw.map((s) => ({ symptom: String(s?.symptom ?? ''), severity: typeof s?.severity === 'number' ? s.severity : 0 })) : [],
+    environmental_factors: envFactors,
+    stress_level: num(raw.stress_level ?? raw.stressLevel),
+    diet_notes: (raw.diet_notes ?? raw.dietNotes) as string | null,
+    sleep_quality: num(raw.sleep_quality ?? raw.sleepQuality),
+    notes: (raw.notes ?? null) as string | null,
+    analysis: (raw.analysis ?? null) as string | null,
+    pattern_observations: (raw.pattern_observations ?? raw.patternObservations ?? []) as string[],
+    ai_analysis: (raw.ai_analysis ?? raw.aiAnalysis ?? null) as unknown,
+    created_at: String(raw.created_at ?? raw.createdAt ?? ''),
+  };
+}
 
 export function JournalPage() {
   const { token } = useAuth();
@@ -19,10 +54,10 @@ export function JournalPage() {
     setError('');
 
     try {
-      const data = await apiFetch<JournalEntryResponse[]>('/api/journal', {
+      const data = await apiFetch<Record<string, unknown>[]>('/api/journal', {
         headers: authHeaders(token),
       });
-      setEntries(data);
+      setEntries(Array.isArray(data) ? data.map(normalizeJournalEntry) : []);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(`API ${err.status}: ${err.body}`);
@@ -74,6 +109,8 @@ export function JournalPage() {
         <JournalEditor onEntryCreated={handleEntryCreated} />
 
         <JournalAIQuery />
+
+        <JournalTimeline reportId="default" />
 
         <div>
           <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--text-secondary)' }}>

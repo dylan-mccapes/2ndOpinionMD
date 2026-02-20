@@ -5,7 +5,8 @@ import { apiFetch, authHeaders, ApiError } from '../lib/api';
 interface AIQueryResponse {
   query: string;
   response: string;
-  entries_analyzed: number;
+  entries_count?: number;
+  entries_analyzed?: number;
 }
 
 export function JournalAIQuery() {
@@ -83,7 +84,7 @@ export function JournalAIQuery() {
         <div className="mt-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-              Analyzed {result.entries_analyzed} entries
+              Analyzed {(result.entries_count ?? result.entries_analyzed ?? 0)} entries
             </span>
           </div>
           <div

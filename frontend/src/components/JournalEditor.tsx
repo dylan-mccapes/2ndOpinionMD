@@ -36,9 +36,11 @@ export function JournalEditor({ onEntryCreated }: JournalEditorProps) {
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(false);
 
+  const clamp1to10 = (n: number): number => Math.min(10, Math.max(1, Math.round(n)));
+
   const addSymptom = () => {
     if (!symptomName.trim()) return;
-    setSymptoms(prev => [...prev, { symptom: symptomName.trim(), severity: symptomSeverity }]);
+    setSymptoms(prev => [...prev, { symptom: symptomName.trim(), severity: clamp1to10(symptomSeverity) }]);
     setSymptomName('');
     setSymptomSeverity(5);
   };
@@ -80,11 +82,11 @@ export function JournalEditor({ onEntryCreated }: JournalEditorProps) {
 
     const body: JournalEntryCreate = {};
     if (notes.trim()) body.notes = notes.trim();
-    if (symptoms.length > 0) body.symptoms = symptoms;
+    if (symptoms.length > 0) body.symptoms = symptoms.map(s => ({ ...s, severity: clamp1to10(s.severity) }));
     if (envFactors.length > 0) body.environmental_factors = envFactors;
-    if (stressLevel !== '') body.stress_level = stressLevel;
+    if (stressLevel !== '') body.stress_level = clamp1to10(Number(stressLevel));
     if (dietNotes.trim()) body.diet_notes = dietNotes.trim();
-    if (sleepQuality !== '') body.sleep_quality = sleepQuality;
+    if (sleepQuality !== '') body.sleep_quality = clamp1to10(Number(sleepQuality));
 
     try {
       await apiFetch('/api/journal', {
@@ -186,7 +188,7 @@ export function JournalEditor({ onEntryCreated }: JournalEditorProps) {
                 min={1}
                 max={10}
                 value={symptomSeverity}
-                onChange={(e) => setSymptomSeverity(Number(e.target.value))}
+                onChange={(e) => setSymptomSeverity(clamp1to10(Number(e.target.value) || 1))}
                 className="w-14 p-1.5 rounded border text-xs font-mono text-center"
                 style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
               />
@@ -260,7 +262,7 @@ export function JournalEditor({ onEntryCreated }: JournalEditorProps) {
                 min={1}
                 max={10}
                 value={stressLevel}
-                onChange={(e) => setStressLevel(e.target.value ? Number(e.target.value) : '')}
+                onChange={(e) => setStressLevel(e.target.value === '' ? '' : clamp1to10(Number(e.target.value)))}
                 className="w-full p-1.5 rounded border text-xs font-mono"
                 style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
               />
@@ -274,7 +276,7 @@ export function JournalEditor({ onEntryCreated }: JournalEditorProps) {
                 min={1}
                 max={10}
                 value={sleepQuality}
-                onChange={(e) => setSleepQuality(e.target.value ? Number(e.target.value) : '')}
+                onChange={(e) => setSleepQuality(e.target.value === '' ? '' : clamp1to10(Number(e.target.value)))}
                 className="w-full p-1.5 rounded border text-xs font-mono"
                 style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
               />

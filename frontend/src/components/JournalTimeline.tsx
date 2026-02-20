@@ -10,19 +10,42 @@ interface TimelineEntry {
   zone: number | null;
 }
 
-interface TimelineData {
-  report_id: string;
-  entries: TimelineEntry[];
-  summary: string | null;
+/** Backend returns { initialDiagnosis, journalEntries } - we map to this shape */
+interface BackendTimelineResponse {
+  initialDiagnosis?: { date?: string; diagnoses?: unknown[] };
+  journalEntries?: Array<{
+    id?: string;
+    date?: string;
+    created_at?: string;
+    symptoms?: { symptom?: string; severity?: number }[];
+    stress_level?: number | null;
+    sleep_quality?: number | null;
+  }>;
 }
 
 interface JournalTimelineProps {
   reportId: string;
 }
 
+function mapBackendToTimeline(raw: BackendTimelineResponse): { entries: TimelineEntry[] } {
+  const journalEntries = raw.journalEntries ?? [];
+  const entries: TimelineEntry[] = journalEntries.map((e) => {
+    const dateVal = e.date ?? e.created_at;
+    const dateStr = typeof dateVal === 'string' ? dateVal : dateVal != null ? new Date(dateVal as Date).toISOString() : new Date().toISOString();
+    return {
+      date: dateStr,
+      symptoms: Array.isArray(e.symptoms) ? e.symptoms.map((s) => ({ symptom: s.symptom ?? '', severity: s.severity ?? 5 })) : [],
+      stress_level: typeof e.stress_level === 'number' ? e.stress_level : null,
+      sleep_quality: typeof e.sleep_quality === 'number' ? e.sleep_quality : null,
+      zone: null,
+    };
+  });
+  return { entries };
+}
+
 export function JournalTimeline({ reportId }: JournalTimelineProps) {
   const { token } = useAuth();
-  const [data, setData] = useState<TimelineData | null>(null);
+  const [data, setData] = useState<{ entries: TimelineEntry[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,10 +55,10 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
     setError('');
 
     try {
-      const result = await apiFetch<TimelineData>(`/api/journal/timeline/${reportId}`, {
+      const result = await apiFetch<BackendTimelineResponse>(`/api/journal/timeline/${reportId}`, {
         headers: authHeaders(token),
       });
-      setData(result);
+      setData(mapBackendToTimeline(result));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(`API ${err.status}: ${err.body}`);
@@ -125,14 +148,6 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
         </span>
       </div>
 
-      {data.summary && (
-        <p
-          className="text-xs font-mono mb-3 p-2 rounded"
-          style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-        >
-          {data.summary}
-        </p>
-      )}
 
       <div className="relative">
         <div

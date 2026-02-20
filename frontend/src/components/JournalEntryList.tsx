@@ -13,8 +13,8 @@ interface JournalEntryResponse {
   sleep_quality: number | null;
   notes: string | null;
   analysis: string | null;
-  pattern_observations: string[];
-  ai_analysis: string | null;
+  pattern_observations: string[] | string | unknown;
+  ai_analysis: unknown;
   created_at: string;
 }
 
@@ -36,6 +36,7 @@ export function JournalEntryList({ entries, loading, error, onEntryDeleted, onSe
 
   const handleDelete = async (entryId: string) => {
     if (!token) return;
+    if (!window.confirm('Delete this journal entry? This cannot be undone.')) return;
     setDeleteError('');
     setDeletingId(entryId);
 
@@ -126,21 +127,21 @@ export function JournalEntryList({ entries, loading, error, onEntryDeleted, onSe
                 <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>
                   {new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                 </span>
-                {entry.stress_level !== null && (
+                {typeof entry.stress_level === 'number' && (
                   <span className="text-xs font-mono" style={{ color: severityColor(entry.stress_level) }}>
                     STRESS: {entry.stress_level}/10
                   </span>
                 )}
-                {entry.sleep_quality !== null && (
+                {typeof entry.sleep_quality === 'number' && (
                   <span className="text-xs font-mono" style={{ color: 'var(--accent-blue)' }}>
                     SLEEP: {entry.sleep_quality}/10
                   </span>
                 )}
               </div>
 
-              {entry.symptoms.length > 0 && (
+              {(entry.symptoms ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-1">
-                  {entry.symptoms.map((s, i) => (
+                  {(entry.symptoms ?? []).map((s, i) => (
                     <span
                       key={i}
                       className="text-xs font-mono px-1.5 py-0.5 rounded"
@@ -161,7 +162,7 @@ export function JournalEntryList({ entries, loading, error, onEntryDeleted, onSe
                 </p>
               )}
 
-              {entry.ai_analysis && (
+              {(entry.ai_analysis != null && (typeof entry.ai_analysis === 'object' || typeof entry.ai_analysis === 'string')) && (
                 <span className="text-xs font-mono" style={{ color: 'var(--accent-blue)' }}>
                   [AI ANALYSIS AVAILABLE]
                 </span>

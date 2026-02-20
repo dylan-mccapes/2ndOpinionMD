@@ -212,10 +212,10 @@ class JournalQueryAIRequest(BaseModel):
 @router.post("/query-ai")
 async def query_journal_ai(
     body: JournalQueryAIRequest,
-    current_user: User = Depends(get_current_user_from_session_token),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """AI-powered query over user's journal entries. Requires Bearer session_token."""
+    """AI-powered query over user's journal entries. Requires Bearer JWT."""
     from server.journal_query_agent import query_journal_with_metadata
 
     query = (body.query or "").strip()
@@ -252,8 +252,8 @@ async def query_journal_ai(
 
 # --- Existing journal (JWT auth, AI analysis) ----------------------------------------------
 
-@router.post("/", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED)
-@router.post("", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
+@router.post("/", response_model=JournalEntryResponse, response_model_by_alias=False, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=JournalEntryResponse, response_model_by_alias=False, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_journal_entry(
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
@@ -262,12 +262,15 @@ async def create_journal_entry(
 ):
     """Create a new journal entry with AI analysis using the ethos of health model"""
 
+    entry_data = entry.dict()
+    if entry_data.get("date") is None:
+        entry_data["date"] = datetime.now(timezone.utc)
     journal_entry = JournalEntry(
-        **entry.dict(),
+        **entry_data,
         user_id=current_user.id
     )
 
-    previous_entries = await get_previous_journal_entries(current_user.id)
+    previous_entries = await get_previous_journal_entries(str(current_user.id), session=session)
 
     previous_diagnoses = []
     symptom_intake_data = {}
@@ -332,8 +335,8 @@ async def create_journal_entry(
 
     return db_entry
 
-@router.get("/", response_model=List[JournalEntryResponse])
-@router.get("", response_model=List[JournalEntryResponse], include_in_schema=False)
+@router.get("/", response_model=List[JournalEntryResponse], response_model_by_alias=False)
+@router.get("", response_model=List[JournalEntryResponse], response_model_by_alias=False, include_in_schema=False)
 async def get_journal_entries(
     current_user: User = Depends(get_current_user),
     limit: int = 10,
@@ -357,7 +360,7 @@ async def get_journal_entries(
     
     return db_entries
 
-@router.get("/{entry_id}", response_model=JournalEntryResponse)
+@router.get("/{entry_id}", response_model=JournalEntryResponse, response_model_by_alias=False)
 async def get_journal_entry(
     entry_id: str,
     current_user: User = Depends(get_current_user),
@@ -465,27 +468,41 @@ def _to_naive_utc(dt):
 
 def _normalize_list(items, model_cls):
     """Normalize a list of items to ensure they are model instances"""
-    if not items:
+    if items is None or not items:
         return []
     return [
         item if isinstance(item, model_cls) else model_cls(**item)
         for item in items
     ]
 
+
+def _safe_entry_date_str(entry) -> str:
+    """Safely format entry date for prompt; handles None and missing attributes."""
+    try:
+        dt = getattr(entry, "date", None) or getattr(entry, "created_at", None)
+        if dt is None or not hasattr(dt, "strftime"):
+            dt = datetime.now(timezone.utc)
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 async def format_journal_entry_for_prompt(entry: JournalEntry, include_ethos: bool = True):
     """Format a journal entry for inclusion in the prompt with ethos of health model"""
-    normalized_symptoms = _normalize_list(entry.symptoms, SymptomEntry)
-    normalized_env_factors = _normalize_list(entry.environmental_factors, EnvironmentalFactor)
+    symptoms_raw = getattr(entry, "symptoms", None) or []
+    env_factors_raw = getattr(entry, "environmental_factors", None) or []
+    normalized_symptoms = _normalize_list(symptoms_raw, SymptomEntry)
+    normalized_env_factors = _normalize_list(env_factors_raw, EnvironmentalFactor)
     
     symptoms_text = "\n".join([
-        f"- {symptom.symptom} (Severity: {symptom.severity}/10)"
-        for symptom in normalized_symptoms
+        f"- {getattr(s, 'symptom', '')} (Severity: {getattr(s, 'severity', 0)}/10)"
+        for s in normalized_symptoms
     ])
 
     env_factors_text = ""
     if normalized_env_factors:
         env_factors_text = "\n".join([
-            f"- {factor.factor_type}: {factor.description}"
+            f"- {getattr(factor, 'factor_type', '')}: {getattr(factor, 'description', '')}"
             for factor in normalized_env_factors
         ])
 
@@ -495,7 +512,7 @@ async def format_journal_entry_for_prompt(entry: JournalEntry, include_ethos: bo
         parsed_sentences = [s.strip() for s in raw_sentences if s.strip()]
 
     entry_text = f"""
-ENTRY DATE: {entry.date.strftime('%Y-%m-%d')}
+ENTRY DATE: {_safe_entry_date_str(entry)}
 
 SYMPTOMS:
 {symptoms_text}

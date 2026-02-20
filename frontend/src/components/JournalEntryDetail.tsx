@@ -5,6 +5,31 @@ interface JournalEntryDetailProps {
   onClose: () => void;
 }
 
+function toPatternObservationsList(val: unknown): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.map(String);
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed.map(String) : [val];
+    } catch {
+      return val.split(/\n/).filter(Boolean).map(s => s.trim());
+    }
+  }
+  return [];
+}
+
+function formatAiAnalysis(val: unknown): string {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val !== null) {
+    const o = val as Record<string, unknown>;
+    if (typeof o.analysis === 'string') return o.analysis;
+    return JSON.stringify(val, null, 2);
+  }
+  return String(val);
+}
+
 export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) {
   const severityColor = (sev: number): string => {
     if (sev <= 3) return 'var(--accent-green)';
@@ -39,13 +64,13 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
           </span>
         </div>
 
-        {entry.symptoms.length > 0 && (
+        {(entry.symptoms ?? []).length > 0 && (
           <div>
             <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
               SYMPTOMS:
             </span>
             <div className="flex flex-wrap gap-1">
-              {entry.symptoms.map((s, i) => (
+              {(entry.symptoms ?? []).map((s, i) => (
                 <span
                   key={i}
                   className="text-xs font-mono px-2 py-1 rounded"
@@ -58,19 +83,19 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
           </div>
         )}
 
-        {entry.environmental_factors.length > 0 && (
+        {(entry.environmental_factors ?? []).length > 0 && (
           <div>
             <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
               ENVIRONMENTAL FACTORS:
             </span>
             <div className="flex flex-wrap gap-1">
-              {entry.environmental_factors.map((f, i) => (
+              {(entry.environmental_factors ?? []).map((f, i) => (
                 <span
                   key={i}
                   className="text-xs font-mono px-2 py-1 rounded"
                   style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
                 >
-                  {f.factor_type}: {f.description}
+                  {[f.factor_type, f.description].filter(Boolean).join(': ')}
                 </span>
               ))}
             </div>
@@ -78,7 +103,7 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {entry.stress_level !== null && (
+          {typeof entry.stress_level === 'number' && (
             <div>
               <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>STRESS: </span>
               <span className="text-xs font-mono" style={{ color: severityColor(entry.stress_level) }}>
@@ -86,7 +111,7 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
               </span>
             </div>
           )}
-          {entry.sleep_quality !== null && (
+          {typeof entry.sleep_quality === 'number' && (
             <div>
               <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>SLEEP: </span>
               <span className="text-xs font-mono" style={{ color: 'var(--accent-blue)' }}>
@@ -132,13 +157,13 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
           </div>
         )}
 
-        {entry.pattern_observations.length > 0 && (
+        {toPatternObservationsList(entry.pattern_observations).length > 0 && (
           <div>
             <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
               PATTERN OBSERVATIONS:
             </span>
             <ul className="space-y-1">
-              {entry.pattern_observations.map((obs, i) => (
+              {toPatternObservationsList(entry.pattern_observations).map((obs, i) => (
                 <li
                   key={i}
                   className="text-xs font-mono pl-2"
@@ -151,7 +176,7 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
           </div>
         )}
 
-        {entry.ai_analysis && (
+        {formatAiAnalysis(entry.ai_analysis) && (
           <div>
             <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-blue)' }}>
               AI ANALYSIS:
@@ -160,7 +185,7 @@ export function JournalEntryDetail({ entry, onClose }: JournalEntryDetailProps) 
               className="text-xs font-mono whitespace-pre-wrap p-2 rounded"
               style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderLeft: '2px solid var(--accent-blue)' }}
             >
-              {entry.ai_analysis}
+              {formatAiAnalysis(entry.ai_analysis)}
             </p>
           </div>
         )}
