@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -187,6 +187,7 @@ async def get_patient_timeline_status(
 async def invite_patient(
     body: InvitePatientRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: Any = Depends(get_current_user_postgres),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -237,6 +238,7 @@ async def invite_patient(
         from_role="doctor",
         invite_type="doctor_invites_patient",
         token=invite_token,
+        frontend_origin=request.headers.get("origin"),
     )
 
     return {
