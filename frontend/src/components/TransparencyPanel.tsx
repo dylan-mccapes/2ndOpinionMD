@@ -29,7 +29,7 @@ export function TransparencyPanel({
         <li style={{ color: 'var(--text-muted)' }}>
           {externalCallMade ? (
             <span style={{ color: 'var(--accent-yellow)' }}>
-              ⚠ External API call made
+              ⚠ API call made (backend)
               {callTimestamp && (
                 <span style={{ color: 'var(--text-muted)' }}>
                   {' '}
@@ -38,7 +38,7 @@ export function TransparencyPanel({
               )}
             </span>
           ) : (
-            <span>No external calls made</span>
+            <span>No API calls made</span>
           )}
         </li>
         <li style={{ color: 'var(--text-muted)' }}>No state mutated</li>
