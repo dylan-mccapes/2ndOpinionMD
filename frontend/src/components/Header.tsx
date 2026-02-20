@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { TimelineStatusIndicator } from './TimelineStatusIndicator';
 
 const NAV_LINKS = [
   { to: '/', label: 'MODES' },
@@ -75,6 +76,7 @@ export function Header() {
 
         {isAuthenticated ? (
           <div className="flex items-center gap-3">
+            <TimelineStatusIndicator />
             {user && (
               <span
                 className="text-xs font-mono"

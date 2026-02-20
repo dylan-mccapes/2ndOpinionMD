@@ -9,6 +9,7 @@ import { EohdPage } from './pages/EohdPage';
 import { JournalPage } from './pages/JournalPage';
 import { PortalPage } from './pages/PortalPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TimelineUploadPage } from './pages/TimelineUploadPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { VerifyPage } from './pages/auth/VerifyPage';
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/eohd" element={<EohdPage />} />
           <Route path="/journal" element={<ProtectedRoute><JournalPage /></ProtectedRoute>} />
           <Route path="/portal" element={<ProtectedRoute><PortalPage /></ProtectedRoute>} />
+          <Route path="/timeline/upload" element={<ProtectedRoute><TimelineUploadPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/auth/login" element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />

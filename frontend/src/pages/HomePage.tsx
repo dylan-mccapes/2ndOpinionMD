@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useTimelineStatus } from '../hooks/useTimelineStatus';
 
 interface ModeCard {
   id: string;
@@ -9,7 +11,7 @@ interface ModeCard {
   disabledReason?: string;
 }
 
-const MODES: ModeCard[] = [
+const BASE_MODES: ModeCard[] = [
   {
     id: 'ask',
     label: 'ASK',
@@ -34,19 +36,43 @@ const MODES: ModeCard[] = [
     route: '/eoh',
     enabled: true,
   },
-  {
-    id: 'eohd',
-    label: 'EoHD',
-    description:
-      'Timeline-aware EoH Detective reasoning. Temporal hypothesis evolution and inflection points.',
-    route: '/eohd',
-    enabled: false,
-    disabledReason: 'Blocked — timeline data ingestion not implemented',
-  },
 ];
 
 export function HomePage() {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const { status } = useTimelineStatus();
+
+  const isSystemUser = isAuthenticated && user?.subscription_tier && user.subscription_tier !== 'free';
+  const hasTimeline = status?.has_timeline ?? false;
+
+  const eohdCard: ModeCard = isSystemUser && hasTimeline
+    ? {
+        id: 'eohd',
+        label: 'EoHD',
+        description: 'Timeline-aware EoH Detective reasoning. Temporal hypothesis evolution and inflection points.',
+        route: '/eohd',
+        enabled: true,
+      }
+    : isSystemUser
+    ? {
+        id: 'eohd',
+        label: 'EoHD',
+        description: 'Timeline-aware EoH Detective reasoning. Upload your timeline to unlock.',
+        route: '/timeline/upload',
+        enabled: true,
+        disabledReason: 'Upload timeline to enable',
+      }
+    : {
+        id: 'eohd',
+        label: 'EoHD',
+        description: 'Timeline-aware EoH Detective reasoning. Temporal hypothesis evolution and inflection points.',
+        route: '/eohd',
+        enabled: false,
+        disabledReason: 'Requires system user subscription',
+      };
+
+  const MODES = [...BASE_MODES, eohdCard];
 
   return (
     <div className="max-w-4xl mx-auto">

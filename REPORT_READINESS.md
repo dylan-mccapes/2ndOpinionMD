@@ -67,6 +67,17 @@
 | 5.1 | **Build JournalEditor** | CRUD: `POST /GET /DELETE /api/journal`. AI analysis: `POST /api/journal/query-ai`. Fields: severity, environmental factors, diet, sleep, stressors. Use React Hook Form. Route: `/journal`. See `2opmd_spellbook.json` → `api_endpoints.journal`. |
 | 5.2 | **Build JournalTimeline** | `GET /api/journal/timeline/{report_id}`. Visual timeline of entries. Feeds into future EoHD integration. |
 
+### Phase 5a: Patient Enablement — Timeline Ingestion + EoHD Gate
+
+| # | Task | Routing |
+|---|---|---|
+| 5a.1 | **Build TimelineUploadPage** | Route: `/timeline/upload`. File picker (PDF only, max 10MB), optional password field for encrypted PDFs, progress states (Idle → Uploading → Extracting → Ingesting → Done). Calls `POST /api/timeline/import-pdf` (multipart/form-data: `file` + optional `password`). Response: `{ timeline_id, patient_id, event_count, status }`. Auth required (Bearer JWT). Errors: 401, 403 (not system user), 400 (invalid PDF/wrong password), 413 (too large). See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Upload Page". |
+| 5a.2 | **Build TimelineStatusIndicator** | Calls `GET /api/timeline/status`. Response: `{ has_timeline, timeline_id, event_count, last_updated }`. Renders "Timeline ready" or "Upload timeline" link. Shown in header or mode selector. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Status Indicator". |
+| 5a.3 | **Build EoHD gate logic** | If user has no timeline + is system user: show "Upload timeline to unlock EoHD" with link to `/timeline/upload`. If user has timeline: enable EoHD, pass `timeline_patient_id` to `/api/rag/eoh_stream` (or `/api/eoh/router_plan`). Free users: EoHD remains disabled with current message. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
+| 5a.4 | **Build EohdPage (enabled state)** | When timeline exists: show query input, call EoHD endpoints (`POST /api/eoh/router_plan`, `GET /api/eoh/flarereport/{patient_id}`, `GET /api/eoh/landscape/{patient_id}`). Display: question type classification, module execution plan, flare forecast, diagnostic landscape, precursor signals, risk drivers. See `server/api/eoh_router_routes.py` and `server/api/timeline_routes.py`. |
+| 5a.5 | **Add /timeline/upload route** | Protected route (auth required). Add to App.tsx router. Redirect system users without timeline here after first login. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "User Flow". |
+| 5a.6 | **Update ModeSelector EoHD card** | Replace static "Blocked" message with dynamic state: disabled (free user), "Upload timeline" (system user, no timeline), enabled (system user, has timeline). See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
+
 ### Phase 6: Doctor Portal (Ambient Coding)
 
 | # | Task | Routing |
@@ -99,6 +110,7 @@
 | SSE streaming protocol | `ASK_STREAMING_CONTRACT.md` |
 | Current frontend wiring | `FRONTEND_INTEGRATION.md` |
 | Receipt cache event schema | `FRONTEND_INTEGRATION.md` → "Receipt Cache Integration" |
+| Timeline upload + EoHD game plan | `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` |
 | Doctor portal pipeline | `GAME_PLAN_DOCTOR_PORTAL.md` |
 | New portal endpoints needed | `GAME_PLAN_DOCTOR_PORTAL.md` → "New Endpoints Required" |
 | Ambient transcription tools | `transcription_machine.py`, `wave_modulation_machine.py`, `wave_modulation_agent.py` (repo root) |
