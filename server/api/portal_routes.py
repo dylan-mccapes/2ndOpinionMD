@@ -14,14 +14,17 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.api.auth_postgres import get_current_user_postgres
 from server.db.session import get_session
+from database.models.postgresql.models import User, JournalEntry
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_WHISPER_MODEL_CACHE: dict[str, Any] = {}
 
 
 def _require_doctor(current_user: Any) -> Any:
@@ -29,6 +32,16 @@ def _require_doctor(current_user: Any) -> Any:
     if ut != "doctor":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Doctor access required")
     return current_user
+
+
+def _get_whisper_model(model_name: str):
+    """Lazy-load and cache local Whisper model for reuse."""
+    if model_name in _WHISPER_MODEL_CACHE:
+        return _WHISPER_MODEL_CACHE[model_name]
+    import whisper
+    model = whisper.load_model(model_name)
+    _WHISPER_MODEL_CACHE[model_name] = model
+    return model
 
 
 @router.post("/transcribe")
@@ -71,9 +84,8 @@ async def transcribe_audio(
             tmp_path = tmp.name
 
         try:
-            import whisper
             model_name = os.getenv("WHISPER_MODEL", "base")
-            model = whisper.load_model(model_name)
+            model = _get_whisper_model(model_name)
             result = model.transcribe(tmp_path, language="en", fp16=False)
             transcript_text = (result.get("text") or "").strip()
         except ImportError:
@@ -133,10 +145,11 @@ async def extract_clinical(
     if not transcript:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty transcript")
 
+    raw = ""
+    model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
     try:
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
 
         prompt = f"""You are a clinical NLP extraction assistant. Extract structured clinical information from the following encounter transcript. Return STRICT JSON ONLY (no code fences).
 
@@ -216,10 +229,11 @@ async def generate_encounter_note(
     if body.extraction:
         extraction_text = f"\nExtracted data:\n{json.dumps(body.extraction, indent=2)}"
 
+    raw = ""
+    model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
     try:
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
 
         prompt = f"""You are a clinical documentation assistant. Generate a structured encounter note from the following encounter data. Return STRICT JSON ONLY (no code fences).
 
@@ -274,3 +288,54 @@ Transcript:
         "doctor_id": str(current_user.id),
         "doctor_name": current_user.full_name or current_user.email,
     }
+
+
+class SaveEncounterRequest(BaseModel):
+    patient_id: str
+    content: str
+    title: Optional[str] = None
+
+
+@router.post("/save-encounter")
+async def save_encounter_to_journal(
+    body: SaveEncounterRequest,
+    current_user: Any = Depends(get_current_user_postgres),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Save encounter note to selected patient's journal.
+    Doctor can only write to linked patients.
+    """
+    _require_doctor(current_user)
+    content = (body.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Encounter content is required")
+
+    try:
+        patient_uuid = uuid.UUID(body.patient_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    patient_result = await db.execute(
+        select(User).where(
+            User.id == patient_uuid,
+            User.user_type == "patient",
+            User.doctor_id == current_user.id,
+        )
+    )
+    patient = patient_result.scalar_one_or_none()
+
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found or not linked to your account")
+
+    entry = JournalEntry(
+        user_id=patient.id,
+        date=datetime.utcnow(),
+        notes=content,
+        symptoms=None,
+        environmental_factors=None,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return {"id": str(entry.id), "user_id": str(patient.id), "created_at": entry.created_at.isoformat() if entry.created_at else None}

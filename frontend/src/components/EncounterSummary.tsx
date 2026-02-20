@@ -139,13 +139,12 @@ export function EncounterSummary({
         `## Follow-up\n${note.follow_up || 'N/A'}`,
       ].join('\n\n');
 
-      await apiFetch('/api/journal', {
+      await apiFetch('/api/portal/save-encounter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
         body: JSON.stringify({
           title: `Encounter Note — ${meta?.encounter_date || new Date().toISOString().slice(0, 10)}`,
           content,
-          category: 'encounter_note',
           patient_id: patientId,
         }),
       });

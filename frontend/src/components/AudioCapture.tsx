@@ -15,11 +15,11 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
   const [consented, setConsented] = useState(false);
   const [duration, setDuration] = useState(0);
   const [micError, setMicError] = useState('');
+  const [chunksSent, setChunksSent] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkIndexRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const updateState = useCallback(
@@ -50,11 +50,13 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunkIndexRef.current = 0;
+      setChunksSent(0);
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           onChunk(e.data, chunkIndexRef.current);
           chunkIndexRef.current += 1;
+          setChunksSent(chunkIndexRef.current);
         }
       };
 
@@ -100,13 +102,13 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
     }
     stopAllTracks();
     if (durationRef.current) clearInterval(durationRef.current);
-    if (timerRef.current) clearInterval(timerRef.current);
     updateState('stopped');
   }, [stopAllTracks, updateState]);
 
   const reset = useCallback(() => {
     stopRecording();
     setDuration(0);
+    setChunksSent(0);
     chunkIndexRef.current = 0;
     updateState('idle');
   }, [stopRecording, updateState]);
@@ -115,7 +117,6 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
     return () => {
       stopAllTracks();
       if (durationRef.current) clearInterval(durationRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [stopAllTracks]);
 
@@ -177,7 +178,7 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
         )}
         {state === 'recording' || state === 'paused' ? (
           <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-            Chunks sent: {chunkIndexRef.current}
+            Chunks sent: {chunksSent}
           </span>
         ) : null}
       </div>
