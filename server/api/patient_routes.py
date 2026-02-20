@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +40,7 @@ def _require_patient(current_user: Any) -> Any:
 async def invite_doctor(
     body: InviteDoctorRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: Any = Depends(get_current_user_postgres),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -93,6 +94,7 @@ async def invite_doctor(
         from_role="patient",
         invite_type="patient_invites_doctor",
         token=invite_token,
+        frontend_origin=request.headers.get("origin"),
     )
 
     return {

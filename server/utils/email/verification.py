@@ -171,10 +171,16 @@ async def send_invite_email(
     from_role: str,
     invite_type: str,
     token: str,
+    frontend_origin: str | None = None,
 ):
     """Send a doctor-patient connection invite email."""
     dev_mode = os.getenv("EMAIL_DEV_MODE", "0") in ("1", "true", "True", "yes")
-    origin = os.getenv("FRONTEND_ORIGIN") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+    origin = (
+        frontend_origin
+        or os.getenv("FRONTEND_ORIGIN")
+        or os.getenv("FRONTEND_URL")
+        or "http://localhost:3000"
+    )
 
     if invite_type == "doctor_invites_patient":
         accept_path = f"/auth/accept-doctor-invite?token={token}"
