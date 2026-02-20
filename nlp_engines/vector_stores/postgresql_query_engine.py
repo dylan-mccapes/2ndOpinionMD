@@ -57,7 +57,8 @@ class PostgreSQLMedicalQueryEngine:
                 if content_types and row.content_type not in content_types:
                     continue
                     
-                similarity = 1 - min(row.distance, 1.0)
+                dist = row.distance if row.distance is not None else 1.0
+                similarity = 1 - min(dist, 1.0)
                 confidence = int(similarity * 100)
                 
                 formatted_results.append({
