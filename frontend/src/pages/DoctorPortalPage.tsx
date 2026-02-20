@@ -249,6 +249,19 @@ export function DoctorPortalPage() {
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
+            TIMELINE + CHARTS
+          </span>
+          <Link
+            to="/timeline"
+            className="text-xs font-mono no-underline"
+            style={{ color: 'var(--accent-blue)' }}
+          >
+            OPEN TIMELINE WORKSPACE
+          </Link>
+        </div>
+
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
             PATIENTS
           </span>
           <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>

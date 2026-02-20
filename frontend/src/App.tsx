@@ -13,6 +13,7 @@ import { DoctorPortalPage } from './pages/DoctorPortalPage';
 import { DoctorPatientDetailPage } from './pages/DoctorPatientDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TimelineUploadPage } from './pages/TimelineUploadPage';
+import { TimelinePage } from './pages/TimelinePage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { VerifyPage } from './pages/auth/VerifyPage';
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/eohd" element={<ProtectedRoute><EohdPage /></ProtectedRoute>} />
           <Route path="/journal" element={<RoleProtectedRoute role="patient"><JournalPage /></RoleProtectedRoute>} />
           <Route path="/patient" element={<RoleProtectedRoute role="patient"><PatientPortalPage /></RoleProtectedRoute>} />
+          <Route path="/timeline" element={<ProtectedRoute><TimelinePage /></ProtectedRoute>} />
           <Route path="/timeline/upload" element={<RoleProtectedRoute role="patient"><TimelineUploadPage /></RoleProtectedRoute>} />
           <Route path="/doctor" element={<RoleProtectedRoute role="doctor"><DoctorPortalPage /></RoleProtectedRoute>} />
           <Route path="/doctor/patients/:patientId" element={<RoleProtectedRoute role="doctor"><DoctorPatientDetailPage /></RoleProtectedRoute>} />

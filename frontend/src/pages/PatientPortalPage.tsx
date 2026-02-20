@@ -10,7 +10,7 @@ type Tab = 'overview' | 'journal' | 'timeline' | 'eohd' | 'settings';
 const TABS: { id: Tab; label: string; route?: string }[] = [
   { id: 'overview', label: 'OVERVIEW' },
   { id: 'journal', label: 'JOURNAL', route: '/journal' },
-  { id: 'timeline', label: 'TIMELINE', route: '/timeline/upload' },
+  { id: 'timeline', label: 'TIMELINE', route: '/timeline' },
   { id: 'eohd', label: 'EoHD', route: '/eohd' },
   { id: 'settings', label: 'SETTINGS', route: '/settings' },
 ];
@@ -242,9 +242,9 @@ export function PatientPortalPage() {
         )}
       </div>
 
-      {hasTimeline && token && (
+      {hasTimeline && token && status?.timeline_id && (
         <div className="mb-4">
-          <TimelineChartCard patientId={user?.id ?? ''} token={token} />
+          <TimelineChartCard patientId={status.timeline_id} token={token} />
         </div>
       )}
 
@@ -263,7 +263,7 @@ export function PatientPortalPage() {
         </Link>
 
         <Link
-          to="/timeline/upload"
+          to="/timeline"
           className="p-4 rounded border no-underline block"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
