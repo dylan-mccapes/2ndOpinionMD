@@ -4,8 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from fastapi import Request
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://2ndopinionmd@localhost:5432/2ndopinionmd")
-
-if "+asyncpg" not in DATABASE_URL:
+if DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif "+asyncpg" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("+psycopg", "+asyncpg")
 
 engine = None

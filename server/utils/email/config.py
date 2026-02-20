@@ -9,14 +9,18 @@ from server.utils.email.pydantic_compat import Secret  # Add compatibility layer
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# Port 587: use STARTTLS only (aiosmtplib rejects both use_tls and start_tls).
+# Port 465: set MAIL_SSL_TLS=true and MAIL_STARTTLS=false in env.
+_conf_ssl = os.getenv("MAIL_SSL_TLS", "false").lower() == "true"
+_conf_starttls = os.getenv("MAIL_STARTTLS", "true").lower() == "true"
 conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME", ""),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", ""),
-    MAIL_FROM=os.getenv("REPORT_EMAIL_FROM", "nate@2ndopinionmd.ai"),
+    MAIL_FROM=os.getenv("REPORT_EMAIL_FROM", "dylan@2ndopinionmd.ai"),
     MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
     MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
-    MAIL_SSL_TLS=os.getenv("MAIL_SSL_TLS", "True").lower() == "true",
-    MAIL_STARTTLS=os.getenv("MAIL_STARTTLS", "True").lower() == "true",
+    MAIL_SSL_TLS=_conf_ssl,
+    MAIL_STARTTLS=_conf_starttls if not _conf_ssl else False,
     USE_CREDENTIALS=os.getenv("USE_CREDENTIALS", "True").lower() == "true",
     VALIDATE_CERTS=os.getenv("VALIDATE_CERTS", "True").lower() == "true",
     TEMPLATE_FOLDER=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates"),

@@ -8,8 +8,10 @@ import asyncio
 from uuid import UUID
 from pydantic import BaseModel, Field
 
+from fastapi import Request
 from database.models.postgresql.models import JournalEntry, User
 from server.api.auth_postgres import get_current_user_postgres as get_current_user
+from server.api.session_routes import get_user_id_for_session
 from server.db.session import get_session
 
 class SymptomEntry(BaseModel):
@@ -101,6 +103,154 @@ Using the 2OPMD Diagnostic Terrain System:
 """
 
 router = APIRouter(tags=["journal"])
+
+
+async def get_current_user_from_session_token(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> User:
+    """Resolve User from Bearer session_token (for POC journal from Epistemic Vault)."""
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header (Bearer session_token)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = auth[7:].strip()
+    user_id = await get_user_id_for_session(session, token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found for session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+# --- POC: plain text journal entry (no AI), query by text ---------------------------------
+
+class JournalTextCreate(BaseModel):
+    """POC: single text field for journal entry."""
+    text: str
+
+
+@router.post("/entry", status_code=status.HTTP_201_CREATED)
+async def create_journal_entry_text(
+    body: JournalTextCreate,
+    current_user: User = Depends(get_current_user_from_session_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """POC: Store a plain text journal entry. No AI analysis. Requires Bearer session_token."""
+    from datetime import datetime
+    entry = JournalEntry(
+        user_id=current_user.id,
+        date=datetime.utcnow(),
+        notes=(body.text or "").strip() or None,
+        symptoms=None,
+        environmental_factors=None,
+    )
+    session.add(entry)
+    await session.commit()
+    await session.refresh(entry)
+    return {"id": str(entry.id), "created_at": entry.created_at.isoformat()}
+
+
+@router.get("/query")
+async def query_journal_entries(
+    q: str = "",
+    limit: int = 20,
+    current_user: User = Depends(get_current_user_from_session_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """POC: Simple text search over journal notes. Requires Bearer session_token."""
+    query = select(JournalEntry).where(JournalEntry.user_id == current_user.id)
+    if q and q.strip():
+        query = query.where(JournalEntry.notes.isnot(None)).where(
+            JournalEntry.notes.ilike(f"%{q.strip()}%")
+        )
+    query = query.order_by(JournalEntry.date.desc()).limit(limit)
+    result = await session.execute(query)
+    rows = result.scalars().all()
+    return [
+        {"id": str(e.id), "date": e.date.isoformat() if e.date else None, "notes": (e.notes or "")[:500]}
+        for e in rows
+    ]
+
+
+@router.get("/entries")
+async def get_all_journal_entries(
+    current_user: User = Depends(get_current_user_from_session_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get all journal entries for current user (POC), ordered by created_at descending. Requires Bearer session_token."""
+    q = select(JournalEntry).where(JournalEntry.user_id == current_user.id).order_by(JournalEntry.created_at.desc())
+    result = await session.execute(q)
+    entries = result.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "date": (e.created_at or e.date).strftime("%B %d, %Y") if (e.created_at or e.date) else "",
+            "notes": (e.notes or ""),
+        }
+        for e in entries
+    ]
+
+
+class JournalQueryAIRequest(BaseModel):
+    """Request body for POST /api/journal/query-ai."""
+    query: str
+
+
+@router.post("/query-ai")
+async def query_journal_ai(
+    body: JournalQueryAIRequest,
+    current_user: User = Depends(get_current_user_from_session_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """AI-powered query over user's journal entries. Requires Bearer session_token."""
+    from server.journal_query_agent import query_journal_with_metadata
+
+    query = (body.query or "").strip()
+    if not query:
+        return {"error": "Query cannot be empty"}
+
+    q = (
+        select(JournalEntry)
+        .where(JournalEntry.user_id == current_user.id)
+        .order_by(JournalEntry.created_at.asc())
+    )
+    result = await session.execute(q)
+    entries = result.scalars().all()
+
+    formatted_entries = [
+        {
+            "id": str(e.id),
+            "date": (e.created_at or e.date).strftime("%B %d, %Y at %I:%M %p") if (e.created_at or e.date) else "",
+            "notes": (e.notes or ""),
+        }
+        for e in entries
+    ]
+
+    if not formatted_entries:
+        return {
+            "response": "You haven't written any journal entries yet.",
+            "entries_count": 0,
+            "query": query,
+            "model": "none",
+        }
+
+    return await query_journal_with_metadata(query, formatted_entries)
+
+
+# --- Existing journal (JWT auth, AI analysis) ----------------------------------------------
 
 @router.post("/", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)

@@ -2595,12 +2595,8 @@ def format_context_for_llm(
 
     context_str = "\n\n".join(blocks)
 
-    # Debug logging to confirm context size + tail
-    logger.info("LLM CONTEXT FINAL LEN=%s", len(context_str))
-    logger.info(
-        "LLM CONTEXT FINAL TAIL:\n%s",
-        "\n".join(context_str.splitlines()[-20:]),
-    )
+    # System health logging: context size only (no PII content)
+    logger.info("LLM CONTEXT FINAL LEN=%s chars, %s blocks", len(context_str), len(blocks))
 
     return context_str
 
@@ -3864,14 +3860,14 @@ async def extract_code_terms(q: str) -> List[str]:
         terms_set.add(code)
 
     if code_candidates_clean:
-        logger.info("extract_code_terms: code_candidates=%s", code_candidates_clean)
+        logger.info("extract_code_terms: found %s code candidates", len(code_candidates_clean))
 
     if terms_set:
         terms = sorted(terms_set)
     else:
         terms = q.lower().replace(",", " ").split()
 
-    logger.info("extract_code_terms: terms=%s", terms)
+    logger.info("extract_code_terms: extracted %s terms", len(terms))
     return terms
 
 # ---------------------------------------------------------------------------

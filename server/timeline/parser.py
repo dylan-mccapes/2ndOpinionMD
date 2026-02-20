@@ -45,7 +45,8 @@ EVENT_TYPE_PATTERNS = {
     ],
     "flare": [
         r"\b(flare|exacerbation|worsening|acute episode)\b",
-        r"\b(disease activity|active disease)\b",
+        r"\b(disease activity|active disease|increased activity)\b",
+        r"\b(disease flare|flare[-\s]up)\b",
     ],
     "note": [
         r"\b(note|visit|appointment|consult|follow-up)\b",

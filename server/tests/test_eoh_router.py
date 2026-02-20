@@ -60,7 +60,7 @@ class TestModuleIndex:
             for handle in mod["doc_handles"]:
                 assert "kind" in handle, f"Module {mid} handle missing 'kind'"
                 assert "name" in handle, f"Module {mid} handle missing 'name'"
-                assert handle["kind"] in {"pg_view", "pg_table", "ann_index", "doc_corpus"}
+                assert handle["kind"] in {"pg_view", "pg_table", "ann_index", "doc_corpus", "ethos_module_doc"}
     
     def test_question_types_structure(self):
         """Test that QUESTION_TYPES has the correct structure."""
@@ -521,9 +521,11 @@ class TestEoHRouterEndpoints:
         assert "question_types" in data
     
     def test_router_plan_empty_question(self):
-        """Test POST /api/eoh/router_plan rejects empty question."""
+        """Test POST /api/eoh/router_plan rejects empty question.
+        Pydantic min_length=1 on RouterPlanRequest.question returns 422 before
+        the route handler's own 400 check fires."""
         response = client.post("/api/eoh/router_plan", json={"question": ""})
-        assert response.status_code == 400
+        assert response.status_code == 422
     
     def test_router_plan_missing_question(self):
         """Test POST /api/eoh/router_plan rejects missing question."""
@@ -540,7 +542,8 @@ class TestEoHStreamRouterIntegration:
         
         assert EOH_ROUTED_ANSWER_SYSTEM_PROMPT is not None
         assert len(EOH_ROUTED_ANSWER_SYSTEM_PROMPT) > 0
-        assert "EoH router plan" in EOH_ROUTED_ANSWER_SYSTEM_PROMPT
+        # Prompt uses mixed case: "EoH Router Plan", "EoH router plan"
+        assert "eoh router plan" in EOH_ROUTED_ANSWER_SYSTEM_PROMPT.lower()
         assert "question type" in EOH_ROUTED_ANSWER_SYSTEM_PROMPT.lower()
     
     def test_eoh_stream_event_generator_exists(self):

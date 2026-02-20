@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     class Config:
-        env_file = ".env"
+        # .pulse preferred if present (optional rename from .env), else .env
+        env_file = (".pulse", ".env")
 
 settings = Settings()

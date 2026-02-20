@@ -49,12 +49,19 @@ from server.api.auth_postgres import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from server.utils.email.verification import send_verification_email, create_verification_token
+from server.utils.password_validation import validate_password_complexity
 
 router = APIRouter()
 
 @router.post("/register", response_model=RegistrationResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     logger.info("Using UserCreate from %s", UserCreate.__module__)
+    password_errors = validate_password_complexity(user.password)
+    if password_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "password_weak", "message": "Password does not meet requirements", "errors": password_errors}
+        )
     query = select(User).where(User.email == user.email)
     result = await session.execute(query)
     existing_user = result.scalar_one_or_none()

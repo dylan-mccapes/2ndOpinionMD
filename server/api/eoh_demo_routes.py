@@ -222,7 +222,9 @@ async def get_legacy_timeline() -> List[Dict[str, Any]]:
     Legacy endpoint for backward compatibility.
     Returns timeline for P1 (the original demo patient).
     """
-    return await get_patient_timeline("P1")
+    # Call get_timeline() directly instead of the endpoint function,
+    # because the Query() default on max_events is only resolved via HTTP dispatch.
+    return get_timeline("P1")
 
 
 # ---------------------------------------------------------------------------

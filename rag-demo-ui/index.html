@@ -1,10 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2OPMD — Clinical Reasoning Console</title>
-    <style>
+  <style>
         /* === RESET === */
         * {
             margin: 0;
@@ -30,7 +28,7 @@
 
         /* === BASE === */
         html, body {
-            width: 100%;
+      width: 100%;
             height: 100%;
             background-color: var(--color-bg);
             color: var(--color-text-primary);
@@ -55,7 +53,7 @@
             padding: 16px 24px;
             display: flex;
             justify-content: space-between;
-            align-items: center;
+      align-items: center;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
         }
 
@@ -105,8 +103,8 @@
             background-color: var(--color-surface);
             border-top: 3px solid var(--color-border);
             padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
+      display: flex;
+      justify-content: space-between;
             align-items: center;
             font-family: var(--font-mono);
             font-size: 11px;
@@ -221,7 +219,7 @@
 
         .receipt .timestamp {
             color: var(--color-accent);
-            font-weight: 600;
+      font-weight: 600;
         }
 
         /* === INPUT SURFACES === */
@@ -279,7 +277,7 @@
             color: var(--color-text-primary);
             background-color: var(--color-surface);
             border: 2px solid var(--color-border);
-            cursor: pointer;
+      cursor: pointer;
         }
 
         .input-group select:focus {
@@ -335,7 +333,7 @@
             color: var(--color-text-dim);
         }
 
-        .btn-primary {
+    .btn-primary {
             border-color: var(--color-accent);
             background-color: var(--color-accent);
             color: var(--color-surface);
@@ -344,6 +342,32 @@
         .btn-primary:hover {
             background-color: var(--color-accent-hover);
             border-color: var(--color-accent-hover);
+        }
+
+    .btn-secondary {
+            border-color: var(--color-border);
+            background-color: var(--color-surface);
+            color: var(--color-text-primary);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--color-accent);
+            background-color: var(--color-bg);
+        }
+
+        /* === FILE UPLOAD === */
+        .file-upload-container {
+      display: flex;
+      align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .file-name-display {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            font-style: italic;
         }
 
         /* === NOTICES === */
@@ -404,7 +428,7 @@
         }
 
         .transparency-panel .refusal-item {
-            display: flex;
+      display: flex;
             align-items: flex-start;
             gap: 8px;
             margin-bottom: 6px;
@@ -451,7 +475,7 @@
 
         .receipt-cache-header {
             display: flex;
-            justify-content: space-between;
+      justify-content: space-between;
             align-items: center;
             margin-bottom: 16px;
         }
@@ -460,7 +484,7 @@
             font-family: var(--font-mono);
             font-size: 13px;
             font-weight: 600;
-            text-transform: uppercase;
+      text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--color-text-primary);
         }
@@ -532,8 +556,8 @@
         }
 
         .receipt-event-header {
-            display: flex;
-            justify-content: space-between;
+      display: flex;
+      justify-content: space-between;
             margin-bottom: 8px;
             color: var(--color-text-secondary);
         }
@@ -565,8 +589,8 @@
         /* === RESULTS AREA === */
         .results-area {
             margin-top: 24px;
-            display: none;
-        }
+      display: none;
+    }
 
         .results-area.visible {
             display: block;
@@ -592,7 +616,7 @@
             font-size: 12px;
             line-height: 1.6;
             max-height: 600px;
-            overflow-y: auto;
+      overflow-y: auto;
         }
 
         /* Answer formatting */
@@ -604,7 +628,7 @@
 
         #ask-answer h3, .results-content h3 {
             font-size: 15px;
-            font-weight: 600;
+      font-weight: 600;
             margin: 20px 0 12px 0;
             padding-bottom: 8px;
             border-bottom: 2px solid var(--color-accent);
@@ -675,7 +699,7 @@
         }
 
         /* === RESPONSIVE === */
-        @media (max-width: 768px) {
+    @media (max-width: 768px) {
             header {
                 flex-direction: column;
                 gap: 12px;
@@ -692,13 +716,13 @@
                 flex-direction: column;
                 gap: 8px;
             }
-        }
-    </style>
+    }
+  </style>
 </head>
 <body>
     <header>
         <h1>2OPMD</h1>
-        <div class="mode-indicator">NO MODE SELECTED</div>
+        <div class="mode-indicator">EOHD</div>
     </header>
 
     <main>
@@ -728,27 +752,25 @@
                         <span class="label">No implicit behavior</span>
                     </li>
                 </ul>
-                <div class="last-update" id="transparency-update">
-                    Last verified: System start
-                </div>
-            </div>
+                <div class="last-update" id="transparency-update">Last verified: 15:15:42</div>
+    </div>
 
             <!-- Mode Selector -->
             <div class="mode-selector">
                 <button type="button" data-mode="ask">ASK</button>
                 <button type="button" data-mode="coding">CODING</button>
                 <button type="button" data-mode="eoh">EoH</button>
-                <button type="button" data-mode="eohd">EoHD</button>
-            </div>
+                <button type="button" data-mode="eohd" class="active">EoHD</button>
+    </div>
 
             <!-- Receipts Area -->
-            <div id="receipts"></div>
+            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to EOHD</div></div>
 
             <!-- Mode: ASK -->
             <div class="mode-content" data-mode="ask">
                 <div class="mode-description">
                     MODE: ASK<br>
-                    Read-only clinical Q&A. No state mutation. No timeline. Each query is independent.
+                    Read-only clinical Q&amp;A. No state mutation. No timeline. Each query is independent.
                 </div>
                 
                 <div class="input-surface">
@@ -756,20 +778,17 @@
                         <label for="ask-query">
                             CLINICAL QUESTION <span class="required">*</span>
                         </label>
-                        <textarea 
-                            id="ask-query" 
-                            rows="6" 
-                            placeholder="Enter clinical question in natural language.&#10;Example: What are the differential diagnoses for bilateral joint pain with morning stiffness?"
-                        ></textarea>
+                        <textarea id="ask-query" rows="6" placeholder="Enter clinical question in natural language.
+Example: What are the differential diagnoses for bilateral joint pain with morning stiffness?"></textarea>
                     </div>
                     
                     <button type="button" class="btn btn-primary" id="submit-ask">
                         SUBMIT QUERY
-                    </button>
+      </button>
                 </div>
 
                 <div id="ask-results" class="results-area"></div>
-            </div>
+    </div>
 
             <!-- Mode: CODING -->
             <div class="mode-content" data-mode="coding">
@@ -792,38 +811,31 @@
                             <option value="loinc">LOINC</option>
                             <option value="rxnorm">RxNorm</option>
                             <option value="all">ALL APPLICABLE</option>
-                        </select>
-                    </div>
+      </select>
+    </div>
 
                     <div class="input-group">
                         <label for="coding-text">
                             CLINICAL TEXT <span class="required">*</span>
                         </label>
-                        <textarea 
-                            id="coding-text" 
-                            rows="6" 
-                            placeholder="Enter symptom, diagnosis, or procedure description.&#10;Example: Chronic bilateral knee pain with joint swelling and reduced range of motion"
-                        ></textarea>
+                        <textarea id="coding-text" rows="6" placeholder="Enter symptom, diagnosis, or procedure description.
+Example: Chronic bilateral knee pain with joint swelling and reduced range of motion"></textarea>
                     </div>
 
                     <div class="input-group">
                         <label for="coding-context">
                             CLINICAL CONTEXT (OPTIONAL)
                         </label>
-                        <input 
-                            type="text" 
-                            id="coding-context" 
-                            placeholder="Additional context: patient age, setting, specialty"
-                        />
+                        <input type="text" id="coding-context" placeholder="Additional context: patient age, setting, specialty">
                     </div>
                     
                     <button type="button" class="btn btn-primary" id="submit-coding">
                         REQUEST CODES
-                    </button>
-                </div>
+        </button>
+      </div>
 
                 <div id="coding-results" class="results-area"></div>
-            </div>
+      </div>
 
             <!-- Mode: EoH -->
             <div class="mode-content" data-mode="eoh">
@@ -831,30 +843,23 @@
                     MODE: EoH<br>
                     Single Ethos-of-Health reasoning cycle. No timeline integration.<br>
                     Returns hypothesis set, evidence weighting, suggested next steps.
-                </div>
-                
+    </div>
+
                 <div class="input-surface">
                     <div class="input-group">
                         <label for="eoh-symptoms">
                             PRIMARY SYMPTOMS <span class="required">*</span>
                         </label>
-                        <textarea 
-                            id="eoh-symptoms" 
-                            rows="4" 
-                            placeholder="List primary symptoms, one per line or comma-separated.&#10;Example: Fatigue, joint pain, skin rash"
-                        ></textarea>
-                    </div>
+                        <textarea id="eoh-symptoms" rows="4" placeholder="List primary symptoms, one per line or comma-separated.
+Example: Fatigue, joint pain, skin rash"></textarea>
+      </div>
 
                     <div class="input-row">
                         <div class="input-group">
                             <label for="eoh-age">
                                 PATIENT AGE
                             </label>
-                            <input 
-                                type="text" 
-                                id="eoh-age" 
-                                placeholder="Age in years or age range"
-                            />
+                            <input type="text" id="eoh-age" placeholder="Age in years or age range">
                         </div>
 
                         <div class="input-group">
@@ -866,31 +871,23 @@
                                 <option value="female">FEMALE</option>
                                 <option value="male">MALE</option>
                             </select>
-                        </div>
-                    </div>
+      </div>
+    </div>
 
                     <div class="input-group">
                         <label for="eoh-history">
                             RELEVANT HISTORY (OPTIONAL)
                         </label>
-                        <textarea 
-                            id="eoh-history" 
-                            rows="4" 
-                            placeholder="Past medical history, medications, family history, environmental factors"
-                        ></textarea>
-                    </div>
+                        <textarea id="eoh-history" rows="4" placeholder="Past medical history, medications, family history, environmental factors"></textarea>
+    </div>
 
                     <div class="input-group">
                         <label for="eoh-context">
                             CLINICAL CONTEXT (OPTIONAL)
                         </label>
-                        <textarea 
-                            id="eoh-context" 
-                            rows="3" 
-                            placeholder="Specific clinical question, differential considerations, provider specialty"
-                        ></textarea>
-                    </div>
-                    
+                        <textarea id="eoh-context" rows="3" placeholder="Specific clinical question, differential considerations, provider specialty"></textarea>
+  </div>
+
                     <button type="button" class="btn btn-primary" id="submit-eoh">
                         RUN EoH REASONING
                     </button>
@@ -900,39 +897,39 @@
             </div>
 
             <!-- Mode: EoHD -->
-            <div class="mode-content" data-mode="eohd">
+            <div class="mode-content active" data-mode="eohd">
                 <div class="mode-description">
                     MODE: EoHD<br>
                     Timeline-aware Ethos-of-Health Detective reasoning.<br>
                     Requires temporal data. Returns hypothesis evolution across time.
                 </div>
 
-                <div class="notice error">
-                    TIMELINE DATA REQUIRED<br>
-                    EoHD requires structured temporal data (symptom timeline, journal entries, or event sequence).<br>
-                    Timeline ingestion interface not yet implemented.
-                </div>
-                
                 <div class="input-surface">
                     <div class="input-group">
                         <label for="eohd-patient">
                             PATIENT IDENTIFIER (OPTIONAL)
                         </label>
-                        <input 
-                            type="text" 
-                            id="eohd-patient" 
-                            placeholder="Anonymous patient ID or case number"
-                        />
+                        <input type="text" id="eohd-patient" placeholder="Anonymous patient ID or case number">
                     </div>
 
                     <div class="input-group">
                         <label>
                             TIMELINE DATA <span class="required">*</span>
                         </label>
-                        <div class="notice">
-                            Timeline upload mechanism not yet implemented.<br>
-                            Required format: Structured temporal event data with dates, symptoms, interventions, and outcomes.<br>
-                            Minimum: 3+ events spanning at least 14 days.
+                        <div class="file-upload-container">
+                            <input type="file" id="timeline-pdf-upload" accept=".pdf" style="display: none;">
+                            <button type="button" class="btn btn-secondary" id="upload-pdf-btn">
+                                📄 INGEST TIMELINE PDF
+                            </button>
+                            <span id="uploaded-file-name" class="file-name-display">No file selected.</span>
+                        </div>
+                        <div class="input-group" id="pdf-password-group" style="display: none; margin-top: 0.5rem;">
+                            <label for="pdf-password">PDF Password (if encrypted)</label>
+                            <input type="password" id="pdf-password" placeholder="Enter password">
+                        </div>
+                        <div class="notice" style="margin-top: 0.5rem;">
+                            Session-only processing. Timeline data is cleared after analysis.<br>
+                            Required: Temporal event data with dates, symptoms, interventions, outcomes.
                         </div>
                     </div>
 
@@ -940,20 +937,12 @@
                         <label for="eohd-focus">
                             DETECTIVE FOCUS (OPTIONAL)
                         </label>
-                        <textarea 
-                            id="eohd-focus" 
-                            rows="3" 
-                            placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"
-                        ></textarea>
+                        <textarea id="eohd-focus" rows="3" placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"></textarea>
                     </div>
                     
-                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled>
-                        RUN EoHD DETECTIVE (TIMELINE REQUIRED)
+                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled="">
+                        RUN EOH DETECTIVE (TIMELINE REQUIRED)
                     </button>
-                </div>
-
-                <div class="notice error">
-                    EoHD requires timeline data ingestion (not yet implemented).
                 </div>
 
                 <div id="eohd-results" class="results-area"></div>
@@ -965,9 +954,9 @@
                     <h3>Execution Receipts</h3>
                     <div class="receipt-cache-controls">
                         <button type="button" id="toggle-receipts">Show Receipts</button>
-                        <button type="button" id="export-html" disabled>Export HTML</button>
-                        <button type="button" id="export-json" disabled>Export JSON</button>
-                        <button type="button" id="clear-receipts" disabled>Clear</button>
+                        <button type="button" id="export-html" disabled="">Export HTML</button>
+                        <button type="button" id="export-json" disabled="">Export JSON</button>
+                        <button type="button" id="clear-receipts" disabled="">Clear</button>
                     </div>
                 </div>
                 <div class="receipt-cache-content" id="receipt-cache-content">
@@ -984,11 +973,11 @@
         <div class="system-state">
             <div class="state-item">
                 <span class="label">STATUS:</span>
-                <span class="value">IDLE</span>
+                <span class="value">READY</span>
             </div>
             <div class="state-item">
                 <span class="label">MODE:</span>
-                <span class="value">NONE</span>
+                <span class="value">EOHD</span>
             </div>
             <div class="state-item">
                 <span class="label">SESSION:</span>
@@ -1111,9 +1100,9 @@
                         Receipts will appear here after running a query in any mode.
                     </div>
                 `;
-                return;
-            }
-
+          return;
+        }
+        
             // Render events
             let html = '';
             sseReceiptCache.events.forEach(event => {
@@ -1369,7 +1358,7 @@
                     
                     if (hasStarted) {
                         statusDiv.textContent = 'Connection interrupted';
-                    } else {
+      } else {
                         statusDiv.textContent = 'Connection failed - check console';
                     }
                     
@@ -1592,6 +1581,145 @@
             }
         }
 
+        async function handleEohdSubmit() {
+            // Check if PDF is selected
+            if (!selectedTimelinePdf) {
+                alert('Please select a timeline PDF first.');
+                return;
+            }
+
+            const patientId = document.getElementById('eohd-patient')?.value.trim() || 'anonymous';
+            const focus = document.getElementById('eohd-focus')?.value.trim() || '';
+            const password = document.getElementById('pdf-password')?.value || '';
+
+            const button = document.getElementById('submit-eohd');
+            const resultsArea = document.getElementById('eohd-results');
+            
+            button.classList.add('loading');
+            button.disabled = true;
+            resultsArea.classList.add('visible');
+            resultsArea.innerHTML = `
+                <div class="results-header">EoH Detective Stream</div>
+                <div class="results-loading">Uploading timeline PDF...</div>
+            `;
+
+            // Reset receipt cache
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: new Date().toISOString(),
+                events: [],
+                completed_at: null,
+                mode: 'eohd'
+            };
+
+            try {
+                // Step 1: Upload PDF
+                addReceiptEvent('event', 'eohd', {
+                    action: 'timeline_pdf_upload_started',
+                    filename: selectedTimelinePdf.name,
+                    patient_id: patientId
+                });
+
+                const formData = new FormData();
+                formData.append('file', selectedTimelinePdf);
+                if (password) formData.append('password', password);
+                formData.append('patient_id', patientId);
+
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-loading">Processing timeline PDF (this may take a minute)...</div>
+                `;
+
+                const uploadResponse = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error(`PDF upload failed: ${uploadResponse.statusText}`);
+                }
+
+                const uploadResult = await uploadResponse.json();
+                addReceiptEvent('event', 'eohd', {
+                    action: 'timeline_pdf_uploaded',
+                    session_key: uploadResult.session_key,
+                    event_count: uploadResult.event_count,
+                    edge_count: uploadResult.edge_count
+                });
+
+                // Step 2: Stream EoH Detective
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-loading">Connecting to EoH Detective stream...</div>
+                `;
+
+                let queryText = `Patient: ${patientId}\nTimeline: ${selectedTimelinePdf.name}`;
+                if (focus) queryText += `\nFocus: ${focus}`;
+
+                addReceiptEvent('event', 'eohd', {
+                    action: 'eoh_detective_requested',
+                    query: queryText,
+                    timeline_session_key: uploadResult.session_key
+                });
+
+                const url = new URL(`${API_BASE}/api/rag/eoh_detective_stream`, window.location.origin);
+                url.searchParams.set('q', queryText);
+                url.searchParams.set('timeline_session_key', uploadResult.session_key);
+                url.searchParams.set('limit', '10');
+                url.searchParams.set('with_llm', '1');
+                url.searchParams.set('llm_mode', 'chunk');
+
+                const eventSource = new EventSource(url);
+                let streamContent = '';
+
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-content" id="eohd-stream-content">Receiving stream...</div>
+                `;
+
+                eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addReceiptEvent('event', 'eohd', { sse_event: data });
+                        
+                        streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                        document.getElementById('eohd-stream-content').innerHTML = 
+                            `<pre>${streamContent}</pre>`;
+                    } catch (e) {
+                        console.error('Failed to parse SSE:', e);
+                    }
+                };
+
+                eventSource.onerror = (error) => {
+                    addReceiptEvent('error', 'eohd', { error: 'SSE connection error' });
+                    completeReceiptCache();
+                    eventSource.close();
+                    button.classList.remove('loading');
+                    button.disabled = false;
+                };
+
+                eventSource.addEventListener('done', () => {
+                    addReceiptEvent('completion', 'eohd', { action: 'stream_complete' });
+                    completeReceiptCache();
+                    eventSource.close();
+                    button.classList.remove('loading');
+                    button.disabled = false;
+                });
+
+                updateTransparencyPanelForAPICall();
+
+            } catch (error) {
+                addReceiptEvent('error', 'eohd', { error: error.message, stack: error.stack });
+                completeReceiptCache();
+                resultsArea.innerHTML = `
+                    <div class="results-header">Error</div>
+                    <div class="results-error">${error.message}</div>
+                `;
+                button.classList.remove('loading');
+                button.disabled = false;
+            }
+        }
+
         // === ANSWER FORMATTING ===
         function formatAnswer(text) {
             if (!text) return '';
@@ -1757,6 +1885,36 @@
         document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
         document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
         document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
+        document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+        
+        // EoHD Timeline PDF ingestion
+        const uploadPdfBtn = document.getElementById('upload-pdf-btn');
+        const timelinePdfFileInput = document.getElementById('timeline-pdf-upload');
+        const uploadedFileNameSpan = document.getElementById('uploaded-file-name');
+        const pdfPasswordGroup = document.getElementById('pdf-password-group');
+        const submitEohdBtn = document.getElementById('submit-eohd');
+        
+        let selectedTimelinePdf = null;
+        
+        if (uploadPdfBtn && timelinePdfFileInput) {
+            uploadPdfBtn.addEventListener('click', () => {
+                timelinePdfFileInput.click();
+            });
+            
+            timelinePdfFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    selectedTimelinePdf = file;
+                    uploadedFileNameSpan.textContent = file.name;
+                    uploadPdfBtn.textContent = `📄 ${file.name}`;
+                    pdfPasswordGroup.style.display = 'block';
+                    if (submitEohdBtn) {
+                        submitEohdBtn.disabled = false;
+                        submitEohdBtn.textContent = 'RUN EOH DETECTIVE';
+                    }
+                }
+            });
+        }
 
         // === INITIALIZATION ===
         // System starts with no mode selected
@@ -1785,6 +1943,8 @@
         completeReceiptCache();
         */
     </script>
-</body>
-</html>
+<script defer="" src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;3e58909f3d3c4de5bfef57c804addda7&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}" crossorigin="anonymous"></script>
 
+
+
+</body></html>

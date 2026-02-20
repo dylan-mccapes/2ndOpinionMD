@@ -374,6 +374,9 @@ def _apply_code_match_gating(matches: List[Dict[str, Any]], query: str) -> List[
 
             text_bits = [row.get("title") or "", row.get("text") or ""]
             meta = row.get("meta") or {}
+            # Type guard: ensure meta is dict (scanner requests sometimes send str)
+            if not isinstance(meta, dict):
+                meta = {}
             for k in ("long_title", "label", "preferred_term", "description"):
                 v = meta.get(k)
                 if v:

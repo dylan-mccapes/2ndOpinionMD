@@ -2437,9 +2437,25 @@ EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT = textwrap.dedent(
 
     - Be cautious:
         * Distinguish explicit evidence from inference.
-        * When you infer (e.g., “likely RA flare”), state uncertainty explicitly.
+        * When you infer (e.g., "likely RA flare"), state uncertainty explicitly.
 
     - Do NOT include any comments, explanations, or text outside the JSON.
+    
+    OPPORTUNISTIC GRAPH ENRICHMENT (Background Task)
+    ------------------------------------------------
+    While reviewing the timeline context for summarization, you may notice
+    obvious relationships between events that could enrich a timeline graph:
+    
+    - Medications linked to symptom changes (treatment connascence)
+    - Lab results supporting diagnoses (diagnostic connascence)
+    - Temporal clusters of related events (temporal connascence)
+    - Obvious metadata errors (wrong timestamps, etc)
+    
+    You don't need to output these (your JSON remains the same 3 keys).
+    This is just context for your internal processing: while synthesizing
+    the narrative, your awareness of these relationships will naturally
+    improve summary quality. A separate graph enrichment pass will occur
+    after you complete your summary.
     """
 ).strip()
 

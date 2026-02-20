@@ -1,0 +1,53 @@
+#!/bin/bash
+# Create .BeatingHeart venv for 2OPMD (local server). Run from 2ndOpinionMD-MVP directory.
+# Uses Python 3.12 or 3.11 if available (Python 3.14 is too new for many wheels, e.g. scikit-learn).
+# After: source .BeatingHeart/bin/activate && python server/scripts/run_postgres_app.py
+# Config: .pulse or .env (and optionally server/.pulse or server/.env) — see ENV_STRATEGY in PortalVision/game_plans.
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "========================================"
+echo ".BeatingHeart venv setup (2OPMD)"
+echo "========================================"
+
+# Require Python 3.12 (3.14+ breaks scikit-learn/numpy build)
+PYTHON=""
+if command -v python3.12 &>/dev/null; then
+  PYTHON=python3.12
+fi
+if [[ -z "$PYTHON" ]]; then
+  echo "ERROR: python3.12 is required but not found."
+  echo "Install it (e.g. brew install python@3.12), ensure it's on PATH, then re-run this script."
+  exit 1
+fi
+echo "Using: $PYTHON ($($PYTHON --version 2>&1))"
+
+if [[ -d ".BeatingHeart" ]]; then
+  echo "Removing existing .BeatingHeart..."
+  rm -rf .BeatingHeart
+fi
+
+echo "Creating .BeatingHeart venv..."
+"$PYTHON" -m venv .BeatingHeart
+source .BeatingHeart/bin/activate
+
+echo "Upgrading pip..."
+pip install --quiet --upgrade pip
+
+echo "Installing server requirements (uvicorn, fastapi, etc.)..."
+pip install -r server/requirements.txt
+
+echo ""
+echo "✅ .BeatingHeart ready."
+echo ""
+echo "Activate and run server:"
+echo "  source .BeatingHeart/bin/activate"
+echo "  python server/scripts/run_postgres_app.py"
+echo ""
+echo "Config: copy .env.example to .pulse or .env."
+echo "  SYNC_DATABASE_URL (postgresql://...) is used for rag_corpus and is the most important."
+echo "  DATABASE_URL can be the same URL; the app will use +asyncpg for the async server."
+echo "  (Optional: server/.pulse or server/.env for overrides; .pulse is loaded before .env)"
+echo ""

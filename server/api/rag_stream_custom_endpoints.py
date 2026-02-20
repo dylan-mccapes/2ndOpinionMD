@@ -4,10 +4,20 @@ from typing import Optional, List, Any, AsyncIterator, Dict
 import json
 import logging
 import time
+import asyncio
 from datetime import datetime, date
 
-from fastapi import APIRouter, Query, Request, Depends
+from fastapi import APIRouter, Query, Request, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
+
+# Privacy: Request models + anonymization agent
+from .rag_stream_models import (
+    AskStreamRequest,
+    CodingStreamRequest,
+    EohStreamRequest,
+    EohDetectiveStreamRequest,
+)
+from .anon_query_agent import anonymize_query_for_logging
 from server.timeline.engine import TimelineEngine, load_patient_timeline
 from server.timeline.engine import TimelineContext
 from server.eoh.timeline_summarizer import summarize_timeline_for_eoh, TimelineSummaries, SUMMARY_MAX_CHARS
@@ -1734,60 +1744,10 @@ async def coding_stream_event_generator(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/ask_stream")
+@router.post("/ask_stream")
 async def ask_stream(
     request: Request,
-    q: str = Query(..., description="User clinical question"),
-    sources: Optional[str] = Query(
-        None,
-        description=(
-            "Comma-separated internal sources. If omitted, all known "
-            "guideline-ish sources (ACR/EULAR/NICE/ESMO/KDIGO/WHO/etc.) "
-            "are used, discovered dynamically from the MKG."
-        ),
-    ),
-    limit: int = Query(12, ge=1, le=64),
-    ctx_k: int = Query(24, ge=1, le=128),
-    valyu_k: int = Query(4, ge=0, le=16),
-    with_llm: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=run LLM, 0=return context only",
-    ),
-    llm_mode: str = Query(
-        "chunk",
-        description="chunk=stream chunks, delta=tiny tokens (llm_delta), ctx=only context",
-    ),
-    use_valyu: int = Query(
-        0,
-        ge=0,
-        le=1,
-        description="1=include Valyu matches, 0=disable",
-    ),
-    valyu_mode: str = Query(
-        "search",
-        description="Valyu mode: 'search' (evidence) or 'answer'.",
-    ),
-    valyu_raw: int = Query(
-        0,
-        description=(
-            "1=request full contents from Valyu (stored in meta.full_text when "
-            "supported); context still uses snippets."
-        ),
-    ),
-    valyu_sources: Optional[str] = Query(
-        None,
-        description="Optional CSV of Valyu sources (e.g. 'valyu/valyu-pubmed')",
-    ),
-    valyu_boost: float = Query(
-        1.0,
-        description="Reserved for future tuning of Valyu weighting",
-    ),
-    use_ethos: int = Query(
-        0,
-        description="1=include ethos_model rows and force-keep them in context",
-    ),
+    body: AskStreamRequest,
     pool: Any = Depends(resolve_pg_pool),
 ) -> EventSourceResponse:
     """
@@ -1796,7 +1756,28 @@ async def ask_stream(
     Uses the explicit ask_stream_event_generator (non-coding mode) with:
       - Default sources = guideline-ish ASK_STREAM_DEFAULT_SOURCES
       - Optional Valyu tail
+    
+    Privacy: POST body prevents query logging in URLs/reverse proxies.
+    Anonymized query logged for visibility (no PII/PHI).
     """
+    
+    # Start anonymization in parallel (non-blocking)
+    anon_task = asyncio.create_task(anonymize_query_for_logging(body.q))
+    
+    # Extract values from body (use the names from the Pydantic model)
+    q = body.q
+    sources = body.sources
+    limit = body.limit
+    ctx_k = body.ctx_k
+    valyu_k = body.valyu_k
+    with_llm = body.with_llm
+    llm_mode = body.llm_mode
+    use_valyu = body.use_valyu
+    valyu_mode = body.valyu_mode
+    valyu_raw = body.valyu_raw
+    valyu_sources = body.valyu_sources
+    valyu_boost = body.valyu_boost
+    use_ethos = body.use_ethos
 
     # Parse sources list
     if sources:
@@ -1826,6 +1807,15 @@ async def ask_stream(
         db_sources = merged
 
     warning = _send_large_request_warning(q, db_sources, limit)
+    
+    # Get anonymized query for logging (with timeout fallback)
+    try:
+        anon_query = await asyncio.wait_for(anon_task, timeout=0.5)
+    except asyncio.TimeoutError:
+        anon_query = "query_received: anonymization_still_processing"
+    
+    # Log with anonymized query (privacy-safe)
+    logger.info(f"Query: {anon_query}, endpoint: /ask_stream, sources: {len(db_sources)}, limit: {limit}")
 
     async def event_gen() -> AsyncIterator[Dict[str, str]]:
         if warning:
@@ -1859,30 +1849,10 @@ async def ask_stream(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/coding_stream")
+@router.post("/coding_stream")
 async def coding_stream(
     request: Request,
-    q: str = Query(..., description="Coding / abstraction query"),
-    sources: Optional[str] = Query(
-        None,
-        description=(
-            "Comma-separated source list. If omitted, CODING_DEFAULT_SOURCES "
-            "from stream_config is used."
-        ),
-    ),
-    limit: int = Query(BASE_LIMIT, ge=1, le=64),
-    ctx_k: int = Query(
-        max(BASE_RRF_K, 128),
-        ge=1,
-        le=128,
-        description="Number of internal context chunks (pre-fusion)",
-    ),
-    valyu_k: int = Query(4, ge=0, le=16),
-    with_llm: int = Query(1, description="1=run LLM, 0=return context only"),
-    llm_mode: str = Query(
-        "chunk",
-        description="chunk=stream chunks, delta=tiny tokens (llm_delta), ctx=only context",
-    ),
+    body: CodingStreamRequest,
     pool: Any = Depends(resolve_pg_pool),
 ) -> EventSourceResponse:
     """
@@ -1891,7 +1861,23 @@ async def coding_stream(
     Uses the explicit coding_stream_event_generator (coding mode) with:
       - Default sources = CODING_DEFAULT_SOURCES
       - Clamp source fan-out to MAX_CODING_SOURCES with a warning
+    
+    Privacy: POST body prevents query logging in URLs/reverse proxies.
+    Anonymized query logged for visibility (no PII/PHI).
     """
+    
+    # Start anonymization in parallel (non-blocking)
+    anon_task = asyncio.create_task(anonymize_query_for_logging(body.q))
+    
+    # Extract values from body
+    q = body.q
+    sources = body.sources
+    limit = body.limit
+    ctx_k = body.ctx_k
+    valyu_k = body.valyu_k
+    with_llm = body.with_llm
+    llm_mode = body.llm_mode
+    
     if sources:
         raw_sources = [s.strip() for s in sources.split(",") if s.strip()]
         seen = set()
@@ -1932,6 +1918,15 @@ async def coding_stream(
             len(db_sources),
             db_sources,
         )
+    
+    # Get anonymized query for logging (with timeout fallback)
+    try:
+        anon_query = await asyncio.wait_for(anon_task, timeout=0.5)
+    except asyncio.TimeoutError:
+        anon_query = "query_received: anonymization_still_processing"
+    
+    # Log with anonymized query (privacy-safe)
+    logger.info(f"Query: {anon_query}, endpoint: /coding_stream, sources: {len(db_sources)}, limit: {limit}")
 
     async def event_gen():
         if clamped:
@@ -4538,94 +4533,17 @@ async def eoh_stream_event_generator(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/eoh_stream")
+@router.post("/eoh_stream")
 async def eoh_stream(
     request: Request,
-    q: str = Query(..., description="EoH / Ethos-of-Health grading/QA query"),
-    sources: Optional[str] = Query(
-        None,
-        description=(
-            "Comma-separated internal sources. If omitted, uses guideline-ish "
-            "sources plus the Ethos/EoH source."
-        ),
-    ),
-    limit: int = Query(10, ge=1, le=64),
-    ctx_k: int = Query(32, ge=1, le=128),
-    valyu_k: int = Query(
-        3,
-        ge=0,
-        le=16,
-        description="Default 0 for EoH mode (no Valyu); can be overridden."
-    ),
-    with_llm: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=run LLM, 0=return context only",
-    ),
-    llm_mode: str = Query(
-        "chunk",
-        description="chunk=stream chunks, delta=tiny tokens (llm_delta), ctx=only context",
-    ),
-    use_valyu: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=include Valyu matches, 0=disable (default for EoH).",
-    ),
-    valyu_mode: str = Query(
-        "search",
-        description="Valyu mode: 'search' (evidence) or 'answer'.",
-    ),
-    valyu_raw: int = Query(
-        0,
-        description=(
-            "1=request full contents from Valyu (stored in meta.full_text when "
-            "supported); context still uses snippets."
-        ),
-    ),
-    valyu_sources: Optional[str] = Query(
-        None,
-        description="Optional CSV of Valyu sources (e.g. 'valyu/valyu-pubmed')",
-    ),
-    valyu_boost: float = Query(
-        1.0,
-        description="Reserved for future tuning of Valyu weighting",
-    ),
-    patient_state: Optional[str] = Query(
-        None,
-        description="Optional JSON string with patient state summary for EoH router",
-    ),
-    debug: bool = Query(
-        False,
-        description="Emit extra debug events including fused context text (context_fused)",
-    ),
-    use_timeline: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=load patient timeline from DB and inject into context, 0=disable (default).",
-    ),
-    timeline_patient_id: Optional[str] = Query(
-        None,
-        description="Patient ID for timeline loading (required if use_timeline=1).",
-    ),
+    body: EohStreamRequest,
     pool: Any = Depends(resolve_pg_pool),
-    research: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=enable case analogs (MIMIC-4 ICU notes) and optional research helpers for this query",
-    ),
-    enable_gap: int = Query(
-        1,
-        ge=0,
-        le=1,
-        description="1=run EoH gap retrieval pass, 0=skip (for perf/debug).",
-    ),
 ) -> EventSourceResponse:
     """
     EoH / Ethos-of-Health mode with LLM router integration.
+    
+    Privacy: POST body prevents query logging in URLs/reverse proxies.
+    Anonymized query logged for visibility (no PII/PHI).
 
     This endpoint is now planner-first:
     1. Calls the EoH LLM router to create a module/doc-handle plan
@@ -4638,6 +4556,30 @@ async def eoh_stream(
     - eoh_router_plan: Full router plan JSON
     - eoh_retrieval_plan: Compact retrieval summary with question_type and handles
     """
+    
+    # Start anonymization in parallel (non-blocking)
+    anon_task = asyncio.create_task(anonymize_query_for_logging(body.q))
+    
+    # Extract values from body
+    q = body.q
+    sources = body.sources
+    limit = body.limit
+    ctx_k = body.ctx_k
+    valyu_k = body.valyu_k
+    with_llm = body.with_llm
+    llm_mode = body.llm_mode
+    use_valyu = body.use_valyu
+    valyu_mode = body.valyu_mode
+    valyu_raw = body.valyu_raw
+    valyu_sources = body.valyu_sources
+    valyu_boost = body.valyu_boost
+    patient_state = body.patient_state
+    debug = body.debug
+    use_timeline = body.use_timeline
+    timeline_patient_id = body.timeline_patient_id
+    research = body.research
+    enable_gap = body.enable_gap
+    
     if sources:
         raw_sources = [s.strip() for s in sources.split(",") if s.strip()]
         seen = set()
@@ -4665,6 +4607,15 @@ async def eoh_stream(
         db_sources = merged
 
     warning = _send_large_request_warning(q, db_sources, limit)
+    
+    # Get anonymized query for logging (with timeout fallback)
+    try:
+        anon_query = await asyncio.wait_for(anon_task, timeout=0.5)
+    except asyncio.TimeoutError:
+        anon_query = "query_received: anonymization_still_processing"
+    
+    # Log with anonymized query (privacy-safe)
+    logger.info(f"Query: {anon_query}, endpoint: /eoh_stream, sources: {len(db_sources)}, limit: {limit}, timeline: {bool(use_timeline)}")
 
     async def event_gen() -> AsyncIterator[Dict[str, str]]:
         if warning:
@@ -5431,67 +5382,11 @@ async def eoh_detective_stream_event_generator(
 # EoH Detective Stream
 # ---------------------------------------------------------------------------
 
-@router.get("/eoh_detective_stream")
+@router.post("/eoh_detective_stream")
 async def eoh_detective_stream(
     request: Request,
-
-    # ----------------------------
-    # Canonical required inputs
-    # ----------------------------
-    q: Optional[str] = Query(None, description="High-level detective question or focus"),
-    timeline_patient_id: Optional[str] = Query(None, description="Patient id in ehr.patient_timeline"),
-
-    # ----------------------------
-    # Aliases for nicer UX / backwards-compat
-    # ----------------------------
-    question: Optional[str] = Query(None, description="Alias for q"),
-    patient_id: Optional[str] = Query(None, description="Alias for timeline_patient_id"),
-
-    # ----------------------------
-    # Run label / controls
-    # ----------------------------
-    focus: Optional[str] = Query(None, description="Optional short label for this detective run"),
-    max_steps: int = Query(6, ge=1, le=12),
-
-    # ----------------------------
-    # Source selection / retrieval knobs
-    # ----------------------------
-    sources: Optional[str] = Query(
-        None,
-        description="Comma-separated internal sources (same semantics as /eoh_stream)",
-    ),
-    limit: int = Query(10, ge=1, le=32),
-    ctx_k: int = Query(32, ge=4, le=128),
-
-    # ----------------------------
-    # Valyu knobs
-    # ----------------------------
-    valyu_k: int = Query(3, ge=0, le=4),
-    use_valyu: bool = Query(True),
-    valyu_mode: str = Query("search"),
-    valyu_raw: bool = Query(True),
-    valyu_sources: Optional[str] = Query(None),
-    valyu_boost: float = Query(1.0),
-
-    # ----------------------------
-    # LLM controls
-    # ----------------------------
-    with_llm: bool = Query(True),
-    llm_mode: str = Query("chunk"),
-
-    # ----------------------------
-    # Research + gap
-    # ----------------------------
-    research: int = Query(0, ge=0, le=1),
-    enable_gap: int = Query(1, ge=0, le=1),
-
-    # alias for enable_gap (so old curls keep working)
-    use_gap: Optional[int] = Query(None, description="Alias for enable_gap (0/1)"),
-
-    # ----------------------------
-    # Dependencies
-    # ----------------------------
-    pool: Any = Depends(resolve_pg_pool),  # noqa: F821 (keep your existing import)
+    body: EohDetectiveStreamRequest,
+    pool: Any = Depends(resolve_pg_pool),
 ):
     """
     Detective wrapper endpoint.
@@ -5499,17 +5394,28 @@ async def eoh_detective_stream(
       - q, timeline_patient_id
     and friendly aliases:
       - question, patient_id
+    
+    Privacy: POST body prevents query logging in URLs/reverse proxies.
+    Anonymized query logged for visibility (no PII/PHI).
     """
+    
+    # Start anonymization in parallel (non-blocking) - use q or question, whichever is available
+    query_text = (body.q or body.question or "").strip()
+    if query_text:
+        anon_task = asyncio.create_task(anonymize_query_for_logging(query_text))
+    else:
+        anon_task = None
 
     # ----------------------------
     # Normalize aliases
     # ----------------------------
-    q_final = (q or question or "").strip()
-    pid_final = (timeline_patient_id or patient_id or "").strip()
+    q_final = query_text
+    pid_final = (body.timeline_patient_id or body.patient_id or "").strip()
 
     # allow old "use_gap" param to override enable_gap
-    if use_gap is not None:
-        enable_gap = int(use_gap)
+    enable_gap = body.enable_gap
+    if body.use_gap is not None:
+        enable_gap = int(body.use_gap)
 
     if not q_final:
         raise HTTPException(
@@ -5521,20 +5427,45 @@ async def eoh_detective_stream(
             status_code=422,
             detail="Missing required query param: timeline_patient_id (or alias patient_id)",
         )
-    focus = (focus or "").strip() or None
-    sources = (sources or "").strip() or None
-    valyu_mode = (valyu_mode or "search").strip()
-    llm_mode = (llm_mode or "chunk").strip()
+    
+    # Extract other parameters from body
+    focus = (body.focus or "").strip() or None
+    sources = (body.sources or "").strip() or None
+    max_steps = body.max_steps
+    limit = body.limit
+    ctx_k = body.ctx_k
+    valyu_k = body.valyu_k
+    use_valyu = body.use_valyu
+    valyu_mode = (body.valyu_mode or "search").strip()
+    valyu_raw = body.valyu_raw
+    valyu_sources = body.valyu_sources
+    valyu_boost = body.valyu_boost
+    with_llm = body.with_llm
+    llm_mode = (body.llm_mode or "chunk").strip()
+    research = body.research
+    
     # Parse sources similar to your existing eoh_stream route
     if sources:
         db_sources = [s.strip() for s in sources.split(",") if s.strip()]
     else:
         db_sources = list(EOH_STREAM_DEFAULT_SOURCES)
+    
+    # Get anonymized query for logging (with timeout fallback)
+    if anon_task:
+        try:
+            anon_query = await asyncio.wait_for(anon_task, timeout=0.5)
+        except asyncio.TimeoutError:
+            anon_query = "query_received: anonymization_still_processing"
+    else:
+        anon_query = "query_received: no_query_text"
+    
+    # Log with anonymized query (privacy-safe)
+    logger.info(f"Query: {anon_query}, endpoint: /eoh_detective_stream, patient_id: [REDACTED], max_steps: {max_steps}")
 
     gen = eoh_detective_stream_event_generator(
         request=request,
-        q=q,
-        timeline_patient_id=timeline_patient_id,
+        q=q_final,
+        timeline_patient_id=pid_final,
         pool=pool,
         focus=focus,
         max_steps=max_steps,
@@ -5552,4 +5483,4 @@ async def eoh_detective_stream(
         research=research,
         enable_gap=enable_gap,
     )
-    return EventSourceResponse(gen)
+    return EventSourceResponse(gen, media_type="text/event-stream")

@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2OPMD — Patient Portal</title>
+    <style>
+        /* === RESET === */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* === ROOT VARIABLES (matched to Clinical Reasoning Console) === */
+        :root {
+            --color-bg: #f5f5f5;
+            --color-surface: #ffffff;
+            --color-surface-hover: #f0f0f0;
+            --color-border: #d0d0d0;
+            --color-border-strong: #b0b0b0;
+            --color-text-primary: #1a1a1a;
+            --color-text-secondary: #4a4a4a;
+            --color-text-dim: #888888;
+            --color-accent: #3b6ea5;
+            --color-accent-hover: #2d5580;
+            --color-accent-soft: #eef4fa;
+            --color-success: #2f855a;
+            --color-success-soft: #f0fff4;
+            --color-warning: #d69e2e;
+            --color-warning-soft: #fffff0;
+            --color-error: #c53030;
+            --color-error-soft: #fff5f5;
+            --color-warm: #6b46c1;
+            --color-warm-soft: #faf5ff;
+            --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+            --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+            --transition: 150ms ease;
+        }
+
+        /* === BASE === */
+        html, body {
+            width: 100%; min-height: 100vh;
+            background: var(--color-bg);
+            color: var(--color-text-primary);
+            font-family: var(--font-sans);
+            font-size: 15px;
+            line-height: 1.65;
+        }
+
+        /* === TOP BAR === */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-brand {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            letter-spacing: 0.04em;
+        }
+        .topbar-brand small {
+            font-weight: 400;
+            color: var(--color-text-dim);
+            font-size: 11px;
+            margin-left: 8px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .topbar-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .btn {
+            padding: 8px 18px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border: 1.5px solid var(--color-border-strong);
+            border-radius: var(--radius);
+            background: var(--color-surface);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover {
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+            background: var(--color-accent-soft);
+        }
+        .btn-primary {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: var(--color-accent-hover);
+            border-color: var(--color-accent-hover);
+            color: #fff;
+        }
+        .btn-close {
+            border-color: var(--color-error);
+            color: var(--color-error);
+        }
+        .btn-close:hover {
+            background: var(--color-error-soft);
+        }
+        .btn-vault {
+            border-color: var(--color-warm);
+            color: var(--color-warm);
+        }
+        .btn-vault:hover {
+            background: var(--color-warm-soft);
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--color-text-dim);
+            margin-bottom: 6px;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            font-family: var(--font-sans);
+            font-size: 14px;
+            border: 1.5px solid var(--color-border);
+            border-radius: var(--radius);
+            background: var(--color-bg);
+            color: var(--color-text-primary);
+            transition: border-color var(--transition);
+        }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: var(--color-accent);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        .form-msg {
+            font-size: 13px;
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+        }
+        .form-msg.error { background: var(--color-error-soft); color: var(--color-error); }
+        .form-msg.success { background: var(--color-success-soft); color: var(--color-success); }
+        .form-msg.info { background: var(--color-accent-soft); color: var(--color-accent); }
+
+        /* === PORTAL (post-session) === */
+        .portal {
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 32px 24px 80px;
+        }
+        .portal-header {
+            margin-bottom: 32px;
+        }
+        .portal-header h1 {
+            font-family: var(--font-mono);
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .portal-header .session-info {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+            letter-spacing: 0.04em;
+        }
+        .session-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .session-badge.active {
+            background: var(--color-success-soft);
+            color: var(--color-success);
+        }
+
+        /* === COMMAND TABS === */
+        .command-tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--color-border);
+            padding-bottom: 0;
+        }
+        .command-tab {
+            padding: 10px 20px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--color-text-dim);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .command-tab:hover {
+            color: var(--color-text-secondary);
+        }
+        .command-tab.active {
+            color: var(--color-accent);
+            border-bottom-color: var(--color-accent);
+        }
+
+        /* === COMMAND PANELS === */
+        .command-panel {
+            display: none;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+        .command-panel.active { display: block; }
+        .command-panel h3 {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .command-panel .panel-desc {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.7;
+        }
+
+        /* === JOURNAL ENTRIES === */
+        .journal-list {
+            margin-top: 20px;
+        }
+        .journal-entry {
+            padding: 14px 16px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            background: var(--color-bg);
+        }
+        .journal-entry .entry-date {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+        }
+        .journal-entry .entry-text {
+            font-size: 14px;
+            margin-top: 4px;
+            color: var(--color-text-primary);
+        }
+
+        /* === RESULTS AREA === */
+        .results-area {
+            margin-top: 20px;
+            padding: 16px;
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            line-height: 1.7;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .results-area:empty { display: none; }
+        .results-area .loading {
+            color: var(--color-text-dim);
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        /* === FILE DROP ZONE === */
+        .drop-zone {
+            border: 2px dashed var(--color-border-strong);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            text-align: center;
+            color: var(--color-text-dim);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition);
+            margin-bottom: 16px;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--color-accent);
+            background: var(--color-accent-soft);
+            color: var(--color-accent);
+        }
+        .drop-zone.has-file {
+            border-color: var(--color-success);
+            background: var(--color-success-soft);
+            color: var(--color-success);
+        }
+
+        /* === FOOTER === */
+        .portal-footer {
+            text-align: center;
+            padding: 40px 24px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+            line-height: 1.8;
+        }
+
+        /* === STATUS BAR === */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 6px 24px;
+            background: var(--color-surface);
+            border-top: 1px solid var(--color-border);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+            display: flex;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        /* === UTILITIES === */
+        .hidden { display: none !important; }
+        .mt-12 { margin-top: 12px; }
+        .mt-20 { margin-top: 20px; }
+        .flex-row { display: flex; gap: 10px; align-items: center; }
+    </style>
+</head>
+<body>
+
+    <!-- ===== TOP BAR ===== -->
+    <div class="topbar">
+        <div class="topbar-brand">
+            2OPMD <small>Patient Portal</small>
+        </div>
+        <div class="topbar-actions">
+            <a id="btn-vault" class="btn btn-vault" href="index.html">Epistemic HTML Vault</a>
+            <button id="btn-close-session" class="btn btn-close" onclick="closeSession()">Close Session</button>
+        </div>
+    </div>
+
+    <!-- ===== PORTAL (post-session) ===== -->
+    <div id="view-portal" class="hidden">
+        <div class="portal">
+            <div class="portal-header">
+                <h1>Your Health Portal</h1>
+                <div class="session-info">
+                    <span class="session-badge active">Session Active</span>
+                    &nbsp; <span id="session-operator-type"></span>
+                    &nbsp; Timeline: <span id="session-timeline-id">none</span>
+                </div>
+            </div>
+
+            <!-- Command Tabs -->
+            <div class="command-tabs">
+                <button class="command-tab active" onclick="switchTab('journal')">Journal</button>
+                <button class="command-tab" onclick="switchTab('ingest')">Documents</button>
+                <button class="command-tab" onclick="switchTab('enrich')">Graph</button>
+                <button class="command-tab" onclick="switchTab('query')">Query</button>
+            </div>
+
+            <!-- ===== JOURNAL PANEL ===== -->
+            <div id="panel-journal" class="command-panel active">
+                <h3>Health Journal</h3>
+                <p class="panel-desc">
+                    Record symptoms, observations, and daily notes. Your journal builds a private timeline that helps identify patterns over time.
+                </p>
+                <div class="form-group">
+                    <label>New Entry</label>
+                    <textarea id="journal-text" placeholder="How are you feeling today? Any symptoms, changes, or observations worth noting..."></textarea>
+                </div>
+                <div class="flex-row">
+                    <button class="btn btn-primary" onclick="saveJournalEntry()">Save Entry</button>
+                    <div id="journal-save-msg"></div>
+                </div>
+
+                <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--color-border);">
+                    <h3>Ask About Your Journal</h3>
+                    <p class="panel-desc">Query your journal entries only. This stays within your personal records.</p>
+                    <div class="form-group">
+                        <input type="text" id="journal-query" placeholder="e.g. When did I last report joint pain?">
+                    </div>
+                    <button class="btn" onclick="queryJournal()">Ask Journal</button>
+                    <div id="journal-query-results" class="results-area"></div>
+                </div>
+
+                <div class="journal-list mt-20" id="journal-entries">
+                    <!-- populated dynamically -->
+                </div>
+            </div>
+
+            <!-- ===== DOCUMENT INGESTION PANEL ===== -->
+            <div id="panel-ingest" class="command-panel">
+                <h3>Document Upload</h3>
+                <p class="panel-desc">
+                    Upload medical records, lab results, imaging reports, or clinical notes.
+                    Documents are parsed, indexed, and added to your timeline. Supported: PDF.
+                </p>
+                <div id="doc-drop-zone" class="drop-zone" onclick="document.getElementById('doc-file-input').click()">
+                    Drop a PDF here or click to select
+                </div>
+                <input type="file" id="doc-file-input" accept=".pdf" style="display:none">
+                <div class="form-group">
+                    <label>Patient ID (for testing)</label>
+                    <input type="text" id="doc-patient-id" placeholder="e.g. NormanEricRoberts" value="NormanEricRoberts">
+                </div>
+                <div class="form-group">
+                    <label>Document Date (optional)</label>
+                    <input type="date" id="doc-date">
+                </div>
+                <div class="form-group">
+                    <label>Notes (optional)</label>
+                    <input type="text" id="doc-notes" placeholder="Brief description of this document">
+                </div>
+                <button class="btn btn-primary" onclick="uploadDocument()" id="btn-upload-doc">Upload &amp; Process</button>
+                <div id="doc-upload-msg"></div>
+                <div id="doc-upload-results" class="results-area"></div>
+            </div>
+
+            <!-- ===== GRAPH ENRICHMENT PANEL ===== -->
+            <div id="panel-enrich" class="command-panel">
+                <h3>Knowledge Graph</h3>
+                <p class="panel-desc">
+                    Query the medical knowledge graph directly. This searches across ICD-10, HPO, LOINC, RxNorm, ClinGen, Orphanet, clinical guidelines, and research literature.
+                </p>
+                <div class="form-group">
+                    <label>Clinical Text or Question</label>
+                    <textarea id="kg-text" placeholder="e.g. Patient presents with symmetric polyarthritis, elevated CRP, positive RF and anti-CCP..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Lab Values (optional)</label>
+                    <input type="text" id="kg-labs" placeholder="e.g. CRP 15.5, ESR 42, RF positive">
+                </div>
+                <div class="flex-row">
+                    <button class="btn btn-primary" onclick="queryKG()">Resolve Against Graph</button>
+                </div>
+                <div id="kg-results" class="results-area"></div>
+            </div>
+
+            <!-- ===== QUERY PANEL ===== -->
+            <div id="panel-query" class="command-panel">
+                <h3>Timeline Query</h3>
+                <p class="panel-desc">
+                    Ask questions about your complete medical timeline — documents, journal entries, lab results, and clinical notes.
+                    This uses retrieval-augmented generation across your full record.
+                </p>
+                <div class="form-group">
+                    <label>Your Question</label>
+                    <input type="text" id="timeline-query" placeholder="e.g. What is the trend in my inflammatory markers over the past year?">
+                </div>
+                <div class="flex-row">
+                    <button class="btn btn-primary" onclick="queryTimeline()">Ask</button>
+                </div>
+                <div id="timeline-results" class="results-area"></div>
+            </div>
+        </div>
+
+        <div class="portal-footer">
+            2ndOpinionMD — Your data. Your health. Your agency.<br>
+            Nothing leaves this system without your consent.
+        </div>
+    </div>
+
+
+    <!-- ===== STATUS BAR ===== -->
+    <div class="status-bar">
+        <span id="status-left">Status: Idle</span>
+        <span id="status-right">Session: None</span>
+    </div>
+
+    <!-- ===== SCRIPT ===== -->
+    <script>
+    'use strict';
+
+    // === CONFIG ===
+    const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
+        ? 'http://localhost:8000'
+        : (window.location.hostname === '2ndopinionmd.ai' ? '' : 'http://localhost:8000');
+
+    // === STATE (persisted in localStorage for cross-page session) ===
+    let sessionToken = localStorage.getItem('2opmd_session_token') || null;
+    let operatorType = localStorage.getItem('2opmd_operator_type') || null;
+    let timelineId   = localStorage.getItem('2opmd_timeline_id') || null;
+
+    // === INIT ===
+    document.addEventListener('DOMContentLoaded', () => {
+        if (!sessionToken) {
+            // No session — return to Clinical Console for auth
+            window.location.href = 'index.html';
+            return;
+        }
+        enterPortal();
+        setupDropZone();
+    });
+
+    // === VIEW MANAGEMENT ===
+    function enterPortal() {
+        document.getElementById('view-portal').classList.remove('hidden');
+
+        // Session info
+        document.getElementById('session-operator-type').textContent = operatorType || '';
+        document.getElementById('session-timeline-id').textContent = timelineId || 'none';
+        document.getElementById('status-right').textContent = 'Session: Active';
+
+        // Load journal entries
+        loadJournalEntries();
+    }
+
+    // === TAB SWITCHING ===
+    function switchTab(tabId) {
+        document.querySelectorAll('.command-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.command-panel').forEach(p => p.classList.remove('active'));
+
+        event.target.classList.add('active');
+        document.getElementById('panel-' + tabId).classList.add('active');
+    }
+
+    // === STATUS ===
+    function setStatus(text) {
+        document.getElementById('status-left').textContent = 'Status: ' + text;
+    }
+
+    function showMsg(id, text, type) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'form-msg ' + (type || 'info');
+        el.textContent = text;
+        el.style.display = 'block';
+    }
+
+    function clearMsg(id) {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = ''; el.style.display = 'none'; }
+    }
+
+    // === SESSION: CLOSE ===
+    async function closeSession() {
+        if (!sessionToken) return;
+        setStatus('Closing session...');
+        try {
+            await fetch(`${API_BASE}/api/session/close`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${sessionToken}` }
+            });
+        } catch (_) { /* best effort */ }
+
+        sessionToken = null;
+        operatorType = null;
+        timelineId   = null;
+        localStorage.removeItem('2opmd_session_token');
+        localStorage.removeItem('2opmd_operator_type');
+        localStorage.removeItem('2opmd_timeline_id');
+        sessionStorage.removeItem('2opmd_session_token');
+        // Return to Clinical Console
+        window.location.href = 'index.html';
+    }
+
+    // === JOURNAL ===
+    async function loadJournalEntries() {
+        if (!sessionToken) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/journal/entries`, {
+                headers: { 'Authorization': `Bearer ${sessionToken}` }
+            });
+            if (!r.ok) return;
+            const entries = await r.json();
+            const container = document.getElementById('journal-entries');
+            if (!entries.length) {
+                container.innerHTML = '<p style="color:var(--color-text-dim); font-size:13px;">No journal entries yet. Write your first entry above.</p>';
+                return;
+            }
+            container.innerHTML = entries.slice(0, 20).map(e => `
+                <div class="journal-entry">
+                    <div class="entry-date">${e.date || e.created_at || ''}</div>
+                    <div class="entry-text">${escapeHtml((e.notes || e.text || '').slice(0, 300))}${(e.notes || e.text || '').length > 300 ? '...' : ''}</div>
+                </div>
+            `).join('');
+        } catch (_) {}
+    }
+
+    async function saveJournalEntry() {
+        const text = document.getElementById('journal-text').value.trim();
+        if (!text) return showMsg('journal-save-msg', 'Write something first.', 'error');
+
+        setStatus('Saving journal entry...');
+        clearMsg('journal-save-msg');
+        try {
+            const r = await fetch(`${API_BASE}/api/journal/entry`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                body: JSON.stringify({ text })
+            });
+            if (!r.ok) throw new Error('Failed to save');
+            document.getElementById('journal-text').value = '';
+            showMsg('journal-save-msg', 'Entry saved.', 'success');
+            setStatus('Idle');
+            loadJournalEntries();
+        } catch (e) {
+            showMsg('journal-save-msg', e.message, 'error');
+            setStatus('Error');
+        }
+    }
+
+    async function queryJournal() {
+        const query = document.getElementById('journal-query').value.trim();
+        if (!query) return;
+        const area = document.getElementById('journal-query-results');
+        area.innerHTML = '<div class="loading">Searching journal...</div>';
+        setStatus('Querying journal...');
+
+        try {
+            const r = await fetch(`${API_BASE}/api/journal/query-ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                body: JSON.stringify({ query })
+            });
+            const data = await r.json();
+            area.innerHTML = `<div>${escapeHtml(data.answer || data.response || JSON.stringify(data, null, 2))}</div>`;
+            setStatus('Idle');
+        } catch (e) {
+            area.innerHTML = `<div style="color:var(--color-error)">${e.message}</div>`;
+            setStatus('Error');
+        }
+    }
+
+    // === DOCUMENT INGESTION ===
+    function setupDropZone() {
+        const zone = document.getElementById('doc-drop-zone');
+        const input = document.getElementById('doc-file-input');
+        if (!zone || !input) return;
+
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                fileSelected(e.dataTransfer.files[0]);
+            }
+        });
+        input.addEventListener('change', () => { if (input.files[0]) fileSelected(input.files[0]); });
+    }
+
+    function fileSelected(file) {
+        const zone = document.getElementById('doc-drop-zone');
+        zone.classList.add('has-file');
+        zone.textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
+    }
+
+    async function uploadDocument() {
+        const input = document.getElementById('doc-file-input');
+        if (!input.files[0]) return showMsg('doc-upload-msg', 'Select a file first.', 'error');
+
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        formData.append('patient_id', document.getElementById('doc-patient-id').value.trim() || 'default');
+        const docDate = document.getElementById('doc-date').value;
+        if (docDate) formData.append('document_date', docDate);
+        const notes = document.getElementById('doc-notes').value.trim();
+        if (notes) formData.append('notes', notes);
+
+        setStatus('Uploading and processing document...');
+        clearMsg('doc-upload-msg');
+        const area = document.getElementById('doc-upload-results');
+        area.innerHTML = '<div class="loading">Processing PDF — this may take a moment for large documents...</div>';
+
+        try {
+            const r = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                method: 'POST',
+                headers: sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {},
+                body: formData
+            });
+            if (!r.ok) throw new Error('Upload failed: ' + r.statusText);
+            const data = await r.json();
+            area.innerHTML = `<div><strong>Document processed.</strong><br>
+                Session key: ${data.session_key || 'n/a'}<br>
+                Events extracted: ${data.events_count || data.event_count || 'n/a'}<br>
+                Status: ${data.status || 'complete'}</div>`;
+            showMsg('doc-upload-msg', 'Document uploaded and indexed.', 'success');
+            setStatus('Idle');
+        } catch (e) {
+            area.innerHTML = '';
+            showMsg('doc-upload-msg', e.message, 'error');
+            setStatus('Error');
+        }
+    }
+
+    // === KNOWLEDGE GRAPH ===
+    async function queryKG() {
+        const text = document.getElementById('kg-text').value.trim();
+        if (!text) return;
+        const labs = document.getElementById('kg-labs').value.trim();
+        const area = document.getElementById('kg-results');
+        area.innerHTML = '<div class="loading">Resolving against knowledge graph...</div>';
+        setStatus('Querying MKG...');
+
+        try {
+            const body = { text, options: { rag_top_k: 15, return_scores: true, use_openai: true } };
+            if (labs) body.labs = labs;
+
+            const r = await fetch(`${API_BASE}/api/kg/resolve_rag`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await r.json();
+
+            let html = '';
+            if (data.analysis) {
+                html += `<div style="margin-bottom:16px;"><strong>Analysis:</strong><br>${escapeHtml(data.analysis)}</div>`;
+            }
+            if (data.evidence && data.evidence.length) {
+                html += '<div><strong>Evidence (' + data.evidence.length + ' results):</strong></div>';
+                data.evidence.forEach((e, i) => {
+                    html += `<div style="margin:8px 0; padding:8px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius);">
+                        <div style="font-family:var(--font-mono); font-size:11px; color:var(--color-text-dim);">${e.source || ''} ${e.score ? '(' + e.score.toFixed(3) + ')' : ''}</div>
+                        <div style="font-size:13px; margin-top:4px;">${escapeHtml((e.title || e.text || '').slice(0, 200))}</div>
+                    </div>`;
+                });
+            }
+            area.innerHTML = html || '<div>No results.</div>';
+            setStatus('Idle');
+        } catch (e) {
+            area.innerHTML = `<div style="color:var(--color-error)">${e.message}</div>`;
+            setStatus('Error');
+        }
+    }
+
+    // === TIMELINE QUERY (SSE STREAM) ===
+    async function queryTimeline() {
+        const query = document.getElementById('timeline-query').value.trim();
+        if (!query) return;
+        const area = document.getElementById('timeline-results');
+        area.innerHTML = '<div class="loading">Searching timeline...</div>';
+        setStatus('Querying timeline...');
+
+        try {
+            const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    q: query,
+                    limit: 10,
+                    ctx_k: 20,
+                    with_llm: 1,
+                    llm_mode: 'chunk',
+                    use_valyu: 0,
+                    use_ethos: 0
+                })
+            });
+
+            if (!r.ok) throw new Error('Query failed: ' + r.statusText);
+
+            const reader = r.body.getReader();
+            const decoder = new TextDecoder();
+            let answer = '';
+            let sources = '';
+            area.innerHTML = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+
+                // Parse SSE events
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const evt = JSON.parse(line.slice(6));
+                            if (evt.type === 'token' || evt.type === 'answer_token') {
+                                answer += evt.token || evt.text || '';
+                                area.innerHTML = `<div>${formatAnswer(answer)}</div>${sources}`;
+                            } else if (evt.type === 'sources' || evt.type === 'context') {
+                                const items = evt.sources || evt.items || [];
+                                sources = items.map(s =>
+                                    `<div style="margin:4px 0; font-size:12px; color:var(--color-text-dim);">
+                                        [${s.source || ''}] ${(s.title || s.text || '').slice(0, 120)}
+                                    </div>`
+                                ).join('');
+                            } else if (evt.type === 'answer') {
+                                answer = evt.text || evt.answer || answer;
+                                area.innerHTML = `<div>${formatAnswer(answer)}</div>${sources}`;
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+            if (!answer && !sources) area.innerHTML = '<div>No results found.</div>';
+            setStatus('Idle');
+        } catch (e) {
+            area.innerHTML = `<div style="color:var(--color-error)">${e.message}</div>`;
+            setStatus('Error');
+        }
+    }
+
+    // === HELPERS ===
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+    }
+
+    function formatAnswer(text) {
+        // Basic markdown-like formatting
+        return escapeHtml(text)
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+    </script>
+</body>
+</html>

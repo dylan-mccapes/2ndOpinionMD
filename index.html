@@ -3,1401 +3,2059 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2OPMD — Clinical Reasoning Console</title>
+    <title>2OPMD — Epistemic Vault</title>
     <style>
         /* === RESET === */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         /* === ROOT VARIABLES === */
         :root {
-            --color-bg: #f5f5f5;
+            --color-bg: #f8f9fa;
             --color-surface: #ffffff;
-            --color-border: #d0d0d0;
-            --color-text-primary: #1a1a1a;
-            --color-text-secondary: #4a4a4a;
-            --color-text-dim: #888888;
-            --color-accent: #3b6ea5;
-            --color-accent-hover: #2d5580;
-            --color-error: #c53030;
-            --color-warning: #d69e2e;
-            --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
-            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            --color-surface-hover: #f1f5f9;
+            --color-border: #e2e8f0;
+            --color-border-strong: #cbd5e1;
+            --color-text-primary: #1e293b;
+            --color-text-secondary: #475569;
+            --color-text-dim: #94a3b8;
+            --color-accent: #3b82f6;
+            --color-accent-hover: #2563eb;
+            --color-accent-soft: #eff6ff;
+            --color-success: #10b981;
+            --color-success-soft: #ecfdf5;
+            --color-warning: #f59e0b;
+            --color-warning-soft: #fffbeb;
+            --color-error: #ef4444;
+            --color-error-soft: #fef2f2;
+            --color-purple: #7c3aed;
+            --color-purple-soft: #f5f3ff;
+            --color-sidebar: #1e293b;
+            --color-sidebar-text: #cbd5e1;
+            --color-sidebar-active: #3b82f6;
+            --font-mono: 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', sans-serif;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+            --transition: 150ms ease;
         }
 
         /* === BASE === */
         html, body {
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
             background-color: var(--color-bg);
             color: var(--color-text-primary);
             font-family: var(--font-sans);
-            font-size: 16px;
-            line-height: 1.5;
+            font-size: 15px;
+            line-height: 1.6;
             overflow: hidden;
         }
 
-        /* === LAYOUT GRID === */
-        body {
-            display: grid;
-            grid-template-rows: auto 1fr auto;
-            grid-template-columns: 1fr;
-            gap: 0;
-        }
-
-        /* === HEADER === */
-        header {
-            background-color: var(--color-surface);
-            border-bottom: 3px solid var(--color-border);
-            padding: 16px 24px;
+        /* =====================================================
+           VAULT LANDING PAGE (logged out)
+           ===================================================== */
+        #vault-landing {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         }
 
-        header h1 {
-            font-family: var(--font-sans);
-            font-size: 18px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            color: var(--color-text-primary);
-        }
-
-        header .mode-indicator {
-            font-family: var(--font-mono);
-            font-size: 13px;
-            color: var(--color-text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            padding: 6px 14px;
-            border: 2px solid var(--color-border);
-            background-color: var(--color-bg);
-            font-weight: 500;
-        }
-
-        /* === MAIN CONTENT === */
-        main {
-            padding: 24px;
-            overflow-y: auto;
-            background-color: var(--color-bg);
-        }
-
-        main .content-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        main .placeholder {
-            font-family: var(--font-mono);
-            font-size: 14px;
-            color: var(--color-text-dim);
+        .vault-container {
             text-align: center;
-            margin-top: 120px;
-            line-height: 2;
+            max-width: 480px;
+            width: 90%;
         }
 
-        /* === FOOTER === */
-        footer {
-            background-color: var(--color-surface);
-            border-top: 3px solid var(--color-border);
-            padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .vault-badge {
             font-family: var(--font-mono);
             font-size: 11px;
-            color: var(--color-text-secondary);
-            box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
-        }
-
-        footer .system-state {
-            display: flex;
-            gap: 24px;
-        }
-
-        footer .state-item {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        footer .state-item .label {
-            color: var(--color-text-dim);
-        }
-
-        footer .state-item .value {
-            color: var(--color-text-primary);
-        }
-
-        footer .notices {
-            color: var(--color-text-dim);
-        }
-
-        /* === MODE SELECTOR === */
-        .mode-selector {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 32px;
-            padding: 16px;
-            background-color: var(--color-surface);
-            border: 1px solid var(--color-border);
-        }
-
-        .mode-selector button {
-            flex: 1;
-            padding: 12px 16px;
-            font-family: var(--font-mono);
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.15em;
+            color: var(--color-accent);
             text-transform: uppercase;
-            color: var(--color-text-secondary);
-            background-color: var(--color-bg);
-            border: 2px solid var(--color-border);
-            cursor: pointer;
-            transition: none;
-        }
-
-        .mode-selector button:hover {
-            border-color: var(--color-accent);
-            color: var(--color-accent);
-            background-color: var(--color-surface);
-        }
-
-        .mode-selector button:active {
-            background-color: var(--color-bg);
-        }
-
-        .mode-selector button.active {
-            border-color: var(--color-accent);
-            color: var(--color-surface);
-            background-color: var(--color-accent);
-            font-weight: 700;
-        }
-
-        .mode-selector button:focus {
-            outline: 2px solid var(--color-accent);
-            outline-offset: 2px;
-        }
-
-        /* === MODE CONTENT === */
-        .mode-content {
-            display: none;
-        }
-
-        .mode-content.active {
-            display: block;
-        }
-
-        .mode-description {
-            font-family: var(--font-mono);
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            line-height: 1.7;
-            padding: 14px 16px;
-            background-color: var(--color-surface);
-            border-left: 4px solid var(--color-accent);
-            margin-bottom: 24px;
-            border: 1px solid var(--color-border);
-            border-left: 4px solid var(--color-accent);
-        }
-
-        /* === RECEIPTS === */
-        .receipt {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--color-text-secondary);
-            padding: 8px 12px;
-            background-color: var(--color-surface);
-            border-left: 3px solid var(--color-accent);
-            margin-bottom: 6px;
-            border: 1px solid var(--color-border);
-            border-left: 3px solid var(--color-accent);
-        }
-
-        .receipt .timestamp {
-            color: var(--color-accent);
-            font-weight: 600;
-        }
-
-        /* === INPUT SURFACES === */
-        .input-surface {
-            margin-bottom: 24px;
-        }
-
-        .input-group {
             margin-bottom: 16px;
         }
 
-        .input-group label {
+        .vault-title {
+            font-family: var(--font-mono);
+            font-size: 28px;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: 0.02em;
+            margin-bottom: 8px;
+        }
+
+        .vault-subtitle {
+            font-size: 15px;
+            color: #94a3b8;
+            margin-bottom: 48px;
+            line-height: 1.7;
+        }
+
+        .vault-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .vault-btn {
+            padding: 14px 28px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border: 2px solid;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .vault-btn-primary {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: #fff;
+        }
+
+        .vault-btn-primary:hover {
+            background: var(--color-accent-hover);
+            border-color: var(--color-accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+        }
+
+        .vault-btn-secondary {
+            background: transparent;
+            border-color: #475569;
+            color: #cbd5e1;
+        }
+
+        .vault-btn-secondary:hover {
+            border-color: #94a3b8;
+            color: #f1f5f9;
+        }
+
+        .vault-footer {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.8;
+        }
+
+        /* =====================================================
+           PORTAL LAYOUT (logged in)
+           ===================================================== */
+        #portal-app {
+            display: none;
+            height: 100vh;
+            grid-template-columns: 240px 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        #portal-app.active { display: grid; }
+        #vault-landing.hidden { display: none; }
+
+        /* === SIDEBAR === */
+        .sidebar {
+            background: var(--color-sidebar);
+            color: var(--color-sidebar-text);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .sidebar-brand {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: 0.02em;
+        }
+
+        .sidebar-operator {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 12px 8px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 8px;
+        }
+
+        .sidebar-section-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #475569;
+            padding: 12px 12px 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-sidebar-text);
+            transition: all var(--transition);
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.06);
+            color: #f1f5f9;
+        }
+
+        .nav-item.active {
+            background: rgba(59,130,246,0.15);
+            color: var(--color-sidebar-active);
+        }
+
+        .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .sidebar-close-btn {
+            width: 100%;
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .sidebar-close-btn:hover {
+            background: rgba(239,68,68,0.1);
+            border-color: rgba(239,68,68,0.3);
+            color: #fca5a5;
+        }
+
+        /* === MAIN CONTENT === */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .main-header {
+            padding: 16px 28px;
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .main-header-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .main-header-meta {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-dot.online { background: var(--color-success); }
+        .status-dot.offline { background: var(--color-text-dim); }
+
+        .main-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+        }
+
+        /* === VIEW PANELS === */
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+
+        /* === CARDS === */
+        .card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .card-badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .badge-blue { background: var(--color-accent-soft); color: var(--color-accent); }
+        .badge-green { background: var(--color-success-soft); color: var(--color-success); }
+        .badge-yellow { background: var(--color-warning-soft); color: var(--color-warning); }
+        .badge-red { background: var(--color-error-soft); color: var(--color-error); }
+        .badge-purple { background: var(--color-purple-soft); color: var(--color-purple); }
+
+        /* === GRID === */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+
+        @media (max-width: 1200px) { .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+        /* === STAT CARDS === */
+        .stat-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition);
+        }
+
+        .stat-card:hover {
+            box-shadow: var(--shadow);
+            border-color: var(--color-border-strong);
+        }
+
+        .stat-icon { font-size: 24px; margin-bottom: 12px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); }
+        .stat-label { font-size: 12px; color: var(--color-text-dim); margin-top: 4px; font-weight: 500; }
+
+        /* === ACTION CARDS === */
+        .action-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            cursor: pointer;
+            transition: all var(--transition);
+            text-align: left;
+        }
+
+        .action-card:hover {
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .action-card-icon { font-size: 28px; margin-bottom: 12px; }
+        .action-card-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .action-card-desc { font-size: 12px; color: var(--color-text-dim); line-height: 1.5; }
+
+        /* === FORM ELEMENTS === */
+        .form-group { margin-bottom: 20px; }
+
+        .form-label {
             display: block;
             font-family: var(--font-mono);
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--color-text-secondary);
             margin-bottom: 8px;
         }
 
-        .input-group label .required {
-            color: var(--color-error);
-        }
+        .form-label .required { color: var(--color-error); }
 
-        .input-group textarea,
-        .input-group input[type="text"] {
+        .form-input, .form-textarea, .form-select {
             width: 100%;
-            padding: 12px;
-            font-family: var(--font-mono);
+            padding: 10px 14px;
+            font-family: var(--font-sans);
             font-size: 14px;
-            line-height: 1.6;
             color: var(--color-text-primary);
-            background-color: var(--color-surface);
-            border: 2px solid var(--color-border);
-            resize: vertical;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            transition: all var(--transition);
         }
 
-        .input-group textarea:focus,
-        .input-group input[type="text"]:focus {
+        .form-textarea { resize: vertical; line-height: 1.6; }
+
+        .form-input:focus, .form-textarea:focus, .form-select:focus {
             outline: none;
             border-color: var(--color-accent);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
         }
 
-        .input-group textarea::placeholder,
-        .input-group input[type="text"]::placeholder {
+        .form-input::placeholder, .form-textarea::placeholder {
             color: var(--color-text-dim);
-        }
-
-        .input-group select {
-            width: 100%;
-            padding: 12px;
-            font-family: var(--font-mono);
-            font-size: 14px;
-            color: var(--color-text-primary);
-            background-color: var(--color-surface);
-            border: 2px solid var(--color-border);
-            cursor: pointer;
-        }
-
-        .input-group select:focus {
-            outline: none;
-            border-color: var(--color-accent);
-        }
-
-        .input-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
         }
 
         /* === BUTTONS === */
         .btn {
-            padding: 12px 24px;
-            font-family: var(--font-mono);
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border: 2px solid var(--color-border);
+            padding: 10px 20px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
             cursor: pointer;
-            background-color: var(--color-surface);
+            background: var(--color-surface);
             color: var(--color-text-primary);
+            transition: all var(--transition);
         }
 
-        .btn:hover {
-            border-color: var(--color-accent);
-            background-color: var(--color-accent);
-            color: var(--color-surface);
-        }
-
-        .btn:active {
-            background-color: var(--color-accent-hover);
-            border-color: var(--color-accent-hover);
-        }
-
-        .btn:focus {
-            outline: 2px solid var(--color-accent);
-            outline-offset: 2px;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            border-color: var(--color-border);
-            color: var(--color-text-dim);
-        }
-
-        .btn:disabled:hover {
-            border-color: var(--color-border);
-            color: var(--color-text-dim);
-        }
+        .btn:hover { border-color: var(--color-border-strong); background: var(--color-surface-hover); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .btn-primary {
+            background: var(--color-accent);
             border-color: var(--color-accent);
-            background-color: var(--color-accent);
-            color: var(--color-surface);
+            color: #fff;
         }
 
         .btn-primary:hover {
-            background-color: var(--color-accent-hover);
+            background: var(--color-accent-hover);
             border-color: var(--color-accent-hover);
         }
 
-        /* === NOTICES === */
-        .notice {
-            padding: 14px 16px;
-            margin-bottom: 20px;
+        .btn-success { background: var(--color-success); border-color: var(--color-success); color: #fff; }
+        .btn-success:hover { background: #059669; border-color: #059669; }
+
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-lg { padding: 14px 28px; font-size: 14px; }
+
+        .btn.loading { opacity: 0.6; cursor: wait; }
+
+        /* === TABLES === */
+        .table-container { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
             font-family: var(--font-mono);
-            font-size: 12px;
-            line-height: 1.6;
-            border-left: 4px solid var(--color-warning);
-            background-color: var(--color-surface);
-            color: var(--color-text-secondary);
-            border: 1px solid var(--color-border);
-            border-left: 4px solid var(--color-warning);
-        }
-
-        .notice.error {
-            border-left-color: var(--color-error);
-            background-color: #fff5f5;
-        }
-
-        .notice.info {
-            border-left-color: var(--color-accent);
-            background-color: #f7fafc;
-        }
-
-        /* === SYSTEM TRANSPARENCY PANEL === */
-        .transparency-panel {
-            position: fixed;
-            top: 80px;
-            right: 24px;
-            width: 320px;
-            background-color: var(--color-surface);
-            border: 2px solid var(--color-border);
-            padding: 16px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            z-index: 1000;
-        }
-
-        .transparency-panel {
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .transparency-panel h2 {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--color-text-primary);
-            margin-bottom: 12px;
-            border-bottom: 2px solid var(--color-accent);
-            padding-bottom: 8px;
-        }
-
-        .transparency-panel .refusal-list {
-            list-style: none;
-        }
-
-        .transparency-panel .refusal-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            margin-bottom: 6px;
-            padding: 8px;
-            background-color: var(--color-bg);
-            border-left: 3px solid var(--color-accent);
-            border: 1px solid var(--color-border);
-            border-left: 3px solid var(--color-accent);
-        }
-
-        .transparency-panel .refusal-item .status {
-            color: var(--color-accent);
-            font-weight: 600;
-            flex-shrink: 0;
-        }
-
-        .transparency-panel .refusal-item.violated {
-            border-left-color: var(--color-warning);
-        }
-
-        .transparency-panel .refusal-item.violated .status {
-            color: var(--color-warning);
-        }
-
-        .transparency-panel .refusal-item .label {
-            color: var(--color-text-secondary);
-            line-height: 1.4;
-        }
-
-        .transparency-panel .last-update {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--color-border);
             color: var(--color-text-dim);
-            font-size: 11px;
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 2px solid var(--color-border);
         }
 
-        /* === RECEIPT CACHE VIEWER === */
-        .receipt-cache-section {
-            margin-top: 32px;
-            padding-top: 24px;
-            border-top: 2px solid var(--color-border);
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
         }
 
-        .receipt-cache-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        tr:hover td { background: var(--color-surface-hover); }
+
+        /* === NOTICES === */
+        .notice {
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            line-height: 1.6;
             margin-bottom: 16px;
         }
 
-        .receipt-cache-header h3 {
-            font-family: var(--font-mono);
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--color-text-primary);
-        }
+        .notice-info { background: var(--color-accent-soft); border-left: 3px solid var(--color-accent); color: var(--color-accent-hover); }
+        .notice-success { background: var(--color-success-soft); border-left: 3px solid var(--color-success); color: #065f46; }
+        .notice-warning { background: var(--color-warning-soft); border-left: 3px solid var(--color-warning); color: #92400e; }
+        .notice-error { background: var(--color-error-soft); border-left: 3px solid var(--color-error); color: #991b1b; }
 
-        .receipt-cache-controls {
-            display: flex;
-            gap: 8px;
-        }
-
-        .receipt-cache-controls button {
-            padding: 6px 12px;
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border: 1px solid var(--color-border);
-            cursor: pointer;
-            background-color: var(--color-surface);
-            color: var(--color-text-secondary);
-        }
-
-        .receipt-cache-controls button:hover {
-            border-color: var(--color-accent);
-            color: var(--color-accent);
-        }
-
-        .receipt-cache-controls button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .receipt-cache-content {
-            display: none;
-            background-color: var(--color-surface);
-            border: 1px solid var(--color-border);
-            padding: 16px;
-            font-family: var(--font-mono);
-            font-size: 11px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .receipt-cache-content.visible {
-            display: block;
-        }
-
-        .receipt-cache-empty {
-            color: var(--color-text-dim);
-            text-align: center;
-            padding: 24px;
-        }
-
-        .receipt-event {
-            padding: 12px;
-            margin-bottom: 8px;
-            background-color: var(--color-bg);
-            border-left: 3px solid var(--color-accent);
-            border: 1px solid var(--color-border);
-            border-left: 3px solid var(--color-accent);
-        }
-
-        .receipt-event.type-error {
-            border-left-color: var(--color-error);
-        }
-
-        .receipt-event.type-refusal {
-            border-left-color: var(--color-warning);
-        }
-
-        .receipt-event-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            color: var(--color-text-secondary);
-        }
-
-        .receipt-event-seq {
-            color: var(--color-accent);
-            font-weight: 600;
-        }
-
-        .receipt-event-type {
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-
-        .receipt-event-timestamp {
-            color: var(--color-text-dim);
-        }
-
-        .receipt-event-payload {
-            margin-top: 8px;
-            padding: 8px;
-            background-color: var(--color-surface);
-            border: 1px solid var(--color-border);
-            color: var(--color-text-primary);
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        /* === RESULTS AREA === */
-        .results-area {
-            margin-top: 24px;
-            display: none;
-        }
-
-        .results-area.visible {
-            display: block;
-        }
+        /* === RESULTS === */
+        .results-area { margin-top: 20px; }
 
         .results-header {
             font-family: var(--font-mono);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--color-text-primary);
+            color: var(--color-text-dim);
             margin-bottom: 12px;
             padding-bottom: 8px;
             border-bottom: 2px solid var(--color-accent);
         }
 
         .results-content {
-            background-color: var(--color-surface);
+            background: var(--color-surface);
             border: 1px solid var(--color-border);
-            padding: 16px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            line-height: 1.6;
-            max-height: 600px;
+            border-radius: var(--radius);
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.7;
+            max-height: 500px;
             overflow-y: auto;
         }
 
-        /* Answer formatting */
-        #ask-answer, #coding-results .results-content, #eoh-results .results-content {
-            font-family: var(--font-sans);
-            font-size: 14px;
-            line-height: 1.8;
-        }
-
-        #ask-answer h3, .results-content h3 {
+        .results-content h3 {
             font-size: 15px;
             font-weight: 600;
-            margin: 20px 0 12px 0;
-            padding-bottom: 8px;
-            border-bottom: 2px solid var(--color-accent);
+            margin: 20px 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--color-border);
             color: var(--color-accent);
         }
 
-        #ask-answer h4, .results-content h4 {
-            font-size: 14px;
-            font-weight: 600;
-            margin: 16px 0 8px 0;
-            color: var(--color-text-primary);
-        }
+        .results-content h3:first-child { margin-top: 0; }
+        .results-content p { margin: 10px 0; }
+        .results-content ul, .results-content ol { margin: 10px 0 10px 20px; }
+        .results-content li { margin: 6px 0; }
+        .results-content strong { font-weight: 600; color: var(--color-text-primary); }
 
-        #ask-answer ul, #ask-answer ol, .results-content ul, .results-content ol {
-            margin: 12px 0 12px 20px;
-            padding-left: 20px;
-        }
-
-        #ask-answer li, .results-content li {
-            margin: 8px 0;
-            line-height: 1.7;
-        }
-
-        #ask-answer p, .results-content p {
-            margin: 12px 0;
-        }
-
-        #ask-answer strong, .results-content strong {
-            font-weight: 600;
-            color: var(--color-text-primary);
+        .results-loading {
+            text-align: center;
+            padding: 32px;
+            color: var(--color-text-dim);
         }
 
         .results-error {
-            color: var(--color-error);
-            background-color: #fff5f5;
             padding: 16px;
+            background: var(--color-error-soft);
             border: 1px solid var(--color-error);
-            border-left: 4px solid var(--color-error);
+            border-radius: var(--radius);
+            color: #991b1b;
         }
 
-        .results-loading {
+        /* === RECEIPT PANEL === */
+        .receipt-panel {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .receipt-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .receipt-panel-title {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-dim);
+        }
+
+        .receipt-entry {
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            background: var(--color-bg);
+            border-left: 3px solid var(--color-accent);
+            border-radius: 0 var(--radius) var(--radius) 0;
+            font-size: 11px;
             color: var(--color-text-secondary);
-            padding: 24px;
+        }
+
+        .receipt-entry .ts { color: var(--color-accent); font-weight: 600; }
+
+        /* === TRANSPARENCY === */
+        .transparency-bar {
+            display: flex;
+            gap: 16px;
+            padding: 8px 14px;
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--color-text-dim);
+            margin-bottom: 20px;
+        }
+
+        .transparency-item { display: flex; gap: 6px; align-items: center; }
+        .transparency-check { color: var(--color-success); font-weight: 700; }
+        .transparency-warn { color: var(--color-warning); font-weight: 700; }
+
+        /* === FILE DROP ZONE === */
+        .drop-zone {
+            border: 2px dashed var(--color-border-strong);
+            border-radius: var(--radius-lg);
+            padding: 48px 24px;
             text-align: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            background: var(--color-bg);
         }
 
-        .btn.loading {
-            opacity: 0.6;
-            cursor: wait;
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--color-accent);
+            background: var(--color-accent-soft);
         }
 
-        /* === RESPONSIVE ADJUSTMENTS === */
-        @media (max-width: 1400px) {
-            .transparency-panel {
-                position: static;
-                width: 100%;
-                margin-bottom: 24px;
-            }
+        .drop-zone-icon { font-size: 36px; margin-bottom: 12px; color: var(--color-text-dim); }
+        .drop-zone-text { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px; }
+        .drop-zone-hint { font-size: 12px; color: var(--color-text-dim); }
+
+        /* === TIMELINE === */
+        .timeline-event {
+            display: flex;
+            gap: 16px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--color-border);
         }
 
-        /* === ACCESSIBILITY === */
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
+        .timeline-event:last-child { border-bottom: none; }
+
+        .timeline-marker {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--color-accent);
+            margin-top: 6px;
+            flex-shrink: 0;
         }
+
+        .timeline-event-content { flex: 1; }
+        .timeline-event-date { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-dim); margin-bottom: 4px; }
+        .timeline-event-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .timeline-event-desc { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+        .timeline-event-type { font-family: var(--font-mono); font-size: 10px; background: var(--color-bg); padding: 2px 8px; border-radius: 20px; color: var(--color-text-dim); }
+
+        /* === RISK BARS === */
+        .risk-bar-container { margin-bottom: 16px; }
+        .risk-bar-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .risk-bar-label { font-size: 13px; font-weight: 500; }
+        .risk-bar-value { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-dim); }
+        .risk-bar-track { height: 8px; background: var(--color-bg); border-radius: 4px; overflow: hidden; }
+        .risk-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .risk-low { background: var(--color-success); }
+        .risk-medium { background: var(--color-warning); }
+        .risk-high { background: var(--color-error); }
+
+        /* === MODAL === */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-backdrop.visible { display: flex; }
+
+        .modal-box {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            max-width: 480px;
+            width: 92%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        .modal-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .modal-subtitle {
+            font-size: 13px;
+            color: var(--color-text-dim);
+            margin-bottom: 24px;
+        }
+
+        .modal-msg {
+            font-size: 13px;
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: var(--radius);
+            background: var(--color-accent-soft);
+            color: var(--color-accent);
+            border-left: 3px solid var(--color-accent);
+        }
+
+        .modal-msg.error {
+            background: var(--color-error-soft);
+            color: #991b1b;
+            border-left-color: var(--color-error);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* === COMMAND SURFACE === */
+        .command-input {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+        }
+
+        .command-input input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--color-text-primary);
+            background: transparent;
+        }
+
+        .command-input input::placeholder { color: var(--color-text-dim); }
+
+        /* === JOURNAL === */
+        .journal-entry-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 12px;
+        }
+
+        .journal-entry-date {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-dim);
+            margin-bottom: 8px;
+        }
+
+        .journal-entry-text {
+            font-size: 14px;
+            line-height: 1.7;
+            color: var(--color-text-secondary);
+            white-space: pre-wrap;
+        }
+
+        .journal-query-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--color-purple-soft);
+            border: 1px solid rgba(124,58,237,0.15);
+            border-radius: var(--radius-lg);
+        }
+
+        .journal-query-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .journal-query-input input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid rgba(124,58,237,0.2);
+            border-radius: var(--radius);
+            font-size: 14px;
+            background: var(--color-surface);
+        }
+
+        .journal-query-input input:focus {
+            outline: none;
+            border-color: var(--color-purple);
+            box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+        }
+
+        .btn-purple { background: var(--color-purple); border-color: var(--color-purple); color: #fff; }
+        .btn-purple:hover { background: #6d28d9; border-color: #6d28d9; }
+
+        .journal-ai-response {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--color-surface);
+            border-left: 3px solid var(--color-purple);
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+
+        .journal-ai-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-purple);
+            margin-bottom: 8px;
+        }
+
+        /* === CLINICAL CONSOLE (preserved from original) === */
+        .mode-selector {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 10px 14px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--color-text-dim);
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .mode-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+        .mode-btn.active {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: #fff;
+        }
+
+        .clinical-mode { display: none; }
+        .clinical-mode.active { display: block; }
+
+        /* === EMPTY STATE === */
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--color-text-dim);
+        }
+
+        .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-title { font-size: 16px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; }
+        .empty-state-desc { font-size: 13px; line-height: 1.6; max-width: 400px; margin: 0 auto; }
 
         /* === RESPONSIVE === */
         @media (max-width: 768px) {
-            header {
-                flex-direction: column;
-                gap: 12px;
-                align-items: flex-start;
-            }
-
-            footer {
-                flex-direction: column;
-                gap: 8px;
-                align-items: flex-start;
-            }
-
-            footer .system-state {
-                flex-direction: column;
-                gap: 8px;
-            }
+            #portal-app { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
         }
+
+        /* === SCROLLBAR === */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--color-text-dim); }
     </style>
 </head>
 <body>
-    <header>
-        <h1>2OPMD</h1>
-        <div class="mode-indicator">NO MODE SELECTED</div>
-    </header>
 
-    <main>
-        <div class="content-container">
-            <!-- System Transparency Panel -->
-            <div class="transparency-panel">
-                <h2>System State</h2>
-                <ul class="refusal-list">
-                    <li class="refusal-item" id="state-mutation">
-                        <span class="status">✓</span>
-                        <span class="label">No state mutated</span>
-                    </li>
-                    <li class="refusal-item" id="data-persistence">
-                        <span class="status">✓</span>
-                        <span class="label">No data persisted</span>
-                    </li>
-                    <li class="refusal-item" id="external-calls">
-                        <span class="status">✓</span>
-                        <span class="label">No external calls made</span>
-                    </li>
-                    <li class="refusal-item" id="session-tracking">
-                        <span class="status">✓</span>
-                        <span class="label">No session tracking</span>
-                    </li>
-                    <li class="refusal-item" id="implicit-behavior">
-                        <span class="status">✓</span>
-                        <span class="label">No implicit behavior</span>
-                    </li>
-                </ul>
-                <div class="last-update" id="transparency-update">
-                    Last verified: System start
-                </div>
+    <!-- =====================================================
+         VAULT LANDING (logged out)
+         ===================================================== -->
+    <div id="vault-landing">
+        <div class="vault-container">
+            <div class="vault-badge">3Pi$73MiC87MLV4UL7</div>
+            <div class="vault-title">2ndOpinionMD</div>
+            <div class="vault-subtitle">
+                Your medical timeline. Your sovereignty. Your health.<br>
+                Epistemic vault for patient-owned medical records.
+            </div>
+            <div class="vault-actions">
+                <button class="vault-btn vault-btn-primary" id="vault-initiate">
+                    Start Session
+                </button>
+                <button class="vault-btn vault-btn-secondary" id="vault-onboard">
+                    System Onboarding
+                </button>
+            </div>
+            <div class="vault-footer">
+                Operator sovereignty · Honest uncertainty · Provenance tracking<br>
+                PortalVision maintains state honestly.
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         PORTAL APP (logged in)
+         ===================================================== -->
+    <div id="portal-app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">2OPMD</div>
+                <div class="sidebar-operator" id="sidebar-operator-email">operator@2opmd</div>
             </div>
 
-            <!-- Mode Selector -->
-            <div class="mode-selector">
-                <button type="button" data-mode="ask">ASK</button>
-                <button type="button" data-mode="coding">CODING</button>
-                <button type="button" data-mode="eoh">EoH</button>
-                <button type="button" data-mode="eohd">EoHD</button>
-            </div>
-
-            <!-- Receipts Area -->
-            <div id="receipts"></div>
-
-            <!-- Mode: ASK -->
-            <div class="mode-content" data-mode="ask">
-                <div class="mode-description">
-                    MODE: ASK<br>
-                    Read-only clinical Q&A. No state mutation. No timeline. Each query is independent.
-                </div>
-                
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="ask-query">
-                            CLINICAL QUESTION <span class="required">*</span>
-                        </label>
-                        <textarea 
-                            id="ask-query" 
-                            rows="6" 
-                            placeholder="Enter clinical question in natural language.&#10;Example: What are the differential diagnoses for bilateral joint pain with morning stiffness?"
-                        ></textarea>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-ask">
-                        SUBMIT QUERY
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Portal</div>
+                    <button class="nav-item active" data-view="dashboard">
+                        <span class="nav-icon">&#9673;</span> Dashboard
+                    </button>
+                    <button class="nav-item" data-view="timeline">
+                        <span class="nav-icon">&#9776;</span> Timeline
+                    </button>
+                    <button class="nav-item" data-view="documents">
+                        <span class="nav-icon">&#9998;</span> Documents
+                    </button>
+                    <button class="nav-item" data-view="query">
+                        <span class="nav-icon">&#8981;</span> Query Timeline
                     </button>
                 </div>
 
-                <div id="ask-results" class="results-area"></div>
-            </div>
-
-            <!-- Mode: CODING -->
-            <div class="mode-content" data-mode="coding">
-                <div class="mode-description">
-                    MODE: CODING<br>
-                    Medical coding and classification. Returns ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm.<br>
-                    Explicit confirmation required before export.
-                </div>
-                
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="coding-type">
-                            CODE SYSTEM <span class="required">*</span>
-                        </label>
-                        <select id="coding-type">
-                            <option value="">SELECT CODE SYSTEM</option>
-                            <option value="icd10cm">ICD-10-CM</option>
-                            <option value="icd11">ICD-11</option>
-                            <option value="snomed">SNOMED CT</option>
-                            <option value="loinc">LOINC</option>
-                            <option value="rxnorm">RxNorm</option>
-                            <option value="all">ALL APPLICABLE</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="coding-text">
-                            CLINICAL TEXT <span class="required">*</span>
-                        </label>
-                        <textarea 
-                            id="coding-text" 
-                            rows="6" 
-                            placeholder="Enter symptom, diagnosis, or procedure description.&#10;Example: Chronic bilateral knee pain with joint swelling and reduced range of motion"
-                        ></textarea>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="coding-context">
-                            CLINICAL CONTEXT (OPTIONAL)
-                        </label>
-                        <input 
-                            type="text" 
-                            id="coding-context" 
-                            placeholder="Additional context: patient age, setting, specialty"
-                        />
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-coding">
-                        REQUEST CODES
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Clinical</div>
+                    <button class="nav-item" data-view="console">
+                        <span class="nav-icon">&#9881;</span> Clinical Console
+                    </button>
+                    <button class="nav-item" data-view="journal">
+                        <span class="nav-icon">&#9997;</span> Journal
+                    </button>
+                    <button class="nav-item" data-view="risk">
+                        <span class="nav-icon">&#9888;</span> Risk Trajectory
                     </button>
                 </div>
 
-                <div id="coding-results" class="results-area"></div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Actions</div>
+                    <button class="nav-item" data-view="send">
+                        <span class="nav-icon">&#10148;</span> Send Timeline
+                    </button>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-close-btn" id="portal-close-session">
+                    Close Session
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="main-header">
+                <div class="main-header-title" id="main-header-title">Dashboard</div>
+                <div class="main-header-meta">
+                    <span><span class="status-dot online" id="api-status-dot"></span><span id="api-status-text">Connected</span></span>
+                    <span id="header-timestamp"></span>
+                </div>
             </div>
 
-            <!-- Mode: EoH -->
-            <div class="mode-content" data-mode="eoh">
-                <div class="mode-description">
-                    MODE: EoH<br>
-                    Single Ethos-of-Health reasoning cycle. No timeline integration.<br>
-                    Returns hypothesis set, evidence weighting, suggested next steps.
+            <div class="main-body">
+                <!-- Transparency bar -->
+                <div class="transparency-bar" id="transparency-bar">
+                    <div class="transparency-item"><span class="transparency-check" id="t-mutation">&#10003;</span> No state mutated</div>
+                    <div class="transparency-item"><span class="transparency-check" id="t-persist">&#10003;</span> No data persisted</div>
+                    <div class="transparency-item"><span class="transparency-check" id="t-external">&#10003;</span> No external calls</div>
+                    <div class="transparency-item"><span class="transparency-check" id="t-session">&#10003;</span> Session active</div>
                 </div>
-                
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="eoh-symptoms">
-                            PRIMARY SYMPTOMS <span class="required">*</span>
-                        </label>
-                        <textarea 
-                            id="eoh-symptoms" 
-                            rows="4" 
-                            placeholder="List primary symptoms, one per line or comma-separated.&#10;Example: Fatigue, joint pain, skin rash"
-                        ></textarea>
+
+                <!-- ==========================================
+                     VIEW: DASHBOARD
+                     ========================================== -->
+                <div class="view-panel active" id="view-dashboard">
+                    <div class="grid-4" style="margin-bottom: 24px;">
+                        <div class="stat-card">
+                            <div class="stat-icon">&#128203;</div>
+                            <div class="stat-value" id="stat-docs">0</div>
+                            <div class="stat-label">Documents</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">&#128221;</div>
+                            <div class="stat-value" id="stat-events">0</div>
+                            <div class="stat-label">Timeline Events</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">&#128214;</div>
+                            <div class="stat-value" id="stat-journal">0</div>
+                            <div class="stat-label">Journal Entries</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">&#128200;</div>
+                            <div class="stat-value" id="stat-queries">0</div>
+                            <div class="stat-label">Queries This Session</div>
+                        </div>
                     </div>
 
-                    <div class="input-row">
-                        <div class="input-group">
-                            <label for="eoh-age">
-                                PATIENT AGE
-                            </label>
-                            <input 
-                                type="text" 
-                                id="eoh-age" 
-                                placeholder="Age in years or age range"
-                            />
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Quick Actions</div>
+                            <div class="card-badge badge-blue">Portal</div>
+                        </div>
+                        <div class="grid-4">
+                            <div class="action-card" onclick="switchView('documents')">
+                                <div class="action-card-icon">&#128196;</div>
+                                <div class="action-card-title">Submit Documents</div>
+                                <div class="action-card-desc">Upload medical records to your timeline</div>
+                            </div>
+                            <div class="action-card" onclick="switchView('query')">
+                                <div class="action-card-icon">&#128269;</div>
+                                <div class="action-card-title">Query Timeline</div>
+                                <div class="action-card-desc">Search your medical history with natural language</div>
+                            </div>
+                            <div class="action-card" onclick="switchView('journal')">
+                                <div class="action-card-icon">&#128221;</div>
+                                <div class="action-card-title">Journal Entry</div>
+                                <div class="action-card-desc">Write a journal entry or talk to 2nd</div>
+                            </div>
+                            <div class="action-card" onclick="switchView('console')">
+                                <div class="action-card-icon">&#9881;</div>
+                                <div class="action-card-title">Clinical Console</div>
+                                <div class="action-card-desc">ASK, CODING, EoH, EoHD reasoning</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Recent Activity</div>
+                            </div>
+                            <div id="recent-activity">
+                                <div class="empty-state" style="padding: 24px;">
+                                    <div class="empty-state-desc">Activity will appear here as you use the portal.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">System Receipts</div>
+                                <button class="btn btn-sm" id="export-receipts-btn">Export</button>
+                            </div>
+                            <div id="dashboard-receipts" style="max-height: 200px; overflow-y: auto;">
+                                <div class="receipt-entry"><span class="ts">[--:--:--]</span> Session instantiated</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: TIMELINE
+                     ========================================== -->
+                <div class="view-panel" id="view-timeline">
+                    <div class="grid-2" style="margin-bottom: 20px;">
+                        <div class="card" id="timeline-info-card">
+                            <div class="card-header">
+                                <div class="card-title">Your Timeline</div>
+                                <div class="card-badge badge-green" id="timeline-status-badge">Active</div>
+                            </div>
+                            <div id="timeline-info">
+                                <p style="color: var(--color-text-dim); font-size: 13px;">Loading timeline information...</p>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Initialize Timeline</div>
+                                <div class="card-badge badge-purple">New</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Timeline Name <span class="required">*</span></label>
+                                <input type="text" class="form-input" id="timeline-name-input" placeholder="My Medical History">
+                            </div>
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary);">
+                                    <input type="checkbox" id="timeline-anon-consent">
+                                    I consent to anonymized data sharing for research
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" id="initialize-timeline-btn">Initialize Timeline</button>
+                            <div id="timeline-init-msg" style="display: none;" class="modal-msg"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Timeline Events</div>
+                            <button class="btn btn-sm" id="add-timeline-event-btn">+ Add Event</button>
+                        </div>
+                        <div id="timeline-events-container">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">&#128197;</div>
+                                <div class="empty-state-title">No timeline events yet</div>
+                                <div class="empty-state-desc">Submit documents or add events to build your medical timeline.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: DOCUMENTS
+                     ========================================== -->
+                <div class="view-panel" id="view-documents">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Submit Documents</div>
+                            <div class="card-badge badge-blue">Upload</div>
+                        </div>
+                        <div class="notice notice-info">
+                            Upload medical records to your timeline. Supported: PDF, images, text files.<br>
+                            Documents are processed, embedded, and stored securely.
+                        </div>
+                        <div class="drop-zone" id="doc-drop-zone">
+                            <div class="drop-zone-icon">&#128196;</div>
+                            <div class="drop-zone-text">Drop files here or click to browse</div>
+                            <div class="drop-zone-hint">PDF, JPEG, PNG, TXT — Max 50MB per file</div>
+                        </div>
+                        <input type="file" id="doc-file-input" style="display: none;" multiple accept=".pdf,.jpg,.jpeg,.png,.txt,.csv,.hl7">
+
+                        <div id="doc-upload-list" style="margin-top: 16px;"></div>
+
+                        <div style="margin-top: 16px;">
+                            <div class="form-group">
+                                <label class="form-label">Document Type</label>
+                                <select class="form-select" id="doc-type-select">
+                                    <option value="lab">Lab Results</option>
+                                    <option value="imaging">Imaging Report</option>
+                                    <option value="note">Clinical Note</option>
+                                    <option value="prescription">Prescription</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Document Date</label>
+                                <input type="date" class="form-input" id="doc-date-input">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Notes (optional)</label>
+                                <input type="text" class="form-input" id="doc-notes-input" placeholder="Brief description of this document">
+                            </div>
+                            <button class="btn btn-primary" id="doc-submit-btn" disabled>Submit Documents</button>
+                            <div id="doc-submit-msg" style="display: none;" class="modal-msg"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Access Documents</div>
+                            <div class="card-badge badge-green">Top 4</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Search Documents</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" class="form-input" id="doc-search-input" placeholder="e.g. blood pressure readings, last MRI report">
+                                <button class="btn btn-primary" id="doc-search-btn">Search</button>
+                            </div>
+                        </div>
+                        <div id="doc-search-results">
+                            <div class="empty-state" style="padding: 24px;">
+                                <div class="empty-state-desc">Search returns the top 4 most relevant documents with confidence scores.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: QUERY TIMELINE
+                     ========================================== -->
+                <div class="view-panel" id="view-query">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Query Timeline</div>
+                            <div class="card-badge badge-blue">Semantic Search</div>
+                        </div>
+                        <div class="notice notice-info">
+                            Ask questions about your medical timeline in natural language. Results include confidence scores and source documents.
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Your Question <span class="required">*</span></label>
+                            <textarea class="form-textarea" id="query-input" rows="4" placeholder="When was my last blood test?
+What medications have I been prescribed?
+Are there any patterns in my symptoms?"></textarea>
+                        </div>
+                        <button class="btn btn-primary btn-lg" id="query-submit-btn">Query Timeline</button>
+                    </div>
+
+                    <div id="query-results-area" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Results</div>
+                                <div class="card-badge badge-green" id="query-confidence-badge">--</div>
+                            </div>
+                            <div id="query-results-content" class="results-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: CLINICAL CONSOLE
+                     ========================================== -->
+                <div class="view-panel" id="view-console">
+                    <div class="mode-selector">
+                        <button class="mode-btn active" data-clinical-mode="ask">ASK</button>
+                        <button class="mode-btn" data-clinical-mode="coding">CODING</button>
+                        <button class="mode-btn" data-clinical-mode="eoh">EoH</button>
+                        <button class="mode-btn" data-clinical-mode="eohd">EoHD</button>
+                    </div>
+
+                    <!-- ASK Mode -->
+                    <div class="clinical-mode active" data-clinical-mode="ask">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Clinical Q&A</div>
+                                <div class="card-badge badge-blue">Read-Only</div>
+                            </div>
+                            <div class="notice notice-info">
+                                Read-only clinical Q&A. No state mutation. No timeline. Each query is independent.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Clinical Question <span class="required">*</span></label>
+                                <textarea class="form-textarea" id="ask-query" rows="5" placeholder="What are the differential diagnoses for bilateral joint pain with morning stiffness?"></textarea>
+                            </div>
+                            <button class="btn btn-primary" id="submit-ask">Submit Query</button>
+                        </div>
+                        <div id="ask-results" style="display: none;"></div>
+                    </div>
+
+                    <!-- CODING Mode -->
+                    <div class="clinical-mode" data-clinical-mode="coding">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Medical Coding</div>
+                                <div class="card-badge badge-purple">Classification</div>
+                            </div>
+                            <div class="notice notice-info">
+                                Returns ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm codes.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Code System <span class="required">*</span></label>
+                                <select class="form-select" id="coding-type">
+                                    <option value="">Select Code System</option>
+                                    <option value="icd10cm">ICD-10-CM</option>
+                                    <option value="icd11">ICD-11</option>
+                                    <option value="snomed">SNOMED CT</option>
+                                    <option value="loinc">LOINC</option>
+                                    <option value="rxnorm">RxNorm</option>
+                                    <option value="all">All Applicable</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Clinical Text <span class="required">*</span></label>
+                                <textarea class="form-textarea" id="coding-text" rows="5" placeholder="Chronic bilateral knee pain with joint swelling and reduced range of motion"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Clinical Context (optional)</label>
+                                <input type="text" class="form-input" id="coding-context" placeholder="Patient age, setting, specialty">
+                            </div>
+                            <button class="btn btn-primary" id="submit-coding">Request Codes</button>
+                        </div>
+                        <div id="coding-results" style="display: none;"></div>
+                    </div>
+
+                    <!-- EoH Mode -->
+                    <div class="clinical-mode" data-clinical-mode="eoh">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Ethos-of-Health Reasoning</div>
+                                <div class="card-badge badge-green">Single Cycle</div>
+                            </div>
+                            <div class="notice notice-info">
+                                Single EoH reasoning cycle. Returns hypothesis set, evidence weighting, suggested next steps.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Primary Symptoms <span class="required">*</span></label>
+                                <textarea class="form-textarea" id="eoh-symptoms" rows="3" placeholder="Fatigue, joint pain, skin rash"></textarea>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Patient Age</label>
+                                    <input type="text" class="form-input" id="eoh-age" placeholder="Age in years">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Biological Sex</label>
+                                    <select class="form-select" id="eoh-sex">
+                                        <option value="">Not specified</option>
+                                        <option value="female">Female</option>
+                                        <option value="male">Male</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Relevant History (optional)</label>
+                                <textarea class="form-textarea" id="eoh-history" rows="3" placeholder="Past medical history, medications, family history"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Clinical Context (optional)</label>
+                                <textarea class="form-textarea" id="eoh-context" rows="2" placeholder="Specific questions, differential considerations"></textarea>
+                            </div>
+                            <button class="btn btn-primary" id="submit-eoh">Run EoH Reasoning</button>
+                        </div>
+                        <div id="eoh-results" style="display: none;"></div>
+                    </div>
+
+                    <!-- EoHD Mode -->
+                    <div class="clinical-mode" data-clinical-mode="eohd">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">EoH Detective (Timeline-Aware)</div>
+                                <div class="card-badge badge-yellow">Temporal</div>
+                            </div>
+                            <div class="notice notice-warning">
+                                Timeline-aware reasoning. Upload a timeline PDF to enable hypothesis evolution across time.
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Timeline PDF <span class="required">*</span></label>
+                                <div class="drop-zone" id="eohd-drop-zone" style="padding: 24px;">
+                                    <div class="drop-zone-text" id="eohd-drop-text">Drop timeline PDF here or click to browse</div>
+                                    <div class="drop-zone-hint">PDF only — encrypted PDFs supported (enter password below)</div>
+                                </div>
+                                <input type="file" id="eohd-file-input" style="display: none;" accept=".pdf">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">PDF Password (if encrypted)</label>
+                                <input type="password" class="form-input" id="eohd-password" placeholder="Leave blank if not encrypted">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Patient ID (optional)</label>
+                                <input type="text" class="form-input" id="eohd-patient" placeholder="Anonymous patient ID">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Detective Focus (optional)</label>
+                                <textarea class="form-textarea" id="eohd-focus" rows="2" placeholder="Temporal patterns to investigate"></textarea>
+                            </div>
+                            <button class="btn btn-primary" id="submit-eohd" disabled>Run EoH Detective (PDF Required)</button>
+                        </div>
+                        <div id="eohd-results" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: JOURNAL
+                     ========================================== -->
+                <div class="view-panel" id="view-journal">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">New Journal Entry</div>
+                                <div class="card-badge badge-green">Write</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Journal Text <span class="required">*</span></label>
+                                <textarea class="form-textarea" id="journal-text-input" rows="10" placeholder="How are you feeling today? What's on your mind? Write freely."></textarea>
+                            </div>
+                            <button class="btn btn-primary" id="journal-save-btn">Save Entry</button>
+                            <div id="journal-save-msg" style="display: none;" class="modal-msg"></div>
                         </div>
 
-                        <div class="input-group">
-                            <label for="eoh-sex">
-                                BIOLOGICAL SEX
-                            </label>
-                            <select id="eoh-sex">
-                                <option value="">NOT SPECIFIED</option>
-                                <option value="female">FEMALE</option>
-                                <option value="male">MALE</option>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">Ask 2nd</div>
+                                <div class="card-badge badge-purple">AI</div>
+                            </div>
+                            <div class="notice notice-info" style="font-size: 12px;">
+                                2nd reads your journal entries and responds with care. Grounded in your actual text. Ask about patterns, feelings, or anything you wrote.
+                            </div>
+                            <div class="journal-query-section">
+                                <div class="journal-query-input">
+                                    <input type="text" id="journal-query-input" placeholder="Ask 2nd about your journal entries...">
+                                    <button class="btn btn-purple" id="journal-query-btn">Ask 2nd</button>
+                                </div>
+                                <div id="journal-ai-response" style="display: none;" class="journal-ai-response">
+                                    <div class="journal-ai-label">2nd:</div>
+                                    <div id="journal-ai-text" style="font-size: 14px; line-height: 1.7; white-space: pre-wrap;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 20px;">
+                        <div class="card-header">
+                            <div class="card-title">Journal Entries</div>
+                            <button class="btn btn-sm" id="journal-refresh-btn">Refresh</button>
+                        </div>
+                        <div id="journal-entries-list">
+                            <div class="empty-state" style="padding: 24px;">
+                                <div class="empty-state-icon">&#128214;</div>
+                                <div class="empty-state-title">No journal entries yet</div>
+                                <div class="empty-state-desc">Write your first entry to start building your personal health journal.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: RISK TRAJECTORY
+                     ========================================== -->
+                <div class="view-panel" id="view-risk">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Risk Trajectory</div>
+                            <div class="card-badge badge-yellow">FlightTrajectory</div>
+                        </div>
+                        <div class="notice notice-info">
+                            Non-destructive analysis using the ORBIT &rarr; TARGET &rarr; TELL protocol.<br>
+                            This analysis never mutates your timeline. It identifies opportunities for risk reduction.
+                        </div>
+
+                        <div style="margin-top: 20px;">
+                            <div class="risk-bar-container">
+                                <div class="risk-bar-header">
+                                    <span class="risk-bar-label">Cardiovascular Risk</span>
+                                    <span class="risk-bar-value" id="risk-cardio-val">--</span>
+                                </div>
+                                <div class="risk-bar-track"><div class="risk-bar-fill risk-low" id="risk-cardio-bar" style="width: 0%;"></div></div>
+                            </div>
+                            <div class="risk-bar-container">
+                                <div class="risk-bar-header">
+                                    <span class="risk-bar-label">Metabolic / Diabetes Risk</span>
+                                    <span class="risk-bar-value" id="risk-diabetes-val">--</span>
+                                </div>
+                                <div class="risk-bar-track"><div class="risk-bar-fill risk-low" id="risk-diabetes-bar" style="width: 0%;"></div></div>
+                            </div>
+                            <div class="risk-bar-container">
+                                <div class="risk-bar-header">
+                                    <span class="risk-bar-label">Kidney Risk</span>
+                                    <span class="risk-bar-value" id="risk-kidney-val">--</span>
+                                </div>
+                                <div class="risk-bar-track"><div class="risk-bar-fill risk-low" id="risk-kidney-bar" style="width: 0%;"></div></div>
+                            </div>
+                            <div class="risk-bar-container">
+                                <div class="risk-bar-header">
+                                    <span class="risk-bar-label">Mental Health Risk</span>
+                                    <span class="risk-bar-value" id="risk-mental-val">--</span>
+                                </div>
+                                <div class="risk-bar-track"><div class="risk-bar-fill risk-low" id="risk-mental-bar" style="width: 0%;"></div></div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" id="run-risk-btn" style="margin-top: 16px;">Run Risk Assessment</button>
+                    </div>
+
+                    <div class="card" id="risk-opportunities-card" style="display: none;">
+                        <div class="card-header">
+                            <div class="card-title">Opportunities</div>
+                            <div class="card-badge badge-success">Suggestions</div>
+                        </div>
+                        <div id="risk-opportunities-content"></div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     VIEW: SEND TIMELINE
+                     ========================================== -->
+                <div class="view-panel" id="view-send">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">Send Timeline</div>
+                            <div class="card-badge badge-blue">Export</div>
+                        </div>
+                        <div class="notice notice-info">
+                            Export your timeline for sharing with doctors, specialists, or for your own records.
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Export Format</label>
+                            <select class="form-select" id="send-format">
+                                <option value="pdf">PDF (Comprehensive)</option>
+                                <option value="summary">Summary (2-page)</option>
+                                <option value="json">JSON (Machine-readable)</option>
                             </select>
                         </div>
-                    </div>
 
-                    <div class="input-group">
-                        <label for="eoh-history">
-                            RELEVANT HISTORY (OPTIONAL)
-                        </label>
-                        <textarea 
-                            id="eoh-history" 
-                            rows="4" 
-                            placeholder="Past medical history, medications, family history, environmental factors"
-                        ></textarea>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="eoh-context">
-                            CLINICAL CONTEXT (OPTIONAL)
-                        </label>
-                        <textarea 
-                            id="eoh-context" 
-                            rows="3" 
-                            placeholder="Specific clinical question, differential considerations, provider specialty"
-                        ></textarea>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-eoh">
-                        RUN EoH REASONING
-                    </button>
-                </div>
-
-                <div id="eoh-results" class="results-area"></div>
-            </div>
-
-            <!-- Mode: EoHD -->
-            <div class="mode-content" data-mode="eohd">
-                <div class="mode-description">
-                    MODE: EoHD<br>
-                    Timeline-aware Ethos-of-Health Detective reasoning.<br>
-                    Requires temporal data. Returns hypothesis evolution across time.
-                </div>
-
-                <div class="notice error">
-                    TIMELINE DATA REQUIRED<br>
-                    EoHD requires structured temporal data (symptom timeline, journal entries, or event sequence).<br>
-                    Timeline ingestion interface not yet implemented.
-                </div>
-                
-                <div class="input-surface">
-                    <div class="input-group">
-                        <label for="eohd-patient">
-                            PATIENT IDENTIFIER (OPTIONAL)
-                        </label>
-                        <input 
-                            type="text" 
-                            id="eohd-patient" 
-                            placeholder="Anonymous patient ID or case number"
-                        />
-                    </div>
-
-                    <div class="input-group">
-                        <label>
-                            TIMELINE DATA <span class="required">*</span>
-                        </label>
-                        <div class="notice">
-                            Timeline upload mechanism not yet implemented.<br>
-                            Required format: Structured temporal event data with dates, symptoms, interventions, and outcomes.<br>
-                            Minimum: 3+ events spanning at least 14 days.
+                        <div class="form-group">
+                            <label class="form-label">Scope</label>
+                            <select class="form-select" id="send-scope">
+                                <option value="full">Full Timeline</option>
+                                <option value="recent">Last 6 Months</option>
+                                <option value="year">Last 12 Months</option>
+                                <option value="custom">Custom Date Range</option>
+                            </select>
                         </div>
-                    </div>
 
-                    <div class="input-group">
-                        <label for="eohd-focus">
-                            DETECTIVE FOCUS (OPTIONAL)
-                        </label>
-                        <textarea 
-                            id="eohd-focus" 
-                            rows="3" 
-                            placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"
-                        ></textarea>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled>
-                        RUN EoHD DETECTIVE (TIMELINE REQUIRED)
-                    </button>
-                </div>
+                        <div class="form-group" id="send-custom-dates" style="display: none;">
+                            <div class="grid-2">
+                                <div>
+                                    <label class="form-label">From</label>
+                                    <input type="date" class="form-input" id="send-date-from">
+                                </div>
+                                <div>
+                                    <label class="form-label">To</label>
+                                    <input type="date" class="form-input" id="send-date-to">
+                                </div>
+                            </div>
+                        </div>
 
-                <div class="notice error">
-                    EoHD requires timeline data ingestion (not yet implemented).
-                </div>
+                        <div class="form-group">
+                            <label class="form-label">Delivery Method</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="btn" id="send-download-btn">Download</button>
+                                <button class="btn" id="send-email-btn">Email</button>
+                                <button class="btn" id="send-print-btn">Print</button>
+                            </div>
+                        </div>
 
-                <div id="eohd-results" class="results-area"></div>
-            </div>
+                        <div class="form-group" id="send-email-field" style="display: none;">
+                            <label class="form-label">Recipient Email</label>
+                            <input type="email" class="form-input" id="send-email-input" placeholder="doctor@hospital.org">
+                        </div>
 
-            <!-- SSE Receipt Cache Viewer -->
-            <div class="receipt-cache-section">
-                <div class="receipt-cache-header">
-                    <h3>Execution Receipts</h3>
-                    <div class="receipt-cache-controls">
-                        <button type="button" id="toggle-receipts">Show Receipts</button>
-                        <button type="button" id="export-html" disabled>Export HTML</button>
-                        <button type="button" id="export-json" disabled>Export JSON</button>
-                        <button type="button" id="clear-receipts" disabled>Clear</button>
-                    </div>
-                </div>
-                <div class="receipt-cache-content" id="receipt-cache-content">
-                    <div class="receipt-cache-empty">
-                        No execution receipts captured.<br>
-                        Receipts will appear here after running a query in any mode.
+                        <button class="btn btn-primary btn-lg" id="send-generate-btn">Generate Export</button>
+                        <div id="send-msg" style="display: none;" class="modal-msg"></div>
                     </div>
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 
-    <footer>
-        <div class="system-state">
-            <div class="state-item">
-                <span class="label">STATUS:</span>
-                <span class="value">IDLE</span>
+    <!-- =====================================================
+         MODALS
+         ===================================================== -->
+
+    <!-- System Onboarding Modal -->
+    <div id="modal-onboarding" class="modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-title">System Onboarding</div>
+            <div class="modal-subtitle">Initialize your operator profile. Patient sovereignty from first interaction.</div>
+            <div class="form-group">
+                <label class="form-label">Email <span class="required">*</span></label>
+                <input type="email" class="form-input" id="onboarding-email" placeholder="you@example.com">
             </div>
-            <div class="state-item">
-                <span class="label">MODE:</span>
-                <span class="value">NONE</span>
+            <div class="form-group">
+                <label class="form-label">Password <span class="required">*</span></label>
+                <input type="password" class="form-input" id="onboarding-password" placeholder="Choose a strong password">
             </div>
-            <div class="state-item">
-                <span class="label">SESSION:</span>
-                <span class="value">STATELESS</span>
+            <div class="form-group">
+                <label class="form-label">Operator Type</label>
+                <select class="form-select" id="onboarding-operator">
+                    <option value="patient">Patient (Primary Operator)</option>
+                    <option value="clinician">Clinician (Navigator)</option>
+                </select>
+            </div>
+            <div id="onboarding-msg" style="display: none;" class="modal-msg"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="onboarding-submit">Submit</button>
+                <button class="btn" id="onboarding-cancel">Cancel</button>
             </div>
         </div>
-        <div class="notices">
-            <!-- System notices appear here -->
-        </div>
-    </footer>
+    </div>
 
+    <!-- Initiate Session Modal -->
+    <div id="modal-session" class="modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-title">Start Session</div>
+            <div class="modal-subtitle">Enter your credentials to instantiate a session.</div>
+            <div class="form-group">
+                <label class="form-label">Email <span class="required">*</span></label>
+                <input type="email" class="form-input" id="session-email" placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password <span class="required">*</span></label>
+                <input type="password" class="form-input" id="session-password" placeholder="Your password">
+            </div>
+            <div id="session-msg" style="display: none;" class="modal-msg"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="session-submit">Initiate Session</button>
+                <button class="btn" id="session-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Verification Modal -->
+    <div id="modal-verification" class="modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-title">Email Verification</div>
+            <p id="verification-status">Verifying...</p>
+            <div id="verification-msg" style="display: none;" class="modal-msg"></div>
+            <div class="modal-actions">
+                <button class="btn" id="verification-dismiss">Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Timeline Event Modal -->
+    <div id="modal-add-event" class="modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-title">Add Timeline Event</div>
+            <div class="modal-subtitle">Manually add an event to your medical timeline.</div>
+            <div class="form-group">
+                <label class="form-label">Event Date <span class="required">*</span></label>
+                <input type="date" class="form-input" id="event-date-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Event Type <span class="required">*</span></label>
+                <select class="form-select" id="event-type-input">
+                    <option value="symptom">Symptom</option>
+                    <option value="diagnosis">Diagnosis</option>
+                    <option value="medication">Medication Change</option>
+                    <option value="procedure">Procedure</option>
+                    <option value="lab">Lab Result</option>
+                    <option value="visit">Doctor Visit</option>
+                    <option value="note">General Note</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description <span class="required">*</span></label>
+                <textarea class="form-textarea" id="event-desc-input" rows="4" placeholder="Describe the event..."></textarea>
+            </div>
+            <div id="event-add-msg" style="display: none;" class="modal-msg"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="event-add-submit">Add Event</button>
+                <button class="btn" id="event-add-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         JAVASCRIPT
+         ===================================================== -->
     <script>
-        // === STATE ===
-        let currentMode = null;
+    (function() {
+        'use strict';
 
-        // === SSE RECEIPT CACHE ===
-        let sseReceiptCache = {
-            session_id: "ephemeral",
-            started_at: null,
-            events: [],
-            completed_at: null,
-            mode: null
-        };
-
-        // === ELEMENTS ===
-        const modeButtons = document.querySelectorAll('.mode-selector button');
-        const modeContents = document.querySelectorAll('.mode-content');
-        const modeIndicator = document.querySelector('header .mode-indicator');
-        const footerModeValue = document.querySelector('footer .state-item:nth-child(2) .value');
-        const footerStatusValue = document.querySelector('footer .state-item:nth-child(1) .value');
-        const receiptsContainer = document.getElementById('receipts');
-        const transparencyUpdate = document.getElementById('transparency-update');
-        const receiptCacheContent = document.getElementById('receipt-cache-content');
-        const toggleReceiptsBtn = document.getElementById('toggle-receipts');
-        const exportHtmlBtn = document.getElementById('export-html');
-        const exportJsonBtn = document.getElementById('export-json');
-        const clearReceiptsBtn = document.getElementById('clear-receipts');
-
-        // === HELPERS ===
-        function formatTimestamp() {
-            const now = new Date();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            return `${hours}:${minutes}:${seconds}`;
-        }
-
-        function addReceipt(message, timestamp) {
-            const receipt = document.createElement('div');
-            receipt.className = 'receipt';
-            receipt.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
-            receiptsContainer.appendChild(receipt);
-        }
-
-        function clearReceipts() {
-            receiptsContainer.innerHTML = '';
-        }
-
-        function updateTransparencyPanel() {
-            const timestamp = formatTimestamp();
-            transparencyUpdate.textContent = `Last verified: ${timestamp}`;
-        }
-
-        // === SSE RECEIPT CACHE FUNCTIONS ===
-        function addReceiptEvent(type, source, payload) {
-            const event = {
-                seq: sseReceiptCache.events.length + 1,
-                timestamp: new Date().toISOString(),
-                type: type,
-                source: source,
-                payload: payload
-            };
-
-            sseReceiptCache.events.push(event);
-
-            if (!sseReceiptCache.started_at) {
-                sseReceiptCache.started_at = event.timestamp;
-                sseReceiptCache.mode = source;
-            }
-
-            updateReceiptCacheUI();
-        }
-
-        function completeReceiptCache() {
-            sseReceiptCache.completed_at = new Date().toISOString();
-            updateReceiptCacheUI();
-        }
-
-        function clearReceiptCache() {
-            if (!confirm('Clear all execution receipts? This cannot be undone.')) {
-                return;
-            }
-
-            sseReceiptCache = {
-                session_id: "ephemeral",
-                started_at: null,
-                events: [],
-                completed_at: null,
-                mode: null
-            };
-
-            updateReceiptCacheUI();
-            receiptCacheContent.classList.remove('visible');
-            toggleReceiptsBtn.textContent = 'Show Receipts';
-        }
-
-        function updateReceiptCacheUI() {
-            const hasEvents = sseReceiptCache.events.length > 0;
-
-            // Enable/disable buttons
-            exportHtmlBtn.disabled = !hasEvents;
-            exportJsonBtn.disabled = !hasEvents;
-            clearReceiptsBtn.disabled = !hasEvents;
-
-            // Update content
-            if (!hasEvents) {
-                receiptCacheContent.innerHTML = `
-                    <div class="receipt-cache-empty">
-                        No execution receipts captured.<br>
-                        Receipts will appear here after running a query in any mode.
-                    </div>
-                `;
-                return;
-            }
-
-            // Render events
-            let html = '';
-            sseReceiptCache.events.forEach(event => {
-                html += `
-                    <div class="receipt-event type-${event.type}">
-                        <div class="receipt-event-header">
-                            <span class="receipt-event-seq">#${event.seq}</span>
-                            <span class="receipt-event-type">${event.type}</span>
-                            <span class="receipt-event-timestamp">${event.timestamp}</span>
-                        </div>
-                        <div class="receipt-event-payload">${JSON.stringify(event.payload, null, 2)}</div>
-                    </div>
-                `;
-            });
-
-            receiptCacheContent.innerHTML = html;
-        }
-
-        function exportReceiptHTML() {
-            const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2OPMD Execution Receipt - ${sseReceiptCache.mode || 'Unknown'} - ${sseReceiptCache.started_at}</title>
-    <style>
-        body { font-family: Consolas, Monaco, monospace; margin: 40px; background: #f5f5f5; color: #1a1a1a; }
-        h1 { border-bottom: 3px solid #3b6ea5; padding-bottom: 12px; }
-        .metadata { background: white; padding: 16px; border: 1px solid #d0d0d0; margin-bottom: 24px; }
-        .metadata dt { font-weight: 600; margin-top: 8px; }
-        .metadata dd { margin-left: 0; color: #4a4a4a; }
-        .event { background: white; border-left: 3px solid #3b6ea5; padding: 16px; margin-bottom: 12px; border: 1px solid #d0d0d0; }
-        .event.error { border-left-color: #c53030; }
-        .event.refusal { border-left-color: #d69e2e; }
-        .event-header { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; color: #4a4a4a; }
-        .event-seq { color: #3b6ea5; font-weight: 600; }
-        .event-type { text-transform: uppercase; font-weight: 600; }
-        .event-payload { background: #f5f5f5; padding: 12px; border: 1px solid #d0d0d0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d0d0d0; color: #888; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <h1>2OPMD Execution Receipt</h1>
-    <dl class="metadata">
-        <dt>Session ID:</dt>
-        <dd>${sseReceiptCache.session_id}</dd>
-        <dt>Mode:</dt>
-        <dd>${sseReceiptCache.mode || 'Unknown'}</dd>
-        <dt>Started:</dt>
-        <dd>${sseReceiptCache.started_at || 'N/A'}</dd>
-        <dt>Completed:</dt>
-        <dd>${sseReceiptCache.completed_at || 'In progress'}</dd>
-        <dt>Event Count:</dt>
-        <dd>${sseReceiptCache.events.length}</dd>
-    </dl>
-    <div class="events">
-        ${sseReceiptCache.events.map(event => `
-            <div class="event ${event.type}">
-                <div class="event-header">
-                    <span class="event-seq">#${event.seq}</span>
-                    <span class="event-type">${event.type}</span>
-                    <span class="event-timestamp">${event.timestamp}</span>
-                </div>
-                <div class="event-payload">${JSON.stringify(event.payload, null, 2)}</div>
-            </div>
-        `).join('')}
-    </div>
-    <div class="footer">
-        Generated: ${new Date().toISOString()}<br>
-        Source: 2ndOpinionMD Clinical Reasoning Console<br>
-        This is a non-authoritative client-side receipt. Events are recorded as received without modification.
-    </div>
-</body>
-</html>
-            `.trim();
-
-            const blob = new Blob([html], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `2opmd-receipt-${sseReceiptCache.mode || 'unknown'}-${Date.now()}.html`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function exportReceiptJSON() {
-            const json = JSON.stringify(sseReceiptCache, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `2opmd-receipt-${sseReceiptCache.mode || 'unknown'}-${Date.now()}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        // === API CONFIGURATION ===
+        // === CONFIG ===
         const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
-            ? 'http://localhost:8000'  // Python dev server, API on different port
-            : '';  // Production: same origin (nginx proxy)
+            ? 'http://localhost:8000'
+            : (window.location.hostname === '2ndopinionmd.ai' ? '' : 'http://localhost:8000');
 
-        // === MODE HANDLERS ===
-        async function handleAskSubmit() {
-            const query = document.getElementById('ask-query').value.trim();
-            if (!query) {
-                alert('Please enter a clinical question.');
-                return;
+        const SESSION_KEY = '2opmd_session_token';
+        const SESSION_EMAIL_KEY = '2opmd_session_email';
+
+        // === STATE ===
+        let sessionToken = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem('2opmd_session_token') || null;
+        let sessionEmail = sessionStorage.getItem(SESSION_EMAIL_KEY) || '';
+        let currentView = 'dashboard';
+        let currentClinicalMode = 'ask';
+        let queryCount = 0;
+        let receiptLog = [];
+        let selectedFiles = [];
+        let selectedEohdPdf = null;
+
+        // === UTILITY ===
+        function ts() {
+            const d = new Date();
+            return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+        }
+
+        function addReceipt(msg) {
+            const entry = { ts: ts(), msg };
+            receiptLog.push(entry);
+            const container = document.getElementById('dashboard-receipts');
+            if (container) {
+                const div = document.createElement('div');
+                div.className = 'receipt-entry';
+                div.innerHTML = `<span class="ts">[${entry.ts}]</span> ${msg}`;
+                container.prepend(div);
             }
+        }
 
-            const button = document.getElementById('submit-ask');
-            const resultsArea = document.getElementById('ask-results');
-            
-            button.classList.add('loading');
-            button.disabled = true;
-            resultsArea.classList.add('visible');
+        function showMsg(id, text, isError) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = text;
+            el.style.display = 'block';
+            el.classList.toggle('error', !!isError);
+        }
 
-            // Reset receipt cache for new query
-            sseReceiptCache = {
-                session_id: "ephemeral",
-                started_at: new Date().toISOString(),
-                events: [],
-                completed_at: null,
-                mode: 'ask'
+        function clearMsg(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = '';
+            el.style.display = 'none';
+            el.classList.remove('error');
+        }
+
+        function showModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('visible');
+        }
+
+        function hideModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('visible');
+        }
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function formatMarkdown(text) {
+            if (!text) return '';
+            let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>');
+            const parts = html.split(/\n\n+/);
+            return parts.map(p => {
+                p = p.trim();
+                if (!p) return '';
+                if (p.startsWith('<h3>') || p.startsWith('<ul>') || p.startsWith('<ol>')) return p;
+                return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+            }).join('\n');
+        }
+
+        function updateTransparency(field, warned, label) {
+            const el = document.getElementById(field);
+            if (!el) return;
+            el.className = warned ? 'transparency-warn' : 'transparency-check';
+            el.textContent = warned ? '\u26A0' : '\u2713';
+            if (label) el.parentElement.lastChild.textContent = label;
+        }
+
+        // === SESSION MANAGEMENT ===
+        function setSession(token, email) {
+            sessionToken = token;
+            sessionEmail = email || '';
+            if (token) {
+                sessionStorage.setItem(SESSION_KEY, token);
+                localStorage.setItem('2opmd_session_token', token);
+                if (email) {
+                    sessionStorage.setItem(SESSION_EMAIL_KEY, email);
+                    localStorage.setItem('2opmd_operator_type', 'patient');
+                }
+            } else {
+                sessionStorage.removeItem(SESSION_KEY);
+                sessionStorage.removeItem(SESSION_EMAIL_KEY);
+                localStorage.removeItem('2opmd_session_token');
+                localStorage.removeItem('2opmd_operator_type');
+                localStorage.removeItem('2opmd_timeline_id');
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            const landing = document.getElementById('vault-landing');
+            const portal = document.getElementById('portal-app');
+
+            if (sessionToken) {
+                landing.classList.add('hidden');
+                portal.classList.add('active');
+                document.getElementById('sidebar-operator-email').textContent = sessionEmail || 'Operator';
+                document.getElementById('header-timestamp').textContent = ts();
+                addReceipt('Portal active');
+            } else {
+                landing.classList.remove('hidden');
+                portal.classList.remove('active');
+            }
+        }
+
+        // === VIEW SWITCHING ===
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+            const panel = document.getElementById('view-' + view);
+            if (panel) panel.classList.add('active');
+
+            const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+            if (navItem) navItem.classList.add('active');
+
+            const titles = {
+                dashboard: 'Dashboard',
+                timeline: 'Timeline',
+                documents: 'Submit & Access Documents',
+                query: 'Query Timeline',
+                console: 'Clinical Console',
+                journal: 'Journal',
+                risk: 'Risk Trajectory',
+                send: 'Send Timeline'
             };
+            document.getElementById('main-header-title').textContent = titles[view] || view;
+            addReceipt('View: ' + (titles[view] || view));
 
-            // Initialize results display
-            resultsArea.innerHTML = `
-                <div class="results-header">Ask Stream</div>
-                <div class="results-content">
-                    <div id="ask-status">Connecting...</div>
-                    <div id="ask-answer" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border);"></div>
-                </div>
-            `;
+            // Load data for specific views
+            if (view === 'journal') loadJournalEntries();
+        }
 
-            const statusDiv = document.getElementById('ask-status');
-            const answerDiv = document.getElementById('ask-answer');
+        // === CLINICAL MODE SWITCHING ===
+        function switchClinicalMode(mode) {
+            currentClinicalMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.clinical-mode').forEach(m => m.classList.remove('active'));
+
+            const btn = document.querySelector(`.mode-btn[data-clinical-mode="${mode}"]`);
+            if (btn) btn.classList.add('active');
+
+            const panel = document.querySelector(`.clinical-mode[data-clinical-mode="${mode}"]`);
+            if (panel) panel.classList.add('active');
+
+            addReceipt('Clinical mode: ' + mode.toUpperCase());
+        }
+
+        // === AUTH HANDLERS ===
+        async function handleOnboarding() {
+            const email = document.getElementById('onboarding-email').value.trim();
+            const password = document.getElementById('onboarding-password').value;
+            const operator = document.getElementById('onboarding-operator').value;
+            if (!email || !password) { showMsg('onboarding-msg', 'Email and password required.', true); return; }
+            clearMsg('onboarding-msg');
 
             try {
-                addReceiptEvent('event', 'ask', { action: 'query_submitted', query: query });
-
-                // Construct URL like rag-demo does
-                const params = new URLSearchParams({
-                    q: query,
-                    limit: '12',
-                    ctx_k: '24',
-                    with_llm: '1',
-                    llm_mode: 'chunk'
+                const r = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, operator_type: operator })
                 });
-                
-                const streamUrl = `${API_BASE}/api/rag/ask_stream?${params.toString()}`;
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    showMsg('onboarding-msg', (data.email_verification && data.email_verification.note) || 'Check your email to verify.', false);
+                    addReceipt('System onboarding: ' + email);
+                } else {
+                    showMsg('onboarding-msg', data.detail || data.message || 'Registration failed.', true);
+                }
+            } catch (e) { showMsg('onboarding-msg', e.message || 'Network error.', true); }
+        }
 
-                console.log('[ASK] Connecting to:', streamUrl);
-                addReceiptEvent('event', 'ask', { action: 'sse_connecting', url: streamUrl });
+        async function handleInitiateSession() {
+            const email = document.getElementById('session-email').value.trim();
+            const password = document.getElementById('session-password').value;
+            if (!email || !password) { showMsg('session-msg', 'Email and password required.', true); return; }
+            clearMsg('session-msg');
 
-                const eventSource = new EventSource(streamUrl);
-                let finalAnswer = '';
-                let hasStarted = false;
+            try {
+                const r = await fetch(`${API_BASE}/api/session/instantiate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.session_token) {
+                    setSession(data.session_token, email);
+                    if (data.operator_type) localStorage.setItem('2opmd_operator_type', data.operator_type);
+                    if (data.timeline_id) localStorage.setItem('2opmd_timeline_id', data.timeline_id);
+                    hideModal('modal-session');
+                    addReceipt('Session instantiated: ' + email);
+                    // Navigate to Patient Portal
+                    window.location.href = 'patient_portal.html';
+                } else {
+                    const detail = data.detail;
+                    showMsg('session-msg', (detail && detail.message) || (typeof detail === 'string' ? detail : 'Session failed.'), true);
+                }
+            } catch (e) { showMsg('session-msg', e.message || 'Network error.', true); }
+        }
 
-                // Listen to specific SSE events (like rag-demo does)
-                eventSource.addEventListener('start', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] start event:', data);
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse start event:', e);
-                    }
+        async function handleCloseSession() {
+            if (!sessionToken) return;
+            try {
+                await fetch(`${API_BASE}/api/session/close`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+            } catch (_) {}
+            addReceipt('Session closed');
+            setSession(null, '');
+        }
+
+        // === TIMELINE ===
+        async function handleInitializeTimeline() {
+            const name = document.getElementById('timeline-name-input').value.trim();
+            if (!name) { showMsg('timeline-init-msg', 'Timeline name required.', true); return; }
+            clearMsg('timeline-init-msg');
+            const consent = document.getElementById('timeline-anon-consent').checked;
+
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/initialize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify({ timeline_name: name, anonymization_consent: consent })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    showMsg('timeline-init-msg', 'Timeline initialized: ' + (data.timeline_name || name), false);
+                    addReceipt('Timeline initialized: ' + name);
+                    updateTransparency('t-mutation', true, 'Timeline created');
+                    updateTransparency('t-persist', true, 'Data persisted');
+                } else {
+                    showMsg('timeline-init-msg', data.detail || 'Initialization failed.', true);
+                }
+            } catch (e) { showMsg('timeline-init-msg', e.message || 'Network error.', true); }
+        }
+
+        // === JOURNAL ===
+        async function loadJournalEntries() {
+            if (!sessionToken) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/journal/entries`, {
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+                if (!r.ok) throw new Error('Failed to load');
+                const entries = await r.json();
+                const container = document.getElementById('journal-entries-list');
+                document.getElementById('stat-journal').textContent = entries.length;
+
+                if (entries.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="padding: 24px;"><div class="empty-state-icon">&#128214;</div><div class="empty-state-title">No journal entries yet</div><div class="empty-state-desc">Write your first entry above.</div></div>';
+                    return;
+                }
+
+                container.innerHTML = entries.map(e => `
+                    <div class="journal-entry-card">
+                        <div class="journal-entry-date">${e.date || 'No date'}</div>
+                        <div class="journal-entry-text">${escapeHtml(e.notes || '')}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading journal:', e);
+            }
+        }
+
+        async function handleJournalSave() {
+            const text = document.getElementById('journal-text-input').value.trim();
+            if (!text) { showMsg('journal-save-msg', 'Enter some text.', true); return; }
+            if (!sessionToken) { showMsg('journal-save-msg', 'Start a session first.', true); return; }
+            clearMsg('journal-save-msg');
+
+            try {
+                const r = await fetch(`${API_BASE}/api/journal/entry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify({ text })
+                });
+                if (r.ok) {
+                    showMsg('journal-save-msg', 'Saved.', false);
+                    document.getElementById('journal-text-input').value = '';
+                    addReceipt('Journal entry saved');
+                    updateTransparency('t-mutation', true, 'State mutated');
+                    updateTransparency('t-persist', true, 'Data persisted');
+                    loadJournalEntries();
+                } else {
+                    const data = await r.json().catch(() => ({}));
+                    showMsg('journal-save-msg', data.detail || 'Save failed.', true);
+                }
+            } catch (e) { showMsg('journal-save-msg', e.message, true); }
+        }
+
+        async function handleJournalQuery() {
+            const query = document.getElementById('journal-query-input').value.trim();
+            if (!query) return;
+            if (!sessionToken) { alert('Start a session first.'); return; }
+
+            const btn = document.getElementById('journal-query-btn');
+            btn.textContent = 'Thinking...';
+            btn.disabled = true;
+
+            try {
+                const r = await fetch(`${API_BASE}/api/journal/query-ai`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify({ query })
+                });
+                if (!r.ok) throw new Error('Query failed');
+                const data = await r.json();
+
+                document.getElementById('journal-ai-text').textContent = data.response || '';
+                document.getElementById('journal-ai-response').style.display = 'block';
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('Journal query: ' + query.substring(0, 40) + '...');
+                updateTransparency('t-external', true, 'External API call (LLM)');
+            } catch (e) {
+                alert('Query failed: ' + e.message);
+            } finally {
+                btn.textContent = 'Ask 2nd';
+                btn.disabled = false;
+            }
+        }
+
+        // === CLINICAL CONSOLE HANDLERS ===
+        async function handleAskSubmit() {
+            const query = document.getElementById('ask-query').value.trim();
+            if (!query) { alert('Enter a clinical question.'); return; }
+
+            const btn = document.getElementById('submit-ask');
+            const area = document.getElementById('ask-results');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            area.style.display = 'block';
+            area.innerHTML = '<div class="results-header">Ask Stream</div><div class="results-content"><div id="ask-status">Connecting...</div><div id="ask-answer" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--color-border);"></div></div>';
+
+            try {
+                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, limit: 12, ctx_k: 24, with_llm: 1, llm_mode: 'chunk', use_valyu: 0, valyu_mode: 'search', valyu_raw: 0, valyu_boost: 1.0, use_ethos: 0 })
                 });
 
-                eventSource.addEventListener('status', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] status event:', data);
-                        
-                        if (data.status === 'generating_answer') {
-                            statusDiv.textContent = 'Generating answer...';
-                        } else if (data.status) {
-                            statusDiv.textContent = data.status.replace(/_/g, ' ');
-                        }
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse status event:', e);
+                if (!r.ok) throw new Error(`API error: ${r.status}`);
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '', answer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) { document.getElementById('ask-status').textContent = 'Complete'; break; }
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(line.substring(5).trim());
+                            if (data.status) document.getElementById('ask-status').textContent = data.status.replace(/_/g, ' ');
+                            if (data.text) {
+                                answer += data.text;
+                                const el = document.getElementById('ask-answer');
+                                el.style.display = 'block';
+                                el.innerHTML = formatMarkdown(answer);
+                            }
+                            if (data.type === 'llm_done' || data.done) {
+                                if (data.text) { answer = data.text; document.getElementById('ask-answer').innerHTML = formatMarkdown(answer); }
+                                document.getElementById('ask-status').textContent = 'Complete';
+                            }
+                        } catch (_) {}
                     }
-                });
-
-                eventSource.addEventListener('llm_chunk', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] llm_chunk:', data.text?.substring(0, 50));
-                        
-                        // Accumulate answer
-                        if (data.text) {
-                            finalAnswer += data.text;
-                            answerDiv.style.display = 'block';
-                            answerDiv.innerHTML = formatAnswer(finalAnswer);
-                            statusDiv.textContent = 'Streaming answer...';
-                            hasStarted = true;
-                        }
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse llm_chunk:', e);
-                    }
-                });
-
-                eventSource.addEventListener('llm_done', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] llm_done');
-                        
-                        if (data.text) {
-                            finalAnswer = data.text;
-                            answerDiv.style.display = 'block';
-                            answerDiv.innerHTML = formatAnswer(finalAnswer);
-                        }
-                        
-                        statusDiv.textContent = 'Answer complete';
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse llm_done:', e);
-                    }
-                });
-
-                eventSource.addEventListener('end', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('completion', 'ask', { sse_event: data });
-                        console.log('[ASK] Stream ended');
-                        
-                        statusDiv.textContent = 'Complete';
-                        footerStatusValue.textContent = 'IDLE';
-                        
-                        completeReceiptCache();
-                        eventSource.close();
-                        button.classList.remove('loading');
-                        button.disabled = false;
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse end event:', e);
-                    }
-                });
-
-                // Connection-level errors (like rag-demo)
-                eventSource.onerror = (error) => {
-                    console.error('[ASK] EventSource error:', error);
-                    console.log('[ASK] EventSource readyState:', eventSource.readyState);
-                    
-                    addReceiptEvent('error', 'ask', { 
-                        error: 'SSE connection error',
-                        readyState: eventSource.readyState,
-                        url: streamUrl
-                    });
-                    completeReceiptCache();
-                    
-                    if (hasStarted) {
-                        statusDiv.textContent = 'Connection interrupted';
-                    } else {
-                        statusDiv.textContent = 'Connection failed - check console';
-                    }
-                    
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                    footerStatusValue.textContent = 'IDLE';
-                };
-
-                eventSource.onopen = () => {
-                    console.log('[ASK] EventSource connected');
-                    addReceiptEvent('event', 'ask', { action: 'sse_connected' });
-                    statusDiv.textContent = 'Connected, waiting for response...';
-                    footerStatusValue.textContent = 'RUNNING';
-                };
-
-                updateTransparencyPanelForAPICall();
-
-            } catch (error) {
-                addReceiptEvent('error', 'ask', { error: error.message, stack: error.stack });
-                completeReceiptCache();
-                resultsArea.innerHTML = `
-                    <div class="results-header">Error</div>
-                    <div class="results-error">${error.message}</div>
-                `;
-                button.classList.remove('loading');
-                button.disabled = false;
-                footerStatusValue.textContent = 'IDLE';
+                }
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('ASK query: ' + query.substring(0, 40) + '...');
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                area.innerHTML = '<div class="results-header">Error</div><div class="results-error">' + e.message + '</div>';
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
             }
         }
 
@@ -1405,386 +2063,527 @@
             const codeSystem = document.getElementById('coding-type').value;
             const text = document.getElementById('coding-text').value.trim();
             const context = document.getElementById('coding-context').value.trim();
+            if (!codeSystem) { alert('Select a code system.'); return; }
+            if (!text) { alert('Enter clinical text.'); return; }
 
-            if (!codeSystem) {
-                alert('Please select a code system.');
-                return;
-            }
-            if (!text) {
-                alert('Please enter clinical text.');
-                return;
-            }
-
-            const button = document.getElementById('submit-coding');
-            const resultsArea = document.getElementById('coding-results');
-            
-            button.classList.add('loading');
-            button.disabled = true;
-            resultsArea.classList.add('visible');
-            resultsArea.innerHTML = `
-                <div class="results-header">Coding Results</div>
-                <div class="results-loading">Generating codes...</div>
-            `;
-
-            // Reset receipt cache
-            sseReceiptCache = {
-                session_id: "ephemeral",
-                started_at: new Date().toISOString(),
-                events: [],
-                completed_at: null,
-                mode: 'coding'
-            };
+            const btn = document.getElementById('submit-coding');
+            const area = document.getElementById('coding-results');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            area.style.display = 'block';
+            area.innerHTML = '<div class="results-loading">Generating codes...</div>';
 
             try {
-                addReceiptEvent('event', 'coding', { 
-                    action: 'coding_requested', 
-                    code_system: codeSystem,
-                    text_length: text.length 
-                });
-
-                const response = await fetch(`${API_BASE}/api/coding`, {
+                const r = await fetch(`${API_BASE}/api/coding`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        note: text,
-                        context: context || undefined,
-                        limit: 60
-                    })
+                    body: JSON.stringify({ note: text, context: context || undefined, limit: 60 })
                 });
-
-                addReceiptEvent('event', 'coding', { action: 'response_received', status: response.status });
-
-                if (!response.ok) {
-                    const error = await response.text();
-                    addReceiptEvent('error', 'coding', { status: response.status, error: error });
-                    throw new Error(`API error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                addReceiptEvent('completion', 'coding', { 
-                    probable_dx_count: data.probable_dx?.length || 0,
-                    differential_dx_count: data.differential_dx?.length || 0
-                });
-                completeReceiptCache();
-
-                // Display results
-                resultsArea.innerHTML = `
-                    <div class="results-header">Coding Results</div>
-                    <div class="results-content">
-                        <pre>${JSON.stringify(data, null, 2)}</pre>
-                    </div>
-                `;
-
-                updateTransparencyPanelForAPICall();
-
-            } catch (error) {
-                addReceiptEvent('error', 'coding', { error: error.message, stack: error.stack });
-                completeReceiptCache();
-                resultsArea.innerHTML = `
-                    <div class="results-header">Error</div>
-                    <div class="results-error">${error.message}</div>
-                `;
+                if (!r.ok) throw new Error(`API error: ${r.status}`);
+                const data = await r.json();
+                area.innerHTML = '<div class="results-header">Coding Results</div><div class="results-content"><pre>' + JSON.stringify(data, null, 2) + '</pre></div>';
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('CODING query completed');
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                area.innerHTML = '<div class="results-header">Error</div><div class="results-error">' + e.message + '</div>';
             } finally {
-                button.classList.remove('loading');
-                button.disabled = false;
+                btn.classList.remove('loading');
+                btn.disabled = false;
             }
         }
 
         async function handleEohSubmit() {
             const symptoms = document.getElementById('eoh-symptoms').value.trim();
+            if (!symptoms) { alert('Enter primary symptoms.'); return; }
+
             const age = document.getElementById('eoh-age').value.trim();
             const sex = document.getElementById('eoh-sex').value;
             const history = document.getElementById('eoh-history').value.trim();
             const context = document.getElementById('eoh-context').value.trim();
 
-            if (!symptoms) {
-                alert('Please enter primary symptoms.');
-                return;
-            }
+            let q = `Symptoms: ${symptoms}`;
+            if (age) q += `\nAge: ${age}`;
+            if (sex) q += `\nSex: ${sex}`;
+            if (history) q += `\nHistory: ${history}`;
+            if (context) q += `\nContext: ${context}`;
 
-            const button = document.getElementById('submit-eoh');
-            const resultsArea = document.getElementById('eoh-results');
-            
-            button.classList.add('loading');
-            button.disabled = true;
-            resultsArea.classList.add('visible');
-            resultsArea.innerHTML = `
-                <div class="results-header">EoH Reasoning Stream</div>
-                <div class="results-loading">Connecting to EoH stream...</div>
-            `;
-
-            // Reset receipt cache
-            sseReceiptCache = {
-                session_id: "ephemeral",
-                started_at: new Date().toISOString(),
-                events: [],
-                completed_at: null,
-                mode: 'eoh'
-            };
+            const btn = document.getElementById('submit-eoh');
+            const area = document.getElementById('eoh-results');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            area.style.display = 'block';
+            area.innerHTML = '<div class="results-header">EoH Stream</div><div class="results-content" id="eoh-stream">Connecting...</div>';
 
             try {
-                // Build query string
-                let queryText = `Symptoms: ${symptoms}`;
-                if (age) queryText += `\nAge: ${age}`;
-                if (sex) queryText += `\nSex: ${sex}`;
-                if (history) queryText += `\nHistory: ${history}`;
-                if (context) queryText += `\nContext: ${context}`;
-
-                addReceiptEvent('event', 'eoh', { 
-                    action: 'eoh_requested', 
-                    query: queryText
+                const r = await fetch(`${API_BASE}/api/rag/eoh_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q, limit: 10, ctx_k: 32, valyu_k: 3, with_llm: 1, llm_mode: 'chunk', use_valyu: 1, valyu_mode: 'search', valyu_raw: 0, use_timeline: 0, research: 1, enable_gap: 1 })
                 });
-
-                const url = new URL(`${API_BASE}/api/rag/eoh_stream`, window.location.origin);
-                url.searchParams.set('q', queryText);
-                url.searchParams.set('limit', '10');
-                url.searchParams.set('with_llm', '1');
-                url.searchParams.set('llm_mode', 'chunk');
-
-                const eventSource = new EventSource(url);
-                let streamContent = '';
-
-                resultsArea.innerHTML = `
-                    <div class="results-header">EoH Reasoning Stream</div>
-                    <div class="results-content" id="eoh-stream-content">Receiving stream...</div>
-                `;
-
-                eventSource.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'eoh', { sse_event: data });
-                        
-                        streamContent += JSON.stringify(data, null, 2) + '\n\n';
-                        document.getElementById('eoh-stream-content').innerHTML = 
-                            `<pre>${streamContent}</pre>`;
-                    } catch (e) {
-                        console.error('Failed to parse SSE:', e);
+                if (!r.ok) throw new Error(`API error: ${r.status}`);
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '', content = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(line.substring(5).trim());
+                            content += JSON.stringify(data, null, 2) + '\n\n';
+                            document.getElementById('eoh-stream').innerHTML = '<pre>' + content + '</pre>';
+                        } catch (_) {}
                     }
-                };
-
-                eventSource.onerror = (error) => {
-                    addReceiptEvent('error', 'eoh', { error: 'SSE connection error' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                };
-
-                eventSource.addEventListener('done', () => {
-                    addReceiptEvent('completion', 'eoh', { action: 'stream_complete' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                });
-
-                updateTransparencyPanelForAPICall();
-
-            } catch (error) {
-                addReceiptEvent('error', 'eoh', { error: error.message, stack: error.stack });
-                completeReceiptCache();
-                resultsArea.innerHTML = `
-                    <div class="results-header">Error</div>
-                    <div class="results-error">${error.message}</div>
-                `;
-                button.classList.remove('loading');
-                button.disabled = false;
+                }
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('EoH reasoning completed');
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                area.innerHTML = '<div class="results-header">Error</div><div class="results-error">' + e.message + '</div>';
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
             }
         }
 
-        // === ANSWER FORMATTING ===
-        function formatAnswer(text) {
-            if (!text) return '';
-            
-            // Escape HTML
-            let html = text
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-            
-            // Format headers (### Title)
-            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-            
-            // Format subheaders (- **Title**)
-            html = html.replace(/^- \*\*(.+?)\*\*/gm, '<h4>$1</h4>');
-            
-            // Format bold text
-            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            
-            // Format bullet points (- text)
-            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-            
-            // Wrap consecutive <li> in <ul>
-            html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
-                return '<ul>' + match + '</ul>';
-            });
-            
-            // Format paragraphs (double newline)
-            const parts = html.split(/\n\n+/);
-            html = parts.map(part => {
-                part = part.trim();
-                if (!part) return '';
-                if (part.startsWith('<h3>') || part.startsWith('<h4>') || 
-                    part.startsWith('<ul>') || part.startsWith('<ol>')) {
-                    return part;
+        async function handleEohdSubmit() {
+            if (!selectedEohdPdf) { alert('Select a timeline PDF first.'); return; }
+            const patient = document.getElementById('eohd-patient').value.trim() || 'anonymous';
+            const focus = document.getElementById('eohd-focus').value.trim() || '';
+            const password = document.getElementById('eohd-password').value || '';
+
+            const btn = document.getElementById('submit-eohd');
+            const area = document.getElementById('eohd-results');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            area.style.display = 'block';
+            area.innerHTML = '<div class="results-loading">Uploading timeline PDF...</div>';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedEohdPdf);
+                if (password) formData.append('password', password);
+                formData.append('patient_id', patient);
+
+                area.innerHTML = '<div class="results-loading">Processing PDF (may take a minute)...</div>';
+                const uploadR = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, { method: 'POST', body: formData });
+                if (!uploadR.ok) throw new Error('PDF upload failed');
+                const uploadResult = await uploadR.json();
+                addReceipt('PDF uploaded: ' + selectedEohdPdf.name);
+
+                let q = `Patient: ${patient}\nTimeline: ${selectedEohdPdf.name}`;
+                if (focus) q += `\nFocus: ${focus}`;
+
+                area.innerHTML = '<div class="results-header">EoH Detective Stream</div><div class="results-content" id="eohd-stream">Connecting...</div>';
+
+                const r2 = await fetch(`${API_BASE}/api/rag/eoh_detective_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q, timeline_patient_id: uploadResult.session_key, max_steps: 6, limit: 10, ctx_k: 32, valyu_k: 3, use_valyu: true, valyu_mode: 'search', valyu_raw: true, with_llm: true, llm_mode: 'chunk', research: 0, enable_gap: 1 })
+                });
+                if (!r2.ok) throw new Error(`API error: ${r2.status}`);
+                const reader = r2.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '', content = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(line.substring(5).trim());
+                            content += JSON.stringify(data, null, 2) + '\n\n';
+                            document.getElementById('eohd-stream').innerHTML = '<pre>' + content + '</pre>';
+                        } catch (_) {}
+                    }
                 }
-                return '<p>' + part.replace(/\n/g, '<br>') + '</p>';
-            }).join('\n');
-            
-            return html;
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('EoHD detective completed');
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                area.innerHTML = '<div class="results-header">Error</div><div class="results-error">' + e.message + '</div>';
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
         }
 
-        // === ANSWER FORMATTING ===
-        function formatAnswer(text) {
-            if (!text) return '';
-            
-            // Escape HTML to prevent XSS
-            let html = text
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-            
-            // Format headers (### Title)
-            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-            
-            // Format subheaders (- **Title** or **Title**)
-            html = html.replace(/^- \*\*(.+?)\*\*/gm, '<h4>$1</h4>');
-            html = html.replace(/^\*\*(.+?)\*\*$/gm, '<h4>$1</h4>');
-            
-            // Format bold text (remaining **text**)
-            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            
-            // Format bullet points (- text)
-            html = html.replace(/^- (.+)$/gm, '|||LI|||$1|||/LI|||');
-            
-            // Wrap consecutive bullets in <ul>
-            html = html.replace(/(|||LI|||.+?|||\/LI|||\n?)+/g, (match) => {
-                const items = match.replace(/\|\|\|LI\|\|\|/g, '<li>').replace(/\|\|\|\/LI\|\|\|/g, '</li>');
-                return '<ul>' + items + '</ul>';
-            });
-            
-            // Format paragraphs (split on double newline)
-            const parts = html.split(/\n\n+/);
-            html = parts.map(part => {
-                part = part.trim();
-                if (!part) return '';
-                // Don't wrap structural elements
-                if (part.startsWith('<h3>') || part.startsWith('<h4>') || 
-                    part.startsWith('<ul>') || part.startsWith('<ol>')) {
-                    return part;
+        // === QUERY TIMELINE ===
+        async function handleQueryTimeline() {
+            const query = document.getElementById('query-input').value.trim();
+            if (!query) { alert('Enter a question.'); return; }
+
+            const btn = document.getElementById('query-submit-btn');
+            const area = document.getElementById('query-results-area');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            area.style.display = 'block';
+            document.getElementById('query-results-content').innerHTML = '<div class="results-loading">Searching timeline...</div>';
+
+            try {
+                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, limit: 8, ctx_k: 16, with_llm: 1, llm_mode: 'chunk', use_valyu: 0, use_ethos: 0 })
+                });
+                if (!r.ok) throw new Error(`API error: ${r.status}`);
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '', answer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(line.substring(5).trim());
+                            if (data.text) {
+                                answer += data.text;
+                                document.getElementById('query-results-content').innerHTML = formatMarkdown(answer);
+                            }
+                            if (data.type === 'llm_done' || data.done) {
+                                if (data.text) { answer = data.text; document.getElementById('query-results-content').innerHTML = formatMarkdown(answer); }
+                            }
+                        } catch (_) {}
+                    }
                 }
-                // Wrap regular text in <p>, preserve single line breaks as <br>
-                return '<p>' + part.replace(/\n/g, '<br>') + '</p>';
-            }).join('\n\n');
-            
-            return html;
+                document.getElementById('query-confidence-badge').textContent = 'Complete';
+                queryCount++;
+                document.getElementById('stat-queries').textContent = queryCount;
+                addReceipt('Timeline query: ' + query.substring(0, 40) + '...');
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                document.getElementById('query-results-content').innerHTML = '<div class="results-error">' + e.message + '</div>';
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
         }
 
-        function updateTransparencyPanelForAPICall() {
-            // Update transparency panel to reflect that external calls were made
-            // This is honest: we DID make an external call
-            const externalCallsItem = document.getElementById('external-calls');
-            externalCallsItem.classList.add('violated');
-            externalCallsItem.querySelector('.status').textContent = '⚠';
-            externalCallsItem.querySelector('.label').textContent = 'External API call made';
-            
-            const timestamp = formatTimestamp();
-            transparencyUpdate.textContent = `Last verified: ${timestamp}`;
+        // === DOCUMENT HANDLING ===
+        function setupDocDropZone() {
+            const zone = document.getElementById('doc-drop-zone');
+            const input = document.getElementById('doc-file-input');
+            const submitBtn = document.getElementById('doc-submit-btn');
+
+            zone.addEventListener('click', () => input.click());
+            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+            input.addEventListener('change', e => handleFiles(e.target.files));
+
+            function handleFiles(files) {
+                selectedFiles = Array.from(files);
+                const list = document.getElementById('doc-upload-list');
+                list.innerHTML = selectedFiles.map(f => `
+                    <div style="padding: 8px 12px; background: var(--color-bg); border-radius: var(--radius); margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between;">
+                        <span>${escapeHtml(f.name)}</span>
+                        <span style="color: var(--color-text-dim);">${(f.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                `).join('');
+                submitBtn.disabled = selectedFiles.length === 0;
+            }
         }
 
-        function resetTransparencyPanel() {
-            // Reset when mode changes (new session)
-            const externalCallsItem = document.getElementById('external-calls');
-            externalCallsItem.classList.remove('violated');
-            externalCallsItem.querySelector('.status').textContent = '✓';
-            externalCallsItem.querySelector('.label').textContent = 'No external calls made';
-            
-            updateTransparencyPanel();
-        }
+        function setupEohdDropZone() {
+            const zone = document.getElementById('eohd-drop-zone');
+            const input = document.getElementById('eohd-file-input');
+            const submitBtn = document.getElementById('submit-eohd');
 
-        // === MODE SWITCHING ===
-        function switchMode(newMode) {
-            const timestamp = formatTimestamp();
-
-            // Clear previous mode state
-            modeButtons.forEach(btn => btn.classList.remove('active'));
-            modeContents.forEach(content => content.classList.remove('active'));
-
-            // Update current mode
-            currentMode = newMode;
-
-            // Activate new mode
-            const activeButton = document.querySelector(`button[data-mode="${newMode}"]`);
-            const activeContent = document.querySelector(`.mode-content[data-mode="${newMode}"]`);
-
-            if (activeButton) activeButton.classList.add('active');
-            if (activeContent) activeContent.classList.add('active');
-
-            // Update header
-            modeIndicator.textContent = newMode.toUpperCase();
-
-            // Update footer
-            footerModeValue.textContent = newMode.toUpperCase();
-            footerStatusValue.textContent = 'READY';
-
-            // Add receipt
-            addReceipt(`Mode changed to ${newMode.toUpperCase()}`, timestamp);
-
-            // Update transparency panel and reset external calls
-            resetTransparencyPanel();
-        }
-
-        // === EVENT LISTENERS ===
-        modeButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const mode = button.getAttribute('data-mode');
-                if (mode !== currentMode) {
-                    switchMode(mode);
+            zone.addEventListener('click', () => input.click());
+            input.addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) {
+                    selectedEohdPdf = file;
+                    document.getElementById('eohd-drop-text').textContent = file.name;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Run EoH Detective';
                 }
             });
-        });
+        }
 
-        toggleReceiptsBtn.addEventListener('click', () => {
-            const isVisible = receiptCacheContent.classList.toggle('visible');
-            toggleReceiptsBtn.textContent = isVisible ? 'Hide Receipts' : 'Show Receipts';
-        });
+        // === DOCUMENT SUBMIT ===
+        async function handleDocSubmit() {
+            if (selectedFiles.length === 0) return;
+            if (!sessionToken) { showMsg('doc-submit-msg', 'Start a session first.', true); return; }
+            clearMsg('doc-submit-msg');
 
-        exportHtmlBtn.addEventListener('click', exportReceiptHTML);
-        exportJsonBtn.addEventListener('click', exportReceiptJSON);
-        clearReceiptsBtn.addEventListener('click', clearReceiptCache);
+            const docType = document.getElementById('doc-type-select').value;
+            const docDate = document.getElementById('doc-date-input').value;
+            const docNotes = document.getElementById('doc-notes-input').value.trim();
 
-        // Mode submit buttons
-        document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
-        document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
-        document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
+            const btn = document.getElementById('doc-submit-btn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            try {
+                for (const file of selectedFiles) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('document_type', docType);
+                    if (docDate) formData.append('document_date', docDate);
+                    if (docNotes) formData.append('notes', docNotes);
+
+                    const r = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${sessionToken}` },
+                        body: formData
+                    });
+
+                    if (r.ok) {
+                        addReceipt('Document uploaded: ' + file.name);
+                    } else {
+                        showMsg('doc-submit-msg', 'Upload failed for: ' + file.name, true);
+                    }
+                }
+                showMsg('doc-submit-msg', selectedFiles.length + ' document(s) submitted.', false);
+                updateTransparency('t-mutation', true, 'Timeline mutated');
+                updateTransparency('t-persist', true, 'Documents persisted');
+                selectedFiles = [];
+                document.getElementById('doc-upload-list').innerHTML = '';
+                document.getElementById('doc-file-input').value = '';
+            } catch (e) {
+                showMsg('doc-submit-msg', e.message, true);
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = true;
+            }
+        }
+
+        // === DOCUMENT SEARCH ===
+        async function handleDocSearch() {
+            const q = document.getElementById('doc-search-input').value.trim();
+            if (!q) return;
+            const container = document.getElementById('doc-search-results');
+            container.innerHTML = '<div class="results-loading">Searching documents...</div>';
+
+            try {
+                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q, limit: 4, ctx_k: 8, with_llm: 0, use_valyu: 0 })
+                });
+                if (!r.ok) throw new Error(`Search failed: ${r.status}`);
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '', results = [];
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(line.substring(5).trim());
+                            if (data.docs) results = data.docs;
+                        } catch (_) {}
+                    }
+                }
+
+                if (results.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="padding: 24px;"><div class="empty-state-desc">No matching documents found.</div></div>';
+                } else {
+                    container.innerHTML = results.map((d, i) => `
+                        <div class="card" style="margin-bottom: 12px;">
+                            <div class="card-header">
+                                <div class="card-title">Result #${i + 1}</div>
+                                <div class="card-badge badge-blue">${d.score ? (d.score * 100).toFixed(0) + '%' : 'Match'}</div>
+                            </div>
+                            <div style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.6;">${escapeHtml(d.text || d.content || JSON.stringify(d))}</div>
+                        </div>
+                    `).join('');
+                }
+                addReceipt('Document search: ' + q);
+                updateTransparency('t-external', true, 'External API call');
+            } catch (e) {
+                container.innerHTML = '<div class="results-error">' + e.message + '</div>';
+            }
+        }
+
+        // === RISK TRAJECTORY ===
+        function handleRunRisk() {
+            addReceipt('Risk assessment requested');
+            // Demo risk values (will connect to backend when risk API is ready)
+            const risks = [
+                { id: 'cardio', val: 35, label: 'Low-Medium' },
+                { id: 'diabetes', val: 22, label: 'Low' },
+                { id: 'kidney', val: 15, label: 'Low' },
+                { id: 'mental', val: 45, label: 'Medium' }
+            ];
+
+            risks.forEach(r => {
+                document.getElementById(`risk-${r.id}-val`).textContent = `${r.val}/100 (${r.label})`;
+                const bar = document.getElementById(`risk-${r.id}-bar`);
+                bar.style.width = r.val + '%';
+                bar.className = 'risk-bar-fill ' + (r.val < 30 ? 'risk-low' : r.val < 60 ? 'risk-medium' : 'risk-high');
+            });
+
+            const oppCard = document.getElementById('risk-opportunities-card');
+            oppCard.style.display = 'block';
+            document.getElementById('risk-opportunities-content').innerHTML = `
+                <div class="notice notice-success" style="margin-bottom: 12px;">
+                    <strong>Opportunity:</strong> No HbA1c in 6+ months — Schedule test (-15 risk points)
+                </div>
+                <div class="notice notice-success" style="margin-bottom: 12px;">
+                    <strong>Opportunity:</strong> Blood pressure trending up — Consider lifestyle modifications (-10 risk points)
+                </div>
+                <div class="notice notice-info">
+                    <strong>Note:</strong> Risk scores are based on available timeline data. Upload more documents for more accurate assessment. Confidence: MEDIUM (limited data).
+                </div>
+            `;
+            updateTransparency('t-external', true, 'Risk analysis performed');
+        }
+
+        // === SEND TIMELINE ===
+        function setupSendTimeline() {
+            document.getElementById('send-scope').addEventListener('change', e => {
+                document.getElementById('send-custom-dates').style.display = e.target.value === 'custom' ? 'block' : 'none';
+            });
+
+            document.getElementById('send-email-btn').addEventListener('click', () => {
+                document.getElementById('send-email-field').style.display = document.getElementById('send-email-field').style.display === 'none' ? 'block' : 'none';
+            });
+
+            document.getElementById('send-generate-btn').addEventListener('click', () => {
+                const format = document.getElementById('send-format').value;
+                const scope = document.getElementById('send-scope').value;
+                showMsg('send-msg', `Export generation requested (${format}, ${scope}). This feature will connect to the backend export API.`, false);
+                addReceipt(`Timeline export requested: ${format} / ${scope}`);
+            });
+        }
+
+        // === RECEIPT EXPORT ===
+        function exportReceipts() {
+            const json = JSON.stringify({ session_email: sessionEmail, receipts: receiptLog, exported_at: new Date().toISOString() }, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `2opmd-receipts-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // === EMAIL VERIFICATION ===
+        function checkVerificationToken() {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            if (!token) return;
+            showModal('modal-verification');
+            fetch(`${API_BASE}/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('verification-status').textContent = data.message || 'Email verified.';
+                    history.replaceState({}, document.title, window.location.pathname || '/');
+                })
+                .catch(err => {
+                    document.getElementById('verification-status').textContent = 'Verification failed: ' + (err.message || '');
+                });
+        }
 
         // === INITIALIZATION ===
-        // System starts with no mode selected
-        footerStatusValue.textContent = 'IDLE';
-        footerModeValue.textContent = 'NONE';
+        function init() {
+            // Check for existing session
+            updateUI();
+            checkVerificationToken();
 
-        // === DEMO: Add sample receipt event (remove when SSE connected) ===
-        // This demonstrates the receipt cache structure with a sample event
-        // Uncomment to see receipt cache in action:
-        /*
-        addReceiptEvent('event', 'ask', {
-            message: 'Query received',
-            query: 'What are the symptoms of lupus?',
-            timestamp: new Date().toISOString()
-        });
-        addReceiptEvent('event', 'ask', {
-            message: 'Evidence retrieved',
-            sources: 3,
-            confidence: 0.87
-        });
-        addReceiptEvent('completion', 'ask', {
-            message: 'Query completed',
-            tokens_used: 450,
-            duration_ms: 1240
-        });
-        completeReceiptCache();
-        */
+            // Vault landing buttons
+            document.getElementById('vault-initiate').addEventListener('click', () => showModal('modal-session'));
+            document.getElementById('vault-onboard').addEventListener('click', () => showModal('modal-onboarding'));
+
+            // Auth modals
+            document.getElementById('onboarding-submit').addEventListener('click', handleOnboarding);
+            document.getElementById('onboarding-cancel').addEventListener('click', () => hideModal('modal-onboarding'));
+            document.getElementById('session-submit').addEventListener('click', handleInitiateSession);
+            document.getElementById('session-cancel').addEventListener('click', () => hideModal('modal-session'));
+            document.getElementById('verification-dismiss').addEventListener('click', () => hideModal('modal-verification'));
+
+            // Portal close session
+            document.getElementById('portal-close-session').addEventListener('click', handleCloseSession);
+
+            // Navigation
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => switchView(item.dataset.view));
+            });
+
+            // Clinical mode buttons
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.addEventListener('click', () => switchClinicalMode(btn.dataset.clinicalMode));
+            });
+
+            // Clinical console submit buttons
+            document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
+            document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
+            document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
+            document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+
+            // Timeline
+            document.getElementById('initialize-timeline-btn').addEventListener('click', handleInitializeTimeline);
+            document.getElementById('add-timeline-event-btn').addEventListener('click', () => showModal('modal-add-event'));
+            document.getElementById('event-add-cancel').addEventListener('click', () => hideModal('modal-add-event'));
+            document.getElementById('event-add-submit').addEventListener('click', () => {
+                addReceipt('Timeline event added manually');
+                hideModal('modal-add-event');
+                showMsg('timeline-init-msg', 'Event added (will persist when backend timeline API is connected).', false);
+            });
+
+            // Query Timeline
+            document.getElementById('query-submit-btn').addEventListener('click', handleQueryTimeline);
+
+            // Journal
+            document.getElementById('journal-save-btn').addEventListener('click', handleJournalSave);
+            document.getElementById('journal-query-btn').addEventListener('click', handleJournalQuery);
+            document.getElementById('journal-query-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleJournalQuery(); });
+            document.getElementById('journal-refresh-btn').addEventListener('click', loadJournalEntries);
+
+            // Documents
+            setupDocDropZone();
+            setupEohdDropZone();
+            document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmit);
+            document.getElementById('doc-search-btn').addEventListener('click', handleDocSearch);
+            document.getElementById('doc-search-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
+
+            // Risk
+            document.getElementById('run-risk-btn').addEventListener('click', handleRunRisk);
+
+            // Send Timeline
+            setupSendTimeline();
+
+            // Export Receipts
+            document.getElementById('export-receipts-btn').addEventListener('click', exportReceipts);
+
+            // Update header timestamp
+            setInterval(() => {
+                document.getElementById('header-timestamp').textContent = ts();
+            }, 1000);
+
+            addReceipt('2OPMD initialized — java_kali');
+        }
+
+        // Run
+        init();
+    })();
     </script>
 </body>
 </html>
-

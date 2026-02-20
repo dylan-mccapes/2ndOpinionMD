@@ -6,7 +6,12 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 import json
 
-from .stream_config import CHAT_MODEL_UTIL, GUIDELINE_SOURCE_META
+from .stream_config import (
+    CHAT_MODEL_UTIL,
+    GUIDELINE_SOURCE_META,
+    STRICT_CODE_SOURCES,
+    is_strict_code_source,
+)
 
 client = OpenAI()
 

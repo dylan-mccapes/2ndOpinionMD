@@ -35,6 +35,14 @@ from server.api.eoh_gap_retrieval import (
 from server.llm.llm_client import chat_completion_async as _llm_chat_completion_async, embedding_async, get_async_openai_client
 from server.timeline.embedding_cache import get_cached_query_embedding, put_cached_query_embedding
 
+# PatientTimelineVision for provenance tracking
+from server.eoh.patient_timeline_vision import (
+    PatientTimelineVision,
+    TimelineEventVision,
+    seed_from_structured_probe_snapshot,
+    add_events_from_pdf_page,
+)
+
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -74,10 +82,12 @@ class TimelineSummaries:
     - timeline_summary: primary longitudinal story used by router, EoH, etc.
     - meds_and_labs_snapshot: human-readable meds/labs snapshot for context.
     - valyu_summary: compact, search-oriented signal list for Valyu queries.
+    - vision_path: optional path to PatientTimelineVision jsonl (session-only)
     """
     timeline_summary: str = ""
     meds_and_labs_snapshot: str = ""
     valyu_summary: str = ""
+    vision_path: Optional[str] = None
 
 
 
@@ -2446,6 +2456,717 @@ async def _call_timeline_summarizer_model(
             timeline_summary=canonical,
             meds_and_labs_snapshot="",
         )
+
+
+# ---------------------------------------------------------------------------
+# PDF Import Support (Session-Only)
+# ---------------------------------------------------------------------------
+
+async def _extract_events_from_page_text(
+    client: AsyncOpenAI,
+    page_text: str,
+    page_num: int,
+) -> List[Dict[str, Any]]:
+    """
+    Extract events from PDF page text using LLM extraction.
+
+    **Design Principle:** LLMs are heuristic management infrastructure.
+    Rather than maintaining fragile regex patterns and keyword lists,
+    delegate event extraction to a capable agent with clear instructions.
+
+    Args:
+        client: OpenAI async client
+        page_text: Raw text from PDF page
+        page_num: Page number for provenance
+
+    Returns:
+        List of event dicts with event_type, timestamp, preview, event_id
+    """
+    if not page_text.strip():
+        # Empty page: return generic page event
+        return [{
+            "event_type": "page",
+            "timestamp": "unknown",
+            "preview": "(empty page)",
+            "event_id": f"pdf_p{page_num:04d}_empty",
+        }]
+
+    EVENT_EXTRACTION_SYSTEM_PROMPT = textwrap.dedent("""
+        You are a precise medical event extraction agent (GPT-5.1 equivalent).
+        Your task is to extract structured medical timeline events from patient document pages.
+
+        **Instructions:**
+        1. Review the provided page text carefully.
+        2. Identify all medically relevant events, including:
+           - Diagnoses (confirmed, suspected, ruled out)
+           - Medications (started, stopped, changed)
+           - Lab results (tests, values, interpretations)
+           - Procedures (surgeries, imaging, interventions)
+           - Symptoms (patient-reported complaints)
+           - Clinical notes (visit summaries, assessments)
+        3. For each event, extract:
+           - `event_type`: One of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
+           - `timestamp`: Date in YYYY-MM-DD format if available, otherwise "unknown"
+           - `preview`: A concise 1-2 sentence summary of the event (max 200 chars)
+        4. Output a JSON array of events. Each event must have these exact fields.
+        5. If no clear events are present, return an empty array [].
+        6. Do NOT hallucinate events. Only extract what is explicitly present.
+        7. Preserve all dates exactly as they appear (convert to YYYY-MM-DD if possible).
+
+        **Example Output:**
+        ```json
+        [
+          {
+            "event_type": "diagnosis",
+            "timestamp": "2023-05-15",
+            "preview": "Diagnosed with Myasthenia Gravis based on positive AChR antibody and clinical presentation."
+          },
+          {
+            "event_type": "medication",
+            "timestamp": "2023-05-15",
+            "preview": "Started Pyridostigmine 60mg TID."
+          },
+          {
+            "event_type": "lab",
+            "timestamp": "2023-05-10",
+            "preview": "AChR antibody positive (titer 12.5 nmol/L, ref <0.4)."
+          }
+        ]
+        ```
+
+        **Important:**
+        - Only output valid JSON.
+        - Do not include explanations or commentary.
+        - If uncertain about event_type, use "note" as default.
+        - If date is ambiguous or partial, use "unknown".
+    """)
+
+    payload = {
+        "page_num": page_num,
+        "page_text": page_text[:4000],  # Limit to 4000 chars to avoid token overflow
+    }
+
+    messages = [
+        {"role": "system", "content": EVENT_EXTRACTION_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+    try:
+        resp = await _llm_chat_completion_async(
+            client=client,
+            model="gpt-4-0125-preview",  # GPT-5.1 equivalent for precision
+            messages=messages,
+            max_tokens=2048,
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+
+        raw_content = _safe_get_choice_content(resp)
+        parsed = json.loads(raw_content)
+
+        # Handle both array and object with "events" key
+        if isinstance(parsed, list):
+            events = parsed
+        elif isinstance(parsed, dict) and "events" in parsed:
+            events = parsed["events"]
+        else:
+            logger.warning(f"Unexpected LLM response format for page {page_num}: {raw_content[:200]}")
+            events = []
+
+        # Add event_id to each event
+        for idx, event in enumerate(events):
+            if "event_id" not in event:
+                event["event_id"] = f"pdf_p{page_num:04d}_e{idx:04d}"
+
+        # If no events extracted, create a generic page event
+        if not events:
+            events = [{
+                "event_type": "page",
+                "timestamp": "unknown",
+                "preview": page_text[:200],
+                "event_id": f"pdf_p{page_num:04d}_generic",
+            }]
+
+        return events
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM event extraction output for page {page_num}: {e}")
+        # Fallback: create a generic page event
+        return [{
+            "event_type": "page",
+            "timestamp": "unknown",
+            "preview": page_text[:200],
+            "event_id": f"pdf_p{page_num:04d}_fallback",
+        }]
+    except Exception as e:
+        logger.error(f"Event extraction failed for page {page_num}: {e}")
+        # Fallback: create a generic page event
+        return [{
+            "event_type": "page",
+            "timestamp": "unknown",
+            "preview": page_text[:200],
+            "event_id": f"pdf_p{page_num:04d}_error",
+        }]
+
+
+async def summarize_timeline_from_pdf(
+    client: AsyncOpenAI,
+    question: str,
+    pdf_path: str,
+    password: Optional[str] = None,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    pool: Any | None = None,
+    patient_id: str = "session_patient",
+) -> TimelineSummaries:
+    """
+    Import and summarize a timeline PDF for session-only use.
+    
+    This function:
+    1. Decrypts PDF if needed (password prompt or provided)
+    2. Extracts text from PDF
+    3. Passes to summarize_timeline_for_eoh() for standard processing
+    
+    All data is session-only:
+    - No writes to rag_corpus or ehr.patient_timeline
+    - Password deleted immediately after decryption
+    - Timeline text stays in memory only
+    
+    Args:
+        client: OpenAI async client
+        question: Question for EoHD investigation
+        pdf_path: Path to timeline PDF
+        password: Optional decryption password (will prompt if needed)
+        max_tokens: Max tokens for summarization
+        pool: Optional DB pool (for PatientTimelineVision session graph)
+        patient_id: Patient ID for session (default: "session_patient")
+    
+    Returns:
+        TimelineSummaries object ready for EoHD execution
+    """
+    from pathlib import Path
+    from pypdf import PdfReader
+    import getpass
+    
+    pdf_file = Path(pdf_path)
+    
+    if not pdf_file.exists():
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
+    
+    logger.info("Timeline PDF import (session-only): %s", pdf_file.name)
+    
+    # Step 1: Open and decrypt if needed
+    reader = PdfReader(str(pdf_file))
+    was_encrypted = reader.is_encrypted
+    
+    if was_encrypted:
+        if password is None:
+            logger.info("PDF is encrypted; prompting for password")
+            password = getpass.getpass("Enter PDF decryption password: ")
+        
+        try:
+            if reader.decrypt(password) == 0:
+                raise ValueError("Incorrect password")
+            logger.info("PDF decrypted successfully")
+        except Exception as e:
+            raise ValueError(f"Failed to decrypt PDF: {e}")
+        finally:
+            # Delete password from memory immediately
+            if password:
+                del password
+    
+    # Step 2: Extract text and build PatientTimelineVision
+    logger.info("Extracting text from %d pages", len(reader.pages))
+    chunks = []
+    page_texts = []  # Keep pages separate for PatientTimelineVision
+    
+    for idx, page in enumerate(reader.pages):
+        text = (page.extract_text() or "").strip()
+        text = text.replace("\x00", "")  # Clean NUL bytes
+        if text:
+            chunks.append(f"=== Page {idx + 1} ===\n{text}")
+            page_texts.append(text)
+    
+    timeline_text = "\n\n".join(chunks)
+    logger.info(
+        "Timeline PDF extracted: %d pages, %d chars",
+        len(chunks),
+        len(timeline_text)
+    )
+    
+    # Step 2a: Build PatientTimelineVision for provenance tracking
+    logger.info("Building PatientTimelineVision for %s", patient_id)
+    
+    # Seed PatientTimelineVision (empty initially, will be built incrementally)
+    vision = seed_from_structured_probe_snapshot(
+        patient_id=patient_id,
+        snapshot_counts={
+            "total_pages": len(page_texts),
+            "total_chars": len(timeline_text),
+        },
+        dx_examples=[],
+        lab_examples=[],
+        note_examples=[],
+        session_only=True,
+    )
+    
+    # Build incrementally by processing each page
+    for page_num, page_text in enumerate(page_texts, start=1):
+        # Extract events from page text using LLM agent
+        # Design principle: LLMs are heuristic management infrastructure
+        events = await _extract_events_from_page_text(client, page_text, page_num)
+        
+        add_events_from_pdf_page(
+            vision=vision,
+            page_num=page_num,
+            events=events,
+        )
+        logger.info(
+            "PatientTimelineVision: processed page %d/%d, events=%d",
+            page_num,
+            len(page_texts),
+            len(vision.events)
+        )
+    
+    # Save vision to temp file (force save even though session_only=True)
+    vision_path = f"/tmp/patient_timeline_vision_{patient_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    vision.save(vision_path, force=True)
+    logger.info(
+        "PatientTimelineVision saved: %s (events=%d, edges=%d)",
+        vision_path,
+        len(vision.events),
+        vision.count_edges()
+    )
+    
+    # Step 3: Pass to standard timeline summarizer
+    # This handles single-pass vs. hierarchical vs. RAG automatically
+    summaries = await summarize_timeline_for_eoh(
+        client=client,
+        question=question,
+        timeline_text=timeline_text,
+        max_tokens=max_tokens,
+        pool=pool,
+        patient_id=patient_id,
+        use_timeline_rag=True if pool else False,
+    )
+    
+    # Attach vision_path to summaries
+    summaries.vision_path = vision_path
+    logger.info("Timeline PDF import complete with PatientTimelineVision: %s", vision_path)
+    
+    # Step 4: Two-phase graph enrichment (gap analysis → synthesis)
+    if vision.events and pool:
+        logger.info("PatientTimelineVision: running two-phase graph enrichment...")
+        try:
+            # Import enrichment agents
+            from server.eoh.timeline_enrichment_gap_agent import analyze_timeline_enrichment_gaps
+            from server.eoh.timeline_enrichment_synthesis_agent import synthesize_timeline_enrichment
+            
+            # Build snapshot for gap agent
+            snapshot_counts = {
+                "total_events": len(vision.events),
+                "total_edges": vision.count_edges(),
+            }
+            
+            # Phase 1: Gap analysis (uses existing vision + context)
+            # The gap agent will identify where to look and enrich opportunistically
+            gap_analysis = await analyze_timeline_enrichment_gaps(
+                client=client,
+                patient_timeline_vision=vision,
+                timeline_snapshot=snapshot_counts,
+                existing_context=[],  # Timeline summarizer already processed context
+                patient_id=patient_id,
+            )
+            
+            # Save gap analysis artifact
+            gap_report_path = vision_path.replace("patient_timeline_vision_", "gap_analysis_")
+            with open(gap_report_path, "w", encoding="utf-8") as f:
+                json.dump(gap_analysis, f, indent=2, ensure_ascii=False)
+            print(f"\nGap analysis saved: {gap_report_path}")
+            
+            # Apply opportunistic edges from gap analysis
+            for edge_data in gap_analysis.get("opportunistic_edges", []):
+                vision.add_edge(
+                    source_event_id=edge_data["source_event_id"],
+                    target_event_id=edge_data["target_event_id"],
+                    connascence_type=edge_data["connascence_type"],
+                    strength=edge_data.get("strength", 1.0),
+                    discovered_by="gap_agent_opportunistic",
+                    metadata={"reasoning": edge_data.get("reasoning", "")},
+                )
+            
+            # Execute gap queries if needed
+            gap_retrieval_results: List[Dict[str, Any]] = []
+            if gap_analysis.get("needs_enrichment", False):
+                gap_queries = gap_analysis.get("gap_queries", {})
+                ts_terms = gap_queries.get("ts_terms", [])
+                
+                if ts_terms:
+                    print(f"\nExecuting gap TS queries: {ts_terms}")
+                    gap_retrieval_results = await _search_timeline_ts_for_terms(
+                        pool=pool,
+                        patient_id=patient_id,
+                        terms=ts_terms,
+                        limit_total=100,  # Cap gap retrieval
+                    )
+                    print(f"Gap retrieval: {len(gap_retrieval_results)} rows retrieved")
+            
+            # Phase 2: Synthesis (high context, 90% cap)
+            if gap_analysis.get("needs_enrichment", False) or gap_retrieval_results:
+                enrichment_synthesis = await synthesize_timeline_enrichment(
+                    client=client,
+                    patient_timeline_vision=vision,
+                    gap_analysis=gap_analysis,
+                    gap_retrieval_results=gap_retrieval_results,
+                    timeline_snapshot=snapshot_counts,
+                    patient_id=patient_id,
+                )
+                
+                # Save enrichment synthesis artifact
+                synthesis_report_path = vision_path.replace("patient_timeline_vision_", "enrichment_synthesis_")
+                with open(synthesis_report_path, "w", encoding="utf-8") as f:
+                    json.dump(enrichment_synthesis, f, indent=2, ensure_ascii=False)
+                print(f"\nEnrichment synthesis saved: {synthesis_report_path}")
+                
+                # Apply new edges from synthesis
+                for edge_data in enrichment_synthesis.get("new_edges", []):
+                    vision.add_edge(
+                        source_event_id=edge_data["source_event_id"],
+                        target_event_id=edge_data["target_event_id"],
+                        connascence_type=edge_data["connascence_type"],
+                        strength=edge_data.get("strength", 1.0),
+                        discovered_by="synthesis_agent",
+                        metadata={"reasoning": edge_data.get("reasoning", "")},
+                    )
+                
+                # Apply metadata updates from synthesis
+                for update_data in enrichment_synthesis.get("metadata_updates", []):
+                    event_id = update_data.get("event_id")
+                    if event_id and event_id in vision.events:
+                        event = vision.events[event_id]
+                        updates = update_data.get("updates", {})
+                        
+                        # Update timestamp if provided
+                        if "timestamp" in updates:
+                            event.timestamp = updates["timestamp"]
+                        
+                        # Update annotations if provided
+                        if "annotations" in updates:
+                            event.annotations.update(updates["annotations"])
+                        
+                        print(f"  Updated event {event_id}: {update_data.get('reasoning', 'N/A')[:100]}")
+            
+            # Re-save enriched vision
+            vision.save(vision_path, force=True)
+            logger.info(
+                "PatientTimelineVision enriched: %s (events=%d, edges=%d)",
+                vision_path,
+                len(vision.events),
+                vision.count_edges()
+            )
+            
+        except Exception:
+            logger.exception("PatientTimelineVision: two-phase enrichment failed; continuing with base vision.")
+    
+    return summaries
+
+
+async def _enrich_timeline_vision_connascence(
+    vision: PatientTimelineVision,
+    client: Any,
+    question: str,
+) -> PatientTimelineVision:
+    """
+    Opportunistic connascence inference for PatientTimelineVision.
+    
+    Implements mechanical rules defined in:
+        PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md (v0.1)
+    
+    Phase 1 Rules (Mechanical, No LLM):
+    - Rule 1: Temporal connascence (±7 days)
+    - Rule 2: Diagnostic connascence (shared condition keywords, ≥4 chars)
+    - Rule 3: Lab trend connascence (same test over time)
+    - Rule 4: Treatment connascence (med → lab/symptom within 30 days)
+    
+    Pattern: probe -> inference -> update vision
+    See rubric for detailed rule definitions, parameters, and examples.
+    
+    Args:
+        vision: PatientTimelineVision with events
+        client: OpenAI client for LLM probe (reserved for Phase 2)
+        question: Original question for context (reserved for Phase 2)
+    
+    Returns:
+        Enriched PatientTimelineVision with connascence edges
+    """
+    from server.eoh.patient_timeline_vision import (
+        CONNASCENCE_TEMPORAL,
+        CONNASCENCE_DIAGNOSTIC,
+        CONNASCENCE_TREATMENT,
+        CONNASCENCE_LAB_TREND,
+    )
+    from datetime import datetime, timedelta
+    
+    if not vision.events:
+        return vision
+    
+    events_list = list(vision.events.values())
+    
+    # --- Mechanical connascence rules (Phase 1) ---
+    # See: PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md v0.1
+    
+    # RUBRIC RULE 1: Temporal Connascence
+    # IF abs(event_a.timestamp - event_b.timestamp) <= 7 days
+    # THEN add_edge(event_a, event_b, type="temporal")
+    temporal_window_days = 7
+    for i, event_a in enumerate(events_list):
+        ts_a_str = event_a.timestamp
+        if not ts_a_str or ts_a_str == "unknown":
+            continue
+        
+        try:
+            # Try to parse date (MM/DD/YYYY or YYYY-MM-DD)
+            if "/" in ts_a_str:
+                ts_a = datetime.strptime(ts_a_str.split()[0], "%m/%d/%Y")
+            elif "-" in ts_a_str:
+                ts_a = datetime.strptime(ts_a_str.split("T")[0], "%Y-%m-%d")
+            else:
+                continue
+        except Exception:
+            continue
+        
+        for event_b in events_list[i+1:]:
+            ts_b_str = event_b.timestamp
+            if not ts_b_str or ts_b_str == "unknown":
+                continue
+            
+            try:
+                if "/" in ts_b_str:
+                    ts_b = datetime.strptime(ts_b_str.split()[0], "%m/%d/%Y")
+                elif "-" in ts_b_str:
+                    ts_b = datetime.strptime(ts_b_str.split("T")[0], "%Y-%m-%d")
+                else:
+                    continue
+            except Exception:
+                continue
+            
+            delta = abs((ts_a - ts_b).days)
+            if delta <= temporal_window_days:
+                event_a.add_connascence(CONNASCENCE_TEMPORAL, event_b.event_id)
+                event_b.add_connascence(CONNASCENCE_TEMPORAL, event_a.event_id)
+    
+    # RUBRIC RULE 2 & 3: LLM-Based Connascence Inference
+    # Call GPT-5.1 for precise diagnostic and lab trend connascence
+    # Passes: rubric, events, vision metadata for precision
+    try:
+        vision = await _infer_llm_connascence(
+            vision=vision,
+            client=client,
+            question=question,
+            connascence_types=[CONNASCENCE_DIAGNOSTIC, CONNASCENCE_LAB_TREND],
+        )
+    except Exception:
+        logger.exception("LLM-based connascence inference failed; continuing with temporal/treatment only")
+    
+    # RUBRIC RULE 4: Treatment Connascence
+    # IF event_a.event_type IN ("medication", "med", "rx")
+    # AND event_b.event_type IN ("lab", "symptom", "note")
+    # AND 0 <= (event_b.timestamp - event_a.timestamp).days <= 30
+    # THEN add_edge(event_a, event_b, type="treatment")
+    med_events = [e for e in events_list if e.event_type in ("medication", "med", "rx")]
+    for med_event in med_events:
+        med_ts_str = med_event.timestamp
+        if not med_ts_str or med_ts_str == "unknown":
+            continue
+        
+        try:
+            if "/" in med_ts_str:
+                med_ts = datetime.strptime(med_ts_str.split()[0], "%m/%d/%Y")
+            elif "-" in med_ts_str:
+                med_ts = datetime.strptime(med_ts_str.split("T")[0], "%Y-%m-%d")
+            else:
+                continue
+        except Exception:
+            continue
+        
+        # Find labs/symptoms within 30 days after medication
+        for event in events_list:
+            if event.event_id == med_event.event_id:
+                continue
+            if event.event_type not in ("lab", "symptom", "note"):
+                continue
+            
+            event_ts_str = event.timestamp
+            if not event_ts_str or event_ts_str == "unknown":
+                continue
+            
+            try:
+                if "/" in event_ts_str:
+                    event_ts = datetime.strptime(event_ts_str.split()[0], "%m/%d/%Y")
+                elif "-" in event_ts_str:
+                    event_ts = datetime.strptime(event_ts_str.split("T")[0], "%Y-%m-%d")
+                else:
+                    continue
+            except Exception:
+                continue
+            
+            delta_days = (event_ts - med_ts).days
+            if 0 <= delta_days <= 30:  # Within 30 days after medication
+                med_event.add_connascence(CONNASCENCE_TREATMENT, event.event_id)
+                event.add_connascence(CONNASCENCE_TREATMENT, med_event.event_id)
+    
+    logger.info(
+        "PatientTimelineVision: connascence enrichment complete (RUBRIC v0.1 - temporal/treatment mechanical, diagnostic/lab_trend LLM-based)"
+    )
+    
+    return vision
+
+
+async def _infer_llm_connascence(
+    vision: PatientTimelineVision,
+    client: Any,
+    question: str,
+    connascence_types: List[str],
+) -> PatientTimelineVision:
+    """
+    Use GPT-5.1 to infer precise connascence edges.
+    
+    This function calls the LLM with:
+    - PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md rules
+    - All events with metadata
+    - Patient context from original question
+    
+    The LLM returns precise edge recommendations based on the rubric.
+    
+    Args:
+        vision: PatientTimelineVision with events
+        client: OpenAI async client
+        question: Original question for patient context
+        connascence_types: List of connascence types to infer (e.g., ["diagnostic", "lab_trend"])
+    
+    Returns:
+        PatientTimelineVision with LLM-inferred edges added
+    """
+    from pathlib import Path
+    
+    # Load rubric for LLM context
+    rubric_path = Path(__file__).parent / "PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md"
+    try:
+        rubric_text = rubric_path.read_text(encoding="utf-8")
+    except Exception:
+        logger.warning("Could not load connascence rubric; skipping LLM inference")
+        return vision
+    
+    # Prepare events for LLM (limit to relevant types + sample if too many)
+    events_for_llm = []
+    for event in vision.events.values():
+        # Only include events relevant to requested connascence types
+        if "diagnostic" in connascence_types and event.event_type in ("diagnosis", "procedure"):
+            events_for_llm.append(event)
+        elif "lab_trend" in connascence_types and event.event_type == "lab":
+            events_for_llm.append(event)
+    
+    if not events_for_llm:
+        return vision
+    
+    # Limit to prevent context overflow (sample if needed)
+    max_events_per_call = 200
+    if len(events_for_llm) > max_events_per_call:
+        # Sample evenly across timeline
+        step = len(events_for_llm) // max_events_per_call
+        events_for_llm = events_for_llm[::step][:max_events_per_call]
+    
+    # Format events for LLM
+    events_payload = []
+    for event in events_for_llm:
+        events_payload.append({
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "timestamp": event.timestamp,
+            "preview": event.preview[:300],  # Cap preview length
+        })
+    
+    # System prompt with rubric
+    system_prompt = f"""You are a medical timeline connascence analyst.
+
+Your task: Identify precise connascence edges between timeline events according to the rubric below.
+
+{rubric_text}
+
+CRITICAL INSTRUCTIONS:
+1. Only infer edges for the requested connascence types: {', '.join(connascence_types)}
+2. Be PRECISE: Only link events if they clearly meet the rubric criteria
+3. Return a JSON list of edges: [{{"event_a_id": "...", "event_b_id": "...", "type": "diagnostic|lab_trend", "reasoning": "..."}}]
+4. If no edges meet the criteria, return an empty list: []
+5. DO NOT hallucinate edges. Precision > recall.
+
+Patient context: {question}
+"""
+    
+    user_prompt = json.dumps({
+        "task": "infer_connascence_edges",
+        "connascence_types": connascence_types,
+        "events": events_payload,
+        "instructions": "Return precise edges that meet rubric criteria. Format: [{event_a_id, event_b_id, type, reasoning}]"
+    }, cls=DateTimeJSONEncoder)
+    
+    # Call LLM
+    try:
+        resp = await chat_completion_async(
+            client=client,
+            model="gpt-4o",  # Use latest available model (GPT-5.1 / GPT-4o)
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,  # Precision, not creativity
+            response_format={"type": "json_object"},
+        )
+        
+        if iscoroutine(resp):
+            resp = await resp
+        
+        raw = _safe_get_choice_content(resp)
+        data = json.loads(raw) if raw else {}
+        edges = data.get("edges") or []
+        
+        if not isinstance(edges, list):
+            logger.warning("LLM connascence inference returned non-list edges; skipping")
+            return vision
+        
+        # Apply LLM-recommended edges
+        edges_added = 0
+        for edge in edges:
+            event_a_id = edge.get("event_a_id")
+            event_b_id = edge.get("event_b_id")
+            conn_type = edge.get("type")
+            reasoning = edge.get("reasoning", "")
+            
+            if not event_a_id or not event_b_id or not conn_type:
+                continue
+            
+            if event_a_id not in vision.events or event_b_id not in vision.events:
+                continue
+            
+            if conn_type not in connascence_types:
+                continue
+            
+            # Add bidirectional edge
+            event_a = vision.events[event_a_id]
+            event_b = vision.events[event_b_id]
+            event_a.add_connascence(conn_type, event_b_id)
+            event_b.add_connascence(conn_type, event_a_id)
+            edges_added += 1
+        
+        logger.info(
+            "LLM connascence inference: %d edges added (types: %s)",
+            edges_added,
+            ', '.join(connascence_types)
+        )
+    
+    except Exception:
+        logger.exception("LLM connascence inference failed")
+    
+    return vision
 
 
 # ---------------------------------------------------------------------------

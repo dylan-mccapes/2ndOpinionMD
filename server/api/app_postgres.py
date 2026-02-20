@@ -57,6 +57,7 @@ query_engine: Optional[PostgreSQLMedicalQueryEngine] = None
 # --- Routers ------------------------------------------------------------------
 from server.api.journal import router as journal_router
 from server.api.auth_routes_postgres import router as auth_router
+from server.api.session_routes import router as session_router, timeline_router as session_timeline_router
 
 from server.api.loinc_routes import router as loinc_router
 from server.api.snomed_routes import router as snomed_router
@@ -102,10 +103,13 @@ from server.api.schemas import DiagnoseResponse
 # --- lifespan: init async engine + session + RAG engine -----------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Prefer async URL; fall back to sync if needed
+    # Prefer DATABASE_URL; fall back to SYNC_DATABASE_URL (used for rag_corpus; most important).
+    # create_async_engine requires async driver: ensure postgresql+asyncpg://
     raw_url = os.getenv("DATABASE_URL") or os.getenv("SYNC_DATABASE_URL")
     if not raw_url:
         raise RuntimeError("No DATABASE_URL or SYNC_DATABASE_URL set in environment")
+    if raw_url.startswith("postgresql://") and "+asyncpg" not in raw_url:
+        raw_url = raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     # Redact password for logs
     redacted = raw_url
@@ -200,6 +204,8 @@ app.add_middleware(
 
 # --- Mount routers -------------------------------------------------------------
 app.include_router(auth_router,   prefix="/api/auth",    tags=["authentication"])
+app.include_router(session_router, prefix="/api/session", tags=["session"])
+app.include_router(session_timeline_router, prefix="/api/timeline", tags=["timeline"])  # POST /api/timeline/initialize
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
 app.include_router(loinc_router)

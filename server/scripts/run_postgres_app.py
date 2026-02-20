@@ -4,8 +4,19 @@ import uvicorn
 from dotenv import load_dotenv
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+# Load .pulse first if present (optional rename from .env), then .env
+for name in ('.pulse', '.env'):
+    p = os.path.join(project_root, name)
+    if os.path.isfile(p):
+        load_dotenv(p)
+        break
+# Server overrides: server/.pulse then server/.env
+server_dir = os.path.join(project_root, 'server')
+for name in ('.pulse', '.env'):
+    p = os.path.join(server_dir, name)
+    if os.path.isfile(p):
+        load_dotenv(p)
+        break
 
 sys.path.insert(0, project_root)
 

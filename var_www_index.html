@@ -1,0 +1,2549 @@
+<html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2OPMD — Clinical Reasoning Console</title>
+    <style>
+        /* === RESET === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* === ROOT VARIABLES === */
+        :root {
+            --color-bg: #f5f5f5;
+            --color-surface: #ffffff;
+            --color-border: #d0d0d0;
+            --color-text-primary: #1a1a1a;
+            --color-text-secondary: #4a4a4a;
+            --color-text-dim: #888888;
+            --color-accent: #3b6ea5;
+            --color-accent-hover: #2d5580;
+            --color-error: #c53030;
+            --color-warning: #d69e2e;
+            --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+        }
+
+        /* === BASE === */
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: var(--color-bg);
+            color: var(--color-text-primary);
+            font-family: var(--font-sans);
+            font-size: 16px;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        /* === LAYOUT GRID === */
+        body {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+
+        /* === HEADER === */
+        header {
+            background-color: var(--color-surface);
+            border-bottom: 3px solid var(--color-border);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        header h1 {
+            font-family: var(--font-sans);
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            color: var(--color-text-primary);
+        }
+
+        header .mode-indicator {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 6px 14px;
+            border: 2px solid var(--color-border);
+            background-color: var(--color-bg);
+            font-weight: 500;
+        }
+
+        /* === MAIN CONTENT === */
+        main {
+            padding: 24px;
+            overflow-y: auto;
+            background-color: var(--color-bg);
+        }
+
+        main .content-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        main .placeholder {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--color-text-dim);
+            text-align: center;
+            margin-top: 120px;
+            line-height: 2;
+        }
+
+        /* === FOOTER === */
+        footer {
+            background-color: var(--color-surface);
+            border-top: 3px solid var(--color-border);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        footer .system-state {
+            display: flex;
+            gap: 24px;
+        }
+
+        footer .state-item {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        footer .state-item .label {
+            color: var(--color-text-dim);
+        }
+
+        footer .state-item .value {
+            color: var(--color-text-primary);
+        }
+
+        footer .notices {
+            color: var(--color-text-dim);
+        }
+
+        /* === MODE SELECTOR === */
+        .mode-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 32px;
+            padding: 16px;
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+        }
+
+        .mode-selector button {
+            flex: 1;
+            padding: 12px 16px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--color-text-secondary);
+            background-color: var(--color-bg);
+            border: 2px solid var(--color-border);
+            cursor: pointer;
+            transition: none;
+        }
+
+        .mode-selector button:hover {
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+            background-color: var(--color-surface);
+        }
+
+        .mode-selector button:active {
+            background-color: var(--color-bg);
+        }
+
+        .mode-selector button.active {
+            border-color: var(--color-accent);
+            color: var(--color-surface);
+            background-color: var(--color-accent);
+            font-weight: 700;
+        }
+
+        .mode-selector button:focus {
+            outline: 2px solid var(--color-accent);
+            outline-offset: 2px;
+        }
+
+        /* === MODE CONTENT === */
+        .mode-content {
+            display: none;
+        }
+
+        .mode-content.active {
+            display: block;
+        }
+
+        .mode-description {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            line-height: 1.7;
+            padding: 14px 16px;
+            background-color: var(--color-surface);
+            border-left: 4px solid var(--color-accent);
+            margin-bottom: 24px;
+            border: 1px solid var(--color-border);
+            border-left: 4px solid var(--color-accent);
+        }
+
+        /* === RECEIPTS === */
+        .receipt {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            padding: 8px 12px;
+            background-color: var(--color-surface);
+            border-left: 3px solid var(--color-accent);
+            margin-bottom: 6px;
+            border: 1px solid var(--color-border);
+            border-left: 3px solid var(--color-accent);
+        }
+
+        .receipt .timestamp {
+            color: var(--color-accent);
+            font-weight: 600;
+        }
+
+        /* === INPUT SURFACES === */
+        .input-surface {
+            margin-bottom: 24px;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .input-group label {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .input-group label .required {
+            color: var(--color-error);
+        }
+
+        .input-group textarea,
+        .input-group input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background-color: var(--color-surface);
+            border: 2px solid var(--color-border);
+            resize: vertical;
+        }
+
+        .input-group textarea:focus,
+        .input-group input[type="text"]:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+
+        .input-group textarea::placeholder,
+        .input-group input[type="text"]::placeholder {
+            color: var(--color-text-dim);
+        }
+
+        .input-group select {
+            width: 100%;
+            padding: 12px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--color-text-primary);
+            background-color: var(--color-surface);
+            border: 2px solid var(--color-border);
+            cursor: pointer;
+        }
+
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* === BUTTONS === */
+        .btn {
+            padding: 12px 24px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 2px solid var(--color-border);
+            cursor: pointer;
+            background-color: var(--color-surface);
+            color: var(--color-text-primary);
+        }
+
+        .btn:hover {
+            border-color: var(--color-accent);
+            background-color: var(--color-accent);
+            color: var(--color-surface);
+        }
+
+        .btn:active {
+            background-color: var(--color-accent-hover);
+            border-color: var(--color-accent-hover);
+        }
+
+        .btn:focus {
+            outline: 2px solid var(--color-accent);
+            outline-offset: 2px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: var(--color-border);
+            color: var(--color-text-dim);
+        }
+
+        .btn:disabled:hover {
+            border-color: var(--color-border);
+            color: var(--color-text-dim);
+        }
+
+        .btn-primary {
+            border-color: var(--color-accent);
+            background-color: var(--color-accent);
+            color: var(--color-surface);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--color-accent-hover);
+            border-color: var(--color-accent-hover);
+        }
+
+        /* === NOTICES === */
+        .notice {
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.6;
+            border-left: 4px solid var(--color-warning);
+            background-color: var(--color-surface);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+            border-left: 4px solid var(--color-warning);
+        }
+
+        .notice.error {
+            border-left-color: var(--color-error);
+            background-color: #fff5f5;
+        }
+
+        .notice.info {
+            border-left-color: var(--color-accent);
+            background-color: #f7fafc;
+        }
+
+        /* === SYSTEM TRANSPARENCY PANEL === */
+        .transparency-panel {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            width: 320px;
+            background-color: var(--color-surface);
+            border: 2px solid var(--color-border);
+            padding: 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            z-index: 1000;
+        }
+
+        .transparency-panel {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .transparency-panel h2 {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-primary);
+            margin-bottom: 12px;
+            border-bottom: 2px solid var(--color-accent);
+            padding-bottom: 8px;
+        }
+
+        .transparency-panel .refusal-list {
+            list-style: none;
+        }
+
+        .transparency-panel .refusal-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 6px;
+            padding: 8px;
+            background-color: var(--color-bg);
+            border-left: 3px solid var(--color-accent);
+            border: 1px solid var(--color-border);
+            border-left: 3px solid var(--color-accent);
+        }
+
+        .transparency-panel .refusal-item .status {
+            color: var(--color-accent);
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .transparency-panel .refusal-item.violated {
+            border-left-color: var(--color-warning);
+        }
+
+        .transparency-panel .refusal-item.violated .status {
+            color: var(--color-warning);
+        }
+
+        .transparency-panel .refusal-item .label {
+            color: var(--color-text-secondary);
+            line-height: 1.4;
+        }
+
+        .transparency-panel .last-update {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--color-border);
+            color: var(--color-text-dim);
+            font-size: 11px;
+        }
+
+        /* === RECEIPT CACHE VIEWER === */
+        .receipt-cache-section {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 2px solid var(--color-border);
+        }
+
+        .receipt-cache-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .receipt-cache-header h3 {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-primary);
+        }
+
+        .receipt-cache-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .receipt-cache-controls button {
+            padding: 6px 12px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--color-border);
+            cursor: pointer;
+            background-color: var(--color-surface);
+            color: var(--color-text-secondary);
+        }
+
+        .receipt-cache-controls button:hover {
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+        }
+
+        .receipt-cache-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .receipt-cache-content {
+            display: none;
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 16px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .receipt-cache-content.visible {
+            display: block;
+        }
+
+        .receipt-cache-empty {
+            color: var(--color-text-dim);
+            text-align: center;
+            padding: 24px;
+        }
+
+        .receipt-event {
+            padding: 12px;
+            margin-bottom: 8px;
+            background-color: var(--color-bg);
+            border-left: 3px solid var(--color-accent);
+            border: 1px solid var(--color-border);
+            border-left: 3px solid var(--color-accent);
+        }
+
+        .receipt-event.type-error {
+            border-left-color: var(--color-error);
+        }
+
+        .receipt-event.type-refusal {
+            border-left-color: var(--color-warning);
+        }
+
+        .receipt-event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: var(--color-text-secondary);
+        }
+
+        .receipt-event-seq {
+            color: var(--color-accent);
+            font-weight: 600;
+        }
+
+        .receipt-event-type {
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .receipt-event-timestamp {
+            color: var(--color-text-dim);
+        }
+
+        .receipt-event-payload {
+            margin-top: 8px;
+            padding: 8px;
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            color: var(--color-text-primary);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* === RESULTS AREA === */
+        .results-area {
+            margin-top: 24px;
+            display: none;
+        }
+
+        .results-area.visible {
+            display: block;
+        }
+
+        .results-header {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-primary);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--color-accent);
+        }
+
+        .results-content {
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        /* Answer formatting */
+        #ask-answer, #coding-results .results-content, #eoh-results .results-content {
+            font-family: var(--font-sans);
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        #ask-answer h3, .results-content h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 20px 0 12px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--color-accent);
+            color: var(--color-accent);
+        }
+
+        #ask-answer h4, .results-content h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 16px 0 8px 0;
+            color: var(--color-text-primary);
+        }
+
+        #ask-answer ul, #ask-answer ol, .results-content ul, .results-content ol {
+            margin: 12px 0 12px 20px;
+            padding-left: 20px;
+        }
+
+        #ask-answer li, .results-content li {
+            margin: 8px 0;
+            line-height: 1.7;
+        }
+
+        #ask-answer p, .results-content p {
+            margin: 12px 0;
+        }
+
+        #ask-answer strong, .results-content strong {
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .results-error {
+            color: var(--color-error);
+            background-color: #fff5f5;
+            padding: 16px;
+            border: 1px solid var(--color-error);
+            border-left: 4px solid var(--color-error);
+        }
+
+        .results-loading {
+            color: var(--color-text-secondary);
+            padding: 24px;
+            text-align: center;
+        }
+
+        .btn.loading {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        /* === RESPONSIVE ADJUSTMENTS === */
+        @media (max-width: 1400px) {
+            .transparency-panel {
+                position: static;
+                width: 100%;
+                margin-bottom: 24px;
+            }
+        }
+
+        /* === AUTH ACTIONS === */
+        .auth-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .btn-auth {
+            padding: 8px 14px;
+            font-size: 12px;
+        }
+        /* === MODAL (verification + auth) === */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-backdrop.visible {
+            display: flex;
+        }
+        .modal-box {
+            background: var(--color-surface);
+            border: 2px solid var(--color-border);
+            padding: 24px;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .modal-box h2 {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--color-accent);
+        }
+        .modal-box .input-group { margin-bottom: 14px; }
+        .modal-box .btn { margin-top: 8px; margin-right: 8px; }
+        .modal-msg { font-family: var(--font-mono); font-size: 13px; margin-top: 12px; padding: 12px; background: var(--color-bg); border-left: 4px solid var(--color-accent); }
+        .modal-msg.error { border-left-color: var(--color-error); background: #fff5f5; }
+        .modal-instruction { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 14px; line-height: 1.5; }
+
+        /* === ACCESSIBILITY === */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            footer {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+            }
+
+            footer .system-state {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>2OPMD</h1>
+        <nav class="auth-actions">
+            <button type="button" class="btn btn-auth" id="btn-system-onboarding">System Onboarding</button>
+            <button type="button" class="btn btn-auth" id="btn-initiate-session">Initiate Session</button>
+            <button type="button" class="btn btn-auth" id="btn-close-session" style="display:none;">Close Session</button>
+            <button type="button" class="btn btn-auth" id="btn-journal-entry" style="display:none;">Journal entry</button>
+            <button type="button" class="btn btn-auth" id="viewJournalBtn" style="display:none;">📖 View Journal</button>
+        </nav>
+        <div class="mode-indicator">EOHD</div>
+    </header>
+
+    <main>
+        <div class="content-container">
+            <!-- System Transparency Panel -->
+            <div class="transparency-panel">
+                <h2>System State</h2>
+                <ul class="refusal-list">
+                    <li class="refusal-item" id="state-mutation">
+                        <span class="status">✓</span>
+                        <span class="label">No state mutated</span>
+                    </li>
+                    <li class="refusal-item" id="data-persistence">
+                        <span class="status">✓</span>
+                        <span class="label">No data persisted</span>
+                    </li>
+                    <li class="refusal-item" id="external-calls">
+                        <span class="status">✓</span>
+                        <span class="label">No external calls made</span>
+                    </li>
+                    <li class="refusal-item" id="session-tracking">
+                        <span class="status">✓</span>
+                        <span class="label">No session tracking</span>
+                    </li>
+                    <li class="refusal-item" id="implicit-behavior">
+                        <span class="status">✓</span>
+                        <span class="label">No implicit behavior</span>
+                    </li>
+                </ul>
+                <div class="last-update" id="transparency-update">Last verified: 15:15:42</div>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="mode-selector">
+                <button type="button" data-mode="ask">ASK</button>
+                <button type="button" data-mode="coding">CODING</button>
+                <button type="button" data-mode="eoh">EoH</button>
+                <button type="button" data-mode="eohd" class="active">EoHD</button>
+            </div>
+
+            <!-- Receipts Area -->
+            <div id="receipts"><div class="receipt"><span class="timestamp">[15:15:42]</span> Mode changed to EOHD</div></div>
+
+            <!-- Mode: ASK -->
+            <div class="mode-content" data-mode="ask">
+                <div class="mode-description">
+                    MODE: ASK<br>
+                    Read-only clinical Q&amp;A. No state mutation. No timeline. Each query is independent.
+                </div>
+                
+                <div class="input-surface">
+                    <div class="input-group">
+                        <label for="ask-query">
+                            CLINICAL QUESTION <span class="required">*</span>
+                        </label>
+                        <textarea id="ask-query" rows="6" placeholder="Enter clinical question in natural language.
+Example: What are the differential diagnoses for bilateral joint pain with morning stiffness?"></textarea>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="submit-ask">
+                        SUBMIT QUERY
+                    </button>
+                </div>
+
+                <div id="ask-results" class="results-area"></div>
+            </div>
+
+            <!-- Mode: CODING -->
+            <div class="mode-content" data-mode="coding">
+                <div class="mode-description">
+                    MODE: CODING<br>
+                    Medical coding and classification. Returns ICD-10-CM, ICD-11, SNOMED CT, LOINC, RxNorm.<br>
+                    Explicit confirmation required before export.
+                </div>
+                
+                <div class="input-surface">
+                    <div class="input-group">
+                        <label for="coding-type">
+                            CODE SYSTEM <span class="required">*</span>
+                        </label>
+                        <select id="coding-type">
+                            <option value="">SELECT CODE SYSTEM</option>
+                            <option value="icd10cm">ICD-10-CM</option>
+                            <option value="icd11">ICD-11</option>
+                            <option value="snomed">SNOMED CT</option>
+                            <option value="loinc">LOINC</option>
+                            <option value="rxnorm">RxNorm</option>
+                            <option value="all">ALL APPLICABLE</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="coding-text">
+                            CLINICAL TEXT <span class="required">*</span>
+                        </label>
+                        <textarea id="coding-text" rows="6" placeholder="Enter symptom, diagnosis, or procedure description.
+Example: Chronic bilateral knee pain with joint swelling and reduced range of motion"></textarea>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="coding-context">
+                            CLINICAL CONTEXT (OPTIONAL)
+                        </label>
+                        <input type="text" id="coding-context" placeholder="Additional context: patient age, setting, specialty">
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="submit-coding">
+                        REQUEST CODES
+                    </button>
+                </div>
+
+                <div id="coding-results" class="results-area"></div>
+            </div>
+
+            <!-- Mode: EoH -->
+            <div class="mode-content" data-mode="eoh">
+                <div class="mode-description">
+                    MODE: EoH<br>
+                    Single Ethos-of-Health reasoning cycle. No timeline integration.<br>
+                    Returns hypothesis set, evidence weighting, suggested next steps.
+                </div>
+                
+                <div class="input-surface">
+                    <div class="input-group">
+                        <label for="eoh-symptoms">
+                            PRIMARY SYMPTOMS <span class="required">*</span>
+                        </label>
+                        <textarea id="eoh-symptoms" rows="4" placeholder="List primary symptoms, one per line or comma-separated.
+Example: Fatigue, joint pain, skin rash"></textarea>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="eoh-age">
+                                PATIENT AGE
+                            </label>
+                            <input type="text" id="eoh-age" placeholder="Age in years or age range">
+                        </div>
+
+                        <div class="input-group">
+                            <label for="eoh-sex">
+                                BIOLOGICAL SEX
+                            </label>
+                            <select id="eoh-sex">
+                                <option value="">NOT SPECIFIED</option>
+                                <option value="female">FEMALE</option>
+                                <option value="male">MALE</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="eoh-history">
+                            RELEVANT HISTORY (OPTIONAL)
+                        </label>
+                        <textarea id="eoh-history" rows="4" placeholder="Past medical history, medications, family history, environmental factors"></textarea>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="eoh-context">
+                            CLINICAL CONTEXT (OPTIONAL)
+                        </label>
+                        <textarea id="eoh-context" rows="3" placeholder="Specific clinical question, differential considerations, provider specialty"></textarea>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="submit-eoh">
+                        RUN EoH REASONING
+                    </button>
+                </div>
+
+                <div id="eoh-results" class="results-area"></div>
+            </div>
+
+            <!-- Mode: EoHD -->
+            <div class="mode-content active" data-mode="eohd">
+                <div class="mode-description">
+                    MODE: EoHD<br>
+                    Timeline-aware Ethos-of-Health Detective reasoning.<br>
+                    Requires temporal data. Returns hypothesis evolution across time.
+                </div>
+
+                <div class="notice error">
+                    TIMELINE DATA REQUIRED<br>
+                    EoHD requires structured temporal data (symptom timeline, journal entries, or event sequence).<br>
+                    Timeline ingestion interface not yet implemented.
+                </div>
+                
+                <div class="input-surface">
+                    <div class="input-group">
+                        <label for="eohd-patient">
+                            PATIENT IDENTIFIER (OPTIONAL)
+                        </label>
+                        <input type="text" id="eohd-patient" placeholder="Anonymous patient ID or case number">
+                    </div>
+
+                    <div class="input-group">
+                        <label>
+                            TIMELINE DATA <span class="required">*</span>
+                        </label>
+                        <div class="notice">
+                            Timeline upload mechanism not yet implemented.<br>
+                            Required format: Structured temporal event data with dates, symptoms, interventions, and outcomes.<br>
+                            Minimum: 3+ events spanning at least 14 days.
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="eohd-focus">
+                            DETECTIVE FOCUS (OPTIONAL)
+                        </label>
+                        <textarea id="eohd-focus" rows="3" placeholder="Specific temporal patterns to investigate, diagnostic questions, or inflection points of interest"></textarea>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="submit-eohd" disabled="">
+                        RUN EOH DETECTIVE (TIMELINE REQUIRED)
+                    </button>
+                </div>
+
+                <div class="notice error">
+                    EoHD requires timeline data ingestion (not yet implemented).
+                </div>
+
+                <div id="eohd-results" class="results-area"></div>
+            </div>
+
+            <!-- SSE Receipt Cache Viewer -->
+            <div class="receipt-cache-section">
+                <div class="receipt-cache-header">
+                    <h3>Execution Receipts</h3>
+                    <div class="receipt-cache-controls">
+                        <button type="button" id="toggle-receipts">Show Receipts</button>
+                        <button type="button" id="export-html" disabled="">Export HTML</button>
+                        <button type="button" id="export-json" disabled="">Export JSON</button>
+                        <button type="button" id="clear-receipts" disabled="">Clear</button>
+                    </div>
+                </div>
+                <div class="receipt-cache-content" id="receipt-cache-content">
+                    <div class="receipt-cache-empty">
+                        No execution receipts captured.<br>
+                        Receipts will appear here after running a query in any mode.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="system-state">
+            <div class="state-item">
+                <span class="label">STATUS:</span>
+                <span class="value">READY</span>
+            </div>
+            <div class="state-item">
+                <span class="label">MODE:</span>
+                <span class="value">EOHD</span>
+            </div>
+            <div class="state-item">
+                <span class="label">SESSION:</span>
+                <span class="value">STATELESS</span>
+            </div>
+        </div>
+        <div class="notices">
+            <!-- System notices appear here -->
+        </div>
+    </footer>
+
+    <!-- Email verification modal (shown when URL has ?token=) -->
+    <div id="modal-verification" class="modal-backdrop" aria-hidden="true">
+        <div class="modal-box">
+            <h2>Email verification</h2>
+            <p id="verification-status">Verifying…</p>
+            <div id="verification-msg" class="modal-msg" style="display:none;"></div>
+            <button type="button" class="btn" id="verification-dismiss">Dismiss</button>
+        </div>
+    </div>
+    <!-- System Onboarding (signup) modal -->
+    <div id="modal-onboarding" class="modal-backdrop" aria-hidden="true">
+        <div class="modal-box">
+            <h2>System Onboarding</h2>
+            <div class="input-group">
+                <label for="onboarding-email">Email <span class="required">*</span></label>
+                <input type="email" id="onboarding-email" placeholder="you@example.com">
+            </div>
+            <div class="input-group">
+                <label for="onboarding-password">Password <span class="required">*</span></label>
+                <input type="password" id="onboarding-password" placeholder="Password">
+            </div>
+            <div class="input-group">
+                <label for="onboarding-operator">Operator type</label>
+                <select id="onboarding-operator">
+                    <option value="patient">Patient</option>
+                    <option value="clinician">Clinician</option>
+                </select>
+            </div>
+            <div id="onboarding-msg" class="modal-msg" style="display:none;"></div>
+            <button type="button" class="btn btn-primary" id="onboarding-submit">Submit</button>
+            <button type="button" class="btn" id="onboarding-cancel">Cancel</button>
+        </div>
+    </div>
+    <!-- Initiate Session (login) modal -->
+    <div id="modal-session" class="modal-backdrop" aria-hidden="true">
+        <div class="modal-box">
+            <h2>Initiate Session</h2>
+            <div class="input-group">
+                <label for="session-email">Email <span class="required">*</span></label>
+                <input type="email" id="session-email" placeholder="you@example.com">
+            </div>
+            <div class="input-group">
+                <label for="session-password">Password <span class="required">*</span></label>
+                <input type="password" id="session-password" placeholder="Password">
+            </div>
+            <div id="session-msg" class="modal-msg" style="display:none;"></div>
+            <button type="button" class="btn btn-primary" id="session-submit">Initiate Session</button>
+            <button type="button" class="btn" id="session-cancel">Cancel</button>
+        </div>
+    </div>
+    <!-- Journal entry (POC) modal -->
+    <div id="modal-journal" class="modal-backdrop" aria-hidden="true">
+        <div class="modal-box">
+            <h2>Journal entry</h2>
+            <p class="modal-instruction">Enter your journal text below. It will be stored and can be queried later. Plain text only.</p>
+            <div class="input-group">
+                <label for="journal-text">Journal text <span class="required">*</span></label>
+                <textarea id="journal-text" rows="12" placeholder="Type or paste your journal entry here..."></textarea>
+            </div>
+            <div id="journal-msg" class="modal-msg" style="display:none;"></div>
+            <button type="button" class="btn btn-primary" id="journal-submit">Save</button>
+            <button type="button" class="btn" id="journal-cancel">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Journal Viewer Modal (one entry per page; larger; query history in session state) -->
+    <div id="journalViewerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 12px; padding: 30px; max-width: 960px; width: 95%; max-height: 92vh; overflow: hidden; display: flex; flex-direction: column; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; flex-shrink: 0;">
+                <h2 style="margin: 0; color: #2d3748;">Your Journal Entries</h2>
+                <button type="button" id="closeJournalViewer" style="background: none; border: none; font-size: 28px; color: #a0aec0; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <div id="journalEntryDisplay" style="min-height: 220px; max-height: 320px; overflow-y: auto; padding: 20px; background: #f7fafc; border-radius: 8px; margin-bottom: 20px; flex-shrink: 0;">
+                <div id="entryDate" style="font-size: 14px; color: #718096; margin-bottom: 10px; font-weight: 600;"></div>
+                <div id="entryText" style="font-size: 16px; line-height: 1.6; color: #2d3748; white-space: pre-wrap;"></div>
+            </div>
+            <!-- Query Section (2nd: AI over journal) -->
+            <div style="margin-bottom: 20px; flex: 1; min-height: 0; display: flex; flex-direction: column;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-shrink: 0;">
+                    <input type="text" id="journalQueryInput" placeholder="Ask 2nd about your journal entries..." style="flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 14px;">
+                    <button type="button" id="journalQueryBtn" style="padding: 10px 20px; background: #6b46c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">🔍 Ask 2nd</button>
+                </div>
+                <div id="journalQueryResponse" style="display: none; margin-top: 15px; padding: 15px; background: #f7fafc; border-left: 4px solid #6b46c1; border-radius: 6px; max-height: 220px; overflow-y: auto; flex-shrink: 0;">
+                    <div style="font-size: 12px; color: #718096; font-weight: 600; margin-bottom: 8px;">2nd:</div>
+                    <div id="journalQueryResponseText" style="font-size: 14px; line-height: 1.6; color: #2d3748; white-space: pre-wrap;"></div>
+                    <div id="journalQueryMetadata" style="margin-top: 10px; font-size: 12px; color: #a0aec0;"></div>
+                </div>
+                <!-- Query history (session state) -->
+                <div id="journalQueryHistorySection" style="margin-top: 15px; flex: 1; min-height: 120px; max-height: 280px; overflow-y: auto; padding: 12px; background: #edf2f7; border-radius: 8px; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 12px; color: #718096; font-weight: 600; margin-bottom: 8px;">Session: queries &amp; responses</div>
+                    <div id="journalQueryHistoryList"></div>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 15px; border-top: 2px solid #e2e8f0; flex-shrink: 0;">
+                <div id="entryCounter" style="font-size: 14px; color: #718096; font-weight: 600;">
+                    Entry <span id="currentEntryNum">1</span> of <span id="totalEntries">0</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" id="prevEntryBtn" style="padding: 8px 20px; background: #e2e8f0; color: #2d3748; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">← Previous</button>
+                    <button type="button" id="nextEntryBtn" style="padding: 8px 20px; background: #6b46c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Next →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === STATE ===
+        let currentMode = null;
+
+        // === SSE RECEIPT CACHE ===
+        let sseReceiptCache = {
+            session_id: "ephemeral",
+            started_at: null,
+            events: [],
+            completed_at: null,
+            mode: null
+        };
+
+        // === ELEMENTS ===
+        const modeButtons = document.querySelectorAll('.mode-selector button');
+        const modeContents = document.querySelectorAll('.mode-content');
+        const modeIndicator = document.querySelector('header .mode-indicator');
+        const footerModeValue = document.querySelector('footer .state-item:nth-child(2) .value');
+        const footerStatusValue = document.querySelector('footer .state-item:nth-child(1) .value');
+        const receiptsContainer = document.getElementById('receipts');
+        const transparencyUpdate = document.getElementById('transparency-update');
+        const receiptCacheContent = document.getElementById('receipt-cache-content');
+        const toggleReceiptsBtn = document.getElementById('toggle-receipts');
+        const exportHtmlBtn = document.getElementById('export-html');
+        const exportJsonBtn = document.getElementById('export-json');
+        const clearReceiptsBtn = document.getElementById('clear-receipts');
+
+        // === HELPERS ===
+        function formatTimestamp() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        function addReceipt(message, timestamp) {
+            const receipt = document.createElement('div');
+            receipt.className = 'receipt';
+            receipt.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            receiptsContainer.appendChild(receipt);
+        }
+
+        function clearReceipts() {
+            receiptsContainer.innerHTML = '';
+        }
+
+        function updateTransparencyPanel() {
+            const timestamp = formatTimestamp();
+            transparencyUpdate.textContent = `Last verified: ${timestamp}`;
+        }
+
+        // === SSE RECEIPT CACHE FUNCTIONS ===
+        function addReceiptEvent(type, source, payload) {
+            const event = {
+                seq: sseReceiptCache.events.length + 1,
+                timestamp: new Date().toISOString(),
+                type: type,
+                source: source,
+                payload: payload
+            };
+
+            sseReceiptCache.events.push(event);
+
+            if (!sseReceiptCache.started_at) {
+                sseReceiptCache.started_at = event.timestamp;
+                sseReceiptCache.mode = source;
+            }
+
+            updateReceiptCacheUI();
+        }
+
+        function completeReceiptCache() {
+            sseReceiptCache.completed_at = new Date().toISOString();
+            updateReceiptCacheUI();
+        }
+
+        function clearReceiptCache() {
+            if (!confirm('Clear all execution receipts? This cannot be undone.')) {
+                return;
+            }
+
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: null,
+                events: [],
+                completed_at: null,
+                mode: null
+            };
+
+            updateReceiptCacheUI();
+            receiptCacheContent.classList.remove('visible');
+            toggleReceiptsBtn.textContent = 'Show Receipts';
+        }
+
+        function updateReceiptCacheUI() {
+            const hasEvents = sseReceiptCache.events.length > 0;
+
+            // Enable/disable buttons
+            exportHtmlBtn.disabled = !hasEvents;
+            exportJsonBtn.disabled = !hasEvents;
+            clearReceiptsBtn.disabled = !hasEvents;
+
+            // Update content
+            if (!hasEvents) {
+                receiptCacheContent.innerHTML = `
+                    <div class="receipt-cache-empty">
+                        No execution receipts captured.<br>
+                        Receipts will appear here after running a query in any mode.
+                    </div>
+                `;
+                return;
+            }
+
+            // Render events
+            let html = '';
+            sseReceiptCache.events.forEach(event => {
+                html += `
+                    <div class="receipt-event type-${event.type}">
+                        <div class="receipt-event-header">
+                            <span class="receipt-event-seq">#${event.seq}</span>
+                            <span class="receipt-event-type">${event.type}</span>
+                            <span class="receipt-event-timestamp">${event.timestamp}</span>
+                        </div>
+                        <div class="receipt-event-payload">${JSON.stringify(event.payload, null, 2)}</div>
+                    </div>
+                `;
+            });
+
+            receiptCacheContent.innerHTML = html;
+        }
+
+        function exportReceiptHTML() {
+            const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2OPMD Execution Receipt - ${sseReceiptCache.mode || 'Unknown'} - ${sseReceiptCache.started_at}</title>
+    <style>
+        body { font-family: Consolas, Monaco, monospace; margin: 40px; background: #f5f5f5; color: #1a1a1a; }
+        h1 { border-bottom: 3px solid #3b6ea5; padding-bottom: 12px; }
+        .metadata { background: white; padding: 16px; border: 1px solid #d0d0d0; margin-bottom: 24px; }
+        .metadata dt { font-weight: 600; margin-top: 8px; }
+        .metadata dd { margin-left: 0; color: #4a4a4a; }
+        .event { background: white; border-left: 3px solid #3b6ea5; padding: 16px; margin-bottom: 12px; border: 1px solid #d0d0d0; }
+        .event.error { border-left-color: #c53030; }
+        .event.refusal { border-left-color: #d69e2e; }
+        .event-header { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; color: #4a4a4a; }
+        .event-seq { color: #3b6ea5; font-weight: 600; }
+        .event-type { text-transform: uppercase; font-weight: 600; }
+        .event-payload { background: #f5f5f5; padding: 12px; border: 1px solid #d0d0d0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d0d0d0; color: #888; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>2OPMD Execution Receipt</h1>
+    <dl class="metadata">
+        <dt>Session ID:</dt>
+        <dd>${sseReceiptCache.session_id}</dd>
+        <dt>Mode:</dt>
+        <dd>${sseReceiptCache.mode || 'Unknown'}</dd>
+        <dt>Started:</dt>
+        <dd>${sseReceiptCache.started_at || 'N/A'}</dd>
+        <dt>Completed:</dt>
+        <dd>${sseReceiptCache.completed_at || 'In progress'}</dd>
+        <dt>Event Count:</dt>
+        <dd>${sseReceiptCache.events.length}</dd>
+    </dl>
+    <div class="events">
+        ${sseReceiptCache.events.map(event => `
+            <div class="event ${event.type}">
+                <div class="event-header">
+                    <span class="event-seq">#${event.seq}</span>
+                    <span class="event-type">${event.type}</span>
+                    <span class="event-timestamp">${event.timestamp}</span>
+                </div>
+                <div class="event-payload">${JSON.stringify(event.payload, null, 2)}</div>
+            </div>
+        `).join('')}
+    </div>
+    <div class="footer">
+        Generated: ${new Date().toISOString()}<br>
+        Source: 2ndOpinionMD Clinical Reasoning Console<br>
+        This is a non-authoritative client-side receipt. Events are recorded as received without modification.
+    </div>
+</body>
+</html>
+            `.trim();
+
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `2opmd-receipt-${sseReceiptCache.mode || 'unknown'}-${Date.now()}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportReceiptJSON() {
+            const json = JSON.stringify(sseReceiptCache, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `2opmd-receipt-${sseReceiptCache.mode || 'unknown'}-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // === API CONFIGURATION ===
+        const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
+            ? 'http://localhost:8000'  // Python dev server, API on different port
+            : '';  // Production: same origin (nginx proxy)
+
+        // === AUTH / SESSION (Epistemic Vault) ===
+        const SESSION_TOKEN_KEY = '2opmd_session_token';
+        const JOURNAL_QUERY_HISTORY_KEY = '2opmd_journal_query_history';
+        function getSessionToken() { return sessionStorage.getItem(SESSION_TOKEN_KEY) || localStorage.getItem(SESSION_TOKEN_KEY); }
+        function getJournalQueryHistory() {
+            try {
+                const raw = sessionStorage.getItem(JOURNAL_QUERY_HISTORY_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) { return []; }
+        }
+        function setJournalQueryHistory(arr) {
+            sessionStorage.setItem(JOURNAL_QUERY_HISTORY_KEY, JSON.stringify(arr));
+        }
+        function renderJournalQueryHistory() {
+            const list = document.getElementById('journalQueryHistoryList');
+            if (!list) return;
+            const history = getJournalQueryHistory();
+            if (history.length === 0) {
+                list.innerHTML = '<div style="font-size: 13px; color: #a0aec0;">No queries yet this session. Ask 2nd something.</div>';
+                return;
+            }
+            list.innerHTML = history.slice().reverse().map(function (item) {
+                const time = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '';
+                return '<div style="margin-bottom: 14px; padding: 10px; background: white; border-radius: 6px; border-left: 3px solid #6b46c1;"><div style="font-size: 11px; color: #718096; margin-bottom: 4px;">' + (time || '') + '</div><div style="font-size: 12px; color: #2d3748; font-weight: 600; margin-bottom: 4px;">You: ' + escapeHtml(item.query || '') + '</div><div style="font-size: 12px; color: #4a5568; white-space: pre-wrap;">2nd: ' + escapeHtml(item.response || '') + '</div></div>';
+            }).join('');
+        }
+        function escapeHtml(s) {
+            const div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+        function setSessionToken(t) {
+            if (t) {
+                sessionStorage.setItem(SESSION_TOKEN_KEY, t);
+                localStorage.setItem(SESSION_TOKEN_KEY, t);
+            } else {
+                sessionStorage.removeItem(SESSION_TOKEN_KEY);
+                localStorage.removeItem(SESSION_TOKEN_KEY);
+                localStorage.removeItem('2opmd_operator_type');
+                localStorage.removeItem('2opmd_timeline_id');
+            }
+            updateCloseSessionVisibility();
+        }
+        function updateCloseSessionVisibility() {
+            const hasSession = !!getSessionToken();
+            const closeBtn = document.getElementById('btn-close-session');
+            const journalBtn = document.getElementById('btn-journal-entry');
+            const viewJournalBtn = document.getElementById('viewJournalBtn');
+            if (closeBtn) closeBtn.style.display = hasSession ? 'inline-block' : 'none';
+            if (journalBtn) journalBtn.style.display = hasSession ? 'inline-block' : 'none';
+            if (viewJournalBtn) viewJournalBtn.style.display = hasSession ? 'inline-block' : 'none';
+        }
+
+        // Email verification from link (?token=...)
+        (function checkVerificationToken() {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            if (!token) return;
+            const backdrop = document.getElementById('modal-verification');
+            const statusEl = document.getElementById('verification-status');
+            const msgEl = document.getElementById('verification-msg');
+            const dismissBtn = document.getElementById('verification-dismiss');
+            if (!backdrop || !statusEl) return;
+            backdrop.classList.add('visible');
+            backdrop.setAttribute('aria-hidden', 'false');
+            fetch(`${API_BASE}/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+                .then(r => r.json())
+                .then(data => {
+                    statusEl.textContent = data.message || 'Email verified successfully.';
+                    if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = data.message || 'You can close this and sign in.'; msgEl.classList.remove('error'); }
+                    history.replaceState({}, document.title, window.location.pathname || '/');
+                })
+                .catch(err => {
+                    statusEl.textContent = 'Verification failed.';
+                    if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = err.message || 'Invalid or expired token.'; msgEl.classList.add('error'); }
+                });
+            if (dismissBtn) dismissBtn.onclick = () => { backdrop.classList.remove('visible'); backdrop.setAttribute('aria-hidden', 'true'); };
+        })();
+        document.getElementById('verification-dismiss').addEventListener('click', () => hideModal('modal-verification'));
+
+        // Modal helpers
+        function showModal(id) { const el = document.getElementById(id); if (el) { el.classList.add('visible'); el.setAttribute('aria-hidden', 'false'); } }
+        function hideModal(id) { const el = document.getElementById(id); if (el) { el.classList.remove('visible'); el.setAttribute('aria-hidden', 'true'); } }
+        function showMsg(msgId, text, isError) { const el = document.getElementById(msgId); if (el) { el.textContent = text; el.style.display = 'block'; el.classList.toggle('error', !!isError); } }
+        function clearMsg(msgId) { const el = document.getElementById(msgId); if (el) { el.textContent = ''; el.style.display = 'none'; el.classList.remove('error'); } }
+
+        // System Onboarding (signup)
+        document.getElementById('btn-system-onboarding').addEventListener('click', () => { clearMsg('onboarding-msg'); showModal('modal-onboarding'); });
+        document.getElementById('onboarding-cancel').addEventListener('click', () => hideModal('modal-onboarding'));
+        document.getElementById('onboarding-submit').addEventListener('click', async () => {
+            const email = document.getElementById('onboarding-email').value.trim();
+            const password = document.getElementById('onboarding-password').value;
+            const operator = document.getElementById('onboarding-operator').value;
+            if (!email || !password) { showMsg('onboarding-msg', 'Email and password required.', true); return; }
+            try {
+                const r = await fetch(`${API_BASE}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, operator_type: operator })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) { showMsg('onboarding-msg', (data.email_verification && data.email_verification.note) || 'Check your email to verify.', false); }
+                else { showMsg('onboarding-msg', data.detail || data.message || 'Registration failed.', true); }
+            } catch (e) { showMsg('onboarding-msg', e.message || 'Network error.', true); }
+        });
+
+        // Initiate Session (login)
+        document.getElementById('btn-initiate-session').addEventListener('click', () => { clearMsg('session-msg'); showModal('modal-session'); });
+        document.getElementById('session-cancel').addEventListener('click', () => hideModal('modal-session'));
+        document.getElementById('session-submit').addEventListener('click', async () => {
+            const email = document.getElementById('session-email').value.trim();
+            const password = document.getElementById('session-password').value;
+            if (!email || !password) { showMsg('session-msg', 'Email and password required.', true); return; }
+            clearMsg('session-msg');
+            try {
+                const r = await fetch(`${API_BASE}/api/session/instantiate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.session_token) {
+                    setSessionToken(data.session_token);
+                    if (data.operator_type) localStorage.setItem('2opmd_operator_type', data.operator_type);
+                    if (data.timeline_id) localStorage.setItem('2opmd_timeline_id', data.timeline_id);
+                    hideModal('modal-session');
+                    // Navigate to Patient Portal
+                    window.location.href = 'patient_portal.html';
+                } else {
+                    const detail = data.detail;
+                    const msg = (detail && detail.message) || (typeof detail === 'string' ? detail : 'Session failed.');
+                    showMsg('session-msg', msg, true);
+                }
+            } catch (e) { showMsg('session-msg', e.message || 'Network error.', true); }
+        });
+
+        // Close Session (logout)
+        document.getElementById('btn-close-session').addEventListener('click', async () => {
+            const token = getSessionToken();
+            if (!token) return;
+            try {
+                await fetch(`${API_BASE}/api/session/close`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (_) {}
+            setSessionToken(null);
+        });
+        updateCloseSessionVisibility();
+
+        // Journal entry (POC)
+        document.getElementById('btn-journal-entry').addEventListener('click', () => { clearMsg('journal-msg'); document.getElementById('journal-text').value = ''; showModal('modal-journal'); });
+        document.getElementById('journal-cancel').addEventListener('click', () => hideModal('modal-journal'));
+        document.getElementById('journal-submit').addEventListener('click', async () => {
+            const token = getSessionToken();
+            if (!token) { showMsg('journal-msg', 'Start a session first.', true); return; }
+            const text = document.getElementById('journal-text').value.trim();
+            if (!text) { showMsg('journal-msg', 'Enter some text.', true); return; }
+            clearMsg('journal-msg');
+            try {
+                const r = await fetch(`${API_BASE}/api/journal/entry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ text })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) { showMsg('journal-msg', 'Saved.', false); document.getElementById('journal-text').value = ''; setTimeout(() => hideModal('modal-journal'), 800); }
+                else { showMsg('journal-msg', (data.detail && data.detail.message) || data.detail || 'Save failed.', true); }
+            } catch (e) { showMsg('journal-msg', e.message || 'Network error.', true); }
+        });
+
+        // Journal Viewer Modal (one entry per page)
+        let journalEntries = [];
+        let currentEntryIndex = 0;
+
+        document.getElementById('viewJournalBtn').addEventListener('click', async () => {
+            const token = getSessionToken();
+            if (!token) { alert('Start a session first.'); return; }
+            try {
+                const response = await fetch(`${API_BASE}/api/journal/entries`, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                });
+                if (!response.ok) throw new Error(`Failed to fetch entries: ${response.status}`);
+                journalEntries = await response.json();
+                if (journalEntries.length === 0) {
+                    alert('No journal entries yet. Create your first entry!');
+                    return;
+                }
+                currentEntryIndex = 0;
+                displayJournalEntry();
+                renderJournalQueryHistory();
+                document.getElementById('journalViewerModal').style.display = 'flex';
+            } catch (e) {
+                console.error('Error loading journal entries:', e);
+                alert('Failed to load journal entries. Please try again.');
+            }
+        });
+
+        function displayJournalEntry() {
+            if (journalEntries.length === 0) return;
+            const entry = journalEntries[currentEntryIndex];
+            document.getElementById('entryDate').textContent = entry.date || '';
+            document.getElementById('entryText').textContent = entry.notes || '';
+            document.getElementById('currentEntryNum').textContent = currentEntryIndex + 1;
+            document.getElementById('totalEntries').textContent = journalEntries.length;
+            const prevBtn = document.getElementById('prevEntryBtn');
+            const nextBtn = document.getElementById('nextEntryBtn');
+            prevBtn.disabled = (currentEntryIndex === 0);
+            nextBtn.disabled = (currentEntryIndex === journalEntries.length - 1);
+            prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
+            prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
+            nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
+            nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
+        }
+
+        document.getElementById('prevEntryBtn').addEventListener('click', () => {
+            if (currentEntryIndex > 0) { currentEntryIndex--; displayJournalEntry(); }
+        });
+        document.getElementById('nextEntryBtn').addEventListener('click', () => {
+            if (currentEntryIndex < journalEntries.length - 1) { currentEntryIndex++; displayJournalEntry(); }
+        });
+        function hideJournalViewerModal() {
+            document.getElementById('journalViewerModal').style.display = 'none';
+            document.getElementById('journalQueryInput').value = '';
+            document.getElementById('journalQueryResponse').style.display = 'none';
+        }
+        document.getElementById('closeJournalViewer').addEventListener('click', hideJournalViewerModal);
+        document.getElementById('journalViewerModal').addEventListener('click', (e) => {
+            if (e.target.id === 'journalViewerModal') hideJournalViewerModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('journalViewerModal').style.display === 'flex') {
+                hideJournalViewerModal();
+            }
+        });
+
+        // Journal Query AI (Ask AI in viewer modal)
+        document.getElementById('journalQueryBtn').addEventListener('click', async () => {
+            const queryInput = document.getElementById('journalQueryInput');
+            const query = queryInput.value.trim();
+            if (!query) { alert('Please enter a question'); return; }
+            const token = getSessionToken();
+            if (!token) { alert('Start a session first.'); return; }
+            const queryBtn = document.getElementById('journalQueryBtn');
+            const originalText = queryBtn.textContent;
+            queryBtn.textContent = '⏳ Thinking...';
+            queryBtn.disabled = true;
+            try {
+                const response = await fetch(`${API_BASE}/api/journal/query-ai`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                if (!response.ok) throw new Error(`Query failed: ${response.status}`);
+                const data = await response.json();
+                const responseText = data.response || '';
+                document.getElementById('journalQueryResponseText').textContent = responseText;
+                document.getElementById('journalQueryMetadata').textContent =
+                    (data.entries_count != null ? `Analyzed ${data.entries_count} entries` : '') +
+                    (data.model ? ` using ${data.model}` : '');
+                document.getElementById('journalQueryResponse').style.display = 'block';
+                const history = getJournalQueryHistory();
+                history.push({ query: query, response: responseText, timestamp: new Date().toISOString() });
+                setJournalQueryHistory(history);
+                renderJournalQueryHistory();
+            } catch (err) {
+                console.error('Error querying journal:', err);
+                alert('Failed to query journal. Please try again.');
+            } finally {
+                queryBtn.textContent = originalText;
+                queryBtn.disabled = false;
+            }
+        });
+        document.getElementById('journalQueryInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('journalQueryBtn').click();
+        });
+        // === MODE HANDLERS ===
+        async function handleAskSubmit() {
+            const query = document.getElementById('ask-query').value.trim();
+            if (!query) {
+                alert('Please enter a clinical question.');
+                return;
+            }
+
+            const button = document.getElementById('submit-ask');
+            const resultsArea = document.getElementById('ask-results');
+            
+            button.classList.add('loading');
+            button.disabled = true;
+            resultsArea.classList.add('visible');
+
+            // Reset receipt cache for new query
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: new Date().toISOString(),
+                events: [],
+                completed_at: null,
+                mode: 'ask'
+            };
+
+            // Initialize results display
+            resultsArea.innerHTML = `
+                <div class="results-header">Ask Stream</div>
+                <div class="results-content">
+                    <div id="ask-status">Connecting...</div>
+                    <div id="ask-answer" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border);"></div>
+                </div>
+            `;
+
+            const statusDiv = document.getElementById('ask-status');
+            const answerDiv = document.getElementById('ask-answer');
+
+            try {
+                addReceiptEvent('event', 'ask', { action: 'query_submitted', query: query });
+
+                // POST request with JSON body (privacy-safe)
+                const requestBody = {
+                    q: query,
+                    limit: 12,
+                    ctx_k: 24,
+                    with_llm: 1,
+                    llm_mode: 'chunk',
+                    use_valyu: 0,
+                    valyu_mode: 'search',
+                    valyu_raw: 0,
+                    valyu_boost: 1.0,
+                    use_ethos: 0
+                };
+                
+                const streamUrl = `${API_BASE}/api/rag/ask_stream`;
+
+                console.log('[ASK] Connecting to:', streamUrl);
+                addReceiptEvent('event', 'ask', { action: 'sse_connecting', url: streamUrl });
+
+                // For SSE with POST, we need to use fetch + ReadableStream
+                const response = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalAnswer = '';
+                let hasStarted = false;
+
+                // Manual SSE parsing (EventSource doesn't support POST)
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        console.log('[ASK] Stream complete');
+                        statusDiv.textContent = 'Complete';
+                        footerStatusValue.textContent = 'IDLE';
+                        completeReceiptCache();
+                        button.classList.remove('loading');
+                        button.disabled = false;
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            const eventType = line.substring(6).trim();
+                            continue;
+                        }
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (!dataStr) continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                console.log('[ASK] SSE event:', data);
+                                addReceiptEvent('event', 'ask', { sse_event: data });
+
+                                // Handle different event types
+                                if (data.status) {
+                                    if (data.status === 'generating_answer') {
+                                        statusDiv.textContent = 'Generating answer...';
+                                        footerStatusValue.textContent = 'RUNNING';
+                                    } else {
+                                        statusDiv.textContent = data.status.replace(/_/g, ' ');
+                                    }
+                                }
+
+                                if (data.text) {
+                                    finalAnswer += data.text;
+                                    answerDiv.style.display = 'block';
+                                    answerDiv.innerHTML = formatAnswer(finalAnswer);
+                                    statusDiv.textContent = 'Streaming answer...';
+                                    hasStarted = true;
+                                }
+
+                                if (data.type === 'llm_done' || data.done) {
+                                    if (data.text) {
+                                        finalAnswer = data.text;
+                                        answerDiv.innerHTML = formatAnswer(finalAnswer);
+                                    }
+                                    statusDiv.textContent = 'Answer complete';
+                                }
+                            } catch (e) {
+                                console.error('[ASK] Failed to parse SSE data:', e, dataStr);
+                            }
+                        }
+                    }
+                }
+
+                updateTransparencyPanelForAPICall();
+
+            } catch (error) {
+                console.error('[ASK] Error:', error);
+                addReceiptEvent('error', 'ask', { error: error.message, stack: error.stack });
+                completeReceiptCache();
+                
+                if (hasStarted) {
+                    statusDiv.textContent = 'Connection interrupted';
+                } else {
+                    resultsArea.innerHTML = `
+                        <div class="results-header">Error</div>
+                        <div class="results-error">${error.message}</div>
+                    `;
+                }
+                
+                button.classList.remove('loading');
+                button.disabled = false;
+                footerStatusValue.textContent = 'IDLE';
+            }
+        }
+
+        async function handleCodingSubmit() {
+            const codeSystem = document.getElementById('coding-type').value;
+            const text = document.getElementById('coding-text').value.trim();
+            const context = document.getElementById('coding-context').value.trim();
+
+            if (!codeSystem) {
+                alert('Please select a code system.');
+                return;
+            }
+            if (!text) {
+                alert('Please enter clinical text.');
+                return;
+            }
+
+            const button = document.getElementById('submit-coding');
+            const resultsArea = document.getElementById('coding-results');
+            
+            button.classList.add('loading');
+            button.disabled = true;
+            resultsArea.classList.add('visible');
+            resultsArea.innerHTML = `
+                <div class="results-header">Coding Results</div>
+                <div class="results-loading">Generating codes...</div>
+            `;
+
+            // Reset receipt cache
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: new Date().toISOString(),
+                events: [],
+                completed_at: null,
+                mode: 'coding'
+            };
+
+            try {
+                addReceiptEvent('event', 'coding', { 
+                    action: 'coding_requested', 
+                    code_system: codeSystem,
+                    text_length: text.length 
+                });
+
+                const response = await fetch(`${API_BASE}/api/coding`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        note: text,
+                        context: context || undefined,
+                        limit: 60
+                    })
+                });
+
+                addReceiptEvent('event', 'coding', { action: 'response_received', status: response.status });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    addReceiptEvent('error', 'coding', { status: response.status, error: error });
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                addReceiptEvent('completion', 'coding', { 
+                    probable_dx_count: data.probable_dx?.length || 0,
+                    differential_dx_count: data.differential_dx?.length || 0
+                });
+                completeReceiptCache();
+
+                // Display results
+                resultsArea.innerHTML = `
+                    <div class="results-header">Coding Results</div>
+                    <div class="results-content">
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                `;
+
+                updateTransparencyPanelForAPICall();
+
+            } catch (error) {
+                addReceiptEvent('error', 'coding', { error: error.message, stack: error.stack });
+                completeReceiptCache();
+                resultsArea.innerHTML = `
+                    <div class="results-header">Error</div>
+                    <div class="results-error">${error.message}</div>
+                `;
+            } finally {
+                button.classList.remove('loading');
+                button.disabled = false;
+            }
+        }
+
+        async function handleEohSubmit() {
+            const symptoms = document.getElementById('eoh-symptoms').value.trim();
+            const age = document.getElementById('eoh-age').value.trim();
+            const sex = document.getElementById('eoh-sex').value;
+            const history = document.getElementById('eoh-history').value.trim();
+            const context = document.getElementById('eoh-context').value.trim();
+
+            if (!symptoms) {
+                alert('Please enter primary symptoms.');
+                return;
+            }
+
+            const button = document.getElementById('submit-eoh');
+            const resultsArea = document.getElementById('eoh-results');
+            
+            button.classList.add('loading');
+            button.disabled = true;
+            resultsArea.classList.add('visible');
+            resultsArea.innerHTML = `
+                <div class="results-header">EoH Reasoning Stream</div>
+                <div class="results-loading">Connecting to EoH stream...</div>
+            `;
+
+            // Reset receipt cache
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: new Date().toISOString(),
+                events: [],
+                completed_at: null,
+                mode: 'eoh'
+            };
+
+            try {
+                // Build query string
+                let queryText = `Symptoms: ${symptoms}`;
+                if (age) queryText += `\nAge: ${age}`;
+                if (sex) queryText += `\nSex: ${sex}`;
+                if (history) queryText += `\nHistory: ${history}`;
+                if (context) queryText += `\nContext: ${context}`;
+
+                addReceiptEvent('event', 'eoh', { 
+                    action: 'eoh_requested', 
+                    query: queryText
+                });
+
+                // POST request with JSON body (privacy-safe)
+                const requestBody = {
+                    q: queryText,
+                    limit: 10,
+                    ctx_k: 32,
+                    valyu_k: 3,
+                    with_llm: 1,
+                    llm_mode: 'chunk',
+                    use_valyu: 1,
+                    valyu_mode: 'search',
+                    valyu_raw: 0,
+                    use_timeline: 0,
+                    research: 1,
+                    enable_gap: 1
+                };
+
+                const streamUrl = `${API_BASE}/api/rag/eoh_stream`;
+
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Reasoning Stream</div>
+                    <div class="results-content" id="eoh-stream-content">Receiving stream...</div>
+                `;
+
+                const response = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streamContent = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        addReceiptEvent('completion', 'eoh', { action: 'stream_complete' });
+                        completeReceiptCache();
+                        button.classList.remove('loading');
+                        button.disabled = false;
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (!dataStr) continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                addReceiptEvent('event', 'eoh', { sse_event: data });
+                                
+                                streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                                document.getElementById('eoh-stream-content').innerHTML = 
+                                    `<pre>${streamContent}</pre>`;
+                            } catch (e) {
+                                console.error('Failed to parse SSE:', e);
+                            }
+                        }
+                    }
+                }
+
+                updateTransparencyPanelForAPICall();
+
+            } catch (error) {
+                addReceiptEvent('error', 'eoh', { error: error.message, stack: error.stack });
+                completeReceiptCache();
+                resultsArea.innerHTML = `
+                    <div class="results-header">Error</div>
+                    <div class="results-error">${error.message}</div>
+                `;
+                button.classList.remove('loading');
+                button.disabled = false;
+            }
+        }
+
+        async function handleEohdSubmit() {
+            // Check if PDF is selected
+            if (!selectedTimelinePdf) {
+                alert('Please select a timeline PDF first.');
+                return;
+            }
+
+            const patientId = document.getElementById('eohd-patient')?.value.trim() || 'anonymous';
+            const focus = document.getElementById('eohd-focus')?.value.trim() || '';
+            const password = document.getElementById('timeline-pdf-password')?.value || '';
+
+            const button = document.getElementById('submit-eohd');
+            const resultsArea = document.getElementById('eohd-results');
+            
+            button.classList.add('loading');
+            button.disabled = true;
+            resultsArea.classList.add('visible');
+            resultsArea.innerHTML = `
+                <div class="results-header">EoH Detective Stream</div>
+                <div class="results-loading">Uploading timeline PDF...</div>
+            `;
+
+            // Reset receipt cache
+            sseReceiptCache = {
+                session_id: "ephemeral",
+                started_at: new Date().toISOString(),
+                events: [],
+                completed_at: null,
+                mode: 'eohd'
+            };
+
+            try {
+                // Step 1: Upload PDF
+                addReceiptEvent('event', 'eohd', {
+                    action: 'timeline_pdf_upload_started',
+                    filename: selectedTimelinePdf.name,
+                    patient_id: patientId
+                });
+
+                const formData = new FormData();
+                formData.append('file', selectedTimelinePdf);
+                if (password) formData.append('password', password);
+                formData.append('patient_id', patientId);
+
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-loading">Processing timeline PDF (this may take a minute)...</div>
+                `;
+
+                const uploadResponse = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error(`PDF upload failed: ${uploadResponse.statusText}`);
+                }
+
+                const uploadResult = await uploadResponse.json();
+                addReceiptEvent('event', 'eohd', {
+                    action: 'timeline_pdf_uploaded',
+                    session_key: uploadResult.session_key,
+                    event_count: uploadResult.event_count,
+                    edge_count: uploadResult.edge_count
+                });
+
+                // Step 2: Stream EoH Detective
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-loading">Connecting to EoH Detective stream...</div>
+                `;
+
+                let queryText = `Patient: ${patientId}\nTimeline: ${selectedTimelinePdf.name}`;
+                if (focus) queryText += `\nFocus: ${focus}`;
+
+                addReceiptEvent('event', 'eohd', {
+                    action: 'eoh_detective_requested',
+                    query: queryText,
+                    timeline_session_key: uploadResult.session_key
+                });
+
+                // POST request with JSON body (privacy-safe)
+                const requestBody = {
+                    q: queryText,
+                    timeline_patient_id: uploadResult.session_key,  // Use session_key as patient ID
+                    max_steps: 6,
+                    limit: 10,
+                    ctx_k: 32,
+                    valyu_k: 3,
+                    use_valyu: true,
+                    valyu_mode: 'search',
+                    valyu_raw: true,
+                    with_llm: true,
+                    llm_mode: 'chunk',
+                    research: 0,
+                    enable_gap: 1
+                };
+
+                const streamUrl = `${API_BASE}/api/rag/eoh_detective_stream`;
+
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-content" id="eohd-stream-content">Receiving stream...</div>
+                `;
+
+                const response2 = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response2.ok) {
+                    throw new Error(`API error: ${response2.status} ${response2.statusText}`);
+                }
+
+                const reader2 = response2.body.getReader();
+                const decoder2 = new TextDecoder();
+                let buffer2 = '';
+                let streamContent = '';
+
+                while (true) {
+                    const { done, value } = await reader2.read();
+                    if (done) {
+                        addReceiptEvent('completion', 'eohd', { action: 'stream_complete' });
+                        completeReceiptCache();
+                        button.classList.remove('loading');
+                        button.disabled = false;
+                        break;
+                    }
+
+                    buffer2 += decoder2.decode(value, { stream: true });
+                    const lines = buffer2.split('\n');
+                    buffer2 = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (!dataStr) continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                addReceiptEvent('event', 'eohd', { sse_event: data });
+                                
+                                streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                                document.getElementById('eohd-stream-content').innerHTML = 
+                                    `<pre>${streamContent}</pre>`;
+                            } catch (e) {
+                                console.error('Failed to parse SSE:', e);
+                            }
+                        }
+                    }
+                }
+
+                updateTransparencyPanelForAPICall();
+
+            } catch (error) {
+                addReceiptEvent('error', 'eohd', { error: error.message, stack: error.stack });
+                completeReceiptCache();
+                resultsArea.innerHTML = `
+                    <div class="results-header">Error</div>
+                    <div class="results-error">${error.message}</div>
+                `;
+                button.classList.remove('loading');
+                button.disabled = false;
+            }
+        }
+
+        // === ANSWER FORMATTING ===
+        function formatAnswer(text) {
+            if (!text) return '';
+            
+            // Escape HTML
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            
+            // Format headers (### Title)
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            
+            // Format subheaders (- **Title**)
+            html = html.replace(/^- \*\*(.+?)\*\*/gm, '<h4>$1</h4>');
+            
+            // Format bold text
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            
+            // Format bullet points (- text)
+            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+            
+            // Wrap consecutive <li> in <ul>
+            html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
+                return '<ul>' + match + '</ul>';
+            });
+            
+            // Format paragraphs (double newline)
+            const parts = html.split(/\n\n+/);
+            html = parts.map(part => {
+                part = part.trim();
+                if (!part) return '';
+                if (part.startsWith('<h3>') || part.startsWith('<h4>') || 
+                    part.startsWith('<ul>') || part.startsWith('<ol>')) {
+                    return part;
+                }
+                return '<p>' + part.replace(/\n/g, '<br>') + '</p>';
+            }).join('\n');
+            
+            return html;
+        }
+
+        // === ANSWER FORMATTING ===
+        function formatAnswer(text) {
+            if (!text) return '';
+            
+            // Escape HTML to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            
+            // Format headers (### Title)
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            
+            // Format subheaders (- **Title** or **Title**)
+            html = html.replace(/^- \*\*(.+?)\*\*/gm, '<h4>$1</h4>');
+            html = html.replace(/^\*\*(.+?)\*\*$/gm, '<h4>$1</h4>');
+            
+            // Format bold text (remaining **text**)
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            
+            // Format bullet points (- text)
+            html = html.replace(/^- (.+)$/gm, '|||LI|||$1|||/LI|||');
+            
+            // Wrap consecutive bullets in <ul>
+            html = html.replace(/(|||LI|||.+?|||\/LI|||\n?)+/g, (match) => {
+                const items = match.replace(/\|\|\|LI\|\|\|/g, '<li>').replace(/\|\|\|\/LI\|\|\|/g, '</li>');
+                return '<ul>' + items + '</ul>';
+            });
+            
+            // Format paragraphs (split on double newline)
+            const parts = html.split(/\n\n+/);
+            html = parts.map(part => {
+                part = part.trim();
+                if (!part) return '';
+                // Don't wrap structural elements
+                if (part.startsWith('<h3>') || part.startsWith('<h4>') || 
+                    part.startsWith('<ul>') || part.startsWith('<ol>')) {
+                    return part;
+                }
+                // Wrap regular text in <p>, preserve single line breaks as <br>
+                return '<p>' + part.replace(/\n/g, '<br>') + '</p>';
+            }).join('\n\n');
+            
+            return html;
+        }
+
+        function updateTransparencyPanelForAPICall() {
+            // Update transparency panel to reflect that external calls were made
+            // This is honest: we DID make an external call
+            const externalCallsItem = document.getElementById('external-calls');
+            externalCallsItem.classList.add('violated');
+            externalCallsItem.querySelector('.status').textContent = '⚠';
+            externalCallsItem.querySelector('.label').textContent = 'External API call made';
+            
+            const timestamp = formatTimestamp();
+            transparencyUpdate.textContent = `Last verified: ${timestamp}`;
+        }
+
+        function resetTransparencyPanel() {
+            // Reset when mode changes (new session)
+            const externalCallsItem = document.getElementById('external-calls');
+            externalCallsItem.classList.remove('violated');
+            externalCallsItem.querySelector('.status').textContent = '✓';
+            externalCallsItem.querySelector('.label').textContent = 'No external calls made';
+            
+            updateTransparencyPanel();
+        }
+
+        // === MODE SWITCHING ===
+        function switchMode(newMode) {
+            const timestamp = formatTimestamp();
+
+            // Clear previous mode state
+            modeButtons.forEach(btn => btn.classList.remove('active'));
+            modeContents.forEach(content => content.classList.remove('active'));
+
+            // Update current mode
+            currentMode = newMode;
+
+            // Activate new mode
+            const activeButton = document.querySelector(`button[data-mode="${newMode}"]`);
+            const activeContent = document.querySelector(`.mode-content[data-mode="${newMode}"]`);
+
+            if (activeButton) activeButton.classList.add('active');
+            if (activeContent) activeContent.classList.add('active');
+
+            // Update header
+            modeIndicator.textContent = newMode.toUpperCase();
+
+            // Update footer
+            footerModeValue.textContent = newMode.toUpperCase();
+            footerStatusValue.textContent = 'READY';
+
+            // Add receipt
+            addReceipt(`Mode changed to ${newMode.toUpperCase()}`, timestamp);
+
+            // Update transparency panel and reset external calls
+            resetTransparencyPanel();
+        }
+
+        // === EVENT LISTENERS ===
+        modeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const mode = button.getAttribute('data-mode');
+                if (mode !== currentMode) {
+                    switchMode(mode);
+                }
+            });
+        });
+
+        toggleReceiptsBtn.addEventListener('click', () => {
+            const isVisible = receiptCacheContent.classList.toggle('visible');
+            toggleReceiptsBtn.textContent = isVisible ? 'Hide Receipts' : 'Show Receipts';
+        });
+
+        exportHtmlBtn.addEventListener('click', exportReceiptHTML);
+        exportJsonBtn.addEventListener('click', exportReceiptJSON);
+        clearReceiptsBtn.addEventListener('click', clearReceiptCache);
+
+        // Mode submit buttons
+        document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
+        document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
+        document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
+        document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+        
+        // EoHD Timeline PDF ingestion
+        const ingestTimelinePdfBtn = document.getElementById('ingest-timeline-pdf-btn');
+        const timelinePdfFileInput = document.getElementById('timeline-pdf-file-input');
+        const timelinePdfPassword = document.getElementById('timeline-pdf-password');
+        const submitEohdBtn = document.getElementById('submit-eohd');
+        
+        let selectedTimelinePdf = null;
+        
+        if (ingestTimelinePdfBtn && timelinePdfFileInput) {
+            ingestTimelinePdfBtn.addEventListener('click', () => {
+                timelinePdfFileInput.click();
+            });
+            
+            timelinePdfFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    selectedTimelinePdf = file;
+                    ingestTimelinePdfBtn.textContent = `📄 ${file.name}`;
+                    if (submitEohdBtn) {
+                        submitEohdBtn.disabled = false;
+                        submitEohdBtn.textContent = 'RUN EOH DETECTIVE';
+                    }
+                }
+            });
+        }
+        
+        // EoHD submit handler
+        if (submitEohdBtn) {
+            submitEohdBtn.addEventListener('click', async () => {
+                if (!selectedTimelinePdf) {
+                    alert('Please select a timeline PDF first.');
+                    return;
+                }
+                
+                const patientId = document.getElementById('eohd-patient')?.value.trim() || 'anonymous';
+                const focus = document.getElementById('eohd-focus')?.value.trim() || '';
+                const password = timelinePdfPassword?.value || '';
+                const resultsArea = document.getElementById('eohd-results');
+                
+                submitEohdBtn.classList.add('loading');
+                submitEohdBtn.disabled = true;
+                resultsArea.classList.add('visible');
+                resultsArea.innerHTML = `
+                    <div class="results-header">EoH Detective Stream</div>
+                    <div class="results-loading">Uploading timeline PDF...</div>
+                `;
+                
+                // Reset receipt cache
+                sseReceiptCache = {
+                    session_id: "ephemeral",
+                    started_at: new Date().toISOString(),
+                    events: [],
+                    completed_at: null,
+                    mode: 'eohd'
+                };
+                
+                try {
+                    // Step 1: Upload PDF
+                    addReceiptEvent('event', 'eohd', {
+                        action: 'timeline_pdf_upload_started',
+                        filename: selectedTimelinePdf.name,
+                        patient_id: patientId
+                    });
+                    
+                    const formData = new FormData();
+                    formData.append('file', selectedTimelinePdf);
+                    if (password) formData.append('password', password);
+                    formData.append('patient_id', patientId);
+                    
+                    resultsArea.innerHTML = `
+                        <div class="results-header">EoH Detective Stream</div>
+                        <div class="results-loading">Processing timeline PDF (this may take a minute)...</div>
+                    `;
+                    
+                    const uploadResponse = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!uploadResponse.ok) {
+                        throw new Error(`PDF upload failed: ${uploadResponse.statusText}`);
+                    }
+                    
+                    const uploadResult = await uploadResponse.json();
+                    addReceiptEvent('event', 'eohd', {
+                        action: 'timeline_pdf_uploaded',
+                        session_key: uploadResult.session_key,
+                        event_count: uploadResult.event_count,
+                        edge_count: uploadResult.edge_count
+                    });
+                    
+                    // Step 2: Stream EoH Detective
+                    resultsArea.innerHTML = `
+                        <div class="results-header">EoH Detective Stream</div>
+                        <div class="results-loading">Connecting to EoH Detective stream...</div>
+                    `;
+                    
+                    let queryText = `Patient: ${patientId}\nTimeline: ${selectedTimelinePdf.name}`;
+                    if (focus) queryText += `\nFocus: ${focus}`;
+                    
+                    addReceiptEvent('event', 'eohd', {
+                        action: 'eoh_detective_requested',
+                        query: queryText,
+                        timeline_session_key: uploadResult.session_key
+                    });
+                    
+                    // POST request with JSON body (privacy-safe)
+                    const requestBody2 = {
+                        q: queryText,
+                        timeline_patient_id: uploadResult.session_key,  // Use session_key as patient ID
+                        max_steps: 6,
+                        limit: 10,
+                        ctx_k: 32,
+                        valyu_k: 3,
+                        use_valyu: true,
+                        valyu_mode: 'search',
+                        valyu_raw: true,
+                        with_llm: true,
+                        llm_mode: 'chunk',
+                        research: 0,
+                        enable_gap: 1
+                    };
+
+                    const streamUrl2 = `${API_BASE}/api/rag/eoh_detective_stream`;
+                    
+                    resultsArea.innerHTML = `
+                        <div class="results-header">EoH Detective Stream</div>
+                        <div class="results-content" id="eohd-stream-content">Receiving stream...</div>
+                    `;
+
+                    const response3 = await fetch(streamUrl2, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody2)
+                    });
+
+                    if (!response3.ok) {
+                        throw new Error(`API error: ${response3.status} ${response3.statusText}`);
+                    }
+
+                    const reader3 = response3.body.getReader();
+                    const decoder3 = new TextDecoder();
+                    let buffer3 = '';
+                    let streamContent = '';
+
+                    while (true) {
+                        const { done, value } = await reader3.read();
+                        if (done) {
+                            addReceiptEvent('completion', 'eohd', { action: 'stream_complete' });
+                            completeReceiptCache();
+                            submitEohdBtn.classList.remove('loading');
+                            submitEohdBtn.disabled = false;
+                            break;
+                        }
+
+                        buffer3 += decoder3.decode(value, { stream: true });
+                        const lines = buffer3.split('\n');
+                        buffer3 = lines.pop();
+
+                        for (const line of lines) {
+                            if (line.startsWith('data:')) {
+                                const dataStr = line.substring(5).trim();
+                                if (!dataStr) continue;
+
+                                try {
+                                    const data = JSON.parse(dataStr);
+                                    addReceiptEvent('event', 'eohd', { sse_event: data });
+                                    
+                                    streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                                    document.getElementById('eohd-stream-content').innerHTML = 
+                                        `<pre>${streamContent}</pre>`;
+                                } catch (e) {
+                                    console.error('Failed to parse SSE:', e);
+                                }
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('EoHD error:', error);
+                    addReceiptEvent('error', 'eohd', { error: error.message });
+                    completeReceiptCache();
+                    resultsArea.innerHTML = `
+                        <div class="results-header">Error</div>
+                        <div class="results-error">${error.message}</div>
+                    `;
+                    submitEohdBtn.classList.remove('loading');
+                    submitEohdBtn.disabled = false;
+                }
+            });
+        }
+
+        // === INITIALIZATION ===
+        // System starts with no mode selected
+        footerStatusValue.textContent = 'IDLE';
+        footerModeValue.textContent = 'NONE';
+
+        // === DEMO: Add sample receipt event (remove when SSE connected) ===
+        // This demonstrates the receipt cache structure with a sample event
+        // Uncomment to see receipt cache in action:
+        /*
+        addReceiptEvent('event', 'ask', {
+            message: 'Query received',
+            query: 'What are the symptoms of lupus?',
+            timestamp: new Date().toISOString()
+        });
+        addReceiptEvent('event', 'ask', {
+            message: 'Evidence retrieved',
+            sources: 3,
+            confidence: 0.87
+        });
+        addReceiptEvent('completion', 'ask', {
+            message: 'Query completed',
+            tokens_used: 450,
+            duration_ms: 1240
+        });
+        completeReceiptCache();
+        */
+    </script>
+<script defer="" src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;3e58909f3d3c4de5bfef57c804addda7&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}" crossorigin="anonymous"></script>
