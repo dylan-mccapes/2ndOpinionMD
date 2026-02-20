@@ -94,6 +94,7 @@ from .rag_stream_custom_endpoints import router as rag_stream_custom_router
 from .eoh_router_routes import router as eoh_router_router
 from server.api import eoh_demo_routes
 from server.api.timeline_routes import router as timeline_router
+from server.api.timeline_analytics_routes import router as timeline_analytics_router
 
 from server.api.kg import router as kg_router
 
@@ -249,6 +250,7 @@ app.include_router(rag_stream_custom_router)
 app.include_router(eoh_router_router)
 app.include_router(eoh_demo_routes.router)
 app.include_router(timeline_router)
+app.include_router(timeline_analytics_router)
 app.include_router(printer_router)
 app.include_router(audio_router)
 

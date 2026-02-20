@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { TimelineChartCard } from '../components/TimelineChartCard';
 
 type Tab = 'overview' | 'journal' | 'timeline' | 'eohd' | 'settings';
 
@@ -240,6 +241,12 @@ export function PatientPortalPage() {
           </>
         )}
       </div>
+
+      {hasTimeline && token && (
+        <div className="mb-4">
+          <TimelineChartCard patientId={user?.id ?? ''} token={token} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
