@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   startReceipt,
   addReceiptEvent,
@@ -62,6 +62,7 @@ export function CodingReview({
 }: CodingReviewProps) {
   const [status, setStatus] = useState<CodingStatus>('idle');
   const [categories, setCategories] = useState<CodingCategory[]>([]);
+  const hasSubmittedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [showReceipts, setShowReceipts] = useState(false);
   const [exportConfirmed, setExportConfirmed] = useState(false);
@@ -161,13 +162,17 @@ export function CodingReview({
     URL.revokeObjectURL(a.href);
   }
 
+  function escapeCsvField(val: string): string {
+    return `"${String(val ?? '').replace(/"/g, '""')}"`;
+  }
+
   function handleExportCSV() {
     const accepted = getAcceptedCodes();
     const header = 'code,description,system,confidence\n';
     const rows = accepted
       .map(
         (item) =>
-          `"${item.code}","${item.description}","${item.system}",${item.confidence}`,
+          `${escapeCsvField(item.code)},${escapeCsvField(item.description)},${escapeCsvField(item.system)},${item.confidence}`,
       )
       .join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
@@ -196,12 +201,22 @@ export function CodingReview({
     URL.revokeObjectURL(a.href);
   }
 
+  useEffect(() => {
+    if (active && !hasSubmittedRef.current) {
+      hasSubmittedRef.current = true;
+      submit();
+    }
+    return () => {
+      hasSubmittedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
   if (!active && status === 'idle') {
     return null;
   }
 
   if (active && status === 'idle') {
-    submit();
     return null;
   }
 
