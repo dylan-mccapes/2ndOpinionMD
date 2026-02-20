@@ -10,7 +10,7 @@ const NAV_LINKS = [
 
 export function Header() {
   const { theme, toggle } = useTheme();
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const location = useLocation();
 
   return (
@@ -74,17 +74,27 @@ export function Header() {
         </button>
 
         {isAuthenticated ? (
-          <button
-            onClick={logout}
-            className="text-xs font-mono px-2 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'transparent',
-              color: 'var(--text-muted)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
-            LOGOUT
-          </button>
+          <div className="flex items-center gap-3">
+            {user && (
+              <span
+                className="text-xs font-mono"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {user.email}
+              </span>
+            )}
+            <button
+              onClick={logout}
+              className="text-xs font-mono px-2 py-1 rounded cursor-pointer"
+              style={{
+                backgroundColor: 'transparent',
+                color: 'var(--text-muted)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              LOGOUT
+            </button>
+          </div>
         ) : (
           <Link
             to="/auth/login"
