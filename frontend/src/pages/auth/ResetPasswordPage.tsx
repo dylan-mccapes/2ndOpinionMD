@@ -29,14 +29,22 @@ export function ResetPasswordPage() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/auth/reset-password/${encodeURIComponent(token)}?new_password=${encodeURIComponent(password)}`,
-        { method: 'POST' },
+        `${API_BASE}/api/auth/reset-password/${encodeURIComponent(token!)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_password: password }),
+        },
       );
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: res.statusText }));
         const detail = data.detail;
-        setError(typeof detail === 'string' ? detail : 'Reset failed');
+        if (detail && typeof detail === 'object' && detail.code === 'password_weak' && Array.isArray(detail.errors)) {
+          setError(detail.errors.join('. '));
+        } else {
+          setError(typeof detail === 'string' ? detail : 'Reset failed');
+        }
         return;
       }
 

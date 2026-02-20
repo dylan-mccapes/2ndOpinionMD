@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ApiError } from '../../lib/api';
 
@@ -40,6 +40,8 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const { setToken } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? '/';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,7 +75,7 @@ export function LoginPage() {
 
       const data: TokenResponse = await res.json();
       setToken(data.access_token);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         setError(`API ${err.status}: ${err.body}`);

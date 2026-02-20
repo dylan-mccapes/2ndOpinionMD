@@ -15,8 +15,10 @@ export function ForgotPasswordPage() {
     setSubmitting(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/forgot-password?email=${encodeURIComponent(email)}`, {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       });
 
       if (!res.ok) {

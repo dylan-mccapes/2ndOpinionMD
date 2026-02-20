@@ -25,6 +25,15 @@ from sqlalchemy import select, update
 class ResendRequest(BaseModel):
     email: EmailStr
 
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -213,8 +222,12 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
     return {"message": "Email verified successfully"}
 
 @router.post("/forgot-password")
-async def forgot_password(email: str, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
-    query = select(User).where(User.email == email)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
+    query = select(User).where(User.email == body.email)
     result = await session.execute(query)
     user = result.scalar_one_or_none()
     
@@ -233,7 +246,17 @@ async def forgot_password(email: str, background_tasks: BackgroundTasks, session
     return {"message": "If your email is registered, you will receive a password reset link"}
 
 @router.post("/reset-password/{token}")
-async def reset_password(token: str, new_password: str, session: AsyncSession = Depends(get_session)):
+async def reset_password(
+    token: str,
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    password_errors = validate_password_complexity(body.new_password)
+    if password_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "password_weak", "message": "Password does not meet requirements", "errors": password_errors},
+        )
     query = select(User).where(User.password_reset_token == token)
     result = await session.execute(query)
     user = result.scalar_one_or_none()
@@ -250,7 +273,7 @@ async def reset_password(token: str, new_password: str, session: AsyncSession = 
             detail="Reset token expired"
         )
     
-    user.hashed_password = get_password_hash(new_password)
+    user.hashed_password = get_password_hash(body.new_password)
     user.password_reset_token = None
     user.password_reset_token_expires = None
     
