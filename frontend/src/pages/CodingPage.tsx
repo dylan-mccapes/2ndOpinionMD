@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { CodingReview, type CodingStatus } from '../components/CodingReview';
 import { TransparencyPanel } from '../components/TransparencyPanel';
+import { useStatusBar } from '../context/StatusBarContext';
 
 export function CodingPage() {
   const [note, setNote] = useState('');
@@ -8,6 +9,7 @@ export function CodingPage() {
   const [submitted, setSubmitted] = useState(false);
   const [reviewKey, setReviewKey] = useState(0);
   const [codingStatus, setCodingStatus] = useState<CodingStatus>('idle');
+  const statusBar = useStatusBar();
   const [externalCallMade, setExternalCallMade] = useState(false);
   const [callTimestamp, setCallTimestamp] = useState<string | null>(null);
 
@@ -19,9 +21,14 @@ export function CodingPage() {
     setSubmitted(true);
   };
 
-  const handleStatusChange = useCallback((status: CodingStatus) => {
+  const handleStatusChange = useCallback((status: CodingStatus, message?: string) => {
     setCodingStatus(status);
-  }, []);
+    const mapped = status === 'loading' ? 'running' as const
+      : status === 'complete' ? 'complete' as const
+      : status === 'error' ? 'error' as const
+      : 'idle' as const;
+    statusBar.setStatus(mapped, message);
+  }, [statusBar]);
 
   const handleExternalCall = useCallback(() => {
     setExternalCallMade(true);
