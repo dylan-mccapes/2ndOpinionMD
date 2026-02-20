@@ -8,6 +8,9 @@ import {
   exportReceiptJSON,
   exportReceiptHTML,
 } from '../lib/receiptCache';
+import { apiUrl } from '../lib/api';
+import { downloadBlob } from '../lib/download';
+import { Button } from './ui/Button';
 
 export type StreamStatus =
   | 'idle'
@@ -170,8 +173,7 @@ export function StreamingDisplay({
     updateStatus('connecting', 'Connecting...');
     onExternalCall?.();
 
-    const API_BASE = import.meta.env.VITE_API_BASE ?? '';
-    const baseUrl = `${API_BASE}${endpoint}`;
+    const baseUrl = apiUrl(endpoint);
 
     const handlers = {
       updateStatus,
@@ -314,21 +316,19 @@ export function StreamingDisplay({
   }, [active]);
 
   function handleExportJSON() {
-    const blob = new Blob([exportReceiptJSON()], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `receipt-${mode}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      exportReceiptJSON(),
+      `receipt-${mode}-${Date.now()}.json`,
+      'application/json',
+    );
   }
 
   function handleExportHTML() {
-    const blob = new Blob([exportReceiptHTML()], { type: 'text/html' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `receipt-${mode}-${Date.now()}.html`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      exportReceiptHTML(),
+      `receipt-${mode}-${Date.now()}.html`,
+      'text/html',
+    );
   }
 
   if (status === 'idle') {
@@ -337,35 +337,24 @@ export function StreamingDisplay({
 
   return (
     <div className="space-y-4">
+      {/*
+        Keep status color logic dynamic while moving all static styling into utility classes.
+      */}
       <div
-        className="px-4 py-2 rounded border text-sm font-mono"
-        style={{
-          backgroundColor: 'var(--bg-secondary)',
-          borderColor:
-            status === 'error'
-              ? 'var(--accent-red)'
-              : status === 'complete'
-                ? 'var(--accent-green)'
-                : 'var(--accent-yellow)',
-          color:
-            status === 'error'
-              ? 'var(--accent-red)'
-              : status === 'complete'
-                ? 'var(--accent-green)'
-                : 'var(--accent-yellow)',
-        }}
+        className={`px-4 py-2 rounded border text-sm font-mono bg-[var(--bg-secondary)] ${
+          status === 'error'
+            ? 'border-[var(--accent-red)] text-[var(--accent-red)]'
+            : status === 'complete'
+              ? 'border-[var(--accent-green)] text-[var(--accent-green)]'
+              : 'border-[var(--accent-yellow)] text-[var(--accent-yellow)]'
+        }`}
       >
         {statusText}
       </div>
 
       {retrieval && (
         <div
-          className="px-4 py-2 rounded border text-xs font-mono"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
+          className="px-4 py-2 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Sources: {retrieval.sources_used}/{retrieval.sources_considered} |
           Retrieval confidence: {retrieval.confidence}
@@ -374,12 +363,7 @@ export function StreamingDisplay({
 
       {error && (
         <div
-          className="p-4 rounded border"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--accent-red)',
-            color: 'var(--accent-red)',
-          }}
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--accent-red)] text-[var(--accent-red)]"
         >
           <p className="text-sm font-mono font-bold mb-1">ERROR</p>
           <p className="text-sm">{error}</p>
@@ -388,12 +372,7 @@ export function StreamingDisplay({
 
       {answer && (
         <div
-          className="p-4 rounded border prose prose-sm max-w-none"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-primary)',
-          }}
+          className="p-4 rounded border prose prose-sm max-w-none bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-primary)]"
         >
           <Markdown>{answer}</Markdown>
         </div>
@@ -401,25 +380,14 @@ export function StreamingDisplay({
 
       {limitations.length > 0 && (
         <div
-          className="p-3 rounded border"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--accent-yellow)',
-          }}
+          className="p-3 rounded border bg-[var(--bg-secondary)] border-[var(--accent-yellow)]"
         >
-          <p
-            className="text-xs font-mono font-bold mb-2"
-            style={{ color: 'var(--accent-yellow)' }}
-          >
+          <p className="text-xs font-mono font-bold mb-2 text-[var(--accent-yellow)]">
             LIMITATIONS
           </p>
           <ul className="space-y-1">
             {limitations.map((lim, i) => (
-              <li
-                key={i}
-                className="text-xs font-mono"
-                style={{ color: 'var(--text-secondary)' }}
-              >
+              <li key={i} className="text-xs font-mono text-[var(--text-secondary)]">
                 — {lim}
               </li>
             ))}
@@ -429,12 +397,7 @@ export function StreamingDisplay({
 
       {confidence !== null && status === 'complete' && (
         <div
-          className="px-4 py-2 rounded border text-xs font-mono"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
+          className="px-4 py-2 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Confidence: {Math.round(confidence * 100)}%
           {completion &&
@@ -444,55 +407,23 @@ export function StreamingDisplay({
 
       {(status === 'complete' || status === 'error') && (
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowReceipts(!showReceipts)}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          <Button onClick={() => setShowReceipts(!showReceipts)} variant="secondary">
             {showReceipts ? 'HIDE RECEIPTS' : 'SHOW RECEIPTS'}
-          </button>
-          <button
-            onClick={handleExportJSON}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          </Button>
+          <Button onClick={handleExportJSON} variant="secondary">
             EXPORT JSON
-          </button>
-          <button
-            onClick={handleExportHTML}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          </Button>
+          <Button onClick={handleExportHTML} variant="secondary">
             EXPORT HTML
-          </button>
+          </Button>
         </div>
       )}
 
       {showReceipts && (
         <div
-          className="p-4 rounded border overflow-auto"
-          style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            borderColor: 'var(--border-color)',
-            maxHeight: '400px',
-          }}
+          className="p-4 rounded border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
         >
-          <pre
-            className="text-xs font-mono whitespace-pre-wrap"
-            style={{ color: 'var(--text-secondary)' }}
-          >
+          <pre className="text-xs font-mono whitespace-pre-wrap text-[var(--text-secondary)]">
             {JSON.stringify(getReceipt(), null, 2)}
           </pre>
         </div>

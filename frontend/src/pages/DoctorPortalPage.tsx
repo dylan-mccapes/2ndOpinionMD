@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { apiFetch, authHeaders, ApiError, apiUrl } from '../lib/api';
 import { AudioCapture } from '../components/AudioCapture';
 import { LiveTranscript } from '../components/LiveTranscript';
 import { CodeSuggestions } from '../components/CodeSuggestions';
 import { EncounterSummary } from '../components/EncounterSummary';
+import { Button } from '../components/ui/Button';
+import { LoadingState } from '../components/ui/LoadingState';
 import type { AudioState } from '../components/AudioCapture';
 import type { TranscriptSegment } from '../components/LiveTranscript';
 import type { SuggestedCode } from '../components/CodeSuggestions';
@@ -94,14 +96,11 @@ export function DoctorPortalPage() {
       if (selectedPatientId) formData.append('patient_id', selectedPatientId);
       formData.append('chunk_index', String(index));
 
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE ?? ''}/api/portal/transcribe`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        },
-      );
+      const res = await fetch(apiUrl('/api/portal/transcribe'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
@@ -167,22 +166,20 @@ export function DoctorPortalPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <h1
-          className="text-xl font-mono font-bold mb-1"
-          style={{ color: 'var(--accent-blue)' }}
+          className="text-xl font-mono font-bold mb-1 text-[var(--accent-blue)]"
         >
           DOCTOR PORTAL
         </h1>
-        <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm font-mono text-[var(--text-muted)]">
           {user?.full_name ? `Dr. ${user.full_name}` : user?.email ?? 'Doctor'}
         </p>
       </div>
 
       {/* CONNECT PATIENT */}
       <div
-        className="p-4 rounded border mb-4"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+        className="p-4 rounded border mb-4 bg-[var(--bg-secondary)] border-[var(--border-color)]"
       >
-        <span className="text-sm font-mono font-bold block mb-3" style={{ color: 'var(--accent-blue)' }}>
+        <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-blue)]">
           CONNECT PATIENT
         </span>
         <form onSubmit={handleInvite} className="flex gap-2 mb-2">
@@ -192,48 +189,38 @@ export function DoctorPortalPage() {
             onChange={(e) => setInviteEmail(e.target.value)}
             placeholder="patient@example.com"
             required
-            className="flex-1 px-3 py-2 rounded text-sm font-mono border"
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              borderColor: 'var(--border-color)',
-              color: 'var(--text-primary)',
-            }}
+            className="flex-1 px-3 py-2 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
           />
-          <button
+          <Button
             type="submit"
             disabled={inviteLoading || !inviteEmail.trim()}
-            className="px-4 py-2 rounded text-sm font-mono font-bold"
-            style={{
-              backgroundColor: 'var(--accent-blue)',
-              color: '#fff',
-              opacity: inviteLoading || !inviteEmail.trim() ? 0.5 : 1,
-            }}
+            variant="accent"
+            size="md"
           >
             {inviteLoading ? 'SENDING...' : 'INVITE'}
-          </button>
+          </Button>
         </form>
         {inviteError && (
-          <p className="text-xs font-mono mt-1" style={{ color: 'var(--accent-red)' }}>{inviteError}</p>
+          <p className="text-xs font-mono mt-1 text-[var(--accent-red)]">{inviteError}</p>
         )}
         {inviteSuccess && (
-          <p className="text-xs font-mono mt-1" style={{ color: 'var(--accent-green)' }}>{inviteSuccess}</p>
+          <p className="text-xs font-mono mt-1 text-[var(--accent-green)]">{inviteSuccess}</p>
         )}
 
         {pendingInvites.length > 0 && (
           <div className="mt-3">
-            <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+            <span className="text-xs font-mono font-bold block mb-1 text-[var(--text-secondary)]">
               PENDING INVITES
             </span>
             {pendingInvites.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between py-1.5 px-2 rounded mb-1"
-                style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                className="flex items-center justify-between py-1.5 px-2 rounded mb-1 bg-[var(--bg-tertiary)]"
               >
-                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
+                <span className="text-xs font-mono text-[var(--text-primary)]">
                   {inv.to_email}
                 </span>
-                <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>
+                <span className="text-xs font-mono text-[var(--accent-yellow)]">
                   PENDING
                 </span>
               </div>
@@ -244,41 +231,36 @@ export function DoctorPortalPage() {
 
       {/* PATIENTS LIST */}
       <div
-        className="p-4 rounded border mb-4"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+        className="p-4 rounded border mb-4 bg-[var(--bg-secondary)] border-[var(--border-color)]"
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
+          <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
             TIMELINE + CHARTS
           </span>
           <Link
             to="/timeline"
-            className="text-xs font-mono no-underline"
-            style={{ color: 'var(--accent-blue)' }}
+            className="text-xs font-mono no-underline text-[var(--accent-blue)]"
           >
             OPEN TIMELINE WORKSPACE
           </Link>
         </div>
 
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
+          <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
             PATIENTS
           </span>
-          <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs font-mono text-[var(--text-muted)]">
             {patients.length} linked
           </span>
         </div>
 
         {loading && (
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-            Loading patients...
-          </p>
+          <LoadingState label="Loading patients..." />
         )}
 
         {error && (
           <div
-            className="p-3 rounded text-sm font-mono"
-            style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}
+            className="p-3 rounded text-sm font-mono bg-[var(--bg-tertiary)] text-[var(--accent-red)]"
           >
             {error}
           </div>
@@ -286,13 +268,12 @@ export function DoctorPortalPage() {
 
         {!loading && !error && patients.length === 0 && (
           <div
-            className="p-4 rounded text-center"
-            style={{ backgroundColor: 'var(--bg-tertiary)' }}
+            className="p-4 rounded text-center bg-[var(--bg-tertiary)]"
           >
-            <p className="text-sm font-mono mb-2" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm font-mono mb-2 text-[var(--text-muted)]">
               No patients linked to your account.
             </p>
-            <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs font-mono text-[var(--text-muted)]">
               Use the form above to invite patients by email.
             </p>
           </div>
@@ -304,15 +285,14 @@ export function DoctorPortalPage() {
               <Link
                 key={patient.id}
                 to={`/doctor/patients/${patient.id}`}
-                className="flex items-center justify-between p-3 rounded no-underline"
-                style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                className="flex items-center justify-between p-3 rounded no-underline bg-[var(--bg-tertiary)]"
               >
                 <div>
-                  <span className="text-sm font-mono font-bold block" style={{ color: 'var(--text-primary)' }}>
+                  <span className="text-sm font-mono font-bold block text-[var(--text-primary)]">
                     {patient.full_name ?? patient.email}
                   </span>
                   {patient.full_name && (
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
                       {patient.email}
                     </span>
                   )}
@@ -324,11 +304,11 @@ export function DoctorPortalPage() {
                     </span>
                   )}
                   {patient.last_journal_date && (
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
                       Last entry: {new Date(patient.last_journal_date).toLocaleDateString()}
                     </span>
                   )}
-                  <span className="text-xs font-mono" style={{ color: 'var(--accent-blue)' }}>
+                  <span className="text-xs font-mono text-[var(--accent-blue)]">
                     VIEW
                   </span>
                 </div>
@@ -340,11 +320,10 @@ export function DoctorPortalPage() {
 
       {/* AMBIENT CODING */}
       <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+        className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-red)' }}>
+          <span className="text-sm font-mono font-bold text-[var(--accent-red)]">
             AMBIENT CODING
           </span>
           {audioState === 'recording' && (
@@ -360,7 +339,7 @@ export function DoctorPortalPage() {
             </span>
           )}
           {transcribing && (
-            <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>
+            <span className="text-xs font-mono text-[var(--accent-yellow)]">
               Transcribing...
             </span>
           )}
@@ -374,12 +353,7 @@ export function DoctorPortalPage() {
             <select
               value={selectedPatientId ?? ''}
               onChange={(e) => setSelectedPatientId(e.target.value || null)}
-              className="w-full px-3 py-2 rounded text-sm font-mono border"
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-primary)',
-              }}
+              className="w-full px-3 py-2 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
             >
               <option value="">— Select patient (optional) —</option>
               {patients.map((p) => (

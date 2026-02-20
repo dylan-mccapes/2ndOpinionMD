@@ -1,10 +1,14 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+export const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
 
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  const url = apiUrl(path);
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -24,7 +28,7 @@ export function apiStream(
   path: string,
   params?: Record<string, string | number>,
 ): EventSource {
-  const url = new URL(`${API_BASE}${path}`, window.location.origin);
+  const url = new URL(apiUrl(path), window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       url.searchParams.set(k, String(v));

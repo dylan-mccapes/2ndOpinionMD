@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { TimelineChartCard } from '../components/TimelineChartCard';
 import { AnalyticsPanel } from '../components/AnalyticsPanel';
+import { LoadingState } from '../components/ui/LoadingState';
 
 interface TimelineStatus {
   has_timeline: boolean;
@@ -149,36 +150,35 @@ export function TimelinePage() {
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <div>
-        <h1 className="text-xl font-mono font-bold mb-1" style={{ color: 'var(--accent-green)' }}>
+        <h1 className="text-xl font-mono font-bold mb-1 text-[var(--accent-green)]">
           TIMELINE
         </h1>
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-xs font-mono text-[var(--text-muted)]">
           View event timeline and generate analytics charts.
         </p>
       </div>
 
       {!isDoctor && (
         <>
-          <div className="p-4 rounded border" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+          <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-green)' }}>PATIENT TIMELINE</span>
-              <Link to="/timeline/upload" className="text-xs font-mono no-underline" style={{ color: 'var(--accent-green)' }}>
+              <span className="text-sm font-mono font-bold text-[var(--accent-green)]">PATIENT TIMELINE</span>
+              <Link to="/timeline/upload" className="text-xs font-mono no-underline text-[var(--accent-green)]">
                 UPLOAD / REPLACE
               </Link>
             </div>
 
-            {patientLoading && <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading timeline...</p>}
-            {patientError && <p className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>{patientError}</p>}
+            {patientLoading && <LoadingState label="Loading timeline..." />}
+            {patientError && <p className="text-xs font-mono text-[var(--accent-red)]">{patientError}</p>}
 
             {!patientLoading && !patientError && (!patientTimelineStatus || !patientTimelineStatus.has_timeline) && (
-              <div className="p-3 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                <p className="text-xs font-mono mb-2" style={{ color: 'var(--text-muted)' }}>
+              <div className="p-3 rounded bg-[var(--bg-tertiary)]">
+                <p className="text-xs font-mono mb-2 text-[var(--text-muted)]">
                   No timeline data yet. Upload a timeline PDF to enable charts and timeline browsing.
                 </p>
                 <Link
                   to="/timeline/upload"
-                  className="inline-block px-3 py-1.5 rounded text-xs font-mono font-bold no-underline"
-                  style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
+                  className="inline-block px-3 py-1.5 rounded text-xs font-mono font-bold no-underline bg-[var(--accent-green)] text-black"
                 >
                   GO TO UPLOAD
                 </Link>
@@ -188,16 +188,16 @@ export function TimelinePage() {
             {!patientLoading && patientTimeline && patientTimeline.events.length > 0 && (
               <div className="max-h-80 overflow-y-auto space-y-2">
                 {patientTimeline.events.slice().reverse().map((ev, idx) => (
-                  <div key={`${ev.ts}-${idx}`} className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                  <div key={`${ev.ts}-${idx}`} className="p-2 rounded bg-[var(--bg-tertiary)]">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                      <span className="text-xs font-mono font-bold text-[var(--text-primary)]">
                         {(ev.event_type || 'unknown').toUpperCase()}
                       </span>
-                      <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                      <span className="text-xs font-mono text-[var(--text-muted)]">
                         {new Date(ev.ts).toLocaleString()}
                       </span>
                     </div>
-                    <p className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                    <p className="text-xs font-mono text-[var(--text-secondary)]">
                       {ev.text || `Source: ${ev.source}`}
                     </p>
                   </div>
@@ -214,18 +214,17 @@ export function TimelinePage() {
 
       {isDoctor && (
         <>
-          <div className="p-4 rounded border" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-            <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-blue)' }}>
+          <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
+            <span className="text-sm font-mono font-bold block mb-2 text-[var(--accent-blue)]">
               DOCTOR TIMELINE VIEW
             </span>
             {doctorLoading ? (
-              <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading patients...</p>
+              <LoadingState label="Loading patients..." />
             ) : (
               <select
                 value={selectedPatientId}
                 onChange={(e) => setSelectedPatientId(e.target.value)}
-                className="w-full px-3 py-2 rounded text-sm font-mono border"
-                style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                className="w-full px-3 py-2 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
               >
                 <option value="">— Select patient —</option>
                 {doctorPatients.map((p) => (
@@ -236,39 +235,39 @@ export function TimelinePage() {
               </select>
             )}
             {doctorError && (
-              <p className="text-xs font-mono mt-2" style={{ color: 'var(--accent-red)' }}>{doctorError}</p>
+              <p className="text-xs font-mono mt-2 text-[var(--accent-red)]">{doctorError}</p>
             )}
           </div>
 
           {selectedPatientId && !selectedTimelineId && !doctorError && (
-            <div className="p-3 rounded border text-xs font-mono" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <div className="p-3 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-muted)]">
               Selected patient has no ingested timeline yet.
             </div>
           )}
 
           {selectedTimelineId && doctorTimeline && (
             <>
-              <div className="p-4 rounded border" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
+                  <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
                     TIMELINE EVENTS {selectedPatient ? `— ${selectedPatient.full_name ?? selectedPatient.email}` : ''}
                   </span>
-                  <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-xs font-mono text-[var(--text-muted)]">
                     {doctorTimeline.total_events} events
                   </span>
                 </div>
                 <div className="max-h-80 overflow-y-auto space-y-2">
                   {doctorTimeline.events.slice().reverse().map((ev, idx) => (
-                    <div key={`${ev.ts}-${idx}`} className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                    <div key={`${ev.ts}-${idx}`} className="p-2 rounded bg-[var(--bg-tertiary)]">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                        <span className="text-xs font-mono font-bold text-[var(--text-primary)]">
                           {(ev.event_type || 'unknown').toUpperCase()}
                         </span>
-                        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                        <span className="text-xs font-mono text-[var(--text-muted)]">
                           {new Date(ev.ts).toLocaleString()}
                         </span>
                       </div>
-                      <p className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-xs font-mono text-[var(--text-secondary)]">
                         {ev.text || `Source: ${ev.source}`}
                       </p>
                     </div>

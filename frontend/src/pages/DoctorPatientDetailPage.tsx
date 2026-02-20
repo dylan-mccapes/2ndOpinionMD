@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { AnalyticsPanel } from '../components/AnalyticsPanel';
+import { LoadingState } from '../components/ui/LoadingState';
 
 interface JournalEntry {
   id: string;
@@ -84,37 +85,34 @@ export function DoctorPatientDetailPage() {
       <div className="mb-6">
         <Link
           to="/doctor"
-          className="text-xs font-mono no-underline mb-2 inline-block"
-          style={{ color: 'var(--accent-blue)' }}
+          className="text-xs font-mono no-underline mb-2 inline-block text-[var(--accent-blue)]"
         >
           BACK TO PATIENTS
         </Link>
         <h1
-          className="text-xl font-mono font-bold mb-1"
-          style={{ color: 'var(--accent-blue)' }}
+          className="text-xl font-mono font-bold mb-1 text-[var(--accent-blue)]"
         >
           PATIENT DETAIL
         </h1>
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-xs font-mono text-[var(--text-muted)]">
           Read-only view. Patient ID: {patientId}
         </p>
       </div>
 
       <div className="space-y-4">
         <div
-          className="p-4 rounded border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
         >
-          <span className="text-sm font-mono font-bold block mb-3" style={{ color: 'var(--accent-green)' }}>
+          <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-green)]">
             TIMELINE STATUS
           </span>
 
           {timelineLoading && (
-            <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading...</p>
+            <LoadingState />
           )}
 
           {timelineError && (
-            <div className="p-3 rounded text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div className="p-3 rounded text-sm font-mono bg-[var(--bg-tertiary)] text-[var(--accent-red)]">
               {timelineError}
             </div>
           )}
@@ -131,7 +129,7 @@ export function DoctorPatientDetailPage() {
                 {timeline.has_timeline ? `READY (${timeline.event_count} events)` : 'NO TIMELINE'}
               </span>
               {timeline.last_updated && (
-                <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                <span className="text-xs font-mono text-[var(--text-muted)]">
                   Updated: {new Date(timeline.last_updated).toLocaleDateString()}
                 </span>
               )}
@@ -140,30 +138,29 @@ export function DoctorPatientDetailPage() {
         </div>
 
         <div
-          className="p-4 rounded border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-green)' }}>
+            <span className="text-sm font-mono font-bold text-[var(--accent-green)]">
               JOURNAL ENTRIES
             </span>
-            <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-xs font-mono text-[var(--text-muted)]">
               {journal.length} entries
             </span>
           </div>
 
           {journalLoading && (
-            <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading...</p>
+            <LoadingState />
           )}
 
           {journalError && (
-            <div className="p-3 rounded text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div className="p-3 rounded text-sm font-mono bg-[var(--bg-tertiary)] text-[var(--accent-red)]">
               {journalError}
             </div>
           )}
 
           {!journalLoading && !journalError && journal.length === 0 && (
-            <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs font-mono text-[var(--text-muted)]">
               No journal entries found for this patient.
             </p>
           )}
@@ -173,11 +170,10 @@ export function DoctorPatientDetailPage() {
               {journal.map((entry) => (
                 <div
                   key={entry.id}
-                  className="p-3 rounded"
-                  style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                  className="p-3 rounded bg-[var(--bg-tertiary)]"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                    <span className="text-sm font-mono font-bold text-[var(--text-primary)]">
                       {entry.title}
                     </span>
                     <div className="flex items-center gap-2">
@@ -186,14 +182,13 @@ export function DoctorPatientDetailPage() {
                           SEV {entry.severity}/10
                         </span>
                       )}
-                      <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                      <span className="text-xs font-mono text-[var(--text-muted)]">
                         {new Date(entry.created_at).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
                   <p
-                    className="text-xs font-mono mt-1"
-                    style={{ color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}
+                    className="text-xs font-mono mt-1 text-[var(--text-secondary)] whitespace-pre-wrap"
                   >
                     {entry.content.length > 300 ? `${entry.content.slice(0, 300)}...` : entry.content}
                   </p>
@@ -202,7 +197,7 @@ export function DoctorPatientDetailPage() {
             </div>
           )}
 
-          <p className="text-xs font-mono mt-3" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-mono mt-3 text-[var(--text-muted)]">
             Read-only. Journal entries cannot be edited from the doctor portal.
           </p>
         </div>

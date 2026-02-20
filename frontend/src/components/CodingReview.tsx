@@ -8,6 +8,8 @@ import {
   exportReceiptHTML,
 } from '../lib/receiptCache';
 import { apiFetch, ApiError } from '../lib/api';
+import { downloadBlob } from '../lib/download';
+import { Button } from './ui/Button';
 
 interface CodeItem {
   code: string;
@@ -152,14 +154,11 @@ export function CodingReview({
 
   function handleExportJSON() {
     const accepted = getAcceptedCodes();
-    const blob = new Blob([JSON.stringify(accepted, null, 2)], {
-      type: 'application/json',
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `coding-export-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      JSON.stringify(accepted, null, 2),
+      `coding-export-${Date.now()}.json`,
+      'application/json',
+    );
   }
 
   function escapeCsvField(val: string): string {
@@ -175,30 +174,27 @@ export function CodingReview({
           `${escapeCsvField(item.code)},${escapeCsvField(item.description)},${escapeCsvField(item.system)},${item.confidence}`,
       )
       .join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `coding-export-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      header + rows,
+      `coding-export-${Date.now()}.csv`,
+      'text/csv',
+    );
   }
 
   function handleReceiptExportJSON() {
-    const blob = new Blob([exportReceiptJSON()], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `receipt-coding-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      exportReceiptJSON(),
+      `receipt-coding-${Date.now()}.json`,
+      'application/json',
+    );
   }
 
   function handleReceiptExportHTML() {
-    const blob = new Blob([exportReceiptHTML()], { type: 'text/html' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `receipt-coding-${Date.now()}.html`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      exportReceiptHTML(),
+      `receipt-coding-${Date.now()}.html`,
+      'text/html',
+    );
   }
 
   useEffect(() => {
@@ -226,12 +222,7 @@ export function CodingReview({
     <div className="space-y-4">
       {status === 'loading' && (
         <div
-          className="px-4 py-2 rounded border text-sm font-mono"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--accent-yellow)',
-            color: 'var(--accent-yellow)',
-          }}
+          className="px-4 py-2 rounded border text-sm font-mono bg-[var(--bg-secondary)] border-[var(--accent-yellow)] text-[var(--accent-yellow)]"
         >
           Processing clinical note...
         </div>
@@ -239,19 +230,12 @@ export function CodingReview({
 
       {error && (
         <div
-          className="p-4 rounded border"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--accent-red)',
-          }}
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--accent-red)]"
         >
-          <p
-            className="text-sm font-mono font-bold mb-1"
-            style={{ color: 'var(--accent-red)' }}
-          >
+          <p className="text-sm font-mono font-bold mb-1 text-[var(--accent-red)]">
             ERROR
           </p>
-          <p className="text-sm" style={{ color: 'var(--accent-red)' }}>
+          <p className="text-sm text-[var(--accent-red)]">
             {error}
           </p>
         </div>
@@ -260,8 +244,7 @@ export function CodingReview({
       {categories.map((cat, catIdx) => (
         <div key={cat.key}>
           <h3
-            className="text-xs font-mono font-bold tracking-wide mb-2"
-            style={{ color: 'var(--text-secondary)' }}
+            className="text-xs font-mono font-bold tracking-wide mb-2 text-[var(--text-secondary)]"
           >
             {cat.label}
           </h3>
@@ -322,14 +305,7 @@ export function CodingReview({
                 <div className="flex-shrink-0 text-right">
                   <div
                     className="text-xs font-mono"
-                    style={{
-                      color:
-                        item.confidence >= 0.8
-                          ? 'var(--accent-green)'
-                          : item.confidence >= 0.5
-                            ? 'var(--accent-yellow)'
-                            : 'var(--accent-red)',
-                    }}
+                    style={{ color: item.confidence >= 0.8 ? 'var(--accent-green)' : item.confidence >= 0.5 ? 'var(--accent-yellow)' : 'var(--accent-red)' }}
                   >
                     {Math.round(item.confidence * 100)}%
                   </div>
@@ -342,66 +318,34 @@ export function CodingReview({
 
       {status === 'complete' && categories.length > 0 && (
         <div
-          className="p-4 rounded border"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-color)',
-          }}
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
         >
           <div className="flex items-center justify-between mb-3">
-            <span
-              className="text-xs font-mono"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+            <span className="text-xs font-mono text-[var(--text-secondary)]">
               {acceptedCount} code{acceptedCount !== 1 ? 's' : ''} accepted
             </span>
           </div>
 
           {!exportConfirmed ? (
-            <button
+            <Button
               onClick={() => setExportConfirmed(true)}
               disabled={acceptedCount === 0}
-              className="px-4 py-2 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: 'var(--accent-blue)',
-                color: '#fff',
-              }}
+              variant="accent"
+              size="md"
             >
               CONFIRM EXPORT ({acceptedCount})
-            </button>
+            </Button>
           ) : (
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleExportJSON}
-                className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--accent-green)',
-                  color: '#000',
-                }}
-              >
+              <Button onClick={handleExportJSON} variant="primary">
                 EXPORT JSON
-              </button>
-              <button
-                onClick={handleExportCSV}
-                className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--accent-green)',
-                  color: '#000',
-                }}
-              >
+              </Button>
+              <Button onClick={handleExportCSV} variant="primary">
                 EXPORT CSV
-              </button>
-              <button
-                onClick={() => setExportConfirmed(false)}
-                className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)',
-                  border: '1px solid var(--border-color)',
-                }}
-              >
+              </Button>
+              <Button onClick={() => setExportConfirmed(false)} variant="secondary">
                 CANCEL
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -409,55 +353,23 @@ export function CodingReview({
 
       {(status === 'complete' || status === 'error') && (
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowReceipts(!showReceipts)}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          <Button onClick={() => setShowReceipts(!showReceipts)} variant="secondary">
             {showReceipts ? 'HIDE RECEIPTS' : 'SHOW RECEIPTS'}
-          </button>
-          <button
-            onClick={handleReceiptExportJSON}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          </Button>
+          <Button onClick={handleReceiptExportJSON} variant="secondary">
             RECEIPT JSON
-          </button>
-          <button
-            onClick={handleReceiptExportHTML}
-            className="text-xs font-mono px-3 py-1 rounded cursor-pointer"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-color)',
-            }}
-          >
+          </Button>
+          <Button onClick={handleReceiptExportHTML} variant="secondary">
             RECEIPT HTML
-          </button>
+          </Button>
         </div>
       )}
 
       {showReceipts && (
         <div
-          className="p-4 rounded border overflow-auto"
-          style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            borderColor: 'var(--border-color)',
-            maxHeight: '400px',
-          }}
+          className="p-4 rounded border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
         >
-          <pre
-            className="text-xs font-mono whitespace-pre-wrap"
-            style={{ color: 'var(--text-secondary)' }}
-          >
+          <pre className="text-xs font-mono whitespace-pre-wrap text-[var(--text-secondary)]">
             {JSON.stringify(getReceipt(), null, 2)}
           </pre>
         </div>

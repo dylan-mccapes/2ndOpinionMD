@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import type { SuggestedCode } from './CodeSuggestions';
+import { downloadBlob } from '../lib/download';
+import { Button } from './ui/Button';
 
 interface EncounterSummaryProps {
   transcript: string;
@@ -91,12 +93,11 @@ export function EncounterSummary({
 
   const handleExportJSON = useCallback(() => {
     if (!note) return;
-    const blob = new Blob([JSON.stringify(note, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `encounter-note-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(
+      JSON.stringify(note, null, 2),
+      `encounter-note-${Date.now()}.json`,
+      'application/json',
+    );
     setExported('json');
   }, [note]);
 
@@ -117,12 +118,7 @@ export function EncounterSummary({
         rows.push(`"Code","[${c.system}] ${c.code} — ${c.title}"`);
       }
     }
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `encounter-note-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadBlob(rows.join('\n'), `encounter-note-${Date.now()}.csv`, 'text/csv');
     setExported('csv');
   }, [note]);
 
@@ -167,18 +163,16 @@ export function EncounterSummary({
 
   return (
     <div
-      className="rounded border"
-      style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+      className="rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
     >
       <div
-        className="flex items-center justify-between px-4 py-2 border-b"
-        style={{ borderColor: 'var(--border-color)' }}
+        className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)]"
       >
-        <span className="text-xs font-mono font-bold" style={{ color: 'var(--accent-yellow)' }}>
+        <span className="text-xs font-mono font-bold text-[var(--accent-yellow)]">
           ENCOUNTER SUMMARY
         </span>
         {meta && (
-          <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs font-mono text-[var(--text-muted)]">
             {meta.encounter_date} — {meta.doctor_name}
           </span>
         )}
@@ -187,33 +181,32 @@ export function EncounterSummary({
       <div className="p-4">
         {!note && !loading && (
           <div className="flex items-center gap-3">
-            <button
+            <Button
               type="button"
               onClick={generateNote}
               disabled={!transcript.trim() || loading}
-              className="px-4 py-2 rounded text-sm font-mono font-bold disabled:opacity-50"
-              style={{ backgroundColor: 'var(--accent-blue)', color: '#fff' }}
+              variant="accent"
+              size="md"
             >
               GENERATE ENCOUNTER NOTE
-            </button>
-            <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+            </Button>
+            <span className="text-xs font-mono text-[var(--text-muted)]">
               {acceptedCodes.length} accepted code{acceptedCodes.length !== 1 ? 's' : ''} will be included
             </span>
           </div>
         )}
 
         {loading && (
-          <p className="text-sm font-mono" style={{ color: 'var(--accent-yellow)' }}>
+          <p className="text-sm font-mono text-[var(--accent-yellow)]">
             Generating encounter note...
           </p>
         )}
 
         {error && (
           <div
-            className="p-3 rounded border mb-3"
-            style={{ borderColor: 'var(--accent-red)', backgroundColor: 'var(--bg-tertiary)' }}
+            className="p-3 rounded border mb-3 border-[var(--accent-red)] bg-[var(--bg-tertiary)]"
           >
-            <p className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>
+            <p className="text-xs font-mono text-[var(--accent-red)]">
               {error}
             </p>
           </div>
@@ -224,12 +217,11 @@ export function EncounterSummary({
             {note.chief_complaint && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   CHIEF COMPLAINT
                 </h4>
-                <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-mono text-[var(--text-primary)]">
                   {note.chief_complaint}
                 </p>
               </div>
@@ -238,12 +230,11 @@ export function EncounterSummary({
             {note.history_of_present_illness && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   HISTORY OF PRESENT ILLNESS
                 </h4>
-                <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-mono text-[var(--text-primary)]">
                   {note.history_of_present_illness}
                 </p>
               </div>
@@ -252,12 +243,11 @@ export function EncounterSummary({
             {note.review_of_systems && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   REVIEW OF SYSTEMS
                 </h4>
-                <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-mono text-[var(--text-primary)]">
                   {note.review_of_systems}
                 </p>
               </div>
@@ -266,12 +256,11 @@ export function EncounterSummary({
             {note.assessment && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   ASSESSMENT
                 </h4>
-                <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-mono text-[var(--text-primary)]">
                   {note.assessment}
                 </p>
               </div>
@@ -280,14 +269,13 @@ export function EncounterSummary({
             {note.plan && note.plan.length > 0 && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   PLAN
                 </h4>
                 <ul className="space-y-1">
                   {note.plan.map((p, i) => (
-                    <li key={i} className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                    <li key={i} className="text-sm font-mono text-[var(--text-primary)]">
                       — {p}
                     </li>
                   ))}
@@ -298,14 +286,13 @@ export function EncounterSummary({
             {note.accepted_codes_summary && note.accepted_codes_summary.length > 0 && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   CODES
                 </h4>
                 <div className="space-y-1">
                   {note.accepted_codes_summary.map((c, i) => (
-                    <p key={i} className="text-xs font-mono" style={{ color: 'var(--accent-blue)' }}>
+                    <p key={i} className="text-xs font-mono text-[var(--accent-blue)]">
                       [{c.system}] {c.code} — {c.title}
                     </p>
                   ))}
@@ -316,64 +303,51 @@ export function EncounterSummary({
             {note.follow_up && (
               <div>
                 <h4
-                  className="text-xs font-mono font-bold tracking-wide mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="text-xs font-mono font-bold tracking-wide mb-1 text-[var(--text-secondary)]"
                 >
                   FOLLOW-UP
                 </h4>
-                <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-mono text-[var(--text-primary)]">
                   {note.follow_up}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center gap-2 pt-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
-              <button
+            <div className="flex items-center gap-2 pt-3 border-t border-[var(--border-color)]">
+              <Button
                 type="button"
                 onClick={handleExportJSON}
-                className="px-3 py-1.5 rounded text-xs font-mono font-bold"
-                style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
+                variant="primary"
               >
                 EXPORT JSON
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={handleExportCSV}
-                className="px-3 py-1.5 rounded text-xs font-mono font-bold"
-                style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
+                variant="primary"
               >
                 EXPORT CSV
-              </button>
+              </Button>
               {patientId && (
-                <button
+                <Button
                   type="button"
                   onClick={handleSaveToJournal}
                   disabled={journalSaving || journalSaved}
-                  className="px-3 py-1.5 rounded text-xs font-mono font-bold disabled:opacity-50"
-                  style={{
-                    backgroundColor: journalSaved ? 'var(--bg-tertiary)' : 'var(--accent-blue)',
-                    color: journalSaved ? 'var(--text-secondary)' : '#fff',
-                    border: journalSaved ? '1px solid var(--border-color)' : 'none',
-                  }}
+                  variant={journalSaved ? 'secondary' : 'accent'}
                 >
                   {journalSaving ? 'SAVING...' : journalSaved ? 'SAVED TO JOURNAL' : 'SAVE TO JOURNAL'}
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 type="button"
                 onClick={generateNote}
                 disabled={loading}
-                className="px-3 py-1.5 rounded text-xs font-mono font-bold"
-                style={{
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)',
-                  border: '1px solid var(--border-color)',
-                }}
+                variant="secondary"
               >
                 REGENERATE
-              </button>
+              </Button>
               {exported && (
-                <span className="text-xs font-mono" style={{ color: 'var(--accent-green)' }}>
+                <span className="text-xs font-mono text-[var(--accent-green)]">
                   Exported as {exported.toUpperCase()}
                 </span>
               )}

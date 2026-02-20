@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { TimelineChartCard } from '../components/TimelineChartCard';
+import { Button } from '../components/ui/Button';
+import { LoadingState } from '../components/ui/LoadingState';
 
 type Tab = 'overview' | 'journal' | 'timeline' | 'eohd' | 'settings';
 
@@ -159,7 +161,7 @@ export function PatientPortalPage() {
         </span>
 
         {doctorLoading && (
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading...</p>
+          <LoadingState />
         )}
 
         {!doctorLoading && doctor && (
@@ -197,18 +199,14 @@ export function PatientPortalPage() {
                   color: 'var(--text-primary)',
                 }}
               />
-              <button
+              <Button
                 type="submit"
                 disabled={inviteLoading || !inviteEmail.trim()}
-                className="px-4 py-2 rounded text-sm font-mono font-bold"
-                style={{
-                  backgroundColor: 'var(--accent-green)',
-                  color: '#fff',
-                  opacity: inviteLoading || !inviteEmail.trim() ? 0.5 : 1,
-                }}
+                variant="primary"
+                size="md"
               >
                 {inviteLoading ? 'SENDING...' : 'INVITE'}
-              </button>
+              </Button>
             </form>
             {inviteError && (
               <p className="text-xs font-mono mt-1" style={{ color: 'var(--accent-red)' }}>{inviteError}</p>
