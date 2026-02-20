@@ -23,9 +23,11 @@ import { AcceptDoctorInvitePage } from './pages/auth/AcceptDoctorInvitePage';
 import { AcceptPatientInvitePage } from './pages/auth/AcceptPatientInvitePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
+const basename = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />

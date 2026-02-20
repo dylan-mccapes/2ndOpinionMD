@@ -16,8 +16,8 @@ services:
 
   nginx:
     build:
-      context: ./docker/nginx
-      dockerfile: Dockerfile.nginx
+      context: .
+      dockerfile: docker/nginx/Dockerfile.nginx
     container_name: nginx
     depends_on:
       - api

@@ -1,8 +1,19 @@
+# Stage 1: Build React frontend
+FROM node:18-alpine AS frontend-build
+WORKDIR /build
+COPY frontend/package.json frontend/yarn.lock ./
+RUN yarn install --frozen-lockfile
+COPY frontend/ ./
+RUN yarn build
+
+# Stage 2: nginx with static assets
 FROM nginx:1.27-alpine
 
 RUN rm /etc/nginx/conf.d/default.conf || true
 
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY conf.d /etc/nginx/conf.d
+COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY docker/nginx/conf.d /etc/nginx/conf.d
+
+COPY --from=frontend-build /build/dist /usr/share/nginx/html/rag-demo
 
 EXPOSE 80
