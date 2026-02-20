@@ -26,13 +26,14 @@ fi
 # Activate venv; create and install minimal deps if missing
 if [[ -d ".StandardVenv" ]]; then
   source .StandardVenv/bin/activate
+  pip install -q reportlab 2>/dev/null || true  # ensure reportlab for PDF spells (generate_mock_timeline_pdf)
 else
   echo "Creating .StandardVenv (minimal: numpy, librosa, soundfile, torch)..."
   python3 -m venv .StandardVenv
   source .StandardVenv/bin/activate
   pip install --quiet --upgrade pip
-  pip install --quiet numpy librosa soundfile torch
-  echo "(.StandardVenv ready; demucs not installed — WMM will use full mix)"
+  pip install --quiet numpy librosa soundfile torch reportlab
+  echo "(.StandardVenv ready; demucs not installed — WMM will use full mix; reportlab for PDF spells)"
 fi
 
 # Run WMM (script auto-uses --no-demucs when demucs not installed)

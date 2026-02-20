@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
 import { StreamingDisplay, type StreamStatus } from '../components/StreamingDisplay';
 import { TransparencyPanel } from '../components/TransparencyPanel';
+import { useStatusBar } from '../context/StatusBarContext';
 
 export function EohPage() {
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [streamKey, setStreamKey] = useState(0);
   const [statusBarStatus, setStatusBarStatus] = useState<StreamStatus>('idle');
-  const [, setStatusBarMessage] = useState('');
+  const statusBar = useStatusBar();
   const [externalCallMade, setExternalCallMade] = useState(false);
   const [callTimestamp, setCallTimestamp] = useState<string | null>(null);
 
@@ -21,8 +22,13 @@ export function EohPage() {
 
   const handleStatusChange = useCallback((status: StreamStatus, message?: string) => {
     setStatusBarStatus(status);
-    if (message) setStatusBarMessage(message);
-  }, []);
+    const mapped = status === 'connecting' || status === 'running' || status === 'evidence' || status === 'reasoning' || status === 'streaming'
+      ? 'running' as const
+      : status === 'complete' ? 'complete' as const
+      : status === 'error' ? 'error' as const
+      : 'idle' as const;
+    statusBar.setStatus(mapped, message);
+  }, [statusBar]);
 
   const handleExternalCall = useCallback(() => {
     setExternalCallMade(true);

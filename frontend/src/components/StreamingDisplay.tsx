@@ -35,8 +35,93 @@ interface StreamingDisplayProps {
   params: Record<string, string | number>;
   mode: string;
   active: boolean;
+  /** POST = JSON body (backend privacy refactor); GET = query params (EventSource) */
+  method?: 'GET' | 'POST';
   onStatusChange?: (status: StreamStatus, message?: string) => void;
   onExternalCall?: () => void;
+}
+
+function processSseEvent(
+  data: Record<string, unknown>,
+  handlers: {
+    updateStatus: (s: StreamStatus, msg?: string) => void;
+    setRetrieval: (r: RetrievalInfo | null) => void;
+    setCompletion: (c: CompletionInfo | null) => void;
+    setConfidence: (c: number | null) => void;
+    setLimitations: (l: string[]) => void;
+    answerRef: { current: string };
+    setAnswer: (a: string) => void;
+  },
+) {
+  const event = data.event as string | undefined;
+  const { updateStatus, setRetrieval, setCompletion, setConfidence, setLimitations, answerRef, setAnswer } = handlers;
+
+  if (event === 'phase_start') {
+    updateStatus('running', 'RUNNING');
+  } else if (event === 'event_router_summary') {
+    const sources = (data.effective_sources as string[]) ?? [];
+    const n = sources.length;
+    const info: RetrievalInfo = {
+      sources_considered: n,
+      sources_used: n,
+      confidence: 'medium',
+    };
+    setRetrieval(info);
+    updateStatus(
+      'evidence',
+      `Evidence: ${n} sources, confidence: ${info.confidence}`,
+    );
+  } else if (event === 'retrieval_summary') {
+    const info: RetrievalInfo = {
+      sources_considered: (data.sources_considered as number) ?? 0,
+      sources_used: (data.sources_used as number) ?? 0,
+      confidence: (data.confidence as string) ?? 'medium',
+    };
+    setRetrieval(info);
+    updateStatus(
+      'evidence',
+      `Evidence: ${info.sources_used}/${info.sources_considered} sources, confidence: ${info.confidence}`,
+    );
+  } else if (event === 'reasoning_progress' || event === 'status') {
+    const step = (data.step ?? (data.status as string)) ?? '';
+    if (step) updateStatus('reasoning', String(step));
+  } else if (event === 'llm_chunk' || event === 'llm_delta') {
+    const content = (data.content ?? data.text ?? '') as string;
+    answerRef.current += content;
+    setAnswer(answerRef.current);
+    updateStatus('streaming');
+  } else if (event === 'llm_done' || event === 'final_answer') {
+    if (data.text) {
+      answerRef.current = data.text as string;
+      setAnswer(answerRef.current);
+    }
+    if (data.confidence != null) {
+      setConfidence(data.confidence as number);
+    }
+    if (Array.isArray(data.limitations)) {
+      setLimitations(data.limitations as string[]);
+    }
+    updateStatus(
+      'complete',
+      `Complete — Confidence: ${data.confidence != null ? `${Math.round((data.confidence as number) * 100)}%` : 'N/A'}`,
+    );
+  } else if (event === 'completion' || event === 'done' || event === 'end') {
+    const meta = data.meta as Record<string, unknown> | undefined;
+    const tokens_used = (data.tokens_used ?? meta?.tokens_used ?? 0) as number;
+    const duration_ms = (data.duration_ms ?? meta?.duration_ms ?? 0) as number;
+    const n_ctx = (meta?.n_ctx_total as number) ?? 0;
+    const info: CompletionInfo = {
+      tokens_used: tokens_used || (n_ctx as number),
+      duration_ms,
+    };
+    setCompletion(info);
+    updateStatus(
+      'complete',
+      duration_ms
+        ? `Complete — ${tokens_used || ''} tokens, ${duration_ms}ms`
+        : `Complete — ${n_ctx} context rows`,
+    );
+  }
 }
 
 export function StreamingDisplay({
@@ -44,6 +129,7 @@ export function StreamingDisplay({
   params,
   mode,
   active,
+  method = 'POST',
   onStatusChange,
   onExternalCall,
 }: StreamingDisplayProps) {
@@ -57,6 +143,7 @@ export function StreamingDisplay({
   const [error, setError] = useState<string | null>(null);
   const [showReceipts, setShowReceipts] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const answerRef = useRef('');
 
   function updateStatus(s: StreamStatus, msg?: string) {
@@ -80,15 +167,110 @@ export function StreamingDisplay({
     startReceipt(mode);
     addReceiptEvent('event', mode, { action: 'query_submitted', params });
 
-    const API_BASE = import.meta.env.VITE_API_BASE ?? '';
-    const url = new URL(`${API_BASE}${endpoint}`, window.location.origin);
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, String(v));
-    }
-
     updateStatus('connecting', 'Connecting...');
     onExternalCall?.();
 
+    const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+    const baseUrl = `${API_BASE}${endpoint}`;
+
+    const handlers = {
+      updateStatus,
+      setRetrieval,
+      setCompletion,
+      setConfidence,
+      setLimitations,
+      answerRef,
+      setAnswer,
+    };
+
+    const handleSseData = (data: Record<string, unknown>) => {
+      addReceiptEvent('event', mode, { sse_event: data });
+      processSseEvent(data, handlers);
+    };
+
+    if (method === 'POST') {
+      const ac = new AbortController();
+      abortRef.current = ac;
+
+      fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(params),
+        signal: ac.signal,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            addReceiptEvent('error', mode, { action: 'connection_error', status: res.status });
+            finalizeReceipt();
+            setError(`Connection error: ${res.status}`);
+            updateStatus('error', `Connection error: ${res.status}`);
+            return;
+          }
+          addReceiptEvent('event', mode, { action: 'connection_opened' });
+
+          const reader = res.body?.getReader();
+          if (!reader) {
+            setError('No response body');
+            updateStatus('error', 'No response body');
+            finalizeReceipt();
+            return;
+          }
+
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let currentEvent = '';
+          let currentData = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEvent = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
+                currentData = line.slice(6).trim();
+              } else if (line.trim() === '' && currentData) {
+                try {
+                  const payload = JSON.parse(currentData) as Record<string, unknown>;
+                  const data = { ...payload, event: currentEvent || payload.event };
+                  handleSseData(data);
+                  if (data.event === 'completion' || data.event === 'done' || data.event === 'end') {
+                    finalizeReceipt();
+                    return;
+                  }
+                } catch {
+                  addReceiptEvent('event', mode, { raw: currentData });
+                }
+                currentEvent = '';
+                currentData = '';
+              }
+            }
+          }
+          finalizeReceipt();
+        })
+        .catch((err) => {
+          if (err?.name === 'AbortError') return;
+          addReceiptEvent('error', mode, { action: 'connection_error' });
+          finalizeReceipt();
+          setError('Connection error');
+          updateStatus('error', 'Connection error');
+        });
+
+      return () => {
+        ac.abort();
+        abortRef.current = null;
+      };
+    }
+
+    const url = new URL(baseUrl, window.location.origin);
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, String(v));
+    }
     const es = new EventSource(url.toString());
     eventSourceRef.current = es;
 
@@ -104,59 +286,14 @@ export function StreamingDisplay({
         addReceiptEvent('event', mode, { raw: ev.data });
         return;
       }
-
-      addReceiptEvent('event', mode, { sse_event: data });
-
-      const event = data.event as string | undefined;
-
-      if (event === 'phase_start') {
-        updateStatus('running', 'RUNNING');
-      } else if (event === 'retrieval_summary') {
-        const info: RetrievalInfo = {
-          sources_considered: data.sources_considered as number,
-          sources_used: data.sources_used as number,
-          confidence: data.confidence as string,
-        };
-        setRetrieval(info);
-        updateStatus(
-          'evidence',
-          `Evidence: ${info.sources_used}/${info.sources_considered} sources, confidence: ${info.confidence}`,
-        );
-      } else if (event === 'reasoning_progress') {
-        updateStatus('reasoning', data.step as string);
-      } else if (event === 'llm_chunk' || event === 'llm_delta') {
-        const content = (data.content ?? data.text ?? '') as string;
-        answerRef.current += content;
-        setAnswer(answerRef.current);
-        if (status !== 'streaming') {
-          updateStatus('streaming');
-        }
-      } else if (event === 'llm_done' || event === 'final_answer') {
-        if (data.text) {
-          answerRef.current = data.text as string;
-          setAnswer(answerRef.current);
-        }
-        if (data.confidence != null) {
-          setConfidence(data.confidence as number);
-        }
-        if (Array.isArray(data.limitations)) {
-          setLimitations(data.limitations as string[]);
-        }
-        updateStatus(
-          'complete',
-          `Complete — Confidence: ${data.confidence != null ? `${Math.round((data.confidence as number) * 100)}%` : 'N/A'}`,
-        );
-      } else if (event === 'completion' || event === 'done') {
+      handleSseData(data);
+      if (data.event === 'completion' || data.event === 'done') {
         const info: CompletionInfo = {
           tokens_used: (data.tokens_used ?? 0) as number,
           duration_ms: (data.duration_ms ?? 0) as number,
         };
         setCompletion(info);
         finalizeReceipt();
-        updateStatus(
-          'complete',
-          `Complete — ${info.tokens_used} tokens, ${info.duration_ms}ms`,
-        );
         es.close();
       }
     };

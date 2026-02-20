@@ -1,8 +1,12 @@
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { StatusBar } from './StatusBar';
+import { ErrorBoundary } from './ErrorBoundary';
+import { useStatusBar } from '../context/StatusBarContext';
 
 export function Layout() {
+  const { status, message } = useStatusBar();
+
   return (
     <div
       className="flex flex-col min-h-screen"
@@ -10,9 +14,11 @@ export function Layout() {
     >
       <Header />
       <main className="flex-1 p-6">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
-      <StatusBar status="idle" />
+      <StatusBar status={status} message={message || undefined} />
     </div>
   );
 }
