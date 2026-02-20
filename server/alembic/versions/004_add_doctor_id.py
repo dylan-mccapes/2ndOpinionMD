@@ -19,19 +19,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column("doctor_id", sa.UUID(), nullable=True),
-    )
-    op.create_foreign_key(
-        "users_doctor_id_fkey",
-        "users",
-        "users",
-        ["doctor_id"],
-        ["id"],
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns("users")}
+    if "doctor_id" not in columns:
+        op.add_column(
+            "users",
+            sa.Column("doctor_id", sa.UUID(), nullable=True),
+        )
+
+    fks = {fk.get("name") for fk in inspector.get_foreign_keys("users")}
+    if "users_doctor_id_fkey" not in fks:
+        op.create_foreign_key(
+            "users_doctor_id_fkey",
+            "users",
+            "users",
+            ["doctor_id"],
+            ["id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("users_doctor_id_fkey", "users", type_="foreignkey")
-    op.drop_column("users", "doctor_id")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    fks = {fk.get("name") for fk in inspector.get_foreign_keys("users")}
+    if "users_doctor_id_fkey" in fks:
+        op.drop_constraint("users_doctor_id_fkey", "users", type_="foreignkey")
+
+    columns = {c["name"] for c in inspector.get_columns("users")}
+    if "doctor_id" in columns:
+        op.drop_column("users", "doctor_id")
