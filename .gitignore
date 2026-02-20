@@ -128,5 +128,9 @@ sha256:*
 \[auth\]/
 \[internal\]/
 
+# Python venv (2OPMD / WMM — never commit)
+.BeatingHeart/
+.StandardVenv/
+
 # Nested repo companion
 ai_code_pipelines/.BeatingHeart/
