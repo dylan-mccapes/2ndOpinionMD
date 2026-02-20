@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './pages/HomePage';
 import { AskPage } from './pages/AskPage';
 import { CodingPage } from './pages/CodingPage';
@@ -25,8 +26,8 @@ export default function App() {
           <Route path="/coding" element={<CodingPage />} />
           <Route path="/eoh" element={<EohPage />} />
           <Route path="/eohd" element={<EohdPage />} />
-          <Route path="/journal" element={<JournalPage />} />
-          <Route path="/portal" element={<PortalPage />} />
+          <Route path="/journal" element={<ProtectedRoute><JournalPage /></ProtectedRoute>} />
+          <Route path="/portal" element={<ProtectedRoute><PortalPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/auth/login" element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />
