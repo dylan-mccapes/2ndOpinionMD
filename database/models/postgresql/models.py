@@ -15,6 +15,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     birthdate = Column(Date, nullable=True)
     subscription_tier = Column(String, nullable=False, server_default="free")
+    user_type = Column(String(20), nullable=False, server_default="patient")  # 'patient' | 'doctor'
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # patient's linked doctor
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
     is_verified = Column(Boolean, nullable=False, server_default="false")

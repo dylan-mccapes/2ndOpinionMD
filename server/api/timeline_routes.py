@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,19 +25,6 @@ router = APIRouter(
 
 
 # ---------------------------------------------------------------------------
-# DB session helper (wraps get_session(request: Request))
-# ---------------------------------------------------------------------------
-
-async def get_db_session(request: Request) -> AsyncSession:
-    """
-    Turn get_session(request) -> AsyncSession into a normal dependency.
-    """
-    async for session in get_session(request):
-        return session
-    raise RuntimeError("Could not obtain DB session")
-
-
-# ---------------------------------------------------------------------------
 # GET /api/timeline/{patient_id}
 # ---------------------------------------------------------------------------
 
@@ -46,7 +33,7 @@ async def get_timeline(
     patient_id: str,
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Return chronologically ordered, normalized timeline for a patient.
@@ -127,7 +114,7 @@ async def get_timeline(
 async def create_timeline_events(
     patient_id: str,
     payload: Dict[str, Any],
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Create timeline events for a patient.
@@ -201,7 +188,7 @@ async def create_timeline_events(
 async def search_timeline(
     patient_id: str,
     payload: Dict[str, Any],
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Simple semantic-ish search over timeline events.
@@ -333,7 +320,7 @@ async def _load_timeline_events_for_eoh(
 async def eoh_flare_report(
     patient_id: str,
     window_days: int = Query(90, ge=1, le=365),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Complete flare prediction report as described in docs/eoh_router.md.
@@ -391,7 +378,7 @@ async def eoh_flare_report(
 @router.get("/eoh/landscape/{patient_id}")
 async def eoh_landscape(
     patient_id: str,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Probabilistic diagnostic landscape only.
@@ -427,7 +414,7 @@ async def eoh_landscape(
 async def eoh_flare_prediction(
     patient_id: str,
     window_days: int = Query(90, ge=1, le=365),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Flare likelihood prediction only (thin wrapper over ann.flare).
@@ -452,7 +439,7 @@ async def eoh_flare_prediction(
 async def eoh_timeline_context(
     patient_id: str,
     window_days: int = Query(180, ge=1, le=365),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     """
     Return the fused timeline context for EoH router integration.

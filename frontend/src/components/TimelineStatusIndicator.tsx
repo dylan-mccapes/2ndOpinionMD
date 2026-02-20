@@ -9,10 +9,6 @@ export function TimelineStatusIndicator() {
 
   if (!isAuthenticated || loading) return null;
 
-  const isSystemUser = user?.subscription_tier && user.subscription_tier !== 'free';
-
-  if (!isSystemUser) return null;
-
   if (status?.has_timeline) {
     return (
       <span

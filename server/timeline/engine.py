@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import asyncio
 import math
@@ -679,13 +680,21 @@ class TimelineEngine:
         if not isinstance(event, TimelineEventCreate):
             raise TypeError("event must be TimelineEventCreate")
 
+        # asyncpg requires JSONB params as JSON strings, not raw dicts
+        structured_val = event.structured
+        if isinstance(structured_val, dict):
+            structured_val = json.dumps(structured_val)
+        meta_val = event.meta or {}
+        if isinstance(meta_val, dict):
+            meta_val = json.dumps(meta_val)
+
         q = await session.execute(
             text(
                 """
                 INSERT INTO ehr.patient_timeline
                     (patient_id, ts, event_type, source, structured, text, meta)
                 VALUES
-                    (:patient_id, :ts, :event_type, :source, :structured, :text, :meta)
+                    (:patient_id, :ts, :event_type, :source, CAST(:structured AS jsonb), :text, CAST(:meta AS jsonb))
                 RETURNING id
                 """
             ),
@@ -694,9 +703,9 @@ class TimelineEngine:
                 "ts": event.ts,
                 "event_type": event.event_type,
                 "source": event.source,
-                "structured": event.structured,
+                "structured": structured_val,
                 "text": event.text,
-                "meta": event.meta or {},
+                "meta": meta_val,
             },
         )
         new_id = int(q.scalar_one())

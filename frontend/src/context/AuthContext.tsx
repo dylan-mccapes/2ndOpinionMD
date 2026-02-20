@@ -7,6 +7,7 @@ export interface UserProfile {
   full_name: string | null;
   birthdate: string | null;
   subscription_tier: string;
+  user_type: 'patient' | 'doctor';
   created_at: string;
 }
 

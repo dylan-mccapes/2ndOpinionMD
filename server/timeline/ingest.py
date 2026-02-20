@@ -765,6 +765,59 @@ class DirectoryIngestor:
 
 
 # ============================================================================
+# PDF Bytes Ingestion (for API upload)
+# ============================================================================
+
+async def run_ingest_from_pdf_bytes(
+    db: AsyncSession,
+    pdf_bytes: bytes,
+    patient_id: str,
+    password: Optional[str] = None,
+) -> int:
+    """
+    Extract text from PDF bytes, parse into timeline events, store in ehr.patient_timeline.
+    Used by POST /api/timeline/import-pdf.
+    """
+    from io import BytesIO
+
+    try:
+        from pypdf import PdfReader
+    except ImportError as e:
+        raise ImportError("pypdf required for PDF ingestion") from e
+
+    stream = BytesIO(pdf_bytes)
+    reader = PdfReader(stream)
+    if reader.is_encrypted:
+        if not password:
+            raise ValueError("PDF is encrypted; password required")
+        if reader.decrypt(password) == 0:
+            raise ValueError("Incorrect PDF password")
+    text_chunks = []
+    for idx, page in enumerate(reader.pages):
+        t = (page.extract_text() or "").strip().replace("\x00", "")
+        if t:
+            text_chunks.append(f"=== Page {idx + 1} ===\n{t}")
+    timeline_text = "\n\n".join(text_chunks)
+    if not timeline_text.strip():
+        raise ValueError("No text could be extracted from PDF")
+
+    parser = DocumentParser()
+    engine = TimelineEngine()
+    events = parser.parse_document(
+        timeline_text,
+        patient_id,
+        source=EventSource.PATIENT_UPLOAD,
+        filename="uploaded.pdf",
+    )
+    count = 0
+    for event in events:
+        await engine.store_event(db, event)
+        count += 1
+    await db.commit()
+    return count
+
+
+# ============================================================================
 # CLI Entry Point
 # ============================================================================
 

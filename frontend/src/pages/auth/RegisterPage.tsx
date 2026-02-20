@@ -24,6 +24,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [userType, setUserType] = useState<'patient' | 'doctor'>('patient');
   const [error, setError] = useState('');
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -43,7 +44,7 @@ export function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const body: Record<string, string> = { email, password };
+      const body: Record<string, string> = { email, password, user_type: userType };
       if (fullName.trim()) body.full_name = fullName.trim();
 
       const res = await fetch(`${API_BASE}/api/auth/register`, {
@@ -163,6 +164,41 @@ export function RegisterPage() {
             )}
           </div>
         )}
+
+        <div className="mb-4">
+          <label
+            className="block text-xs font-mono mb-2"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            I AM A
+          </label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setUserType('patient')}
+              className="flex-1 py-2 rounded text-xs font-mono font-bold tracking-wide cursor-pointer"
+              style={{
+                backgroundColor: userType === 'patient' ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                color: userType === 'patient' ? '#000' : 'var(--text-secondary)',
+                border: `1px solid ${userType === 'patient' ? 'var(--accent-green)' : 'var(--border-color)'}`,
+              }}
+            >
+              PATIENT
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserType('doctor')}
+              className="flex-1 py-2 rounded text-xs font-mono font-bold tracking-wide cursor-pointer"
+              style={{
+                backgroundColor: userType === 'doctor' ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                color: userType === 'doctor' ? '#000' : 'var(--text-secondary)',
+                border: `1px solid ${userType === 'doctor' ? 'var(--accent-blue)' : 'var(--border-color)'}`,
+              }}
+            >
+              DOCTOR
+            </button>
+          </div>
+        </div>
 
         <div className="mb-4">
           <label

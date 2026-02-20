@@ -24,6 +24,7 @@ class UserInDB(BaseModel):
     hashed_password: str
     birthdate: Optional[str] = None
     subscription_tier: str = "basic"
+    user_type: str = "patient"
     created_at: datetime
     last_login: Optional[datetime] = None
     is_verified: bool = False
@@ -59,6 +60,7 @@ async def get_user_by_email(email: str, db: AsyncSession):
     user = result.scalar_one_or_none()
     
     if user:
+        user_type = getattr(user, "user_type", None) or "patient"
         return UserInDB(
             id=str(user.id),
             email=user.email,
@@ -66,6 +68,7 @@ async def get_user_by_email(email: str, db: AsyncSession):
             hashed_password=user.hashed_password,
             birthdate=user.birthdate,
             subscription_tier=user.subscription_tier,
+            user_type=user_type,
             created_at=user.created_at,
             last_login=user.last_login,
             is_verified=user.is_verified,

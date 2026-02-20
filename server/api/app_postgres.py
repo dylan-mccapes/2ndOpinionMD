@@ -58,6 +58,7 @@ query_engine: Optional[PostgreSQLMedicalQueryEngine] = None
 from server.api.journal import router as journal_router
 from server.api.auth_routes_postgres import router as auth_router
 from server.api.session_routes import router as session_router, timeline_router as session_timeline_router
+from server.api.doctor_routes import router as doctor_router
 
 from server.api.loinc_routes import router as loinc_router
 from server.api.snomed_routes import router as snomed_router
@@ -206,6 +207,7 @@ app.add_middleware(
 app.include_router(auth_router,   prefix="/api/auth",    tags=["authentication"])
 app.include_router(session_router, prefix="/api/session", tags=["session"])
 app.include_router(session_timeline_router, prefix="/api/timeline", tags=["timeline"])  # POST /api/timeline/initialize
+app.include_router(doctor_router, prefix="/api/doctor", tags=["doctor"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 
 app.include_router(loinc_router)

@@ -39,12 +39,24 @@ pip install --quiet --upgrade pip
 echo "Installing server requirements (uvicorn, fastapi, etc.)..."
 pip install -r server/requirements.txt
 
+echo "Verifying critical migration deps..."
+python - <<'PY'
+import importlib
+missing = [name for name in ("alembic", "greenlet") if importlib.util.find_spec(name) is None]
+if missing:
+    raise SystemExit(f"Missing required packages in .BeatingHeart: {', '.join(missing)}")
+print("Migration deps ok: alembic, greenlet")
+PY
+
 echo ""
 echo "✅ .BeatingHeart ready."
 echo ""
 echo "Activate and run server:"
 echo "  source .BeatingHeart/bin/activate"
 echo "  python server/scripts/run_postgres_app.py"
+echo ""
+echo "Run DB migrations with .BeatingHeart (recommended):"
+echo "  cd server && ../.BeatingHeart/bin/alembic upgrade head"
 echo ""
 echo "Config: copy .env.example to .pulse or .env."
 echo "  SYNC_DATABASE_URL (postgresql://...) is used for rag_corpus and is the most important."
