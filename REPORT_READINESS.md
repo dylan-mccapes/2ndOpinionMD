@@ -17,6 +17,7 @@
 | Frontend Integration | `FRONTEND_INTEGRATION.md` | Current wiring: mode-endpoint mapping, receipt cache event schema, transparency panel states, error handling, UI state management, CORS notes |
 | Doctor Portal Game Plan | `GAME_PLAN_DOCTOR_PORTAL.md` | Ambient coding pipeline: audio capture -> Whisper (local) -> transcript -> NLP extraction -> /api/coding -> code suggestions -> encounter note -> timeline. 4 phases, 8 weeks. 5 new endpoints required. |
 | Patient & Doctor Portals | `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` | Role selection at registration (doctor/patient). Splash page = modes + login. Patient portal: journal, timeline, EoHD. Doctor portal: patient list, read-only patient data. Data model: user_type, doctor_id. |
+| Timeline Charts + Matplotlib | `GAME_PLAN_TIMELINE_CHARTS_MATPLOTLIB.md` | Graph-grounded timeline analytics plan using `ehr.patient_timeline` + connascence edges (`temporal`, `diagnostic`, `treatment`, `lab_trend`), interpretable metrics (`v_t`, `k_t`, `L_t`, `S_t`), portal chart strategy, and doctor-ready PDF export plan. |
 | Deploy Better UX | `DEPLOY_BETTER_UX.md` | One-line docker-compose volume swap from `./index.html` to `./rag-demo-ui/index.html` for nginx |
 
 ---
@@ -90,6 +91,16 @@
 | 5c.5 | **Patient portal shell** | Route `/patient`. Layout: nav (Journal, Timeline, EoHD, Settings). Guard: `user_type === "patient"`. Nest existing JournalPage, TimelineUploadPage, EohdPage. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient Portal". |
 | 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
 | 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
+
+### Phase 5d: Timeline Graph Charts (Matplotlib)
+
+| # | Task | Routing |
+|---|---|---|
+| 5d.1 | **Windowed graph feature vectors** | Build weekly (or visit-based) vectors from `ehr.patient_timeline` events + connascence aggregates from `PatientTimelineVision` (`temporal`, `diagnostic`, `treatment`, `lab_trend`). |
+| 5d.2 | **Interpretable metrics** | Compute drift `v_t`, curvature `k_t`, connascence load `L_t`, stability score `S_t`; add phase-shift and flare-vs-noise labeling. |
+| 5d.3 | **Matplotlib renderer** | Add server-side chart generation for stability band, event/edge intensity, precedence map, and terrain trajectory. Deterministic export with provenance footer. |
+| 5d.4 | **Portal integration** | Patient portal: calming summary visuals. Doctor portal: high-signal analytics with evidence bundles and lag annotations. |
+| 5d.5 | **Doctor-ready export** | Generate PDF package containing chart set + evidence appendix from timeline event/edge provenance. |
 
 ### Phase 6: Doctor Portal — Patient Connection + Ambient Coding
 
