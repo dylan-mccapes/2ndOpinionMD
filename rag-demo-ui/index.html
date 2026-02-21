@@ -1191,136 +1191,91 @@ Example: Fatigue, joint pain, skin rash"></textarea>
             try {
                 addReceiptEvent('event', 'ask', { action: 'query_submitted', query: query });
 
-                // Construct URL like rag-demo does
-                const params = new URLSearchParams({
+                // POST request with JSON body (avoids leaking query into URL logs)
+                const requestBody = {
                     q: query,
-                    limit: '12',
-                    ctx_k: '24',
-                    with_llm: '1',
-                    llm_mode: 'chunk'
-                });
-                
-                const streamUrl = `${API_BASE}/api/rag/ask_stream?${params.toString()}`;
+                    limit: 12,
+                    ctx_k: 24,
+                    with_llm: 1,
+                    llm_mode: 'chunk',
+                    use_valyu: 0,
+                    valyu_mode: 'search',
+                    valyu_raw: 0,
+                    valyu_boost: 1.0,
+                    use_ethos: 0
+                };
+
+                const streamUrl = `${API_BASE}/api/rag/ask_stream`;
 
                 console.log('[ASK] Connecting to:', streamUrl);
                 addReceiptEvent('event', 'ask', { action: 'sse_connecting', url: streamUrl });
 
-                const eventSource = new EventSource(streamUrl);
+                const response = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
                 let finalAnswer = '';
                 let hasStarted = false;
+                statusDiv.textContent = 'Connected, waiting for response...';
+                footerStatusValue.textContent = 'RUNNING';
+                addReceiptEvent('event', 'ask', { action: 'sse_connected' });
 
-                // Listen to specific SSE events (like rag-demo does)
-                eventSource.addEventListener('start', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] start event:', data);
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse start event:', e);
-                    }
-                });
-
-                eventSource.addEventListener('status', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] status event:', data);
-                        
-                        if (data.status === 'generating_answer') {
-                            statusDiv.textContent = 'Generating answer...';
-                        } else if (data.status) {
-                            statusDiv.textContent = data.status.replace(/_/g, ' ');
-                        }
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse status event:', e);
-                    }
-                });
-
-                eventSource.addEventListener('llm_chunk', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] llm_chunk:', data.text?.substring(0, 50));
-                        
-                        // Accumulate answer
-                        if (data.text) {
-                            finalAnswer += data.text;
-                            answerDiv.style.display = 'block';
-                            answerDiv.innerHTML = formatAnswer(finalAnswer);
-                            statusDiv.textContent = 'Streaming answer...';
-                            hasStarted = true;
-                        }
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse llm_chunk:', e);
-                    }
-                });
-
-                eventSource.addEventListener('llm_done', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'ask', { sse_event: data });
-                        console.log('[ASK] llm_done');
-                        
-                        if (data.text) {
-                            finalAnswer = data.text;
-                            answerDiv.style.display = 'block';
-                            answerDiv.innerHTML = formatAnswer(finalAnswer);
-                        }
-                        
-                        statusDiv.textContent = 'Answer complete';
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse llm_done:', e);
-                    }
-                });
-
-                eventSource.addEventListener('end', (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('completion', 'ask', { sse_event: data });
-                        console.log('[ASK] Stream ended');
-                        
+                // Manual SSE parsing for POST streams.
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
                         statusDiv.textContent = 'Complete';
                         footerStatusValue.textContent = 'IDLE';
-                        
                         completeReceiptCache();
-                        eventSource.close();
                         button.classList.remove('loading');
                         button.disabled = false;
-                    } catch (e) {
-                        console.error('[ASK] Failed to parse end event:', e);
+                        break;
                     }
-                });
 
-                // Connection-level errors (like rag-demo)
-                eventSource.onerror = (error) => {
-                    console.error('[ASK] EventSource error:', error);
-                    console.log('[ASK] EventSource readyState:', eventSource.readyState);
-                    
-                    addReceiptEvent('error', 'ask', { 
-                        error: 'SSE connection error',
-                        readyState: eventSource.readyState,
-                        url: streamUrl
-                    });
-                    completeReceiptCache();
-                    
-                    if (hasStarted) {
-                        statusDiv.textContent = 'Connection interrupted';
-      } else {
-                        statusDiv.textContent = 'Connection failed - check console';
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const dataStr = line.substring(5).trim();
+                        if (!dataStr) continue;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            addReceiptEvent('event', 'ask', { sse_event: data });
+
+                            if (data.status) {
+                                statusDiv.textContent = data.status === 'generating_answer'
+                                    ? 'Generating answer...'
+                                    : String(data.status).replace(/_/g, ' ');
+                            }
+                            if (data.text) {
+                                finalAnswer += data.text;
+                                answerDiv.style.display = 'block';
+                                answerDiv.innerHTML = formatAnswer(finalAnswer);
+                                statusDiv.textContent = 'Streaming answer...';
+                                hasStarted = true;
+                            }
+                            if (data.type === 'llm_done' || data.done) {
+                                if (data.text) {
+                                    finalAnswer = data.text;
+                                    answerDiv.innerHTML = formatAnswer(finalAnswer);
+                                }
+                                statusDiv.textContent = 'Answer complete';
+                            }
+                        } catch (e) {
+                            console.error('[ASK] Failed to parse SSE data:', e, dataStr);
+                        }
                     }
-                    
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                    footerStatusValue.textContent = 'IDLE';
-                };
-
-                eventSource.onopen = () => {
-                    console.log('[ASK] EventSource connected');
-                    addReceiptEvent('event', 'ask', { action: 'sse_connected' });
-                    statusDiv.textContent = 'Connected, waiting for response...';
-                    footerStatusValue.textContent = 'RUNNING';
-                };
+                }
 
                 updateTransparencyPanelForAPICall();
 
@@ -1471,13 +1426,33 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                     query: queryText
                 });
 
-                const url = new URL(`${API_BASE}/api/rag/eoh_stream`, window.location.origin);
-                url.searchParams.set('q', queryText);
-                url.searchParams.set('limit', '10');
-                url.searchParams.set('with_llm', '1');
-                url.searchParams.set('llm_mode', 'chunk');
+                const requestBody = {
+                    q: queryText,
+                    limit: 10,
+                    ctx_k: 32,
+                    valyu_k: 3,
+                    with_llm: 1,
+                    llm_mode: 'chunk',
+                    use_valyu: 1,
+                    valyu_mode: 'search',
+                    valyu_raw: 0,
+                    use_timeline: 0,
+                    research: 1,
+                    enable_gap: 1
+                };
+                const streamUrl = `${API_BASE}/api/rag/eoh_stream`;
 
-                const eventSource = new EventSource(url);
+                const response = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
                 let streamContent = '';
 
                 resultsArea.innerHTML = `
@@ -1485,34 +1460,32 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                     <div class="results-content" id="eoh-stream-content">Receiving stream...</div>
                 `;
 
-                eventSource.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'eoh', { sse_event: data });
-                        
-                        streamContent += JSON.stringify(data, null, 2) + '\n\n';
-                        document.getElementById('eoh-stream-content').innerHTML = 
-                            `<pre>${streamContent}</pre>`;
-                    } catch (e) {
-                        console.error('Failed to parse SSE:', e);
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        addReceiptEvent('completion', 'eoh', { action: 'stream_complete' });
+                        completeReceiptCache();
+                        button.classList.remove('loading');
+                        button.disabled = false;
+                        break;
                     }
-                };
-
-                eventSource.onerror = (error) => {
-                    addReceiptEvent('error', 'eoh', { error: 'SSE connection error' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                };
-
-                eventSource.addEventListener('done', () => {
-                    addReceiptEvent('completion', 'eoh', { action: 'stream_complete' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                });
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const dataStr = line.substring(5).trim();
+                        if (!dataStr) continue;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            addReceiptEvent('event', 'eoh', { sse_event: data });
+                            streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                            document.getElementById('eoh-stream-content').innerHTML = `<pre>${streamContent}</pre>`;
+                        } catch (e) {
+                            console.error('Failed to parse SSE:', e);
+                        }
+                    }
+                }
 
                 updateTransparencyPanelForAPICall();
 
@@ -1609,14 +1582,34 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                     timeline_session_key: uploadResult.session_key
                 });
 
-                const url = new URL(`${API_BASE}/api/rag/eoh_detective_stream`, window.location.origin);
-                url.searchParams.set('q', queryText);
-                url.searchParams.set('timeline_session_key', uploadResult.session_key);
-                url.searchParams.set('limit', '10');
-                url.searchParams.set('with_llm', '1');
-                url.searchParams.set('llm_mode', 'chunk');
+                const requestBody = {
+                    q: queryText,
+                    timeline_patient_id: uploadResult.session_key,
+                    limit: 10,
+                    ctx_k: 32,
+                    valyu_k: 3,
+                    use_valyu: true,
+                    valyu_mode: 'search',
+                    valyu_raw: true,
+                    with_llm: true,
+                    llm_mode: 'chunk',
+                    research: 0,
+                    enable_gap: 1
+                };
 
-                const eventSource = new EventSource(url);
+                const streamUrl = `${API_BASE}/api/rag/eoh_detective_stream`;
+                const response = await fetch(streamUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
                 let streamContent = '';
 
                 resultsArea.innerHTML = `
@@ -1624,34 +1617,32 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                     <div class="results-content" id="eohd-stream-content">Receiving stream...</div>
                 `;
 
-                eventSource.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        addReceiptEvent('event', 'eohd', { sse_event: data });
-                        
-                        streamContent += JSON.stringify(data, null, 2) + '\n\n';
-                        document.getElementById('eohd-stream-content').innerHTML = 
-                            `<pre>${streamContent}</pre>`;
-                    } catch (e) {
-                        console.error('Failed to parse SSE:', e);
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        addReceiptEvent('completion', 'eohd', { action: 'stream_complete' });
+                        completeReceiptCache();
+                        button.classList.remove('loading');
+                        button.disabled = false;
+                        break;
                     }
-                };
-
-                eventSource.onerror = (error) => {
-                    addReceiptEvent('error', 'eohd', { error: 'SSE connection error' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                };
-
-                eventSource.addEventListener('done', () => {
-                    addReceiptEvent('completion', 'eohd', { action: 'stream_complete' });
-                    completeReceiptCache();
-                    eventSource.close();
-                    button.classList.remove('loading');
-                    button.disabled = false;
-                });
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const dataStr = line.substring(5).trim();
+                        if (!dataStr) continue;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            addReceiptEvent('event', 'eohd', { sse_event: data });
+                            streamContent += JSON.stringify(data, null, 2) + '\n\n';
+                            document.getElementById('eohd-stream-content').innerHTML = `<pre>${streamContent}</pre>`;
+                        } catch (e) {
+                            console.error('Failed to parse SSE:', e);
+                        }
+                    }
+                }
 
                 updateTransparencyPanelForAPICall();
 
