@@ -1,6 +1,8 @@
 # ===============================
 # 2ndOpinionMD — 00_main.mk
 # ===============================
+# MakefileBook: imperative execution layer (data ingestion, integrity, reports, backend).
+# SpellBook: 2opmd_spellbook.json — declarative build/UX spec. Cross-ref: SpellBook → MakefileBook (mk/); MakefileBook → SpellBook.
 
 # ---------- Shell & PATH ----------
 SHELL := /bin/zsh
@@ -174,7 +176,6 @@ check-rag-guideline-sources:
 # =========================
 -include mk/01_snomed.mk
 -include mk/02_icd.mk
--include mk/03_icd11.mk
 -include mk/03_hpo.mk
 -include mk/04_loinc_rxnorm.mk
 -include mk/05_orphanet.mk
