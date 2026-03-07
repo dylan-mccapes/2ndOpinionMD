@@ -10,7 +10,7 @@
 
 **These images are style references, not a spec to implement.** They are from a different app (How We Feel) with different functionality. Nate chose them because he likes the visual style. Use them for visual inspiration only — colors, typography, component shapes, layout feel. Do NOT build the 2OPMD app to match those screens functionally. Build the 2OPMD flows (onboarding, Today, Journal, Timeline, Ask) from the spellbook and prototype_scope_nate; apply this visual language to those flows.
 
-**Provenance:** These images are publicly available (unlike the leaked Guava app Figma, which was considered earlier and is not in use). Nate is willing to break rules that Dylan is not. Dylan is treating IP integrity seriously and believes we are in the clear to use these for style reference.
+**Provenance:** These images are publicly available (unlike the leaked Guava app Figma, which was considered earlier and is not in use). Nate is willing to break rules that Dylan is not. Dylan is treating IP integrity seriously and believes we are in the clear to use these for style reference. **2OPMD Figma:** https://www.figma.com/design/ek23oisUl8U91A5WW3oo7m/2opmd.app.figma?node-id=0-1&p=f — compiled screenshots; Devin can reference.
 
 ---
 

@@ -21,6 +21,7 @@ Before starting the build, create `REPORT_READINESS_MOBILE.md` in the 2ndOpinion
    - `mobile_spec/2opmd_design_commandments.md` (Nate's design north star; not yet canonical)
    - `reports/REPORT_MOBILE_SPELLBOOK_SPEC_20260306.md` (gaps, recommendations)
    - `2opmd_spellbook.json` (parent; shared backend, API contracts)
+- **Figma:** https://www.figma.com/design/ek23oisUl8U91A5WW3oo7m/2opmd.app.figma?node-id=0-1&p=f — compiled screenshots; Devin can reference
 
 2. **TASK LIST (Execution Order)** — Phases with numbered tasks and Routing columns. Follow the spellbook's priority_order and prototype_scope_nate. Phases should map to:
    - Phase 1: Read / ingest (spellbook, scope, style guide, report)

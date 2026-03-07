@@ -236,6 +236,7 @@
 
   "references": {
     "handoff": "HANDOFF_DEVIN_MOBILE.md",
+    "figma": "https://www.figma.com/design/ek23oisUl8U91A5WW3oo7m/2opmd.app.figma?node-id=0-1&p=f — compiled screenshots; Devin can reference",
     "parent_spellbook": "2opmd_spellbook.json",
     "signal_report": "docs/SIGNAL_REPORT_220_MESSAGE_NATE_ANDRAS_CIPHER_20260306.md",
     "prototype_scope": "prototype_scope_nate (ingested from Nate, 2026-03)",
