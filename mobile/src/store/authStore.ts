@@ -7,6 +7,34 @@
 
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+/**
+ * Platform-aware storage helpers.
+ * SecureStore is native-only; fall back to localStorage on web.
+ */
+async function storageSet(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    try { localStorage.setItem(key, value); } catch { /* noop */ }
+  } else {
+    await SecureStore.setItemAsync(key, value);
+  }
+}
+
+async function storageGet(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+  return SecureStore.getItemAsync(key);
+}
+
+async function storageDelete(key: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    try { localStorage.removeItem(key); } catch { /* noop */ }
+  } else {
+    await SecureStore.deleteItemAsync(key);
+  }
+}
 
 const TOKEN_KEY = '2opmd_jwt_token';
 const ONBOARDING_KEY = '2opmd_onboarding_complete';
@@ -41,18 +69,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   hasCompletedOnboarding: false,
 
   setToken: async (token: string) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await storageSet(TOKEN_KEY, token);
     set({ token, isAuthenticated: true });
   },
 
   clearToken: async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await storageDelete(TOKEN_KEY);
     set({ token: null, user: null, isAuthenticated: false });
   },
 
   loadToken: async () => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await storageGet(TOKEN_KEY);
       set({
         token,
         isAuthenticated: !!token,
@@ -67,13 +95,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   clearUser: () => set({ user: null }),
 
   completeOnboarding: async () => {
-    await SecureStore.setItemAsync(ONBOARDING_KEY, 'true');
+    await storageSet(ONBOARDING_KEY, 'true');
     set({ hasCompletedOnboarding: true });
   },
 
   loadOnboardingStatus: async () => {
     try {
-      const value = await SecureStore.getItemAsync(ONBOARDING_KEY);
+      const value = await storageGet(ONBOARDING_KEY);
       set({ hasCompletedOnboarding: value === 'true' });
     } catch {
       set({ hasCompletedOnboarding: false });
