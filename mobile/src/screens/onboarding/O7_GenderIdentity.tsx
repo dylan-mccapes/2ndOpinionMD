@@ -5,7 +5,7 @@
  *           text input shown only if "another identity" selected.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -35,7 +35,9 @@ export function O7_GenderIdentity({ navigation }: Props) {
     setGenderIdentityCustom,
     currentStep,
     totalSteps,
+    setCurrentStep,
   } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(7); }, [setCurrentStep]);
 
   const canContinue =
     genderIdentity !== null &&

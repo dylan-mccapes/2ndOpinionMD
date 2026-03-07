@@ -4,7 +4,7 @@
  * Elements: search, chips, selected state.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -41,7 +41,8 @@ const COMMON_SYMPTOMS = [
 ];
 
 export function O12_TopSymptoms({ navigation }: Props) {
-  const { selectedSymptoms, toggleSymptom, currentStep, totalSteps } = useOnboardingStore();
+  const { selectedSymptoms, toggleSymptom, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(12); }, [setCurrentStep]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredSymptoms = useMemo(() => {

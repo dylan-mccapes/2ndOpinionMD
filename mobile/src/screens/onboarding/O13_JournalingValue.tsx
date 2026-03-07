@@ -5,7 +5,7 @@
  * Elements: headline, 3 bullet cards, continue CTA, example summary link optional.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -20,7 +20,8 @@ import { colors, typography, spacing } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O13_JournalingValue'>;
 
 export function O13_JournalingValue({ navigation }: Props) {
-  const { currentStep, totalSteps } = useOnboardingStore();
+  const { currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(13); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

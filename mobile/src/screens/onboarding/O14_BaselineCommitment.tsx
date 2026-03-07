@@ -4,7 +4,7 @@
  * Elements: short mission card, "Start 3-day baseline" CTA.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,7 +17,8 @@ import { colors, typography, spacing, radius } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O14_BaselineCommitment'>;
 
 export function O14_BaselineCommitment({ navigation }: Props) {
-  const { currentStep, totalSteps } = useOnboardingStore();
+  const { currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(14); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

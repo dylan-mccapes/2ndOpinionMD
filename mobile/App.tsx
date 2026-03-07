@@ -15,10 +15,12 @@ import { colors } from './src/theme';
 
 export default function App() {
   const loadToken = useAuthStore((state) => state.loadToken);
+  const loadOnboardingStatus = useAuthStore((state) => state.loadOnboardingStatus);
 
   useEffect(() => {
     loadToken();
-  }, [loadToken]);
+    loadOnboardingStatus();
+  }, [loadToken, loadOnboardingStatus]);
 
   return (
     <SafeAreaProvider>

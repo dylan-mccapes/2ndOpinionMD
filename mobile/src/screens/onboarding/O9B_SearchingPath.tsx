@@ -4,7 +4,7 @@
  * Elements: short text explanation field, helper text with example.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,7 +23,9 @@ export function O9B_SearchingPath({ navigation }: Props) {
     setSearchingExplanation,
     currentStep,
     totalSteps,
+    setCurrentStep,
   } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(9); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

@@ -4,7 +4,7 @@
  * Elements: searchable diagnosis field, quick chips, credibility through breadth.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -36,7 +36,8 @@ const COMMON_DIAGNOSES = [
 ];
 
 export function O9A_DiagnosedPath({ navigation }: Props) {
-  const { diagnoses, toggleDiagnosis, currentStep, totalSteps } = useOnboardingStore();
+  const { diagnoses, toggleDiagnosis, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(9); }, [setCurrentStep]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredDiagnoses = useMemo(() => {

@@ -5,7 +5,7 @@
  * Branching: diagnosed → O9A, searching → O9B.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,7 +19,8 @@ import { colors, typography, spacing, radius } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O8_DiagnosedVsSearching'>;
 
 export function O8_DiagnosedVsSearching({ navigation }: Props) {
-  const { userPath, setUserPath, currentStep, totalSteps } = useOnboardingStore();
+  const { userPath, setUserPath, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(8); }, [setCurrentStep]);
 
   const handleContinue = () => {
     if (userPath === 'diagnosed') {

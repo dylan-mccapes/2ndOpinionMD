@@ -4,7 +4,7 @@
  * Elements: Apple / Google / Email options, privacy line.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,7 +19,8 @@ import { colors, typography, spacing, radius } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O15_SaveProgress'>;
 
 export function O15_SaveProgress({ navigation }: Props) {
-  const { currentStep, totalSteps } = useOnboardingStore();
+  const { currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(15); }, [setCurrentStep]);
 
   const handleSave = () => {
     // Defer actual auth to Phase 4 — navigate forward

@@ -5,7 +5,7 @@
  * Elements: bubble selection field, choose up to 5, clinical framing copy.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -37,7 +37,8 @@ const EMOTIONS = [
 ];
 
 export function O11_EmotionalContext({ navigation }: Props) {
-  const { selectedEmotions, toggleEmotion, currentStep, totalSteps } = useOnboardingStore();
+  const { selectedEmotions, toggleEmotion, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(11); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

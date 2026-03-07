@@ -4,7 +4,7 @@
  * Elements: text field, continue.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,7 +18,8 @@ import { colors, typography, spacing } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O5_Name'>;
 
 export function O5_Name({ navigation }: Props) {
-  const { name, setName, currentStep, totalSteps } = useOnboardingStore();
+  const { name, setName, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(5); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

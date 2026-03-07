@@ -4,7 +4,7 @@
  * Elements: upload PDF, upload image, skip for now.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,7 +18,8 @@ import { colors, typography, spacing, radius } from '../../theme';
 type Props = NativeStackScreenProps<OnboardingStackParamList, 'O16_OptionalRecords'>;
 
 export function O16_OptionalRecords({ navigation }: Props) {
-  const { currentStep, totalSteps, setHasUploadedRecords } = useOnboardingStore();
+  const { currentStep, totalSteps, setHasUploadedRecords, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(16); }, [setCurrentStep]);
 
   const handleUpload = () => {
     // Defer actual upload to Phase 4 — mark as attempted

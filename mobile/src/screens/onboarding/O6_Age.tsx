@@ -4,7 +4,7 @@
  * Elements: age range cards / radio rows, continue.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -27,7 +27,8 @@ const AGE_OPTIONS = [
 ];
 
 export function O6_Age({ navigation }: Props) {
-  const { ageRange, setAgeRange, currentStep, totalSteps } = useOnboardingStore();
+  const { ageRange, setAgeRange, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(6); }, [setCurrentStep]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

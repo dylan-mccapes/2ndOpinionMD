@@ -6,7 +6,7 @@
  *           counters, continue CTA.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -33,7 +33,8 @@ const SEVERITY_LABELS: { key: SeverityLevel; label: string }[] = [
 ];
 
 export function O10_BadDayMap({ navigation }: Props) {
-  const { dayMap, setDaySeverity, currentStep, totalSteps } = useOnboardingStore();
+  const { dayMap, setDaySeverity, currentStep, totalSteps, setCurrentStep } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(10); }, [setCurrentStep]);
   const [activeSeverity, setActiveSeverity] = React.useState<SeverityLevel>('moderate');
 
   const counters = useMemo(() => {

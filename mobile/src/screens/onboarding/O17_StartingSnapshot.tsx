@@ -4,7 +4,7 @@
  * Elements: what we know, what we'll watch, what improves accuracy, go to home CTA.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -80,7 +80,9 @@ export function O17_StartingSnapshot({ navigation }: Props) {
     selectedEmotions,
     currentStep,
     totalSteps,
+    setCurrentStep,
   } = useOnboardingStore();
+  useEffect(() => { setCurrentStep(17); }, [setCurrentStep]);
 
   // Build dynamic "what we know" based on user inputs
   const whatWeKnow: string[] = [];
