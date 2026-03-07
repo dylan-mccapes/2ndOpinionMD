@@ -206,8 +206,9 @@
       "1. Read 2opmd_spellbook.json — shared backend, same API contracts",
       "2. Read prototype_scope_nate — must-have modules, mockable backend",
       "2b. Read mobile_spec/STYLE_GUIDE.md — style reference only; images are from a different app, use for visual inspiration, do NOT build those screens",
-      "3. Scaffold React Native app (Expo recommended for speed)",
-      "4. Build onboarding: diagnosed vs searching fork, 30-day bad-day map, emotion context, symptoms selection, journaling value screen, save account, optional upload, starting snapshot",
+      "2c. Read mobile_spec/FIGMA_PAGE_STRUCTURE_COMPONENTS.md — canonical Figma page structure, components checklist (80+), expanded screen checklists (O1-O17, H1-H10, M1-M2), motion rules, copy system, non-negotiables, build order",
+      "3. Scaffold React Native app (Expo recommended for speed) + build foundations (tokens, typography, spacing, shell, buttons, cards, selectors, nav)",
+      "4. Build onboarding (O1-O17): splash, welcome, promise, credibility, name, age, gender identity, diagnosed vs searching, diagnosed/searching paths, 30-day bad-day map, emotion context, top symptoms, journaling value, 3-day baseline commitment, save progress, optional records, starting snapshot",
       "5. Build Home: 2-second daily check-in (Today), structured journal, patterns emerging card, advanced analysis",
       "6. Build other: prepare for visit, Day 3 first-pattern moment, premium upsell modal",
       "7. Wire auth (login → JWT → expo-secure-store)",
@@ -245,6 +246,8 @@
     "design_commandments": "mobile_spec/2opmd_design_commandments.md — Nate's design north star; not yet canonical; Dylan reviewing",
     "ux_invariants": "UX_INVARIANTS.md",
     "receipt": "receipts/RECEIPT_AGENT_15_MOBILE_SPELLBOOK_INSPECTION_20260306.md",
-    "report": "reports/REPORT_MOBILE_SPELLBOOK_SPEC_20260306.md"
+    "report": "reports/REPORT_MOBILE_SPELLBOOK_SPEC_20260306.md",
+    "figma_page_structure": "mobile_spec/FIGMA_PAGE_STRUCTURE_COMPONENTS.md — canonical Figma page structure + components checklist + screen checklists + motion/copy/non-negotiables (added 2026-03-07)",
+    "readiness_report_mobile": "REPORT_READINESS_MOBILE.md — mobile readiness report (created 2026-03-07)"
   }
 }
