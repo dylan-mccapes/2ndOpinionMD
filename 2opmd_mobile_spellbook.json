@@ -1,0 +1,249 @@
+{
+  "_meta": {
+    "name": "2OPMD Mobile SpellBook",
+    "version": "1.0.0",
+    "date": "2026-03-06",
+    "purpose": "Everything Devin needs to build the 2OPMD React Native prototype for investor demo",
+    "operator": "Nate (nate@2ndopinionmd.ai)",
+    "builder": "Dylan (dylan@2ndopinionmd.ai)",
+    "agent": "Devin (Cognition)",
+    "parent_spec": "2opmd_spellbook.json",
+    "phase": "React Native prototype → investor feedback → native apps later"
+  },
+
+  "project": {
+    "name": "2ndOpinionMD-MVP",
+    "description": "HIPAA-forward AI platform for autoimmune disease second-opinion reports. Mobile prototype: timeline intelligence for chronic illness.",
+    "repo_root": "2ndOpinionMD-MVP/",
+    "target": "React Native (Expo or bare)",
+    "backend": "Same as web — FastAPI at 2ndOpinionMD-MVP/server/",
+    "goal": "Something to show potential investors. Validate flows. Native apps after feedback."
+  },
+
+  "prototype_scope_nate": {
+    "principle": "Focus on showing the whole story simply. Don't ship every edge case. For Dylan + Devin.",
+    "must_have_modules": {
+      "onboarding": [
+        "diagnosed vs searching fork",
+        "30-day bad-day map",
+        "emotion context screen",
+        "symptoms selection",
+        "journaling value screen",
+        "save account",
+        "optional upload screen",
+        "starting snapshot"
+      ],
+      "home": [
+        "2-second daily check-in",
+        "structured journal",
+        "patterns emerging card",
+        "advanced analysis"
+      ],
+      "other": [
+        "prepare for visit",
+        "Day 3 first-pattern moment",
+        "premium upsell modal"
+      ]
+    },
+    "can_be_mocked": [
+      "real backend logic",
+      "real inference engine",
+      "real records parsing",
+      "real prediction math",
+      "real clinician PDF generation"
+    ],
+    "constraint": "Prototype should feel real."
+  },
+
+  "architecture": {
+    "backend_entry": "server/api/app_postgres.py",
+    "host": "Use ngrok or tunnel for local dev; production API at 2ndopinionmd.ai",
+    "api_base": "VITE_API_BASE or EXPO_PUBLIC_API_BASE — http://localhost:8000 (dev)",
+    "streaming": "SSE via EventSource polyfill or fetch + ReadableStream for React Native",
+    "cors": "Backend CORS must allow mobile origin (Expo dev: exp://)"
+  },
+
+  "stack": {
+    "framework": "React Native",
+    "recommended": {
+      "cli": "Expo (easiest) or react-native init",
+      "navigation": "React Navigation (stack + tab)",
+      "state": "React Context or Zustand — minimal",
+      "http": "fetch (no axios)",
+      "secure_storage": "expo-secure-store (JWT storage)",
+      "forms": "React Hook Form or simple controlled components",
+      "styling": "StyleSheet or NativeWind (Tailwind for RN)"
+    },
+    "sse_note": "React Native has no native EventSource. Use react-native-sse or polyfill with fetch + stream parsing."
+  },
+
+  "api_endpoints": {
+    "auth": {
+      "login": "POST /api/auth/token",
+      "login_mobile": "POST /api/auth/token/mobile",
+      "register": "POST /api/auth/register",
+      "me": "GET /api/auth/users/me"
+    },
+    "journal": {
+      "create": "POST /api/journal",
+      "list": "GET /api/journal",
+      "get": "GET /api/journal/{entry_id}",
+      "delete": "DELETE /api/journal/{entry_id}",
+      "ai_query": "POST /api/journal/query-ai",
+      "timeline": "GET /api/journal/timeline/{report_id}"
+    },
+    "rag_streaming": {
+      "ask_stream": "GET /api/rag/ask_stream. Optional param: include_journal_context=1 to append recent journal entries as context for richer answers.",
+      "eoh_stream": "GET /api/rag/eoh_stream",
+      "eoh_detective_stream": "GET /api/rag/eoh_detective_stream"
+    },
+    "timeline": {
+      "get": "GET /api/timeline/{patient_id}",
+      "add_events": "POST /api/timeline/{patient_id}/events",
+      "flare_report": "GET /api/timeline/eoh/flarereport/{patient_id}",
+      "flare_prediction": "GET /api/timeline/eoh/flareprediction/{patient_id}"
+    },
+    "utility": {
+      "health": "GET /api/health",
+      "ping": "GET /api/meta/ping"
+    }
+  },
+
+  "screens": {
+    "auth": {
+      "Login": "Email + password. POST /api/auth/token. Store JWT.",
+      "Register": "Optional for prototype. Can gate behind feature flag."
+    },
+    "main_tabs": {
+      "Today": "Daily check-in. Quick symptom/flare input. Primary home.",
+      "Journal": "Symptom entries. List + create. Optional voice memo placeholder.",
+      "Timeline": "Visual timeline of entries. Pattern summary when data exists.",
+      "Ask": "Clinical Q&A. ASK mode. SSE stream."
+    },
+    "optional": {
+      "Settings": "Minimal. Logout. API base override for dev."
+    }
+  },
+
+  "flows": {
+    "daily_loop": {
+      "description": "Core retention flow. User opens app → Today tab → quick check-in → optional journal note.",
+      "steps": ["Open Today", "Quick state input (e.g. mild/bad/flare or 1–5)", "Optional: add journal context", "Sync to backend"]
+    },
+    "journal_entry": {
+      "description": "Symptom + context capture. Feeds timeline.",
+      "steps": ["Journal tab", "New entry", "Symptom severity, factors, free text", "POST /api/journal"]
+    },
+    "ask_question": {
+      "description": "Clinical Q&A. Same contract as web ASK mode. When journal entries exist, include as context for richer answers.",
+      "steps": ["Ask tab", "Enter question", "Optional: include journal context (include_journal_context=1)", "SSE stream response", "Display progressively"]
+    }
+  },
+
+  "components": {
+    "TodayCheckIn": "Primary CTA. Simple input: how are you today? (mild / okay / bad / flare) or numeric. Minimal friction.",
+    "JournalList": "List of journal entries. Pull to refresh. Tap to view.",
+    "JournalEditor": "Create/edit entry. Severity, factors, free text. Submit to /api/journal.",
+    "TimelineView": "Chronological entries. When sufficient data: show pattern summary from flare_report. Fallback when insufficient data: 'Signal building' (Tree-of-Life metaphor — more entries strengthen pattern detection).",
+    "AskInput": "Text input for clinical question. Submit triggers ask_stream. When user has journal entries: pass include_journal_context=1 to improve answer relevance.",
+    "StreamingAnswer": "SSE consumer. Show status + streaming text. Same contract as web.",
+    "ErrorDisplay": "Honest failure. Cause + recovery. No softening."
+  },
+
+  "ux_invariants": {
+    "from_parent": "Same as 2opmd_spellbook.json — no optimistic UI, no fake progress, honest failures, no mode auto-transition.",
+    "mobile_additions": [
+      "Offline: show cached data if any, else honest 'no connection'",
+      "Pull-to-refresh where applicable",
+      "Keyboard handling: dismiss on scroll, don't obscure inputs"
+    ]
+  },
+
+  "aesthetic": {
+    "identity": "Clinical, clean. Same philosophy as web: high contrast, no fluff.",
+    "theme": "Dark preferred (matches web). Support system light/dark.",
+    "typography": "Readable. Monospace for data/codes, sans for labels."
+  },
+
+  "style_guide": {
+    "disclaimer": "mobile_spec images are STYLE REFERENCES ONLY. From a different app (How We Feel). Nate chose them for visual aesthetic. Do NOT build to match those screens. Use for colors/typography/component shapes; build 2OPMD flows from spellbook and prototype_scope_nate.",
+    "provenance": "Publicly available content (unlike leaked Guava Figma — not in use). Nate willing to break rules Dylan is not. Dylan treating IP integrity seriously; believes we are in the clear.",
+    "source": "mobile_spec/STYLE_GUIDE.md (derived from mobile_spec reference images)",
+    "theme": "Dark mode first. Background #000000.",
+    "colors": {
+      "bg_primary": "#000000",
+      "bg_container": "#1A1A1A",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#AAAAAA",
+      "accent_primary": "#4A90D9",
+      "accent_success": "#4CAF50",
+      "accent_amber": "#F5A623",
+      "button_bg": "#FFFFFF",
+      "button_text": "#000000",
+      "separator": "#333333"
+    },
+    "typography": {
+      "headline": "Serif (Georgia/Lora/Playfair), bold, 28-34pt, white",
+      "body": "Sans-serif (SF Pro/Inter/Roboto), regular, 16-18pt, white",
+      "button": "Sans-serif, bold, 18pt, black on white"
+    },
+    "components": {
+      "primary_button": "Full-width, pill-shaped, white bg, black text, min height 52px",
+      "emotion_bubbles": "Circular, color-coded by category, organic cluster layout. Larger = selected.",
+      "progress_indicator": "Thin white line, filled segment, X/Y step label",
+      "bottom_nav": "Black bg, outline icons white, active = accent"
+    },
+    "layout": {
+      "padding_horizontal": "20-24px",
+      "section_spacing": "24-32px"
+    },
+    "image_reference": "mobile_spec/*.jpg — see STYLE_GUIDE.md manifest for screen-to-image mapping"
+  },
+
+  "devin_instructions": {
+    "prototype_scope": "See prototype_scope_nate: whole story simply, not every edge case. Must-have onboarding, home, and other modules. Backend/inference/parsing can be mocked — prototype should feel real.",
+    "priority_order": [
+      "1. Read 2opmd_spellbook.json — shared backend, same API contracts",
+      "2. Read prototype_scope_nate — must-have modules, mockable backend",
+      "2b. Read mobile_spec/STYLE_GUIDE.md — style reference only; images are from a different app, use for visual inspiration, do NOT build those screens",
+      "3. Scaffold React Native app (Expo recommended for speed)",
+      "4. Build onboarding: diagnosed vs searching fork, 30-day bad-day map, emotion context, symptoms selection, journaling value screen, save account, optional upload, starting snapshot",
+      "5. Build Home: 2-second daily check-in (Today), structured journal, patterns emerging card, advanced analysis",
+      "6. Build other: prepare for visit, Day 3 first-pattern moment, premium upsell modal",
+      "7. Wire auth (login → JWT → expo-secure-store)",
+      "8. Build Ask tab: input + SSE streaming (when journal entries exist, include context)",
+      "9. Wire API base (env var for local vs prod), test against 2OPMD backend"
+    ],
+    "constraints": [
+      "Do NOT add analytics or tracking",
+      "Do NOT fake loading states",
+      "Do NOT use axios — fetch only",
+      "JWT in Authorization header: Bearer <token>",
+      "SSE: handle reconnection, show partial results"
+    ],
+    "testing": {
+      "backend": "Ensure 2OPMD backend runs. curl http://localhost:8000/api/health",
+      "auth": "POST /api/auth/token with valid credentials",
+      "journal": "POST /api/journal with auth header",
+      "ask": "GET /api/rag/ask_stream?q=test&with_llm=1"
+    }
+  },
+
+  "environment": {
+    "required": ["EXPO_PUBLIC_API_BASE or API_BASE_URL"],
+    "example": "EXPO_PUBLIC_API_BASE=http://localhost:8000"
+  },
+
+  "references": {
+    "handoff": "HANDOFF_DEVIN_MOBILE.md",
+    "parent_spellbook": "2opmd_spellbook.json",
+    "signal_report": "docs/SIGNAL_REPORT_220_MESSAGE_NATE_ANDRAS_CIPHER_20260306.md",
+    "prototype_scope": "prototype_scope_nate (ingested from Nate, 2026-03)",
+    "style_guide": "mobile_spec/STYLE_GUIDE.md",
+    "mobile_spec_images": "mobile_spec/*.jpg (renamed with descriptive screen names)",
+    "design_commandments": "mobile_spec/2opmd_design_commandments.md — Nate's design north star; not yet canonical; Dylan reviewing",
+    "ux_invariants": "UX_INVARIANTS.md",
+    "receipt": "receipts/RECEIPT_AGENT_15_MOBILE_SPELLBOOK_INSPECTION_20260306.md",
+    "report": "reports/REPORT_MOBILE_SPELLBOOK_SPEC_20260306.md"
+  }
+}
