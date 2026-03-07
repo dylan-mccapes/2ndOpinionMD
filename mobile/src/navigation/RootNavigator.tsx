@@ -2,28 +2,29 @@
  * 2OPMD Mobile — Root Navigator
  *
  * Stack navigator wrapping:
- *   - Onboarding flow (to be built in Phase 3)
+ *   - Onboarding flow (O1-O17)
  *   - Main tab navigator
- *   - Settings screen (optional)
  *
- * Auth-gated: shows onboarding if not authenticated, main tabs if authenticated.
- * For now, always shows main tabs (auth wiring in later phase).
+ * Auth-gated: shows onboarding if not completed, main tabs if completed.
  */
 
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
+import { OnboardingNavigator } from './OnboardingNavigator';
+import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme';
 
 export type RootStackParamList = {
+  Onboarding: undefined;
   MainTabs: undefined;
-  // Onboarding screens will be added in Phase 3
-  // Settings will be added later
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
+  const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -32,7 +33,11 @@ export function RootNavigator() {
         animation: 'fade',
       }}
     >
-      <Stack.Screen name="MainTabs" component={TabNavigator} />
+      {hasCompletedOnboarding ? (
+        <Stack.Screen name="MainTabs" component={TabNavigator} />
+      ) : (
+        <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
+      )}
     </Stack.Navigator>
   );
 }
