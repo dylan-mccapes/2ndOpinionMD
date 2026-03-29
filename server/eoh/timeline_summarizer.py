@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -13,7 +14,7 @@ import random
 import re
 import hashlib
 import anyio
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from collections import Counter, defaultdict
@@ -21,6 +22,9 @@ from collections import Counter, defaultdict
 from server.api.stream_config import (
     EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT,
     EOH_TIMELINE_SUMMARIZER_MODEL,
+    INGESTION_MODEL,
+    OLLAMA_BASE_URL,
+    EOH_TIMELINE_GAP_MODEL,
     EOH_TIMELINE_RAG_SUMMARY_ENABLED,
     EOH_TIMELINE_PROBE_SYSTEM_PROMPT,
     EOH_TIMELINE_GAP_RETRIEVAL_SYSTEM_PROMPT,
@@ -41,7 +45,10 @@ from server.eoh.patient_timeline_vision import (
     TimelineEventVision,
     seed_from_structured_probe_snapshot,
     add_events_from_pdf_page,
+    load_timeline_vision,
+    save_timeline_vision,
 )
+from server.eoh.graph_enrichment import enrich_graph_opportunistic, OPPORTUNISTIC_MAX_CHARS
 
 from collections import Counter
 from dataclasses import dataclass
@@ -82,13 +89,33 @@ class TimelineSummaries:
     - timeline_summary: primary longitudinal story used by router, EoH, etc.
     - meds_and_labs_snapshot: human-readable meds/labs snapshot for context.
     - valyu_summary: compact, search-oriented signal list for Valyu queries.
-    - vision_path: optional path to PatientTimelineVision jsonl (session-only)
+    - vision_path: optional path to PatientTimelineVision json (session temp snapshot)
+    - graph_out_path: optional durable path when caller requested explicit graph export
+    - timeline_enrichment: optional probe / PDF gap-synthesis-connascence payload for JSON export
     """
     timeline_summary: str = ""
     meds_and_labs_snapshot: str = ""
     valyu_summary: str = ""
     vision_path: Optional[str] = None
+    graph_out_path: Optional[str] = None
+    timeline_enrichment: Optional[Dict[str, Any]] = None
 
+    # Map/reduce and legacy prompts use these names; keep aliases on one canonical story.
+    @property
+    def full_timeline_summary(self) -> str:
+        return self.timeline_summary
+
+    @property
+    def router_timeline_summary(self) -> str:
+        return self.timeline_summary
+
+    @property
+    def valyu_timeline_summary(self) -> str:
+        return self.valyu_summary
+
+    @property
+    def query_terms_timeline_summary(self) -> str:
+        return self.valyu_summary
 
 
 # ---------------------------------------------------------------------------
@@ -96,22 +123,28 @@ class TimelineSummaries:
 # ---------------------------------------------------------------------------
 
 # Default max tokens for a *single* summarizer call.
-DEFAULT_MAX_TOKENS = 1024
+# GPT-4.1 supports 32K output tokens; 4096 is a reasonable synthesis budget.
+DEFAULT_MAX_TOKENS = 4096
 
 # Hard cap on how much raw timeline text we ever include in a "fallback" summary.
-FALLBACK_MAX_CHARS = 120_000
+FALLBACK_MAX_CHARS = 400_000
 
 # If the timeline is shorter than this many characters, we do a single-pass summary.
-SINGLE_PASS_CHAR_THRESHOLD = 80_000
+# GPT-4.1 has 1M token context (~3M chars). 800K chars ≈ 80% capacity.
+SINGLE_PASS_CHAR_THRESHOLD = 800_000
 
-# For very large timelines, we chunk into ~this many characters per segment.
-CHUNK_TARGET_CHAR_LEN = 40_000
+# GPT-4.1 context: 1M tokens ~= 3M chars. Reserve ~200K chars for system prompt,
+# messages overhead, and 4096-token output. 700K chars ≈ 175K tokens — safe per chunk.
+# At 700K chars, a 6M-char timeline splits into ~9 chunks instead of 31.
+CHUNK_TARGET_CHAR_LEN = 700_000
 
-# Max number of chunks we’ll map over before we start aggressively merging.
-MAX_CHUNKS = 10
+# Minimum map segments for hierarchical mode; actual count scales up with timeline size
+# (see _split_timeline_into_chunks) up to HIERARCHICAL_MAX_CHUNKS_CAP.
+MAX_CHUNKS = 4
+HIERARCHICAL_MAX_CHUNKS_CAP = 128
 
-# Map step: keep chunk-level summaries tight, so we can afford a nice reduce.
-MAP_STEP_MAX_TOKENS = 1024
+# Map step: each segment still emits full JSON summary fields; keep headroom.
+MAP_STEP_MAX_TOKENS = 4096
 
 # Max size of any canonical summary string we hand downstream (router, Valyu, etc.)
 SUMMARY_MAX_CHARS = 40_000
@@ -1231,6 +1264,79 @@ def _decode_timeline_summaries(raw: Dict[str, Any]) -> TimelineSummaries:
         valyu_summary=valyu_summary,
     )
 
+
+def _compose_summaries_for_graph_enrichment(
+    summaries: TimelineSummaries,
+    max_chars: int = OPPORTUNISTIC_MAX_CHARS,
+) -> str:
+    """Merge summarizer outputs into one block for opportunistic graph enrichment."""
+    parts: List[str] = []
+    if summaries.timeline_summary:
+        parts.append("# TIMELINE SUMMARY\n" + summaries.timeline_summary)
+    if summaries.meds_and_labs_snapshot:
+        parts.append("# MEDS AND LABS\n" + summaries.meds_and_labs_snapshot)
+    if summaries.valyu_summary:
+        parts.append("# VALYU / QUERY SIGNALS\n" + summaries.valyu_summary)
+    text = "\n\n".join(parts).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars]
+    return text
+
+
+async def _enrich_patient_timeline_vision_from_summarizer(
+    patient_id: Optional[str],
+    question: str,
+    summaries: TimelineSummaries,
+    step_id: str,
+    *,
+    timeline_vision: Optional[PatientTimelineVision] = None,
+) -> None:
+    """
+    Load or create PatientTimelineVision and run opportunistic graph enrichment from
+    summarizer outputs. Persists when the vision is not session_only.
+    """
+    if not patient_id:
+        return
+    answer = _compose_summaries_for_graph_enrichment(summaries)
+    if not answer.strip():
+        logger.debug(
+            "Timeline summarizer vision enrich: no composed text (step=%s), skip",
+            step_id,
+        )
+        return
+    try:
+        if timeline_vision is not None:
+            vision = timeline_vision
+            if not getattr(vision, "patient_id", None):
+                vision.patient_id = patient_id
+        else:
+            vision = load_timeline_vision(patient_id)
+            if not vision.patient_id:
+                vision = PatientTimelineVision(
+                    patient_id=patient_id,
+                    built_at=datetime.now(timezone.utc).isoformat(),
+                    session_only=False,
+                    metadata={"source": "timeline_summarizer"},
+                )
+        await enrich_graph_opportunistic(
+            step_id=step_id,
+            step_question=question,
+            step_answer=answer,
+            step_citations=None,
+            patient_id=patient_id,
+            vision=vision,
+            discovered_by_prefix="timeline_summarizer",
+        )
+        if not vision.session_only:
+            save_timeline_vision(vision)
+    except Exception:
+        logger.warning(
+            "Timeline summarizer: opportunistic vision enrichment failed (step=%s)",
+            step_id,
+            exc_info=True,
+        )
+
+
 def _should_use_rag_timeline_summary(
     total_chars: int,
     patient_id: str | None,
@@ -1914,7 +2020,7 @@ async def _run_eoh_gap_retrieval_for_timeline(
         
         drop_ids = {str(x) for x in (data.get("drop_row_ids") or []) if str(x).strip()}
         if drop_ids:
-            augmented_rows = [r for r in augmented_rows if str(r.get("id") or "") not in drop_ids]
+            current_context = [r for r in current_context if str(r.get("id") or "") not in drop_ids]
 
         # Normalize avoid sets
         avoid_ts = {_norm_query(x) for x in (avoid_ts_terms or []) if _norm_query(x)}
@@ -1962,6 +2068,274 @@ def _estimate_rows_chars_for_budget(rows: List[Dict[str, Any]]) -> int:
     return total
 
 
+def _compact_rows_for_gap_context(
+    rows: List[Dict[str, Any]],
+    cap: int = 80,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for r in rows[:cap]:
+        out.append(
+            {
+                "id": str(r.get("id", r.get("note_id", r.get("event_id", "")))),
+                "event_type": r.get("event_type", r.get("kind", "")),
+                "ts": str(r.get("ts", r.get("timestamp", ""))),
+                "title": str(r.get("title", ""))[:120],
+                "text": (r.get("text") or r.get("snippet") or r.get("body", ""))[:500],
+            }
+        )
+    return out
+
+
+def _existing_context_rows_from_vision(
+    vision: PatientTimelineVision,
+    cap: int = 60,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for ev in list(vision.events.values())[:cap]:
+        prev = (ev.preview or "").strip()
+        rows.append(
+            {
+                "id": ev.event_id,
+                "event_type": ev.event_type,
+                "ts": str(ev.timestamp or ""),
+                "title": prev[:120],
+                "text": prev[:500],
+            }
+        )
+    return rows
+
+
+def _apply_gap_opportunistic_edges(
+    vision: PatientTimelineVision,
+    gap_analysis: Dict[str, Any],
+) -> None:
+    for edge_data in gap_analysis.get("opportunistic_edges") or []:
+        try:
+            vision.add_edge(
+                source_event_id=edge_data["source_event_id"],
+                target_event_id=edge_data["target_event_id"],
+                connascence_type=edge_data["connascence_type"],
+                strength=edge_data.get("strength", 1.0),
+                discovered_by="gap_agent_opportunistic",
+                metadata={"reasoning": edge_data.get("reasoning", "")},
+            )
+        except Exception:
+            logger.debug("skip bad opportunistic edge %r", edge_data, exc_info=True)
+
+
+def _apply_enrichment_synthesis_to_vision(
+    vision: PatientTimelineVision,
+    enrichment_synthesis: Optional[Dict[str, Any]],
+) -> None:
+    if not enrichment_synthesis:
+        return
+    for edge_data in enrichment_synthesis.get("new_edges", []) or []:
+        try:
+            vision.add_edge(
+                source_event_id=edge_data["source_event_id"],
+                target_event_id=edge_data["target_event_id"],
+                connascence_type=edge_data["connascence_type"],
+                strength=edge_data.get("strength", 1.0),
+                discovered_by="synthesis_agent",
+                metadata={"reasoning": edge_data.get("reasoning", "")},
+            )
+        except Exception:
+            logger.debug("skip bad synthesis edge %r", edge_data, exc_info=True)
+    for update_data in enrichment_synthesis.get("metadata_updates", []) or []:
+        event_id = update_data.get("event_id")
+        if not event_id or event_id not in vision.events:
+            continue
+        event = vision.events[event_id]
+        updates = update_data.get("updates", {})
+        if "timestamp" in updates:
+            event.timestamp = updates["timestamp"]
+        if "annotations" in updates:
+            event.annotations.update(updates["annotations"])
+
+
+async def _run_timeline_enrichment_gap_synthesis_connascence(
+    *,
+    client: AsyncOpenAI,
+    vision: PatientTimelineVision,
+    patient_id: str,
+    pool: Any | None,
+    question: str,
+    existing_context: List[Dict[str, Any]],
+    artifact_base_path: Optional[str],
+    phase_label: str,
+    ingestion_client: Optional[AsyncOpenAI] = None,
+    ingestion_model: str = INGESTION_MODEL,
+    force_json_format: bool = True,
+) -> Dict[str, Any]:
+    from server.eoh.timeline_enrichment_gap_agent import analyze_timeline_enrichment_gaps
+    from server.eoh.timeline_enrichment_synthesis_agent import synthesize_timeline_enrichment
+
+    artifact: Dict[str, Any] = {
+        "phase_label": phase_label,
+        "edges_start": vision.count_edges(),
+        "events": len(vision.events),
+    }
+    gap_analysis: Optional[Dict[str, Any]] = None
+    enrichment_synthesis: Optional[Dict[str, Any]] = None
+
+    if not vision.events:
+        artifact["skipped"] = "no_events"
+        return artifact
+
+    # Gap agent + synthesis require a DB (pool) for retrieval — without it every
+    # call produces 0 results and wastes two LLM round-trips.  Skip straight to
+    # connascence enrichment when running in PDF session-only mode.
+    if pool is None:
+        logger.info(
+            "Gap/synthesis skipped (no DB pool — PDF session mode); running connascence only (%s)",
+            phase_label,
+        )
+        artifact["gap_analysis"] = {"skipped": "no_db_pool"}
+        artifact["gap_retrieval_row_count"] = 0
+        artifact["edges_after_gap_opportunistic"] = vision.count_edges()
+        artifact["edges_after_synthesis"] = vision.count_edges()
+    else:
+        snapshot_counts = {
+            "total_events": len(vision.events),
+            "total_edges": vision.count_edges(),
+        }
+        try:
+            gap_analysis = await analyze_timeline_enrichment_gaps(
+                client=client,
+                patient_timeline_vision=vision,
+                timeline_snapshot=snapshot_counts,
+                existing_context=existing_context,
+                patient_id=patient_id,
+            )
+            artifact["gap_analysis"] = gap_analysis
+        except Exception:
+            logger.exception("timeline enrichment gap analysis failed (%s)", phase_label)
+            artifact["gap_analysis_error"] = "failed"
+            return artifact
+
+        _apply_gap_opportunistic_edges(vision, gap_analysis)
+        artifact["edges_after_gap_opportunistic"] = vision.count_edges()
+
+        gap_retrieval_results: List[Dict[str, Any]] = []
+        gap_queries = gap_analysis.get("gap_queries") or {}
+        ts_terms = gap_queries.get("ts_terms") or []
+        if ts_terms and gap_analysis.get("needs_enrichment", False):
+            try:
+                gap_retrieval_results = await _search_timeline_ts_for_terms(
+                    pool=pool,
+                    patient_id=patient_id,
+                    terms=ts_terms,
+                    limit_total=100,
+                )
+            except Exception:
+                logger.exception("gap TS retrieval failed (%s)", phase_label)
+        artifact["gap_retrieval_row_count"] = len(gap_retrieval_results)
+
+        if gap_analysis.get("needs_enrichment", False) or gap_retrieval_results:
+            try:
+                enrichment_synthesis = await synthesize_timeline_enrichment(
+                    client=client,
+                    patient_timeline_vision=vision,
+                    gap_analysis=gap_analysis,
+                    gap_retrieval_results=gap_retrieval_results,
+                    timeline_snapshot=snapshot_counts,
+                    patient_id=patient_id,
+                )
+                artifact["synthesis"] = enrichment_synthesis
+            except Exception:
+                logger.exception("timeline enrichment synthesis failed (%s)", phase_label)
+                artifact["synthesis_error"] = "failed"
+
+        _apply_enrichment_synthesis_to_vision(vision, enrichment_synthesis)
+        artifact["edges_after_synthesis"] = vision.count_edges()
+
+    try:
+        _conn_client = ingestion_client if ingestion_client is not None else client
+        await _enrich_timeline_vision_connascence(
+            vision, _conn_client, question, model=ingestion_model,
+            force_json_format=force_json_format,
+        )
+    except Exception:
+        logger.exception("connascence rubric enrichment failed (%s)", phase_label)
+
+    artifact["edges_end"] = vision.count_edges()
+
+    if artifact_base_path and "patient_timeline_vision_" in artifact_base_path:
+        try:
+            if gap_analysis is not None:
+                gap_path = artifact_base_path.replace(
+                    "patient_timeline_vision_", f"gap_analysis_{phase_label}_", 1
+                )
+                with open(gap_path, "w", encoding="utf-8") as f:
+                    json.dump(gap_analysis, f, indent=2, ensure_ascii=False)
+                artifact["gap_analysis_path"] = gap_path
+            if enrichment_synthesis is not None:
+                syn_path = artifact_base_path.replace(
+                    "patient_timeline_vision_", f"enrichment_synthesis_{phase_label}_", 1
+                )
+                with open(syn_path, "w", encoding="utf-8") as f:
+                    json.dump(enrichment_synthesis, f, indent=2, ensure_ascii=False)
+                artifact["synthesis_path"] = syn_path
+        except Exception:
+            logger.exception("failed to write timeline enrichment artifacts (%s)", phase_label)
+
+    return artifact
+
+
+async def _enrich_timeline_vision_after_rag_probe(
+    *,
+    client: AsyncOpenAI,
+    timeline_vision: Optional[PatientTimelineVision],
+    patient_id: str,
+    question: str,
+    rag_context: str,
+    augmented_rows: List[Dict[str, Any]],
+    pool: Any,
+) -> Optional[Dict[str, Any]]:
+    if timeline_vision is None or not patient_id:
+        return None
+    out: Dict[str, Any] = {}
+    try:
+        snippet = rag_context[:OPPORTUNISTIC_MAX_CHARS]
+        cites = _compact_rows_for_gap_context(augmented_rows, cap=25)
+        cite_msgs = [
+            {"title": str(c.get("title") or c.get("id")), "snippet": str(c.get("text", ""))[:400]}
+            for c in cites
+        ]
+        await enrich_graph_opportunistic(
+            step_id="probe_rag_context",
+            step_question=question,
+            step_answer=snippet,
+            step_citations=cite_msgs or None,
+            patient_id=patient_id,
+            vision=timeline_vision,
+            discovered_by_prefix="timeline_probe_rag",
+        )
+        out["opportunistic_probe_rag"] = {"ok": True}
+    except Exception:
+        logger.exception("opportunistic enrich after RAG probe failed")
+        out["opportunistic_probe_rag"] = {"ok": False}
+
+    try:
+        ctx = _compact_rows_for_gap_context(augmented_rows)
+        pipe = await _run_timeline_enrichment_gap_synthesis_connascence(
+            client=client,
+            vision=timeline_vision,
+            patient_id=patient_id,
+            pool=pool,
+            question=question,
+            existing_context=ctx,
+            artifact_base_path=None,
+            phase_label="probe_rag",
+        )
+        out["gap_synthesis_connascence"] = pipe
+    except Exception:
+        logger.exception("gap/synthesis/connascence after RAG probe failed")
+        out["gap_synthesis_connascence_error"] = "failed"
+
+    return out
+
+
 async def _build_timeline_rag_context_for_summary(
     *,
     pool: Any,
@@ -1970,6 +2344,7 @@ async def _build_timeline_rag_context_for_summary(
     timeline_text: str,
     client: AsyncOpenAI,
     max_context_chars: int = 20_000,
+    timeline_vision: Optional[PatientTimelineVision] = None,
 ) -> tuple[str, Dict[str, Any]]:
     """
     High-level RAG pipeline for timeline summarization.
@@ -1997,13 +2372,6 @@ async def _build_timeline_rag_context_for_summary(
     # Ensure we leave *some* room for TS/ANN context.
     min_ctx_for_rag = 4_000
 
-        # Track gap plan + final rows for debug payload:
-    gap_plan: Dict[str, Any] = {
-        "needs_gap_retrieval": False,
-        "slots": [],
-    }
-    final_rows: List[Dict[str, Any]] = []
-
     # If peek itself is already too large, trim it to leave room for TS/ANN.
     if peek_len + min_ctx_for_rag + overhead_chars > max_context_chars:
         allowed_peek = max_context_chars - (min_ctx_for_rag + overhead_chars)
@@ -2028,7 +2396,6 @@ async def _build_timeline_rag_context_for_summary(
         "needs_gap_retrieval": False,
         "slots": [],
     }
-    final_rows: List[Dict[str, Any]] = []
     ts_rows: List[Dict[str, Any]] = []
     ann_rows: List[Dict[str, Any]] = []
 
@@ -2111,15 +2478,6 @@ async def _build_timeline_rag_context_for_summary(
         (probe.get("notes") or "")[:200],
     )
 
-    logger.info(
-        "Timeline RAG probe: ts_terms=%d, ann_queries=%d, filters=%d, citations=%d, notes=%r",
-        len(ts_terms),
-        len(ann_queries),
-        len(timeline_filters),
-        len(probe_citations),
-        (probe.get("notes") or "")[:200],
-    )
-
     # --- Step 5: TS + ANN retrieval over ehr.patient_timeline --------------
     try:
         ts_rows = await _search_timeline_ts_for_terms(
@@ -2142,6 +2500,14 @@ async def _build_timeline_rag_context_for_summary(
     except Exception:
         logger.exception("Timeline RAG: ANN search failed; continuing without ANN rows.")
         ann_rows = []
+
+    probe_ts_terms: List[str] = list(ts_terms or [])
+    probe_ann_items: List[str] = list(ann_queries or [])
+    probe_ann_resolved: List[str] = []
+    for item in probe_ann_items:
+        rq, _ = resolve_ann_query_item(item)
+        if _norm_query(rq):
+            probe_ann_resolved.append(rq)
 
     all_ts_ann_rows = ts_rows + ann_rows
     ctx_blocks = ""  # Initialize to avoid UnboundLocalError
@@ -2171,25 +2537,6 @@ async def _build_timeline_rag_context_for_summary(
                 "Timeline RAG: primary/augmented rows computation failed; using primary rows only."
             )
             augmented_rows = primary_rows
-        
-        probe_ts_terms = ts_terms[:]  # as produced by probe
-        probe_ann_items = ann_queries[:]  # may include LIB:<id>
-
-        # For avoid purposes, compare on resolved query strings too
-        probe_ann_resolved = []
-        for item in probe_ann_items:
-            rq, _ = resolve_ann_query_item(item)
-            if _norm_query(rq):
-                probe_ann_resolved.append(rq)
-
-        probe_ts_terms = ts_terms[:]                  # as produced by probe
-        probe_ann_items = ann_queries[:]              # may include LIB:<id>
-
-        probe_ann_resolved: List[str] = []
-        for item in probe_ann_items:
-            rq, _ = resolve_ann_query_item(item)
-            if _norm_query(rq):
-                probe_ann_resolved.append(rq)
 
     # --- Optional: run EoH-style gap retrieval planner for extra slots -----
     try:
@@ -2331,8 +2678,23 @@ async def _build_timeline_rag_context_for_summary(
         "gap_plan": gap_plan,
         "ts_rows_count": len(ts_rows),
         "ann_rows_count": len(ann_rows),
-        "final_rows_count": len(final_rows),
+        "final_rows_count": len(augmented_rows),
     }
+
+    if timeline_vision is not None:
+        try:
+            probe_debug["timeline_enrichment"] = await _enrich_timeline_vision_after_rag_probe(
+                client=client,
+                timeline_vision=timeline_vision,
+                patient_id=patient_id,
+                question=question,
+                rag_context=rag_context,
+                augmented_rows=augmented_rows,
+                pool=pool,
+            )
+        except Exception:
+            logger.exception("timeline vision probe enrichment hook failed")
+            probe_debug["timeline_enrichment"] = {"error": "hook_failed"}
 
     return rag_context, probe_debug
 
@@ -2462,6 +2824,540 @@ async def _call_timeline_summarizer_model(
 # PDF Import Support (Session-Only)
 # ---------------------------------------------------------------------------
 
+# Batched PDF event extraction: target ~60% of a GPT-4.1–class 1M-token context
+# for *input* (pages JSON), with explicit reserves for system prompt and large JSON output.
+# (Same spirit as server/eoh/graph_enrichment.py BATCH_MAX_CHARS / ENRICHMENT_CONTEXT_FILL_RATIO.)
+# GPT-4.1 context / output limits for per-page event extraction.
+#
+# Output budget math:
+#   GPT-4.1 hard cap = 32,768 output tokens.
+#   Target ~150-180 tokens of output per page (enough for typed JSON events).
+#   → max pages per batch ≈ 32,768 / 160 ≈ 200 pages.
+#
+# Context fill ratio of 0.10 yields:
+#   input ≈ (1,048,576 × 0.10 − 6,000 − 32,768) × 4 ≈ 264 K input chars
+#   ≈ 183 pages/batch → ~179 output tokens per page.
+#
+# Raising the ratio above ~0.12 collapses output budget below ~130 tokens/page
+# and causes the model to fall back to generic "note" / "page" event types.
+_PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS = 1_048_576
+_PDF_EXTRACTION_CONTEXT_FILL_RATIO = 0.10
+_PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE = 6_000
+_PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE = 32_768
+_PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE = 4
+# Per page: wrapper keys in JSON (~40) + small margin
+_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS = 64
+
+PDF_EVENT_BATCH_MAX_INPUT_CHARS: int = int(
+    (
+        _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+        - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+        - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+    )
+    * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+)
+
+
+# ---------------------------------------------------------------------------
+# Page selection strategies for graph event extraction
+# ---------------------------------------------------------------------------
+
+#: Sentinel string used with --extraction-mode.
+PDF_EXTRACTION_MODE_FULL = "full"
+PDF_EXTRACTION_MODE_LITE = "lite"
+
+# Lite-mode defaults: pages drawn from the three zones.
+_LITE_HEAD_PAGES = 200
+_LITE_TAIL_PAGES = 200
+_LITE_MC_MIDDLE_PAGES = 400
+
+
+def _select_pages_lite(
+    page_entries: List[Tuple[int, str]],
+    head: int = _LITE_HEAD_PAGES,
+    tail: int = _LITE_TAIL_PAGES,
+    mc_middle: int = _LITE_MC_MIDDLE_PAGES,
+) -> List[Tuple[int, str]]:
+    """
+    Lite extraction strategy: head + tail + Monte Carlo sample of middle pages.
+
+    Rationale:
+    - Head covers problem lists, demographics, chronic conditions.
+    - Tail covers the most recent events and discharge summaries.
+    - Monte Carlo middle ensures sparse but representative coverage of the arc.
+
+    The full timeline_text still flows to the summarizer unchanged — this only
+    controls which pages get expensive per-page graph event extraction.
+    """
+    import random
+
+    n = len(page_entries)
+    if n <= head + tail:
+        # Short record — take everything.
+        return list(page_entries)
+
+    head_entries = page_entries[:head]
+    tail_entries = page_entries[n - tail :]
+    middle_pool = page_entries[head : n - tail]
+
+    # Sample without replacement; reproducible only within a run (no fixed seed
+    # by design — Monte Carlo is intentionally stochastic across runs).
+    mc_sample = random.sample(middle_pool, min(mc_middle, len(middle_pool)))
+
+    # Merge and restore chronological page order.
+    selected = list({e[0]: e for e in head_entries + mc_sample + tail_entries}.values())
+    selected.sort(key=lambda x: x[0])
+
+    return selected
+
+
+def _iter_pdf_event_extraction_batches(
+    page_entries: List[Tuple[int, str]],
+    max_chars: Optional[int] = None,
+) -> List[List[Tuple[int, str]]]:
+    """
+    Group (pdf_page_num, text) tuples into batches that fit under max_chars.
+    Defaults to PDF_EVENT_BATCH_MAX_INPUT_CHARS (sized for GPT-4.1 1M context).
+    Pass a smaller value for local models with limited context windows.
+    """
+    if not page_entries:
+        return []
+
+    max_chars = max_chars if max_chars is not None else PDF_EVENT_BATCH_MAX_INPUT_CHARS
+    overhead = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
+    batches: List[List[Tuple[int, str]]] = []
+    current: List[Tuple[int, str]] = []
+    current_size = 0
+
+    for page_num, text in page_entries:
+        need = len(text) + overhead
+        if need > max_chars:
+            logger.warning(
+                "PDF page %d: text+overhead (%d chars) exceeds batch cap (%d); truncating page text",
+                page_num,
+                need,
+                max_chars,
+            )
+            text = text[: max(0, max_chars - overhead)]
+            need = len(text) + overhead
+
+        if current and current_size + need > max_chars:
+            batches.append(current)
+            current = []
+            current_size = 0
+
+        current.append((page_num, text))
+        current_size += need
+
+    if current:
+        batches.append(current)
+
+    return batches
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Strip markdown fences and any preamble text that local models wrap around JSON.
+
+    Handles three cases:
+      1. ````` at the very start  (```json\\n{...}```)
+      2. Preamble text before a fence  ("Here is the JSON:\\n\\n```json\\n{...}```")
+      3. No fences — try to find the first ``{`` and extract from there
+    """
+    text = text.strip()
+
+    # Fast path: if it already looks like JSON, return as-is.
+    if text.startswith("{") or text.startswith("["):
+        return text
+
+    # Find the first ``` fence (may not be at position 0).
+    fence_start = text.find("```")
+    if fence_start != -1:
+        after_fence = text[fence_start:]
+        parts = after_fence.split("```")
+        if len(parts) >= 3:
+            inner = parts[1]
+            # Strip optional language tag (e.g. "json\n")
+            if inner and not inner.lstrip().startswith(("{", "[")):
+                newline = inner.find("\n")
+                inner = inner[newline + 1:] if newline != -1 else inner
+            stripped = inner.strip()
+            if stripped:
+                return stripped
+
+    # No fences found (or malformed). Try to extract JSON object/array directly.
+    brace = text.find("{")
+    bracket = text.find("[")
+    candidates = [i for i in (brace, bracket) if i != -1]
+    if candidates:
+        start = min(candidates)
+        return text[start:].strip()
+
+    return text
+
+
+async def _ollama_chat_direct(
+    base_url: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    max_tokens: int = 8192,
+    temperature: float = 0.1,
+    num_ctx: Optional[int] = None,
+    timeout: float = 600.0,
+) -> str:
+    """
+    Call Ollama via its **native** ``/api/chat`` endpoint using httpx.
+
+    Previous attempts used the OpenAI-compatible ``/v1/chat/completions``
+    endpoint, which silently ignores ``options.num_ctx``.  Without an explicit
+    context size the model falls back to Ollama's default (often 2048), and
+    the ~6K-token extraction batches overflow the context — producing either
+    truncated output or empty bodies that surface as ``JSONDecodeError``.
+
+    The native endpoint properly handles ``options.num_ctx`` and
+    ``options.num_predict`` (the equivalent of ``max_tokens``).
+
+    *base_url* may be either ``http://host:11434/v1`` (from the OpenAI-compat
+    client) or ``http://host:11434`` — both are normalised to the bare host.
+    """
+    import httpx
+
+    ollama_host = base_url.rstrip("/")
+    for suffix in ("/v1/chat/completions", "/v1"):
+        if ollama_host.endswith(suffix):
+            ollama_host = ollama_host[: -len(suffix)]
+            break
+    endpoint = ollama_host + "/api/chat"
+
+    opts: Dict[str, Any] = {"temperature": temperature}
+    if num_ctx:
+        opts["num_ctx"] = num_ctx
+    if max_tokens:
+        opts["num_predict"] = max_tokens
+
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": opts,
+    }
+
+    logger.info(
+        "Ollama native call: model=%s  num_ctx=%s  num_predict=%s  msgs=%d  endpoint=%s",
+        model, num_ctx, max_tokens, len(messages), endpoint,
+    )
+
+    async with httpx.AsyncClient(timeout=timeout) as http:
+        resp = await http.post(endpoint, json=body)
+        raw_bytes = resp.content
+        status_code = resp.status_code
+
+    if status_code != 200:
+        snippet = raw_bytes[:500].decode("utf-8", errors="replace")
+        raise RuntimeError(f"Ollama HTTP {status_code}: {snippet}")
+
+    if not raw_bytes or not raw_bytes.strip():
+        raise ValueError(
+            f"Ollama returned HTTP 200 with empty body "
+            f"(model={model}, num_predict={max_tokens}, num_ctx={num_ctx}). "
+            "Try reducing batch size or num_ctx."
+        )
+
+    logger.info("Ollama response: %d bytes (first 300): %s",
+                len(raw_bytes), raw_bytes[:300].decode("utf-8", errors="replace"))
+
+    data = json.loads(raw_bytes)
+
+    if "error" in data:
+        raise RuntimeError(f"Ollama returned error in body: {data['error']}")
+
+    msg = data.get("message")
+    if not msg or not isinstance(msg, dict):
+        logger.warning(
+            "Ollama /api/chat: no 'message' in response. Keys: %s | body[:400]: %s",
+            list(data.keys()),
+            raw_bytes[:400].decode("utf-8", errors="replace"),
+        )
+        raise ValueError(f"Ollama response missing 'message' (keys: {list(data.keys())})")
+
+    content = msg.get("content") or ""
+    if not content:
+        done_reason = data.get("done_reason", "unknown")
+        logger.warning(
+            "Ollama returned empty content. done_reason=%s  eval_count=%s  total_duration=%s",
+            done_reason,
+            data.get("eval_count"),
+            data.get("total_duration"),
+        )
+    else:
+        eval_count = data.get("eval_count", "?")
+        total_ns = data.get("total_duration", 0)
+        total_s = total_ns / 1e9 if isinstance(total_ns, (int, float)) else 0
+        logger.info("Ollama generation complete: %s tokens in %.1fs", eval_count, total_s)
+
+    return content
+
+
+def _repair_truncated_extraction_json(raw: str) -> dict:
+    """Salvage a truncated JSON extraction response.
+
+    When the model hits num_predict and the output is cut mid-JSON, walk
+    backwards from the truncation point trying to close the structure at
+    each ``}`` character.  This recovers all complete page entries before
+    the cutoff — typically losing only the last partially-generated page.
+    """
+    # Walk backwards from the end.  At each `}` character, try appending
+    # `]}` to close the pages array + outer object and parse.  This is
+    # brute-force but reliable regardless of whitespace or minification.
+    for i in range(len(raw) - 1, max(0, len(raw) - 10000), -1):
+        if raw[i] != "}":
+            continue
+        for suffix in ("\n]}", "]}"):
+            candidate = raw[: i + 1] + suffix
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict) and isinstance(parsed.get("pages"), list):
+                    logger.warning(
+                        "Repaired truncated JSON: salvaged %d page(s) "
+                        "(cut at char %d of %d)",
+                        len(parsed["pages"]), i + 1, len(raw),
+                    )
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+    raise json.JSONDecodeError(
+        "Could not repair truncated extraction JSON", raw, len(raw) - 1
+    )
+
+
+async def _extract_events_from_pages_batch(
+    client: AsyncOpenAI,
+    pages: List[Tuple[int, str]],
+    model: str = INGESTION_MODEL,
+    force_json_format: bool = True,
+    ollama_num_ctx: Optional[int] = None,
+) -> Dict[int, List[Dict[str, Any]]]:
+    """
+    One LLM call for many PDF pages. Returns map pdf_page_num -> event dicts.
+    Pass an Ollama client + a local model name for zero-cost extraction.
+    Set force_json_format=False for Ollama — grammar-constrained sampling is
+    5-10x slower than normal generation and causes timeout failures.
+    Set ollama_num_ctx to override Ollama's KV cache size (e.g. 65536 halves
+    the default 16 GB KV cache to 8 GB, leaving headroom for generation).
+    """
+    if not pages:
+        return {}
+
+    # Ollama (small local models) gets a compact prompt that:
+    #   - Uses shorter field names and capped preview length to save output tokens
+    #   - Lists MEDICATION as the absolute first extraction priority
+    #   - Makes drug_name, drug_dosage, drug_route mandatory on medication events
+    #   - Keeps total instruction tokens low so more budget goes to actual output
+    _SYSTEM_PROMPT_FULL = textwrap.dedent("""
+        You are a precise medical event extraction agent.
+        You receive multiple pages from a patient record PDF as JSON: a "pages" array.
+        For EACH page, extract timeline events found ONLY in that page's text.
+
+        Event rules (per event):
+        - `event_type`: one of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
+        - `timestamp`: YYYY-MM-DD if present in text, else "unknown"
+        - `preview`: 1–2 sentences, max ~200 characters
+        - `drug_name`: (medication events ONLY) the generic drug name exactly as written
+          in the text, e.g. "prednisone", "pyridostigmine", "mycophenolate mofetil".
+          REQUIRED for every medication event. Use generic name when brand also present.
+        - `drug_dosage`: (medication events ONLY, optional) dose string exactly as written,
+          e.g. "60 mg", "500 mg twice daily". Include when present.
+        - `drug_route`: (medication events ONLY, optional) one of oral|IV|IM|SC|topical|inhaled|other.
+          Include when route is stated or clearly implied.
+        Do not hallucinate. If a page has no clear clinical events, use "events": [].
+
+        Output MUST be a single JSON object:
+        {
+          "pages": [
+            { "page_num": <int>, "events": [
+                { "event_type": "...", "timestamp": "...", "preview": "..." },
+                { "event_type": "medication", "timestamp": "...", "preview": "...",
+                  "drug_name": "prednisone", "drug_dosage": "20 mg", "drug_route": "oral" },
+                ...
+            ] },
+            ...
+          ]
+        }
+
+        Include exactly one entry in "pages" for every input page_num, in ascending page_num order.
+        Do not merge events across pages. Do not include markdown or commentary outside JSON.
+    """).strip()
+
+    # Compact prompt for Ollama / small models.
+    # Priority-ordered and brevity-constrained to fit within tight output budgets.
+    # preview capped at 80 chars. drug_name is MANDATORY for medication events.
+    _SYSTEM_PROMPT_OLLAMA = textwrap.dedent("""
+        You are a medical event extractor. Extract events from each page of a patient record.
+
+        PRIORITY ORDER — emit events in this order within each page:
+        1. medication (ALWAYS emit; drug_name REQUIRED)
+        2. diagnosis
+        3. lab
+        4. procedure
+        5. symptom
+        6. note (only if clinically significant)
+
+        Fields per event:
+        - event_type: medication|diagnosis|lab|procedure|symptom|note
+        - timestamp: YYYY-MM-DD or "unknown"
+        - preview: ≤80 chars, be brief
+        - drug_name: REQUIRED for medication — generic name (e.g. "pyridostigmine"). NEVER omit.
+        - drug_dosage: medication only, optional — dose as written (e.g. "60 mg daily")
+        - drug_route: medication only, optional — oral|IV|IM|SC|topical|inhaled|other
+
+        Output ONLY this JSON (no markdown, no explanation):
+        {"pages":[{"page_num":<int>,"events":[
+          {"event_type":"medication","timestamp":"2019-03-01","preview":"Started pyridostigmine for MG","drug_name":"pyridostigmine","drug_dosage":"60 mg","drug_route":"oral"},
+          {"event_type":"diagnosis","timestamp":"2019-03-01","preview":"Myasthenia gravis confirmed"}
+        ]},{"page_num":<int>,"events":[]},...]}
+
+        Rules:
+        - One entry per input page_num, in order
+        - Empty page → "events": []
+        - Do NOT merge events across pages
+        - NEVER omit drug_name for any medication event
+    """).strip()
+
+    system_prompt = _SYSTEM_PROMPT_OLLAMA if not force_json_format else _SYSTEM_PROMPT_FULL
+
+    payload = {
+        "pages": [{"page_num": pn, "text": txt} for pn, txt in pages],
+    }
+    user_content = json.dumps(payload, ensure_ascii=False)
+    input_page_nums = {pn for pn, _ in pages}
+
+    try:
+        if force_json_format:
+            # OpenAI large-context path: generous output budget, JSON enforced.
+            _max_tok = min(32768, _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE + 4096)
+            call_kwargs: Dict[str, Any] = dict(
+                max_tokens=_max_tok,
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            resp = await _llm_chat_completion_async(
+                client=client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                **call_kwargs,
+            )
+            raw_content = _safe_get_choice_content(resp) or ""
+        else:
+            # Ollama path: bypass the OpenAI SDK and use httpx directly so that
+            # empty-body HTTP 200 responses surface a meaningful error rather than
+            # a cryptic JSONDecodeError from inside the SDK's Pydantic layer.
+            # Output budget: use up to half the context window for output. The
+            # input batch is sized to use ~69% of context, but char-to-token
+            # estimates are conservative — in practice input uses ~20-25% of
+            # context, leaving plenty of room.
+            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _ollama_url = str(client.base_url).rstrip("/")
+            raw_content = await _ollama_chat_direct(
+                base_url=_ollama_url,
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=_max_tok,
+                temperature=0.1,
+                num_ctx=ollama_num_ctx,
+            )
+
+        raw_content = _strip_markdown_fences(raw_content)
+
+        if not raw_content.strip():
+            raise ValueError("LLM returned empty content after fence-stripping")
+
+        try:
+            parsed = json.loads(raw_content)
+        except json.JSONDecodeError:
+            parsed = _repair_truncated_extraction_json(raw_content)
+
+        if not isinstance(parsed, dict):
+            raise ValueError("expected JSON object")
+
+        rows = parsed.get("pages")
+        if not isinstance(rows, list):
+            raise ValueError("missing pages array")
+
+        out: Dict[int, List[Dict[str, Any]]] = {pn: [] for pn, _ in pages}
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            pn = row.get("page_num")
+            if not isinstance(pn, int):
+                try:
+                    pn = int(pn)
+                except (TypeError, ValueError):
+                    continue
+            evs = row.get("events")
+            if not isinstance(evs, list):
+                evs = []
+            cleaned: List[Dict[str, Any]] = []
+            for e in evs:
+                if not isinstance(e, dict):
+                    continue
+                ev_dict: Dict[str, Any] = {
+                    "event_type": str(e.get("event_type", "note")),
+                    "timestamp": str(e.get("timestamp", "unknown")),
+                    "preview": str(e.get("preview", ""))[:500],
+                }
+                drug = e.get("drug_name")
+                if drug and isinstance(drug, str) and drug.strip():
+                    ev_dict["drug_name"] = drug.strip()
+                dosage = e.get("drug_dosage")
+                if dosage and isinstance(dosage, str) and dosage.strip():
+                    ev_dict["drug_dosage"] = dosage.strip()[:100]
+                route = e.get("drug_route")
+                if route and isinstance(route, str) and route.strip():
+                    ev_dict["drug_route"] = route.strip().lower()[:30]
+                cleaned.append(ev_dict)
+            if pn in out:
+                out[pn] = cleaned
+
+        # Any input page missing from model output → generic fallback for that page
+        for pn, txt in pages:
+            if not out[pn]:
+                out[pn] = [
+                    {
+                        "event_type": "page",
+                        "timestamp": "unknown",
+                        "preview": (txt[:200] if txt.strip() else "(no events extracted)"),
+                        "event_id": f"pdf_p{pn:04d}_generic",
+                    }
+                ]
+            else:
+                for idx, event in enumerate(out[pn]):
+                    if "event_id" not in event:
+                        event["event_id"] = f"pdf_p{pn:04d}_e{idx:04d}"
+
+        return out
+
+    except Exception as e:
+        logger.error("Batched PDF event extraction failed for pages %s: %s", input_page_nums, e)
+        return {
+            pn: [
+                {
+                    "event_type": "page",
+                    "timestamp": "unknown",
+                    "preview": txt[:200],
+                    "event_id": f"pdf_p{pn:04d}_batch_error",
+                }
+            ]
+            for pn, txt in pages
+        }
+
+
 async def _extract_events_from_page_text(
     client: AsyncOpenAI,
     page_text: str,
@@ -2499,7 +3395,7 @@ async def _extract_events_from_page_text(
         1. Review the provided page text carefully.
         2. Identify all medically relevant events, including:
            - Diagnoses (confirmed, suspected, ruled out)
-           - Medications (started, stopped, changed)
+           - Medications (started, stopped, changed, listed, allergies)
            - Lab results (tests, values, interpretations)
            - Procedures (surgeries, imaging, interventions)
            - Symptoms (patient-reported complaints)
@@ -2508,6 +3404,13 @@ async def _extract_events_from_page_text(
            - `event_type`: One of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
            - `timestamp`: Date in YYYY-MM-DD format if available, otherwise "unknown"
            - `preview`: A concise 1-2 sentence summary of the event (max 200 chars)
+           - `drug_name`: (medication events ONLY) the generic drug name exactly as it
+             appears in the text, e.g. "prednisone", "pyridostigmine". Use the generic
+             name when both generic and brand are present. REQUIRED; omit for non-medication events.
+           - `drug_dosage`: (medication events ONLY, optional) dose string exactly as written,
+             e.g. "60 mg TID", "500 mg twice daily". Include when dose is present in text.
+           - `drug_route`: (medication events ONLY, optional) route of administration —
+             one of oral|IV|IM|SC|topical|inhaled|other. Include when stated or clearly implied.
         4. Output a JSON array of events. Each event must have these exact fields.
         5. If no clear events are present, return an empty array [].
         6. Do NOT hallucinate events. Only extract what is explicitly present.
@@ -2524,7 +3427,10 @@ async def _extract_events_from_page_text(
           {
             "event_type": "medication",
             "timestamp": "2023-05-15",
-            "preview": "Started Pyridostigmine 60mg TID."
+            "preview": "Started Pyridostigmine 60mg TID for myasthenia gravis.",
+            "drug_name": "pyridostigmine",
+            "drug_dosage": "60 mg TID",
+            "drug_route": "oral"
           },
           {
             "event_type": "lab",
@@ -2539,6 +3445,8 @@ async def _extract_events_from_page_text(
         - Do not include explanations or commentary.
         - If uncertain about event_type, use "note" as default.
         - If date is ambiguous or partial, use "unknown".
+        - For medication events, always include drug_name if a drug is named in the text.
+        - Include drug_dosage and drug_route whenever the information is present.
     """)
 
     payload = {
@@ -2554,7 +3462,7 @@ async def _extract_events_from_page_text(
     try:
         resp = await _llm_chat_completion_async(
             client=client,
-            model="gpt-4-0125-preview",  # GPT-5.1 equivalent for precision
+            model=EOH_TIMELINE_SUMMARIZER_MODEL,
             messages=messages,
             max_tokens=2048,
             response_format={"type": "json_object"},
@@ -2617,20 +3525,36 @@ async def summarize_timeline_from_pdf(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     pool: Any | None = None,
     patient_id: str = "session_patient",
+    graph_out_path: Optional[str] = None,
+    artifact_dir: Optional[str] = None,
+    extraction_mode: str = PDF_EXTRACTION_MODE_LITE,
+    ingestion_client: Optional[AsyncOpenAI] = None,
+    ingestion_model: str = INGESTION_MODEL,
+    ingestion_context_tokens: Optional[int] = None,
+    extraction_concurrency: int = 1,
 ) -> TimelineSummaries:
     """
     Import and summarize a timeline PDF for session-only use.
-    
-    This function:
-    1. Decrypts PDF if needed (password prompt or provided)
-    2. Extracts text from PDF
-    3. Passes to summarize_timeline_for_eoh() for standard processing
-    
+
+    Extraction modes
+    ----------------
+    ``"lite"`` (default)
+        Graph event extraction covers the first 200 pages, last 200 pages, and
+        400 randomly sampled pages from the middle (~800 pages total, ~4-5 LLM
+        calls).  Fast and cheap; the full timeline text still flows through the
+        narrative summarizer unchanged.  More graph events can be added
+        incrementally when the timeline is queried in EoHD.
+
+    ``"full"``
+        All pages are sent through the per-page LLM event extractor (~23 calls
+        for a 4,000-page record).  Produces a much denser graph but costs
+        significantly more tokens and time.
+
     All data is session-only:
     - No writes to rag_corpus or ehr.patient_timeline
     - Password deleted immediately after decryption
     - Timeline text stays in memory only
-    
+
     Args:
         client: OpenAI async client
         question: Question for EoHD investigation
@@ -2639,10 +3563,44 @@ async def summarize_timeline_from_pdf(
         max_tokens: Max tokens for summarization
         pool: Optional DB pool (for PatientTimelineVision session graph)
         patient_id: Patient ID for session (default: "session_patient")
-    
+        graph_out_path: If set, write the final PatientTimelineVision graph (JSON)
+            to this path after summarization and optional enrichment.
+        artifact_dir: If set, write the session vision snapshot and gap/synthesis
+            sidecar JSON files under this directory instead of ``/tmp``.
+        extraction_mode: ``"lite"`` (default) or ``"full"``.
+        ingestion_client: Optional separate AsyncOpenAI client for PDF event
+            extraction and connascence LLM passes.  Pass an Ollama client here
+            to run ingestion locally at zero API cost while keeping ``client``
+            pointed at OpenAI for the narrative summarization.  Defaults to
+            ``client`` when not provided.
+        ingestion_model: Model name used for ingestion calls (extraction +
+            connascence).  Ignored when ``ingestion_client`` is ``None``.
+            Default: ``INGESTION_MODEL`` env var (falls back to
+            ``EOH_TIMELINE_SUMMARIZER_MODEL``).
+        ingestion_context_tokens: Override the context window size (in tokens)
+            used to compute batch sizes for PDF event extraction.  Defaults to
+            ``_PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS`` (1M).  Set to e.g.
+            32_768 for local 8B models that have a 128K context but cannot
+            sustain a full-context KV cache without timing out.
+
     Returns:
         TimelineSummaries object ready for EoHD execution
     """
+    # Resolve ingestion client — fall back to the main client when not supplied.
+    _ingestion_client: AsyncOpenAI = ingestion_client if ingestion_client is not None else client
+    _ingestion_model: str = ingestion_model
+
+    # Grammar-constrained JSON sampling (response_format=json_object) is 5-10x
+    # slower on llama.cpp / Ollama than unconstrained generation.  Detect Ollama
+    # by inspecting the client's base URL and disable the constraint — the
+    # prompts explicitly request JSON so output quality is maintained.
+    _base_url = str(getattr(getattr(_ingestion_client, "_base_url", None), "host", "") or "")
+    _force_json_format: bool = "localhost" not in _base_url and "127.0.0.1" not in _base_url
+    # For Ollama, explicitly set num_ctx.  65536 caused HTTP 500 on the M2 Ultra
+    # (KV cache ~8GB + model ~5GB = memory pressure on back-to-back batches).
+    # 32768 comfortably fits our batches (~6K input + 8K output = ~14K tokens)
+    # while keeping KV cache at ~4GB — stable for 71 sequential batches.
+    _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
     from pathlib import Path
     from pypdf import PdfReader
     import getpass
@@ -2677,30 +3635,31 @@ async def summarize_timeline_from_pdf(
     # Step 2: Extract text and build PatientTimelineVision
     logger.info("Extracting text from %d pages", len(reader.pages))
     chunks = []
-    page_texts = []  # Keep pages separate for PatientTimelineVision
-    
+    # Preserve real PDF page numbers (1-based) for provenance — only non-empty pages.
+    page_entries: List[Tuple[int, str]] = []
+
     for idx, page in enumerate(reader.pages):
         text = (page.extract_text() or "").strip()
         text = text.replace("\x00", "")  # Clean NUL bytes
         if text:
-            chunks.append(f"=== Page {idx + 1} ===\n{text}")
-            page_texts.append(text)
-    
+            pdf_page = idx + 1
+            page_entries.append((pdf_page, text))
+            chunks.append(f"=== Page {pdf_page} ===\n{text}")
+
     timeline_text = "\n\n".join(chunks)
     logger.info(
-        "Timeline PDF extracted: %d pages, %d chars",
-        len(chunks),
-        len(timeline_text)
+        "Timeline PDF extracted: %d non-empty pages, %d chars",
+        len(page_entries),
+        len(timeline_text),
     )
-    
+
     # Step 2a: Build PatientTimelineVision for provenance tracking
     logger.info("Building PatientTimelineVision for %s", patient_id)
-    
-    # Seed PatientTimelineVision (empty initially, will be built incrementally)
+
     vision = seed_from_structured_probe_snapshot(
         patient_id=patient_id,
         snapshot_counts={
-            "total_pages": len(page_texts),
+            "total_pages": len(page_entries),
             "total_chars": len(timeline_text),
         },
         dx_examples=[],
@@ -2708,27 +3667,158 @@ async def summarize_timeline_from_pdf(
         note_examples=[],
         session_only=True,
     )
-    
-    # Build incrementally by processing each page
-    for page_num, page_text in enumerate(page_texts, start=1):
-        # Extract events from page text using LLM agent
-        # Design principle: LLMs are heuristic management infrastructure
-        events = await _extract_events_from_page_text(client, page_text, page_num)
-        
-        add_events_from_pdf_page(
-            vision=vision,
-            page_num=page_num,
-            events=events,
+
+    # Page selection for graph event extraction.
+    # Note: timeline_text always covers ALL pages for the narrative summarizer;
+    # only the graph extraction is tiered.
+    if extraction_mode == PDF_EXTRACTION_MODE_FULL:
+        extraction_pages = page_entries
+        mode_label = "full"
+    else:
+        extraction_pages = _select_pages_lite(page_entries)
+        mode_label = (
+            f"lite (head={_LITE_HEAD_PAGES}, tail={_LITE_TAIL_PAGES}, "
+            f"mc_middle={_LITE_MC_MIDDLE_PAGES})"
         )
+
+    logger.info(
+        "PDF graph extraction mode: %s — %d/%d pages selected for event extraction",
+        mode_label,
+        len(extraction_pages),
+        len(page_entries),
+    )
+
+    # Batched LLM extraction: batch size scales with the ingestion model's
+    # context window.  For small local models (e.g. llama3.1:8b with 128K
+    # context) we must use far fewer input chars per batch so the KV cache
+    # stays manageable and the model has enough headroom to generate output.
+    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+
+    if _ctx_tokens >= 500_000:
+        # Large-context model (GPT-4.1 etc.): use fill ratio to limit input so
+        # the model has ample output headroom (~900K tokens free).
+        _batch_max_chars = int(
+            (
+                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+            )
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    else:
+        # Small/medium context model (e.g. llama3.1:8b at 32K).
+        # Reserve output budget as 50% of context — must match the num_predict
+        # cap used in _extract_events_from_pages_batch (min(16384, ctx//2)).
+        # Previous 25% reserve caused constant truncation: batch input sized to
+        # ~90K chars (~22K tokens) left only ~8K tokens for output, but the
+        # model was allowed 16K output tokens, so every batch hit the limit.
+        # With 50% reserved, input shrinks to ~45% of context → ~35 pages/batch
+        # → ~8K output tokens needed, safely under the 16K cap.
+        _small_output_reserve = max(4096, _ctx_tokens // 2)   # 50% for output
+        _small_system_reserve = max(512,  _ctx_tokens // 16)  # ~6% for system
+        _batch_max_chars = int(
+            (_ctx_tokens - _small_output_reserve - _small_system_reserve)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+
+    _batch_max_chars = max(_batch_max_chars, 8_000)
+
+    batches = _iter_pdf_event_extraction_batches(extraction_pages, max_chars=_batch_max_chars)
+    oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
+    _effective_output_reserve = (
+        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+        if _ctx_tokens >= 500_000
+        else max(4096, _ctx_tokens // 2)
+    )
+    logger.info(
+        "PDF event extraction: %d pages → %d batch(es); max ~%d input chars/batch "
+        "(%dK-token context; ~%d output tokens/page)",
+        len(extraction_pages),
+        len(batches),
+        _batch_max_chars,
+        _ctx_tokens // 1024,
+        _effective_output_reserve // max(1, len(batches[0]) if batches else 1),
+    )
+
+    # Parallel batch extraction: run up to `extraction_concurrency` batches
+    # concurrently, then process results in page order before running connascence.
+    # concurrency=1 is identical to the previous sequential behaviour.
+    # concurrency=2-3 saturates a GPU with spare VRAM (e.g. RTX 4090 + 8b-q8).
+    _concurrency = max(1, extraction_concurrency)
+    _sem = asyncio.Semaphore(_concurrency)
+
+    async def _extract_one(b_idx: int, batch: List[Tuple[int, str]]) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]:
+        batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
         logger.info(
-            "PatientTimelineVision: processed page %d/%d, events=%d",
-            page_num,
-            len(page_texts),
-            len(vision.events)
+            "PDF event extraction batch %d/%d: %d pages, ~%d chars in payload",
+            b_idx, len(batches), len(batch), batch_chars,
         )
+        async with _sem:
+            result = await _extract_events_from_pages_batch(
+                _ingestion_client, batch, model=_ingestion_model,
+                force_json_format=_force_json_format,
+                ollama_num_ctx=_ollama_num_ctx,
+            )
+        return b_idx, batch, result
+
+    extraction_tasks = [
+        _extract_one(i + 1, batch) for i, batch in enumerate(batches)
+    ]
+    all_results: list[Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]] = \
+        await asyncio.gather(*extraction_tasks)
+
+    # Process results in original batch order so connascence sees events in
+    # temporal document order.  Run one final connascence pass at the end
+    # (more accurate than per-batch passes since it sees the full event set).
+    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+    for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
+        batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        ts_samples: list[str] = []
+        for evts in page_to_events.values():
+            for ev in evts:
+                t = ev.get("timestamp", "")
+                if t and t != "unknown" and len(ts_samples) < 6:
+                    ts_samples.append(t)
+        logger.info(
+            "Batch %d/%d extracted %d events across %d pages; timestamp samples: %s",
+            b_idx, len(batches), batch_event_count, len(page_to_events), ts_samples,
+        )
+
+        edges_before = vision.count_edges()
+        for page_num in sorted(page_to_events.keys()):
+            add_events_from_pdf_page(
+                vision=vision,
+                page_num=page_num,
+                events=page_to_events[page_num],
+            )
+
+        logger.info(
+            "PatientTimelineVision: after batch %d/%d — total events=%d edges=%d (+%d this batch)",
+            b_idx, len(batches), len(vision.events), vision.count_edges(),
+            vision.count_edges() - edges_before,
+        )
+
+    # Single final connascence pass over the complete event set.
+    # More accurate than incremental per-batch passes and avoids redundant work.
+    _infer_temporal_connascence(vision, window_days=7)
     
-    # Save vision to temp file (force save even though session_only=True)
-    vision_path = f"/tmp/patient_timeline_vision_{patient_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    # Keyword-based type reclassification: upgrade "page"/"unknown"/"note" events
+    # that the LLM tagged generically (output-token budget prevents per-page detail).
+    n_reclassified = _reclassify_event_types(vision)
+    if n_reclassified:
+        logger.info(
+            "PDF event type reclassification: %d events upgraded from generic type",
+            n_reclassified,
+        )
+
+    # Save vision snapshot (session_only still true; path is for sharing / gap artifacts)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if artifact_dir:
+        ad = Path(artifact_dir).expanduser().resolve()
+        ad.mkdir(parents=True, exist_ok=True)
+        vision_path = str(ad / f"patient_timeline_vision_{patient_id}_{ts}.json")
+    else:
+        vision_path = f"/tmp/patient_timeline_vision_{patient_id}_{ts}.json"
     vision.save(vision_path, force=True)
     logger.info(
         "PatientTimelineVision saved: %s (events=%d, edges=%d)",
@@ -2736,9 +3826,67 @@ async def summarize_timeline_from_pdf(
         len(vision.events),
         vision.count_edges()
     )
-    
+
+    # PatientTimelineSnapshot — the "git ls-files" of the graph.
+    # Lightweight shape-only JSON that agents read first.
+    snapshot_path = vision_path.replace("_vision_", "_snapshot_").replace(".json", ".json")
+    try:
+        snap = vision.snapshot()
+        with open(snapshot_path, "w", encoding="utf-8") as f:
+            json.dump(snap, f, indent=2, ensure_ascii=False)
+        type_line = ", ".join(f"{k}={v['count']}" for k, v in snap["types"].items())
+        logger.info(
+            "PatientTimelineSnapshot saved: %s (%d nodes, %d edges — %s)",
+            snapshot_path, snap["total_events"], snap["total_edges"], type_line,
+        )
+        print(f"\nTimeline snapshot: {snapshot_path}", flush=True)
+    except Exception:
+        logger.exception("Failed to write PatientTimelineSnapshot")
+
+    pdf_graph_enrichment: Optional[Dict[str, Any]] = None
+    if vision.events:
+        logger.info(
+            "PDF pipeline: gap/synthesis/connascence on loaded graph (before narrative summary)"
+        )
+        try:
+            pdf_graph_enrichment = await _run_timeline_enrichment_gap_synthesis_connascence(
+                client=client,
+                vision=vision,
+                patient_id=patient_id,
+                pool=pool,
+                question=question,
+                existing_context=_existing_context_rows_from_vision(vision),
+                artifact_base_path=vision_path,
+                phase_label="pdf_pre_summary",
+                ingestion_client=_ingestion_client,
+                ingestion_model=_ingestion_model,
+                force_json_format=_force_json_format,
+            )
+            gap_p = pdf_graph_enrichment.get("gap_analysis_path")
+            if gap_p:
+                print(f"\nGap analysis saved: {gap_p}", flush=True)
+            syn_p = pdf_graph_enrichment.get("synthesis_path")
+            if syn_p:
+                print(f"\nEnrichment synthesis saved: {syn_p}", flush=True)
+        except Exception:
+            logger.exception(
+                "PDF pre-summary gap/synthesis/connascence failed; continuing with base graph"
+            )
+        vision.save(vision_path, force=True)
+        logger.info(
+            "PatientTimelineVision after pre-summary enrichment: events=%d edges=%d",
+            len(vision.events),
+            vision.count_edges(),
+        )
+
     # Step 3: Pass to standard timeline summarizer
     # This handles single-pass vs. hierarchical vs. RAG automatically
+    logger.info(
+        "PDF pipeline Step 3: summarize_timeline_for_eoh (timeline_chars=%d, pages=%d, rag=%s)",
+        len(timeline_text),
+        len(page_entries),
+        bool(pool),
+    )
     summaries = await summarize_timeline_for_eoh(
         client=client,
         question=question,
@@ -2747,156 +3895,142 @@ async def summarize_timeline_from_pdf(
         pool=pool,
         patient_id=patient_id,
         use_timeline_rag=True if pool else False,
+        timeline_vision=vision,
     )
-    
-    # Attach vision_path to summaries
+
     summaries.vision_path = vision_path
+    enrichment_out: Dict[str, Any] = {}
+    if pdf_graph_enrichment:
+        enrichment_out["pdf_pre_summary_enrichment"] = pdf_graph_enrichment
+    if summaries.timeline_enrichment:
+        enrichment_out["probe_rag_enrichment"] = summaries.timeline_enrichment
+    summaries.timeline_enrichment = enrichment_out if enrichment_out else None
+
     logger.info("Timeline PDF import complete with PatientTimelineVision: %s", vision_path)
-    
-    # Step 4: Two-phase graph enrichment (gap analysis → synthesis)
-    if vision.events and pool:
-        logger.info("PatientTimelineVision: running two-phase graph enrichment...")
-        try:
-            # Import enrichment agents
-            from server.eoh.timeline_enrichment_gap_agent import analyze_timeline_enrichment_gaps
-            from server.eoh.timeline_enrichment_synthesis_agent import synthesize_timeline_enrichment
-            
-            # Build snapshot for gap agent
-            snapshot_counts = {
-                "total_events": len(vision.events),
-                "total_edges": vision.count_edges(),
-            }
-            
-            # Phase 1: Gap analysis (uses existing vision + context)
-            # The gap agent will identify where to look and enrich opportunistically
-            gap_analysis = await analyze_timeline_enrichment_gaps(
-                client=client,
-                patient_timeline_vision=vision,
-                timeline_snapshot=snapshot_counts,
-                existing_context=[],  # Timeline summarizer already processed context
-                patient_id=patient_id,
-            )
-            
-            # Save gap analysis artifact
-            gap_report_path = vision_path.replace("patient_timeline_vision_", "gap_analysis_")
-            with open(gap_report_path, "w", encoding="utf-8") as f:
-                json.dump(gap_analysis, f, indent=2, ensure_ascii=False)
-            print(f"\nGap analysis saved: {gap_report_path}")
-            
-            # Apply opportunistic edges from gap analysis
-            for edge_data in gap_analysis.get("opportunistic_edges", []):
-                vision.add_edge(
-                    source_event_id=edge_data["source_event_id"],
-                    target_event_id=edge_data["target_event_id"],
-                    connascence_type=edge_data["connascence_type"],
-                    strength=edge_data.get("strength", 1.0),
-                    discovered_by="gap_agent_opportunistic",
-                    metadata={"reasoning": edge_data.get("reasoning", "")},
-                )
-            
-            # Execute gap queries if needed
-            gap_retrieval_results: List[Dict[str, Any]] = []
-            if gap_analysis.get("needs_enrichment", False):
-                gap_queries = gap_analysis.get("gap_queries", {})
-                ts_terms = gap_queries.get("ts_terms", [])
-                
-                if ts_terms:
-                    print(f"\nExecuting gap TS queries: {ts_terms}")
-                    gap_retrieval_results = await _search_timeline_ts_for_terms(
-                        pool=pool,
-                        patient_id=patient_id,
-                        terms=ts_terms,
-                        limit_total=100,  # Cap gap retrieval
-                    )
-                    print(f"Gap retrieval: {len(gap_retrieval_results)} rows retrieved")
-            
-            # Phase 2: Synthesis (high context, 90% cap)
-            if gap_analysis.get("needs_enrichment", False) or gap_retrieval_results:
-                enrichment_synthesis = await synthesize_timeline_enrichment(
-                    client=client,
-                    patient_timeline_vision=vision,
-                    gap_analysis=gap_analysis,
-                    gap_retrieval_results=gap_retrieval_results,
-                    timeline_snapshot=snapshot_counts,
-                    patient_id=patient_id,
-                )
-                
-                # Save enrichment synthesis artifact
-                synthesis_report_path = vision_path.replace("patient_timeline_vision_", "enrichment_synthesis_")
-                with open(synthesis_report_path, "w", encoding="utf-8") as f:
-                    json.dump(enrichment_synthesis, f, indent=2, ensure_ascii=False)
-                print(f"\nEnrichment synthesis saved: {synthesis_report_path}")
-                
-                # Apply new edges from synthesis
-                for edge_data in enrichment_synthesis.get("new_edges", []):
-                    vision.add_edge(
-                        source_event_id=edge_data["source_event_id"],
-                        target_event_id=edge_data["target_event_id"],
-                        connascence_type=edge_data["connascence_type"],
-                        strength=edge_data.get("strength", 1.0),
-                        discovered_by="synthesis_agent",
-                        metadata={"reasoning": edge_data.get("reasoning", "")},
-                    )
-                
-                # Apply metadata updates from synthesis
-                for update_data in enrichment_synthesis.get("metadata_updates", []):
-                    event_id = update_data.get("event_id")
-                    if event_id and event_id in vision.events:
-                        event = vision.events[event_id]
-                        updates = update_data.get("updates", {})
-                        
-                        # Update timestamp if provided
-                        if "timestamp" in updates:
-                            event.timestamp = updates["timestamp"]
-                        
-                        # Update annotations if provided
-                        if "annotations" in updates:
-                            event.annotations.update(updates["annotations"])
-                        
-                        print(f"  Updated event {event_id}: {update_data.get('reasoning', 'N/A')[:100]}")
-            
-            # Re-save enriched vision
-            vision.save(vision_path, force=True)
-            logger.info(
-                "PatientTimelineVision enriched: %s (events=%d, edges=%d)",
-                vision_path,
-                len(vision.events),
-                vision.count_edges()
-            )
-            
-        except Exception:
-            logger.exception("PatientTimelineVision: two-phase enrichment failed; continuing with base vision.")
-    
+
+    if graph_out_path:
+        out_p = Path(graph_out_path).expanduser().resolve()
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        vision.save(str(out_p), force=True)
+        summaries.graph_out_path = str(out_p)
+        logger.info(
+            "PatientTimelineVision graph export: %s (events=%d, edges=%d)",
+            summaries.graph_out_path,
+            len(vision.events),
+            vision.count_edges(),
+        )
+        print(f"\nTimeline graph written: {summaries.graph_out_path}", flush=True)
+
     return summaries
+
+
+def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
+    """
+    Keyword-based post-processing pass: upgrade events whose event_type is
+    "page", "unknown", or "note" to a more specific clinical type based on
+    the content of their preview text.
+
+    Returns the number of events reclassified.
+    """
+    # Ordered by specificity — first match wins.
+    _PATTERNS: List[tuple] = [
+        ("lab", re.compile(
+            r"\b(?:level|result|count|value|mg/dl|mmol|ng/ml|iu/l|meq/l|"
+            r"hemoglobin|hgb|wbc|creatinine|sodium|potassium|glucose|"
+            r"albumin|bilirubin|alt|ast|ldh|ck|troponin|ferritin|"
+            r"a1c|psa|tsh|t4|inr|pt|ptt|esr|crp|ana|anca|"
+            r"urinalysis|culture|sensitivity|pcr|titer|panel)\b",
+            re.I,
+        )),
+        ("diagnosis", re.compile(
+            r"\b(?:diagnos(?:is|ed)|assessment|impression|icd[-\s]?\d|"
+            r"disease|disorder|syndrome|cancer|carcinoma|tumor|lymphoma|"
+            r"failure|insufficiency|stenosis|fibrosis|hepatitis|cirrhosis|"
+            r"myasthenia|lupus|scleroderma|sarcoidosis|vasculitis|"
+            r"infection|sepsis|pneumonia|covid|influenza)\b",
+            re.I,
+        )),
+        ("medication", re.compile(
+            r"\b(?:prescribed|started|initiated|dose|dosage|mg|tablet|"
+            r"capsule|injection|infusion|iv |oral|topical|inhaler|"
+            r"prednisone|methotrexate|azathioprine|cyclosporine|"
+            r"rituximab|mycophenolate|hydroxychloroquine|tacrolimus|"
+            r"antibiotic|steroid|medication|drug|therapy|treatment)\b",
+            re.I,
+        )),
+        ("procedure", re.compile(
+            r"\b(?:surgery|operation|procedure|resection|biopsy|"
+            r"catheterization|dialysis|transplant|intubation|bronchoscopy|"
+            r"endoscopy|colonoscopy|cystoscopy|thoracentesis|"
+            r"paracentesis|lumbar puncture|bone marrow|pacemaker|"
+            r"tracheostomy|debridement|repair|revision)\b",
+            re.I,
+        )),
+        ("symptom", re.compile(
+            r"\b(?:pain|fever|fatigue|dyspnea|shortness of breath|"
+            r"nausea|vomiting|diarrhea|constipation|cough|edema|"
+            r"weakness|swelling|rash|pruritus|headache|dizziness|"
+            r"syncope|palpitations|chest (?:pain|tightness)|"
+            r"complaint|symptom|presenting)\b",
+            re.I,
+        )),
+        ("visit", re.compile(
+            r"\b(?:visit|appointment|admitted|admission|discharged|"
+            r"discharge|clinic|outpatient|inpatient|emergency|"
+            r"follow[- ]up|consultation|referral|transfer|"
+            r"hospitalization|icu|icu stay)\b",
+            re.I,
+        )),
+        ("imaging", re.compile(
+            r"\b(?:x[-\s]?ray|ct scan|mri|ultrasound|echo|"
+            r"echocardiogram|pet scan|nuclear|scintigraphy|"
+            r"radiograph|imaging|scan|sonogram)\b",
+            re.I,
+        )),
+    ]
+
+    RECLASSIFY_FROM = {"page", "unknown", "note"}
+    reclassified = 0
+
+    for event in vision.events.values():
+        if event.event_type not in RECLASSIFY_FROM:
+            continue
+        text = (event.preview or "").lower()
+        if not text:
+            continue
+        for new_type, pattern in _PATTERNS:
+            if pattern.search(text):
+                event.event_type = new_type
+                reclassified += 1
+                break
+
+    return reclassified
+
+
+def _parse_ts(ts_str: str) -> Optional["datetime"]:
+    """Thin wrapper → canonical ``parse_clinical_date``."""
+    from server.utils.parse_date import parse_clinical_date
+    return parse_clinical_date(ts_str)
 
 
 async def _enrich_timeline_vision_connascence(
     vision: PatientTimelineVision,
     client: Any,
     question: str,
+    model: str = INGESTION_MODEL,
+    force_json_format: bool = True,
 ) -> PatientTimelineVision:
     """
-    Opportunistic connascence inference for PatientTimelineVision.
-    
-    Implements mechanical rules defined in:
-        PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md (v0.1)
-    
-    Phase 1 Rules (Mechanical, No LLM):
-    - Rule 1: Temporal connascence (±7 days)
-    - Rule 2: Diagnostic connascence (shared condition keywords, ≥4 chars)
-    - Rule 3: Lab trend connascence (same test over time)
-    - Rule 4: Treatment connascence (med → lab/symptom within 30 days)
-    
-    Pattern: probe -> inference -> update vision
-    See rubric for detailed rule definitions, parameters, and examples.
-    
-    Args:
-        vision: PatientTimelineVision with events
-        client: OpenAI client for LLM probe (reserved for Phase 2)
-        question: Original question for context (reserved for Phase 2)
-    
-    Returns:
-        Enriched PatientTimelineVision with connascence edges
+    Connascence enrichment — RUBRIC v0.2.
+
+    Mechanical rules (no LLM):
+      Rule 1: Temporal (≤7 days all-type, 7-14 days cross-type only, max 10 neighbors/event)
+      Rule 4: Treatment (med → lab/symptom/note 0-60 days)
+
+    LLM rules (batched per type):
+      Rule 2: Diagnostic — GPT-4.1 links diagnosis/procedure/symptom events
+               describing the same condition.
+      Rule 3: Lab trend — GPT-4.1 links repeated measurements of the same test.
     """
     from server.eoh.patient_timeline_vision import (
         CONNASCENCE_TEMPORAL,
@@ -2904,269 +4038,457 @@ async def _enrich_timeline_vision_connascence(
         CONNASCENCE_TREATMENT,
         CONNASCENCE_LAB_TREND,
     )
-    from datetime import datetime, timedelta
-    
+
     if not vision.events:
         return vision
-    
+
     events_list = list(vision.events.values())
-    
-    # --- Mechanical connascence rules (Phase 1) ---
-    # See: PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md v0.1
-    
-    # RUBRIC RULE 1: Temporal Connascence
-    # IF abs(event_a.timestamp - event_b.timestamp) <= 7 days
-    # THEN add_edge(event_a, event_b, type="temporal")
-    temporal_window_days = 7
-    for i, event_a in enumerate(events_list):
-        ts_a_str = event_a.timestamp
-        if not ts_a_str or ts_a_str == "unknown":
-            continue
-        
-        try:
-            # Try to parse date (MM/DD/YYYY or YYYY-MM-DD)
-            if "/" in ts_a_str:
-                ts_a = datetime.strptime(ts_a_str.split()[0], "%m/%d/%Y")
-            elif "-" in ts_a_str:
-                ts_a = datetime.strptime(ts_a_str.split("T")[0], "%Y-%m-%d")
-            else:
+
+    # -----------------------------------------------------------------------
+    # RULE 1: Temporal connascence — two windows, neighbor-capped
+    # -----------------------------------------------------------------------
+    # Narrow windows: the incremental 7-day pass during extraction already
+    # produces dense same-episode linkage.  This post-extraction pass adds
+    # cross-type bridges up to 14 days and keeps the per-event degree bounded
+    # so the graph does not degenerate into a near-complete graph for dense
+    # hospitalisation periods.
+    TEMPORAL_SHORT_DAYS = 7     # same-episode tight linkage (same as extraction pass)
+    TEMPORAL_CROSS_DAYS = 14    # cross-type bridge (replaces the former 30/90-day episode window)
+    MAX_TEMPORAL_NEIGHBORS = 10 # hard cap per event — prevents O(n²) explosion
+
+    dated: List[tuple] = []
+    for e in events_list:
+        dt = _parse_ts(e.timestamp)
+        if dt is not None:
+            dated.append((dt, e))
+    dated.sort(key=lambda x: x[0])
+
+    for i, (dt_a, ev_a) in enumerate(dated):
+        for dt_b, ev_b in dated[i + 1:]:
+            delta = (dt_b - dt_a).days
+            if delta > TEMPORAL_CROSS_DAYS:
+                break  # sorted — nothing further will qualify
+            already_a = len(ev_a.connascence.get(CONNASCENCE_TEMPORAL, []))
+            already_b = len(ev_b.connascence.get(CONNASCENCE_TEMPORAL, []))
+            if already_a >= MAX_TEMPORAL_NEIGHBORS and already_b >= MAX_TEMPORAL_NEIGHBORS:
+                continue  # both events already saturated
+            if delta <= TEMPORAL_SHORT_DAYS:
+                ev_a.add_connascence(CONNASCENCE_TEMPORAL, ev_b.event_id)
+                ev_b.add_connascence(CONNASCENCE_TEMPORAL, ev_a.event_id)
+            elif ev_a.event_type != ev_b.event_type:
+                # 7-14 day cross-type bridge (diagnosis↔lab, medication↔symptom, etc.)
+                ev_a.add_connascence(CONNASCENCE_TEMPORAL, ev_b.event_id)
+                ev_b.add_connascence(CONNASCENCE_TEMPORAL, ev_a.event_id)
+
+    logger.info("Connascence RULE 1 complete: %d temporal edges", vision.count_edges())
+
+    # -----------------------------------------------------------------------
+    # RULE 4: Treatment connascence (mechanical)
+    # -----------------------------------------------------------------------
+    MED_TYPES = {"medication", "med", "rx", "drug", "prescription"}
+    RESPONSE_TYPES = {"lab", "symptom", "note", "imaging"}
+    TREATMENT_WINDOW_DAYS = 60  # extended from 30 to catch slower drug responses
+
+    med_dated = [(dt, e) for dt, e in dated if e.event_type in MED_TYPES]
+    resp_dated = [(dt, e) for dt, e in dated if e.event_type in RESPONSE_TYPES]
+
+    for med_dt, med_ev in med_dated:
+        for resp_dt, resp_ev in resp_dated:
+            delta_days = (resp_dt - med_dt).days
+            if delta_days < 0:
                 continue
-        except Exception:
-            continue
-        
-        for event_b in events_list[i+1:]:
-            ts_b_str = event_b.timestamp
-            if not ts_b_str or ts_b_str == "unknown":
-                continue
-            
-            try:
-                if "/" in ts_b_str:
-                    ts_b = datetime.strptime(ts_b_str.split()[0], "%m/%d/%Y")
-                elif "-" in ts_b_str:
-                    ts_b = datetime.strptime(ts_b_str.split("T")[0], "%Y-%m-%d")
-                else:
-                    continue
-            except Exception:
-                continue
-            
-            delta = abs((ts_a - ts_b).days)
-            if delta <= temporal_window_days:
-                event_a.add_connascence(CONNASCENCE_TEMPORAL, event_b.event_id)
-                event_b.add_connascence(CONNASCENCE_TEMPORAL, event_a.event_id)
-    
-    # RUBRIC RULE 2 & 3: LLM-Based Connascence Inference
-    # Call GPT-5.1 for precise diagnostic and lab trend connascence
-    # Passes: rubric, events, vision metadata for precision
+            if delta_days > TREATMENT_WINDOW_DAYS:
+                break
+            med_ev.add_connascence(CONNASCENCE_TREATMENT, resp_ev.event_id)
+            resp_ev.add_connascence(CONNASCENCE_TREATMENT, med_ev.event_id)
+
+    logger.info(
+        "Connascence RULE 4 complete: %d total edges after treatment pass",
+        vision.count_edges(),
+    )
+
+    # -----------------------------------------------------------------------
+    # RULES 2 & 3: LLM-based diagnostic + lab_trend (batched)
+    # -----------------------------------------------------------------------
     try:
-        vision = await _infer_llm_connascence(
+        vision = await _infer_llm_connascence_batched(
             vision=vision,
             client=client,
             question=question,
-            connascence_types=[CONNASCENCE_DIAGNOSTIC, CONNASCENCE_LAB_TREND],
+            model=model,
+            force_json_format=force_json_format,
         )
     except Exception:
-        logger.exception("LLM-based connascence inference failed; continuing with temporal/treatment only")
-    
-    # RUBRIC RULE 4: Treatment Connascence
-    # IF event_a.event_type IN ("medication", "med", "rx")
-    # AND event_b.event_type IN ("lab", "symptom", "note")
-    # AND 0 <= (event_b.timestamp - event_a.timestamp).days <= 30
-    # THEN add_edge(event_a, event_b, type="treatment")
-    med_events = [e for e in events_list if e.event_type in ("medication", "med", "rx")]
-    for med_event in med_events:
-        med_ts_str = med_event.timestamp
-        if not med_ts_str or med_ts_str == "unknown":
-            continue
-        
-        try:
-            if "/" in med_ts_str:
-                med_ts = datetime.strptime(med_ts_str.split()[0], "%m/%d/%Y")
-            elif "-" in med_ts_str:
-                med_ts = datetime.strptime(med_ts_str.split("T")[0], "%Y-%m-%d")
-            else:
-                continue
-        except Exception:
-            continue
-        
-        # Find labs/symptoms within 30 days after medication
-        for event in events_list:
-            if event.event_id == med_event.event_id:
-                continue
-            if event.event_type not in ("lab", "symptom", "note"):
-                continue
-            
-            event_ts_str = event.timestamp
-            if not event_ts_str or event_ts_str == "unknown":
-                continue
-            
-            try:
-                if "/" in event_ts_str:
-                    event_ts = datetime.strptime(event_ts_str.split()[0], "%m/%d/%Y")
-                elif "-" in event_ts_str:
-                    event_ts = datetime.strptime(event_ts_str.split("T")[0], "%Y-%m-%d")
-                else:
-                    continue
-            except Exception:
-                continue
-            
-            delta_days = (event_ts - med_ts).days
-            if 0 <= delta_days <= 30:  # Within 30 days after medication
-                med_event.add_connascence(CONNASCENCE_TREATMENT, event.event_id)
-                event.add_connascence(CONNASCENCE_TREATMENT, med_event.event_id)
-    
+        logger.exception("LLM connascence inference failed; continuing with mechanical edges only")
+
     logger.info(
-        "PatientTimelineVision: connascence enrichment complete (RUBRIC v0.1 - temporal/treatment mechanical, diagnostic/lab_trend LLM-based)"
+        "Connascence enrichment complete (RUBRIC v0.2): %d total edges across %d events",
+        vision.count_edges(),
+        len(vision.events),
     )
-    
     return vision
 
 
-async def _infer_llm_connascence(
+async def _infer_llm_connascence_batched(
     vision: PatientTimelineVision,
     client: Any,
     question: str,
-    connascence_types: List[str],
-) -> PatientTimelineVision:
+    batch_size: int = 300,
+    model: str = INGESTION_MODEL,
+    force_json_format: bool = True,
+) -> PatientTimelineVision:  # also mutates vision.metadata["degradation"]
     """
-    Use GPT-5.1 to infer precise connascence edges.
-    
-    This function calls the LLM with:
-    - PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md rules
-    - All events with metadata
-    - Patient context from original question
-    
-    The LLM returns precise edge recommendations based on the rubric.
-    
-    Args:
-        vision: PatientTimelineVision with events
-        client: OpenAI async client
-        question: Original question for patient context
-        connascence_types: List of connascence types to infer (e.g., ["diagnostic", "lab_trend"])
-    
-    Returns:
-        PatientTimelineVision with LLM-inferred edges added
+    Batched LLM connascence inference for diagnostic and lab_trend edges.
+
+    Runs one set of batched calls per type:
+      - diagnostic: diagnosis + procedure + symptom events
+      - lab_trend:  lab events
+
+    Each batch is capped at batch_size events. Multiple batches are run
+    sequentially per type if the event count exceeds batch_size.
     """
     from pathlib import Path
-    
-    # Load rubric for LLM context
+    from server.eoh.patient_timeline_vision import (
+        CONNASCENCE_DIAGNOSTIC,
+        CONNASCENCE_LAB_TREND,
+    )
+
     rubric_path = Path(__file__).parent / "PATIENT_TIMELINE_CONNASCENCE_RUBRIC.md"
     try:
         rubric_text = rubric_path.read_text(encoding="utf-8")
     except Exception:
         logger.warning("Could not load connascence rubric; skipping LLM inference")
         return vision
-    
-    # Prepare events for LLM (limit to relevant types + sample if too many)
-    events_for_llm = []
-    for event in vision.events.values():
-        # Only include events relevant to requested connascence types
-        if "diagnostic" in connascence_types and event.event_type in ("diagnosis", "procedure"):
-            events_for_llm.append(event)
-        elif "lab_trend" in connascence_types and event.event_type == "lab":
-            events_for_llm.append(event)
-    
-    if not events_for_llm:
-        return vision
-    
-    # Limit to prevent context overflow (sample if needed)
-    max_events_per_call = 200
-    if len(events_for_llm) > max_events_per_call:
-        # Sample evenly across timeline
-        step = len(events_for_llm) // max_events_per_call
-        events_for_llm = events_for_llm[::step][:max_events_per_call]
-    
-    # Format events for LLM
-    events_payload = []
-    for event in events_for_llm:
-        events_payload.append({
-            "event_id": event.event_id,
-            "event_type": event.event_type,
-            "timestamp": event.timestamp,
-            "preview": event.preview[:300],  # Cap preview length
-        })
-    
-    # System prompt with rubric
-    system_prompt = f"""You are a medical timeline connascence analyst.
 
-Your task: Identify precise connascence edges between timeline events according to the rubric below.
+    # Degradation receipt — written into vision.metadata so it survives serialization.
+    degradation: Dict[str, Any] = vision.metadata.setdefault("degradation", {})
+    degradation.setdefault("connascence_batches_failed", 0)
+    degradation.setdefault("connascence_batches_failed_detail", [])
 
-{rubric_text}
+    type_buckets = {
+        CONNASCENCE_DIAGNOSTIC: [
+            e for e in vision.events.values()
+            if e.event_type in ("diagnosis", "procedure", "symptom", "flare")
+        ],
+        CONNASCENCE_LAB_TREND: [
+            e for e in vision.events.values()
+            if e.event_type == "lab"
+        ],
+    }
 
-CRITICAL INSTRUCTIONS:
-1. Only infer edges for the requested connascence types: {', '.join(connascence_types)}
-2. Be PRECISE: Only link events if they clearly meet the rubric criteria
-3. Return a JSON list of edges: [{{"event_a_id": "...", "event_b_id": "...", "type": "diagnostic|lab_trend", "reasoning": "..."}}]
-4. If no edges meet the criteria, return an empty list: []
-5. DO NOT hallucinate edges. Precision > recall.
+    total_llm_edges = 0
 
-Patient context: {question}
-"""
-    
-    user_prompt = json.dumps({
-        "task": "infer_connascence_edges",
-        "connascence_types": connascence_types,
-        "events": events_payload,
-        "instructions": "Return precise edges that meet rubric criteria. Format: [{event_a_id, event_b_id, type, reasoning}]"
-    }, cls=DateTimeJSONEncoder)
-    
-    # Call LLM
-    try:
-        resp = await chat_completion_async(
-            client=client,
-            model="gpt-4o",  # Use latest available model (GPT-5.1 / GPT-4o)
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.0,  # Precision, not creativity
-            response_format={"type": "json_object"},
-        )
-        
-        if iscoroutine(resp):
-            resp = await resp
-        
-        raw = _safe_get_choice_content(resp)
-        data = json.loads(raw) if raw else {}
-        edges = data.get("edges") or []
-        
-        if not isinstance(edges, list):
-            logger.warning("LLM connascence inference returned non-list edges; skipping")
-            return vision
-        
-        # Apply LLM-recommended edges
-        edges_added = 0
-        for edge in edges:
-            event_a_id = edge.get("event_a_id")
-            event_b_id = edge.get("event_b_id")
-            conn_type = edge.get("type")
-            reasoning = edge.get("reasoning", "")
-            
-            if not event_a_id or not event_b_id or not conn_type:
-                continue
-            
-            if event_a_id not in vision.events or event_b_id not in vision.events:
-                continue
-            
-            if conn_type not in connascence_types:
-                continue
-            
-            # Add bidirectional edge
-            event_a = vision.events[event_a_id]
-            event_b = vision.events[event_b_id]
-            event_a.add_connascence(conn_type, event_b_id)
-            event_b.add_connascence(conn_type, event_a_id)
-            edges_added += 1
-        
+    for conn_type, bucket in type_buckets.items():
+        if not bucket:
+            continue
+
+        # Sort chronologically where possible
+        _DT_MIN_UTC = datetime.min.replace(tzinfo=timezone.utc)
+        bucket.sort(key=lambda e: (_parse_ts(e.timestamp) or _DT_MIN_UTC))
+
+        # Split into batches
+        batches = [bucket[i: i + batch_size] for i in range(0, len(bucket), batch_size)]
         logger.info(
-            "LLM connascence inference: %d edges added (types: %s)",
-            edges_added,
-            ', '.join(connascence_types)
+            "LLM connascence %s: %d events → %d batch(es)", conn_type, len(bucket), len(batches)
         )
-    
-    except Exception:
-        logger.exception("LLM connascence inference failed")
-    
+
+        for batch_idx, batch in enumerate(batches):
+            events_payload = [
+                {
+                    "event_id": e.event_id,
+                    "event_type": e.event_type,
+                    "timestamp": e.timestamp,
+                    "preview": (e.preview or "")[:250],
+                }
+                for e in batch
+            ]
+
+            system_prompt = (
+                f"You are a medical timeline connascence analyst (RUBRIC v0.2).\n\n"
+                f"{rubric_text}\n\n"
+                f"TASK: Identify '{conn_type}' edges between the events provided.\n"
+                f"Patient context: {question[:300]}\n\n"
+                f"OUTPUT FORMAT — return a JSON object:\n"
+                f'{{"edges": [{{"event_a_id": "...", "event_b_id": "...", '
+                f'"type": "{conn_type}", "reasoning": "..."}}]}}\n\n'
+                f"RULES:\n"
+                f"1. Only return type='{conn_type}' edges.\n"
+                f"2. Only link events if they CLEARLY meet the rubric criteria.\n"
+                f"3. Precision over recall — no hallucinations.\n"
+                f"4. If no clear edges exist, return: {{\"edges\": []}}\n"
+            )
+
+            user_content = json.dumps(
+                {
+                    "task": f"infer_{conn_type}_edges",
+                    "batch": f"{batch_idx + 1}/{len(batches)}",
+                    "event_count": len(events_payload),
+                    "events": events_payload,
+                },
+                cls=DateTimeJSONEncoder,
+            )
+
+            try:
+                conn_call_kwargs: Dict[str, Any] = dict(
+                    max_tokens=16_384,
+                    temperature=0.0,
+                )
+                if force_json_format:
+                    conn_call_kwargs["response_format"] = {"type": "json_object"}
+
+                resp = await chat_completion_async(
+                    client=client,
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                    **conn_call_kwargs,
+                )
+                if iscoroutine(resp):
+                    resp = await resp
+
+                raw = _safe_get_choice_content(resp)
+                # Gracefully handle truncated JSON: extract any complete edge
+                # objects that were emitted before the token limit was hit.
+                data: Dict[str, Any] = {}
+                if raw:
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        # Attempt partial recovery — collect complete {...} objects
+                        # from the "edges" array before the truncation point.
+                        import re as _re
+                        partial_edges = _re.findall(
+                            r'\{[^{}]*"event_a_id"[^{}]*"event_b_id"[^{}]*\}', raw
+                        )
+                        if partial_edges:
+                            recovered = []
+                            for pe in partial_edges:
+                                try:
+                                    recovered.append(json.loads(pe))
+                                except json.JSONDecodeError:
+                                    pass
+                            if recovered:
+                                logger.warning(
+                                    "LLM connascence %s batch %d: JSON truncated; "
+                                    "recovered %d/%d+ edges via partial parse",
+                                    conn_type, batch_idx + 1, len(recovered), len(partial_edges),
+                                )
+                                data = {"edges": recovered}
+                            else:
+                                logger.warning(
+                                    "LLM connascence %s batch %d: JSON truncated and "
+                                    "partial recovery found no complete edge objects; skipping",
+                                    conn_type, batch_idx + 1,
+                                )
+                        else:
+                            logger.warning(
+                                "LLM connascence %s batch %d: JSON parse failed; skipping",
+                                conn_type, batch_idx + 1,
+                            )
+                edges = data.get("edges") or []
+
+                if not isinstance(edges, list):
+                    logger.warning(
+                        "LLM connascence %s batch %d: unexpected response shape; skipping",
+                        conn_type, batch_idx + 1,
+                    )
+                    continue
+
+                batch_edges_added = 0
+                for edge in edges:
+                    a_id = edge.get("event_a_id")
+                    b_id = edge.get("event_b_id")
+                    etype = edge.get("type")
+                    if not a_id or not b_id or etype != conn_type:
+                        continue
+                    if a_id not in vision.events or b_id not in vision.events:
+                        continue
+                    vision.events[a_id].add_connascence(conn_type, b_id)
+                    vision.events[b_id].add_connascence(conn_type, a_id)
+                    batch_edges_added += 1
+
+                total_llm_edges += batch_edges_added
+                logger.info(
+                    "LLM connascence %s batch %d/%d: +%d edges",
+                    conn_type, batch_idx + 1, len(batches), batch_edges_added,
+                )
+
+            except Exception:
+                logger.exception(
+                    "LLM connascence %s batch %d/%d failed; skipping batch",
+                    conn_type, batch_idx + 1, len(batches),
+                )
+                degradation["connascence_batches_failed"] += 1
+                degradation["connascence_batches_failed_detail"].append({
+                    "conn_type": conn_type,
+                    "batch": batch_idx + 1,
+                    "of": len(batches),
+                    "events_in_batch": len(batch),
+                })
+
+    if degradation["connascence_batches_failed"] > 0:
+        logger.warning(
+            "LLM connascence degraded: %d batch(es) failed — graph is incomplete. "
+            "See vision.metadata['degradation'] for details.",
+            degradation["connascence_batches_failed"],
+        )
+
+    logger.info("LLM connascence complete: +%d edges total", total_llm_edges)
     return vision
+
+
+def _split_uniform_timeline_chunks(text: str, *, target_chars: int, max_chunks: int) -> List[str]:
+    """Split plain text into up to max_chunks segments, each ~target_chars (last may be short)."""
+    n = len(text)
+    if n == 0:
+        return []
+    if n <= target_chars:
+        return [text]
+    chunks_needed = (n + target_chars - 1) // target_chars
+    if chunks_needed <= max_chunks:
+        return [text[i : i + target_chars] for i in range(0, n, target_chars)]
+    base = n // max_chunks
+    rem = n % max_chunks
+    out: List[str] = []
+    pos = 0
+    for k in range(max_chunks):
+        sz = base + (1 if k < rem else 0)
+        out.append(text[pos : pos + sz])
+        pos += sz
+    return out
+
+
+def _split_timeline_into_chunks(
+    timeline_text: str,
+    *,
+    target_chars: int,
+    max_chunks_floor: int,
+) -> List[str]:
+    """
+    Map/reduce segments for huge timelines when DB RAG is unavailable (e.g. PDF-only import).
+
+    Splits on ``=== Page N ===`` when present; otherwise fixed-size slices. Segment count
+    scales with timeline length up to HIERARCHICAL_MAX_CHUNKS_CAP.
+    """
+    text = (timeline_text or "").strip()
+    if not text:
+        return []
+
+    total = len(text)
+    min_segments = max(1, (total + target_chars - 1) // target_chars)
+    max_chunks = min(HIERARCHICAL_MAX_CHUNKS_CAP, max(max_chunks_floor, min_segments))
+
+    page_blocks = re.split(r"(?m)(?=^=== Page \d+ ===\s*$)", text)
+    page_blocks = [b.strip() for b in page_blocks if b.strip()]
+
+    if len(page_blocks) <= 1:
+        return _split_uniform_timeline_chunks(text, target_chars=target_chars, max_chunks=max_chunks)
+
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+
+    for b in page_blocks:
+        extra = len(b) + (2 if cur else 0)
+        if cur and cur_len + extra > target_chars and len(chunks) < max_chunks - 1:
+            chunks.append("\n\n".join(cur))
+            cur = [b]
+            cur_len = len(b)
+        else:
+            cur.append(b)
+            cur_len += extra
+
+    if cur:
+        chunks.append("\n\n".join(cur))
+
+    while len(chunks) > max_chunks:
+        chunks[-2] = chunks[-2] + "\n\n" + chunks[-1]
+        chunks.pop()
+
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# Graph context helper for reduce step
+# ---------------------------------------------------------------------------
+
+def _compact_graph_for_reduce(
+    vision: "PatientTimelineVision",
+    max_chars: int = 60_000,
+) -> Dict[str, Any]:
+    """
+    Serialize the enriched PatientTimelineVision into a compact, LLM-readable
+    dict grouped by event_type.
+
+    Structure returned:
+      {
+        "event_counts": {"diagnosis": N, "lab": N, ...},
+        "events_by_type": {
+          "diagnosis": [{"ts": ..., "preview": ..., "connascence": {...}}, ...],
+          ...
+        },
+        "edges": [{"from": id, "to": id, "type": kind}, ...]
+      }
+
+    Fits within max_chars (approximate) by truncating previews and capping
+    the number of events per type proportionally.
+    """
+    from collections import defaultdict
+
+    events_by_type: Dict[str, list] = defaultdict(list)
+    for e in vision.events.values():
+        events_by_type[e.event_type].append(e)
+
+    # Sort each bucket chronologically
+    for bucket in events_by_type.values():
+        bucket.sort(key=lambda e: e.timestamp or "")
+
+    event_counts = {k: len(v) for k, v in events_by_type.items()}
+
+    # Budget chars per type proportionally
+    total_events = max(sum(event_counts.values()), 1)
+    chars_for_events = int(max_chars * 0.75)
+
+    compact_events: Dict[str, list] = {}
+    used = 0
+    for etype, bucket in sorted(events_by_type.items()):
+        type_budget = int(chars_for_events * len(bucket) / total_events)
+        rows = []
+        for e in bucket:
+            row = {
+                "ts": e.timestamp,
+                "preview": (e.preview or "")[:120],
+            }
+            if e.connascence:
+                row["connascence"] = {k: v for k, v in e.connascence.items()}
+            row_str = json.dumps(row)
+            if used + len(row_str) > type_budget + 200:
+                break
+            rows.append(row)
+            used += len(row_str)
+        compact_events[etype] = rows
+
+    # Edges (flat list)
+    edges: list = []
+    chars_for_edges = max_chars - used
+    edge_used = 0
+    for event in vision.events.values():
+        for conn_type, targets in event.connascence.items():
+            for target_id in targets:
+                edge = {"from": event.event_id, "to": target_id, "type": conn_type}
+                s = json.dumps(edge)
+                if edge_used + len(s) > chars_for_edges:
+                    break
+                edges.append(edge)
+                edge_used += len(s)
+
+    return {
+        "event_counts": event_counts,
+        "events_by_type": compact_events,
+        "edges": edges,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3182,6 +4504,7 @@ async def summarize_timeline_for_eoh(
     pool: Any | None = None,
     patient_id: str | None = None,
     use_timeline_rag: bool | None = None,
+    timeline_vision: Optional[PatientTimelineVision] = None,
 ) -> TimelineSummaries:
     """
     Main entrypoint used by the EoH stack.
@@ -3198,7 +4521,23 @@ async def summarize_timeline_for_eoh(
         3) Run a final "reduce" summary.
 
     - On *any* catastrophic failure, we fall back to a truncated raw timeline.
+
+    After producing summaries (when `patient_id` is set), loads or creates
+    `PatientTimelineVision` and runs opportunistic graph enrichment from the
+    composed summary fields. Pass `timeline_vision` to enrich an in-memory
+    graph (e.g. PDF session import) instead of loading from disk.
     """
+
+    async def _finalize(summaries: TimelineSummaries, step_id: str) -> TimelineSummaries:
+        await _enrich_patient_timeline_vision_from_summarizer(
+            patient_id,
+            question,
+            summaries,
+            step_id,
+            timeline_vision=timeline_vision,
+        )
+        return summaries
+
     try:
         if not timeline_text or not timeline_text.strip():
             logger.warning("Timeline summarizer received empty timeline_text.")
@@ -3230,7 +4569,7 @@ async def summarize_timeline_for_eoh(
                 "mode": "single_pass",
                 "timeline_text": timeline_text,
             }
-            return await _call_timeline_summarizer_model(
+            single = await _call_timeline_summarizer_model(
                 client,
                 question=question,
                 payload=payload,
@@ -3240,6 +4579,7 @@ async def summarize_timeline_for_eoh(
                     "Produce concise but information-dense JSON fields as specified."
                 ),
             )
+            return await _finalize(single, "single_pass")
 
         # -------------------------------------------------------------------
         # 1b) Probe+RAG path for very large timelines (preferred)
@@ -3270,6 +4610,7 @@ async def summarize_timeline_for_eoh(
                     timeline_text=timeline_text,
                     client=client,
                     max_context_chars=min(40_000, total_chars),
+                    timeline_vision=timeline_vision,
                 )
 
                 canonical = rag_context.strip()
@@ -3285,9 +4626,14 @@ async def summarize_timeline_for_eoh(
                 except Exception:
                     logger.debug("Timeline summarizer: meds/labs snapshot build failed", exc_info=True)
 
-                return TimelineSummaries(
-                    timeline_summary=canonical,
-                    meds_and_labs_snapshot=meds_labs,
+                probe_te = probe_debug.get("timeline_enrichment")
+                return await _finalize(
+                    TimelineSummaries(
+                        timeline_summary=canonical,
+                        meds_and_labs_snapshot=meds_labs,
+                        timeline_enrichment=probe_te if isinstance(probe_te, dict) else None,
+                    ),
+                    "probe_rag",
                 )
 
             except Exception:
@@ -3295,9 +4641,12 @@ async def summarize_timeline_for_eoh(
                     "Timeline summarizer: PROBE+RAG mode failed; using truncated raw timeline as canonical summary (no hierarchical map/reduce)."
                 )
                 canonical = (timeline_text or "")[:SUMMARY_MAX_CHARS].strip()
-                return TimelineSummaries(
-                    timeline_summary=canonical,
-                    meds_and_labs_snapshot="",
+                return await _finalize(
+                    TimelineSummaries(
+                        timeline_summary=canonical,
+                        meds_and_labs_snapshot="",
+                    ),
+                    "probe_rag_fallback",
                 )
 
         # -------------------------------------------------------------------
@@ -3308,19 +4657,19 @@ async def summarize_timeline_for_eoh(
             total_chars,
             SINGLE_PASS_CHAR_THRESHOLD,
         )
-        chunks = []
-
-        # chunks = _split_timeline_into_chunks(
-        #     timeline_text,
-        #     target_chars=CHUNK_TARGET_CHAR_LEN,
-        #     max_chunks=MAX_CHUNKS,
-        # )
+        chunks = _split_timeline_into_chunks(
+            timeline_text,
+            target_chars=CHUNK_TARGET_CHAR_LEN,
+            max_chunks_floor=MAX_CHUNKS,
+        )
         n_chunks = len(chunks)
         logger.info(
-            "Timeline summarizer: split into %d chunk(s) (target=%d chars, max_chunks=%d).",
+            "Timeline summarizer: split into %d chunk(s) (target=%d chars/floor, cap=%d); "
+            "sizes=%s",
             n_chunks,
             CHUNK_TARGET_CHAR_LEN,
-            MAX_CHUNKS,
+            HIERARCHICAL_MAX_CHUNKS_CAP,
+            str([len(c) for c in chunks[:8]]) + ("…" if n_chunks > 8 else ""),
         )
 
         # Map step: summarize each chunk.
@@ -3386,7 +4735,7 @@ async def summarize_timeline_for_eoh(
             raise RuntimeError("no_chunk_summaries")
 
         # Reduce step: aggregate chunk-level summaries into a global view.
-        reduce_payload = {
+        reduce_payload: Dict[str, Any] = {
             "mode": "reduce",
             "segments": [
                 {
@@ -3401,6 +4750,39 @@ async def summarize_timeline_for_eoh(
                 for i, s in enumerate(chunk_summaries)
             ],
         }
+
+        # Inject enriched graph if available — gives the reducer structured,
+        # cross-timeline knowledge (typed events + connascence edges) that the
+        # raw text chunks cannot provide in aggregate.
+        if timeline_vision is not None and timeline_vision.events:
+            try:
+                reduce_payload["enriched_graph"] = _compact_graph_for_reduce(
+                    timeline_vision, max_chars=60_000
+                )
+                logger.info(
+                    "Timeline summarizer reduce: injecting enriched graph "
+                    "(%d events, %d edges) into reduce payload.",
+                    len(timeline_vision.events),
+                    timeline_vision.count_edges(),
+                )
+            except Exception:
+                logger.warning("Timeline summarizer: graph compaction failed; skipping.", exc_info=True)
+
+        graph_hint = ""
+        if "enriched_graph" in reduce_payload:
+            graph_hint = textwrap.dedent(
+                """
+                The payload also contains an `enriched_graph` field. This is a
+                structured, typed view of the patient's clinical graph — events
+                grouped by type (diagnosis, lab, med, procedure, note, visit) with
+                connascence edges linking related events. Use it to:
+                - Cross-check diagnoses and their linked lab/treatment events.
+                - Identify temporal and causal chains not obvious from raw text.
+                - Surface diagnostic arcs that span multiple timeline segments.
+                Treat the graph as ground-truth provenance; prefer it over raw text
+                when there is a conflict.
+                """
+            ).strip()
 
         reduce_hint = textwrap.dedent(
             """
@@ -3424,6 +4806,9 @@ async def summarize_timeline_for_eoh(
             """
         ).strip()
 
+        if graph_hint:
+            reduce_hint = f"{reduce_hint}\n\n{graph_hint}"
+
         final_summaries = await _call_timeline_summarizer_model(
             client,
             question=question,
@@ -3432,14 +4817,17 @@ async def summarize_timeline_for_eoh(
             extra_system_hint=reduce_hint,
         )
 
-        return final_summaries
+        return await _finalize(final_summaries, "hierarchical_reduce")
 
     except Exception as e:
         logger.error("Timeline summarizer call failed; falling back to truncated timeline: %s", e)
 
         canonical = (timeline_text or "")[:SUMMARY_MAX_CHARS].strip()
 
-        return TimelineSummaries(
-            timeline_summary=canonical,
-            meds_and_labs_snapshot="",
+        return await _finalize(
+            TimelineSummaries(
+                timeline_summary=canonical,
+                meds_and_labs_snapshot="",
+            ),
+            "truncated_fallback",
         )

@@ -5,6 +5,8 @@
 #          eoh_detective_stream_get.
 
 from .rag_stream_shared import *  # noqa: F401,F403
+from .rag_stream_shared import _chat_completion_async, _openai_client
+from .rag_stream_eoh import eoh_stream_event_generator
 
 async def eoh_detective_planner(
     *,
@@ -147,6 +149,55 @@ async def eoh_detective_planner(
     return plan
 
 
+def _compact_report_payload(report_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a context-budget-safe payload for the final detective report LLM.
+
+    The full step_summaries can exceed 128k tokens because they include raw
+    citation arrays and step meta.  The synthesis LLM only needs:
+      - the high-level question & focus
+      - a compact timeline snapshot (summary + landscape, not raw events)
+      - per-step: question, answer text, and evidence map claims
+    """
+    snapshot = report_payload.get("timeline_snapshot") or {}
+    compact_snapshot: Dict[str, Any] = {
+        "patient_id": report_payload.get("patient_id"),
+        "span_days": snapshot.get("span_days"),
+        "key_signals": snapshot.get("key_signals"),
+        "diagnostic_landscape": snapshot.get("diagnostic_landscape"),
+        "diagnostic_landscape_history": snapshot.get("diagnostic_landscape_history"),
+    }
+    ts_summary = snapshot.get("timeline_summary") or ""
+    if ts_summary:
+        compact_snapshot["timeline_summary"] = ts_summary[:6000]
+
+    compact_steps: List[Dict[str, Any]] = []
+    for s in report_payload.get("steps") or []:
+        step_entry: Dict[str, Any] = {
+            "step_id": s.get("step_id"),
+            "kind": s.get("kind"),
+            "question_type": s.get("planner_question_type"),
+            "q": s.get("q"),
+            "answer_text": (s.get("answer_text") or "")[:8000],
+        }
+        emap = s.get("evidence_map")
+        if isinstance(emap, dict):
+            step_entry["evidence_claims"] = emap.get("claims", [])
+        # Compact citation list: just source + title, no nested metadata
+        cites = s.get("citations") or []
+        step_entry["citation_sources"] = [
+            {"source": c.get("source", ""), "title": c.get("title", "")}
+            for c in (cites[:20] if isinstance(cites, list) else [])
+        ]
+        compact_steps.append(step_entry)
+
+    return {
+        "high_level_question": report_payload.get("high_level_question"),
+        "focus": report_payload.get("focus"),
+        "timeline_snapshot": compact_snapshot,
+        "steps": compact_steps,
+    }
+
+
 async def detective_report_llm(
     client: OpenAI,
     report_payload: Dict[str, Any],
@@ -154,18 +205,11 @@ async def detective_report_llm(
     """
     Final EoH Detective report LLM.
 
-    Input:
-      - report_payload: {
-          "high_level_question": str,
-          "patient_id": str,
-          "focus": str,
-          "timeline_snapshot": {...},
-          "steps": [ {step_summaries...} ],
-        }
-
-    Returns:
-      - report_text: markdown-like string following EOH_DETECTIVE_REPORT_SYSTEM_PROMPT
+    Builds a compact payload from step answers + evidence maps (NOT raw
+    citations or full timeline) so the synthesis stays within context limits.
     """
+    compact = _compact_report_payload(report_payload)
+
     resp = await _chat_completion_async(
         model=CHAT_MODEL_GUIDELINES,
         messages=[
@@ -176,7 +220,7 @@ async def detective_report_llm(
             {
                 "role": "user",
                 "content": json.dumps(
-                    report_payload,
+                    compact,
                     ensure_ascii=False,
                     cls=DateTimeJSONEncoder,
                 ),
@@ -256,169 +300,229 @@ async def eoh_detective_stream_event_generator(
         return
 
     # -----------------------------------------------------------------------
-    # 1) Build timeline snapshot for planner + final report
-    #     (Detective is the owner of the one-time timeline summarizer call.)
+    # 1) Load graph FIRST, then build timeline snapshot
+    #    Graph is the primary structured source when available.
+    #    Legacy raw-text summarizer is fallback only.
     # -----------------------------------------------------------------------
     timeline_snapshot: Optional[Dict[str, Any]] = None
     diag_payload: Optional[Dict[str, Any]] = None
     timeline_summary_for_planner: Optional[str] = None
+    detective_vision: Optional[PatientTimelineVision] = None
+    detective_chart: Optional[PatientTimelineChart] = None
+    graph_available = False
+    enrichment_queue: List[Dict[str, Any]] = []
 
+    # --- 1a) Try to load graph from Postgres first ---
     try:
-        events = await load_patient_timeline(timeline_patient_id)
-        timeline_ctx_local = await timeline_engine.build_timeline_context_from_events(
-            events, timeline_patient_id
-        )
-
-        # Diagnostic landscape payload
-        if timeline_ctx_local.diagnostic_landscape:
-            dl = timeline_ctx_local.diagnostic_landscape
-            if hasattr(dl, "to_payload") and callable(dl.to_payload):
-                diag_payload = dl.to_payload()
-            elif hasattr(dl, "to_normalized_dict") and callable(dl.to_normalized_dict):
-                diag_payload = {"weights": dl.to_normalized_dict()}
-            elif isinstance(dl, dict):
-                diag_payload = dl
+        graph_ready = await is_graph_ready_pg(pool, timeline_patient_id)
+        if graph_ready:
+            detective_vision = await load_timeline_vision_pg(pool, timeline_patient_id)
+            if detective_vision and detective_vision.events:
+                detective_chart = PatientTimelineChart()
+                chart_count = await detective_chart.load_from_pg(pool, timeline_patient_id)
+                graph_available = chart_count > 0
+                logger.info(
+                    "eoh_detective: graph loaded — %d events, %d edges, %d chart pts",
+                    len(detective_vision.events), detective_vision.count_edges(), chart_count,
+                )
+                yield sse(
+                    "status",
+                    {
+                        "status": "graph_loaded",
+                        "detail": f"Graph: {len(detective_vision.events)} events, {detective_vision.count_edges()} edges, {chart_count} chart embeddings",
+                        "patient_id": timeline_patient_id,
+                        "graph_events": len(detective_vision.events),
+                        "graph_edges": detective_vision.count_edges(),
+                        "chart_points": chart_count,
+                        "graph_available": True,
+                    },
+                )
             else:
-                diag_payload = None
+                logger.info("eoh_detective: graph in Postgres but empty, skipping")
+                detective_vision = None
         else:
-            diag_payload = None
+            logger.info("eoh_detective: no ready graph for %s, will use legacy mode", timeline_patient_id)
+    except Exception:
+        logger.warning("eoh_detective: failed to load graph from Postgres", exc_info=True)
 
-        # Landscape history
-        history = timeline_engine.compute_landscape_history_from_events(
-            events, timeline_patient_id
+    if await request.is_disconnected():
+        return
+
+    # --- 1b) Build timeline snapshot from graph or legacy ---
+    if graph_available and detective_vision is not None:
+        # ----- GRAPH-BASED SNAPSHOT (no legacy raw-text summarizer needed) -----
+        try:
+            yield sse(
+                "status",
+                {
+                    "status": "building_graph_snapshot",
+                    "detail": "Building timeline snapshot from graph (skipping legacy summarizer)",
+                    "patient_id": timeline_patient_id,
+                },
+            )
+
+            snap = detective_vision.snapshot()
+            types_summary = snap.get("types", {})
+
+            summary_lines = [f"Patient: {timeline_patient_id}"]
+            summary_lines.append(f"Graph: {snap['total_events']} events, {snap['total_edges']} edges")
+            summary_lines.append("")
+            for etype, info in types_summary.items():
+                line = f"  {etype}: {info['count']} events"
+                if "first" in info and "last" in info:
+                    line += f" ({info['first']} \u2192 {info['last']})"
+                summary_lines.append(line)
+
+            from collections import defaultdict as _dd
+            _by_type: Dict[str, list] = _dd(list)
+            for ev in detective_vision.events.values():
+                _by_type[ev.event_type].append(ev)
+
+            key_signals_from_graph: List[Dict[str, Any]] = []
+            for etype in ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]:
+                for ev in sorted(
+                    _by_type.get(etype, []),
+                    key=lambda e: e.timestamp or "~",
+                )[:5]:
+                    key_signals_from_graph.append({
+                        "ts": ev.timestamp,
+                        "event_type": ev.event_type,
+                        "summary": (ev.preview or "")[:200],
+                    })
+
+            # Diagnostic landscape from legacy timeline (lightweight, still useful)
+            history = None
+            try:
+                events = await load_patient_timeline(timeline_patient_id)
+                timeline_ctx_local = await timeline_engine.build_timeline_context_from_events(
+                    events, timeline_patient_id
+                )
+                if timeline_ctx_local.diagnostic_landscape:
+                    dl = timeline_ctx_local.diagnostic_landscape
+                    if hasattr(dl, "to_payload") and callable(dl.to_payload):
+                        diag_payload = dl.to_payload()
+                    elif hasattr(dl, "to_normalized_dict") and callable(dl.to_normalized_dict):
+                        diag_payload = {"weights": dl.to_normalized_dict()}
+                    elif isinstance(dl, dict):
+                        diag_payload = dl
+                history = timeline_engine.compute_landscape_history_from_events(
+                    events, timeline_patient_id
+                )
+            except Exception:
+                logger.debug("eoh_detective: landscape from legacy timeline unavailable", exc_info=True)
+
+            # Compute span from visit date range
+            visit_info = types_summary.get("visit", {})
+            span_days = 0
+            if visit_info.get("first") and visit_info.get("last"):
+                try:
+                    from server.utils.parse_date import parse_clinical_date as _pcd
+                    d0 = _pcd(visit_info["first"])
+                    d1 = _pcd(visit_info["last"])
+                    if d0 and d1:
+                        span_days = (d1 - d0).days
+                except Exception:
+                    pass
+
+            canonical_summary = "\n".join(summary_lines)
+            timeline_snapshot = {
+                "patient_id": timeline_patient_id,
+                "span_days": span_days,
+                "key_signals": key_signals_from_graph,
+                "diagnostic_landscape": diag_payload,
+                "diagnostic_landscape_history": history,
+                "timeline_summary": canonical_summary,
+                "graph_shape": types_summary,
+            }
+
+            yield sse(
+                "detective_timeline_snapshot",
+                {
+                    "patient_id": timeline_patient_id,
+                    "source": "graph",
+                    "span_days": span_days,
+                    "has_diag_landscape": bool(diag_payload),
+                    "has_timeline_summary": True,
+                    "graph_shape": types_summary,
+                    "key_signals_count": len(key_signals_from_graph),
+                    "key_signals": key_signals_from_graph[:25],
+                },
+            )
+
+            logger.info(
+                "eoh_detective: snapshot from graph — %d types, %d key signals, span %d days",
+                len(types_summary), len(key_signals_from_graph), span_days,
+            )
+
+        except Exception:
+            logger.exception("eoh_detective: graph snapshot failed, falling through to legacy")
+            graph_available = False
+            timeline_snapshot = None
+
+    if not graph_available:
+        # ----- LEGACY PATH: raw PDF text + LLM summarizer -----
+        yield sse(
+            "status",
+            {
+                "status": "graph_not_available",
+                "detail": "No pre-built graph. Using legacy timeline summarizer.",
+                "patient_id": timeline_patient_id,
+                "graph_available": False,
+            },
         )
 
-        # -------------------------------------------------------------------
-        # 1a) One-time timeline summarizer LLM (Detective owns this)
-        # -------------------------------------------------------------------
-        timeline_summaries: Optional[TimelineSummaries] = None
         try:
-            # Emit a status event before we call the summarizer
+            events = await load_patient_timeline(timeline_patient_id)
+            timeline_ctx_local = await timeline_engine.build_timeline_context_from_events(
+                events, timeline_patient_id
+            )
+
+            if timeline_ctx_local.diagnostic_landscape:
+                dl = timeline_ctx_local.diagnostic_landscape
+                if hasattr(dl, "to_payload") and callable(dl.to_payload):
+                    diag_payload = dl.to_payload()
+                elif hasattr(dl, "to_normalized_dict") and callable(dl.to_normalized_dict):
+                    diag_payload = {"weights": dl.to_normalized_dict()}
+                elif isinstance(dl, dict):
+                    diag_payload = dl
+
+            history = timeline_engine.compute_landscape_history_from_events(
+                events, timeline_patient_id
+            )
+
+            timeline_summaries: Optional[TimelineSummaries] = None
             try:
                 yield sse(
                     "status",
                     {
                         "status": "timeline_summarizer_start",
-                        "detail": "Running timeline summarizer (PROBE+RAG or hierarchical, depending on size and flags).",
+                        "detail": "Running legacy timeline summarizer (no graph available).",
                         "patient_id": timeline_patient_id,
                         "timeline_chars": len(timeline_ctx_local.context_text or ""),
-                        "event_count": len(events or []),
                     },
                 )
+                timeline_summaries = await asyncio.wait_for(
+                    summarize_timeline_for_eoh(
+                        client=_openai_client,
+                        question=q,
+                        timeline_text=timeline_ctx_local.context_text,
+                        pool=pool,
+                        patient_id=timeline_patient_id,
+                    ),
+                    timeout=DETECTIVE_SUMMARIZER_TIMEOUT_S,
+                )
+                yield sse("status", {"status": "timeline_summarizer_done", "patient_id": timeline_patient_id})
             except Exception:
-                logger.debug(
-                    "eoh_detective: failed to emit timeline_summarizer_start SSE",
-                    exc_info=True,
-                )
+                logger.exception("eoh_detective: legacy timeline summarizer failed")
+                timeline_summaries = None
 
-            timeline_summaries = await asyncio.wait_for(
-                summarize_timeline_for_eoh(
-                    client=_openai_client,
-                    question=q,
-                    timeline_text=timeline_ctx_local.context_text,
-                    pool=pool,
-                    patient_id=timeline_patient_id,
-                ),
-                timeout=DETECTIVE_SUMMARIZER_TIMEOUT_S,
-            )
-        except Exception:
-            logger.exception("eoh_detective: timeline summarizer failed")
-            timeline_summaries = None
-
-        # Emit SSE describing what the summarizer produced
-        try:
-            if timeline_summaries is not None:
-                full_len = len(timeline_summaries.timeline_summary or "")
-                router_len = len(timeline_summaries.timeline_summary or "")
-                valyu_len = len(timeline_summaries.valyu_summary or "")
-                query_terms_len = len(
-                    timeline_summaries.timeline_summary or ""
-                )
-                meds_labs_len = len(
-                    timeline_summaries.meds_and_labs_snapshot or ""
-                )
-
-                # High-level meta event
-                yield sse(
-                    "timeline_summarizer_result",
-                    {
-                        "patient_id": timeline_patient_id,
-                        "full_len": full_len,
-                        "router_len": router_len,
-                        "valyu_len": valyu_len,
-                        "query_terms_len": query_terms_len,
-                        "meds_and_labs_len": meds_labs_len,
-                        "has_full": bool(full_len),
-                        "has_router": bool(router_len),
-                        "has_valyu": bool(valyu_len),
-                        "has_query_terms": bool(query_terms_len),
-                        "has_meds_and_labs": bool(meds_labs_len),
-                    },
-                )
-
-                # Optional: send a compact view of query-term helper text
-                if timeline_summaries.timeline_summary:
-                    yield sse(
-                        "timeline_summarizer_query_terms",
-                        {
-                            "patient_id": timeline_patient_id,
-                            # Trim so we don’t blow up the stream; this is for UI/debug.
-                            "summary": timeline_summaries.timeline_summary[
-                                :4000
-                            ],
-                        },
-                    )
-
-                # Optional: send meds/labs snapshot as its own event
-                if timeline_summaries.meds_and_labs_snapshot:
-                    yield sse(
-                        "timeline_summarizer_meds_labs_snapshot",
-                        {
-                            "patient_id": timeline_patient_id,
-                            "snapshot": timeline_summaries.meds_and_labs_snapshot[
-                                :4000
-                            ],
-                        },
-                    )
-
-                # Small status marker so UI can show "timeline summarizer done"
-                yield sse(
-                    "status",
-                    {
-                        "status": "timeline_summarizer_done",
-                        "detail": "Timeline summarizer completed.",
-                        "patient_id": timeline_patient_id,
-                    },
-                )
-
-        except Exception:
-            logger.debug(
-                "eoh_detective: failed to emit timeline summarizer SSE events",
-                exc_info=True,
-            )
-
-        if await request.is_disconnected():
-            return
-
-        # Router-style summary for planner / router (fallback-safe)
-        try:
-            # Canonical summary for ALL downstream LLMs (router, Valyu, EoH steps)
-            # TimelineSummaries already gives you a single canonical story, but we
-            # defensively fall back if needed.
             canonical_summary = (
                 (timeline_summaries.timeline_summary if timeline_summaries else None)
-                or timeline_summary_for_planner
                 or timeline_ctx_local.context_text
                 or ""
             )
-
             if len(canonical_summary) > SUMMARY_MAX_CHARS:
                 canonical_summary = canonical_summary[:SUMMARY_MAX_CHARS]
-
-            if not canonical_summary:
-                canonical_summary = timeline_ctx_local.context_text or ""
-
-            probe_debug = getattr(timeline_summaries, "probe_debug", None) if timeline_summaries else None
 
             timeline_snapshot = {
                 "patient_id": timeline_patient_id,
@@ -428,84 +532,52 @@ async def eoh_detective_stream_event_generator(
                 "diagnostic_landscape": diag_payload,
                 "diagnostic_landscape_history": history,
                 "timeline_summary": canonical_summary,
-                "timeline_meds_and_labs_snapshot": (
-                    timeline_summaries.meds_and_labs_snapshot if timeline_summaries else ""
-                ),
             }
 
-            if probe_debug is not None:
-                timeline_snapshot["timeline_probe"] = probe_debug
-
-            # Optional SSE for detective UI
+            _compact_signals = [
+                {
+                    "ts": sig.get("ts"),
+                    "event_type": sig.get("event_type"),
+                    "summary": (sig.get("summary") or "")[:200],
+                }
+                for sig in (timeline_ctx_local.key_signals or [])[:25]
+            ]
             yield sse(
                 "detective_timeline_snapshot",
                 {
                     "patient_id": timeline_patient_id,
+                    "source": "legacy",
                     "span_days": timeline_ctx_local.span_days,
                     "has_diag_landscape": bool(diag_payload),
                     "has_timeline_summary": bool(canonical_summary),
-                    "key_signals": timeline_ctx_local.key_signals,
+                    "key_signals_count": len(timeline_ctx_local.key_signals or []),
+                    "key_signals": _compact_signals,
                 },
             )
 
         except Exception:
-            logger.exception("eoh_detective: failed to build router-style summary for timeline snapshot")
-            # Fallback: use raw context_text if available
-            if timeline_ctx_local:
-                canonical_summary = timeline_ctx_local.context_text or ""
-                timeline_snapshot = {
-                    "patient_id": timeline_patient_id,
-                    "span_days": timeline_ctx_local.span_days,
-                    "key_signals": timeline_ctx_local.key_signals,
-                    "flare_features": timeline_ctx_local.flare_features,
-                    "diagnostic_landscape": diag_payload,
-                    "diagnostic_landscape_history": history,
-                    "timeline_summary": canonical_summary,
-                }
-            else:
-                timeline_snapshot = None
+            logger.exception("eoh_detective: failed to build legacy timeline snapshot")
+            timeline_snapshot = None
+            diag_payload = None
 
-    except Exception:
-        logger.exception("eoh_detective: failed to build timeline snapshot")
-        timeline_snapshot = None
-        diag_payload = None
-        timeline_summary_for_planner = None
-
-    # -----------------------------------------------------------------------
-    # 1b) Load or create PatientTimelineVision for graph enrichment
-    # -----------------------------------------------------------------------
-    detective_vision: Optional[PatientTimelineVision] = None
-    try:
-        detective_vision = load_timeline_vision(timeline_patient_id)
-        if not detective_vision.patient_id:
-            detective_vision = PatientTimelineVision(
-                patient_id=timeline_patient_id,
-                built_at=datetime.utcnow().isoformat(),
-                session_only=False,
-                metadata={"source": "detective_run"},
-            )
-        logger.info(
-            "eoh_detective: loaded vision graph — %d events, %d edges",
-            len(detective_vision.events), detective_vision.count_edges(),
-        )
-        yield sse(
-            "status",
-            {
-                "status": "vision_graph_loaded",
-                "detail": f"Timeline vision graph: {len(detective_vision.events)} events, {detective_vision.count_edges()} edges",
-                "patient_id": timeline_patient_id,
-                "graph_events": len(detective_vision.events),
-                "graph_edges": detective_vision.count_edges(),
-            },
-        )
-    except Exception:
-        logger.warning("eoh_detective: could not load vision graph, creating empty", exc_info=True)
-        detective_vision = PatientTimelineVision(
-            patient_id=timeline_patient_id,
-            built_at=datetime.utcnow().isoformat(),
-            session_only=False,
-            metadata={"source": "detective_run"},
-        )
+        # Fall back to file-based vision for opportunistic enrichment
+        if detective_vision is None:
+            try:
+                detective_vision = load_timeline_vision(timeline_patient_id)
+                if not detective_vision.patient_id:
+                    detective_vision = PatientTimelineVision(
+                        patient_id=timeline_patient_id,
+                        built_at=datetime.utcnow().isoformat(),
+                        session_only=False,
+                        metadata={"source": "detective_run"},
+                    )
+            except Exception:
+                detective_vision = PatientTimelineVision(
+                    patient_id=timeline_patient_id,
+                    built_at=datetime.utcnow().isoformat(),
+                    session_only=False,
+                    metadata={"source": "detective_run"},
+                )
 
     # -----------------------------------------------------------------------
     # 2) Plan creation (planner sees timeline snapshot)
@@ -594,6 +666,7 @@ async def eoh_detective_stream_event_generator(
 
         step_citations = None
         step_meta = None
+        step_evidence_map: Optional[Dict[str, Any]] = None
         step_answer_buffer: List[str] = []
 
         # Build a compact, router-safe patient_state JSON
@@ -602,6 +675,29 @@ async def eoh_detective_stream_event_generator(
             if timeline_snapshot
             else None
         )
+
+        # Graph probe per step — build structured per-type docs
+        step_graph_context: Optional[str] = None
+        step_graph_context_docs: Optional[List[Dict[str, Any]]] = None
+        step_graph_event_ids: List[str] = []
+        if graph_available and detective_chart and detective_vision:
+            try:
+                from server.eoh.patient_timeline_chart import build_graph_context_docs
+                step_graph_context_docs = build_graph_context_docs(
+                    detective_vision, detective_chart, step_q,
+                    sem_k=15, ts_k=15, traverse_depth=2, max_nodes=25,
+                )
+                for doc in (step_graph_context_docs or []):
+                    step_graph_event_ids.extend(
+                        (doc.get("meta") or {}).get("event_ids", [])
+                    )
+                logger.info(
+                    "eoh_detective: graph probe for step %s — %d docs, %d event IDs",
+                    step_id, len(step_graph_context_docs or []), len(step_graph_event_ids),
+                )
+            except Exception:
+                logger.warning("eoh_detective: graph probe failed for step %s", step_id, exc_info=True)
+                step_graph_context_docs = None
 
         # Inner EoH stream generator
         inner_gen = eoh_stream_event_generator(
@@ -621,10 +717,12 @@ async def eoh_detective_stream_event_generator(
             pool=pool,
             patient_state=compact_patient_state,
             debug=step_debug,
-            use_timeline=True,
+            use_timeline=not graph_available,
             timeline_patient_id=timeline_patient_id,
             research=research,
             enable_gap=enable_gap,
+            graph_context=step_graph_context,
+            graph_context_docs=step_graph_context_docs,
         )
 
         step_t0 = time.perf_counter()
@@ -680,12 +778,15 @@ async def eoh_detective_stream_event_generator(
                 except Exception:
                     data_obj = None
 
-            # Intercept citations/meta for detective summary
+            # Intercept citations/meta/evidence_map for detective summary
             try:
-                if wrapped_ev["event"] == "citations" and isinstance(data_obj, dict):
+                ev_type = wrapped_ev["event"]
+                if ev_type == "citations" and isinstance(data_obj, dict):
                     step_citations = data_obj.get("citations")
-                elif wrapped_ev["event"] == "end" and isinstance(data_obj, dict):
+                elif ev_type == "end" and isinstance(data_obj, dict):
                     step_meta = data_obj.get("meta")
+                elif ev_type == "evidence_map" and isinstance(data_obj, dict):
+                    step_evidence_map = data_obj
             except Exception:
                 logger.debug(
                     "eoh_detective: failed to parse inner event for summary",
@@ -734,6 +835,8 @@ async def eoh_detective_stream_event_generator(
                 "planner_question_type": step["question_type"],
                 "router_question_type": (step_meta or {}).get("question_type"),
                 "q": step_q,
+                "answer_text": step_answer_text,
+                "evidence_map": step_evidence_map,
                 "citations": step_citations,
                 "meta": step_meta,
             }
@@ -783,6 +886,8 @@ async def eoh_detective_stream_event_generator(
                         "patient_id": timeline_patient_id,
                         "events_added": enrich_stats.get("events_added", 0),
                         "edges_added": enrich_stats.get("edges_added", 0),
+                        "causal_annotations_added": enrich_stats.get("causal_annotations_added", 0),
+                        "confounder_annotations_added": enrich_stats.get("confounder_annotations_added", 0),
                         "graph_events_total": len(detective_vision.events),
                         "graph_edges_total": detective_vision.count_edges(),
                         "elapsed_ms": enrich_stats.get("elapsed_ms", 0),
@@ -791,10 +896,12 @@ async def eoh_detective_stream_event_generator(
                 )
 
                 logger.info(
-                    "eoh_detective: graph enrichment step=%s +%d events +%d edges (total: %d events, %d edges)",
+                    "eoh_detective: graph enrichment step=%s +%d events +%d edges +%d causal +%d confounders (total: %d events, %d edges)",
                     step_id,
                     enrich_stats.get("events_added", 0),
                     enrich_stats.get("edges_added", 0),
+                    enrich_stats.get("causal_annotations_added", 0),
+                    enrich_stats.get("confounder_annotations_added", 0),
                     len(detective_vision.events),
                     detective_vision.count_edges(),
                 )
@@ -813,7 +920,21 @@ async def eoh_detective_stream_event_generator(
     # -----------------------------------------------------------------------
     if detective_vision is not None:
         try:
-            save_timeline_vision(detective_vision)
+            if graph_available:
+                await save_timeline_vision_pg(pool, detective_vision)
+                # Re-embed any nodes that were enriched during the run
+                if detective_chart and enrichment_queue:
+                    affected_ids = []
+                    for eq in enrichment_queue:
+                        affected_ids.extend(eq.get("event_ids", []))
+                    if affected_ids:
+                        re_count = detective_chart.re_embed(detective_vision, affected_ids)
+                        if re_count > 0:
+                            await detective_chart.save_to_pg(pool, timeline_patient_id)
+                            logger.info("eoh_detective: re-embedded %d nodes after enrichment", re_count)
+            else:
+                save_timeline_vision(detective_vision)
+
             logger.info(
                 "eoh_detective: saved vision graph — %d events, %d edges",
                 len(detective_vision.events), detective_vision.count_edges(),
@@ -826,6 +947,8 @@ async def eoh_detective_stream_event_generator(
                     "patient_id": timeline_patient_id,
                     "graph_events": len(detective_vision.events),
                     "graph_edges": detective_vision.count_edges(),
+                    "graph_available": graph_available,
+                    "enrichments_applied": len(enrichment_queue),
                 },
             )
         except Exception:
@@ -861,6 +984,7 @@ async def eoh_detective_stream_event_generator(
     # -----------------------------------------------------------------------
     # 5) Generate final detective report (final EoH Detective LLM)
     # -----------------------------------------------------------------------
+    report_text: Optional[str] = None
     if with_llm:
         try:
             report_payload = {
@@ -907,6 +1031,195 @@ async def eoh_detective_stream_event_generator(
                 },
             )
 
+    # -----------------------------------------------------------------------
+    # 5b) Graph analysis figures + agent interpretation
+    # -----------------------------------------------------------------------
+    report_figures: List[Dict[str, Any]] = []
+    figure_interpretations: List[str] = []
+
+    if detective_vision is not None and len(detective_vision.events) > 10:
+        try:
+            yield sse(
+                "status",
+                {
+                    "status": "graph_analysis_start",
+                    "detail": "Generating graph analysis figures",
+                    "patient_id": timeline_patient_id,
+                },
+            )
+
+            from server.eoh.graph_figures import generate_all_figures
+            report_figures = generate_all_figures(detective_vision)
+            n_figs = sum(1 for f in report_figures if f.get("png_bytes"))
+            logger.info("eoh_detective: generated %d graph figures", n_figs)
+
+            yield sse(
+                "status",
+                {
+                    "status": "graph_analysis_done",
+                    "detail": f"Generated {n_figs} graph analysis figures",
+                    "patient_id": timeline_patient_id,
+                    "figure_count": n_figs,
+                },
+            )
+
+            # Agent interpretation of each figure
+            if n_figs > 0 and with_llm:
+                try:
+                    yield sse(
+                        "status",
+                        {
+                            "status": "figure_interpretation_start",
+                            "detail": "Agent interpreting graph analysis results",
+                            "patient_id": timeline_patient_id,
+                        },
+                    )
+
+                    fig_summaries = []
+                    for fig in report_figures:
+                        if fig.get("png_bytes"):
+                            fig_summaries.append({
+                                "title": fig["title"],
+                                "caption": fig["caption"],
+                            })
+
+                    interp_resp = await asyncio.wait_for(
+                        _chat_completion_async(
+                            model=CHAT_MODEL_UTIL,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are a clinical data analyst interpreting graph analysis "
+                                        "results from a patient's electronic health record timeline graph. "
+                                        "For each figure, provide a 2-3 sentence clinical interpretation "
+                                        "of what the analysis reveals about the patient's health trajectory, "
+                                        "treatment patterns, or data quality. Be specific and actionable. "
+                                        "Do NOT give medical advice. Return a JSON array of strings, one "
+                                        "interpretation per figure, in the same order as the input."
+                                    ),
+                                },
+                                {
+                                    "role": "user",
+                                    "content": json.dumps({
+                                        "patient_id": timeline_patient_id,
+                                        "question": q,
+                                        "final_report_excerpt": (report_text or "")[:2000],
+                                        "figures": fig_summaries,
+                                    }, ensure_ascii=False),
+                                },
+                            ],
+                            response_format={"type": "json_object"},
+                            temperature=0.2,
+                        ),
+                        timeout=30,
+                    )
+
+                    raw_interp = json.loads(interp_resp.choices[0].message.content or "{}") 
+                    if isinstance(raw_interp, dict):
+                        figure_interpretations = raw_interp.get("interpretations", [])
+                        if not figure_interpretations:
+                            for v in raw_interp.values():
+                                if isinstance(v, list):
+                                    figure_interpretations = v
+                                    break
+                    elif isinstance(raw_interp, list):
+                        figure_interpretations = raw_interp
+
+                    logger.info("eoh_detective: generated %d figure interpretations", len(figure_interpretations))
+
+                except Exception:
+                    logger.warning("eoh_detective: figure interpretation failed", exc_info=True)
+
+        except Exception:
+            logger.warning("eoh_detective: graph figure generation failed", exc_info=True)
+
+    # -----------------------------------------------------------------------
+    # 6) Persist run to Postgres + generate PDF
+    # -----------------------------------------------------------------------
+    run_id: Optional[str] = None
+    pdf_path: Optional[str] = None
+    try:
+        from server.eoh.detective_report_pdf import build_detective_pdf, save_detective_pdf
+
+        pdf_bytes = build_detective_pdf(
+            patient_id=timeline_patient_id,
+            question=q,
+            focus=detective_meta.get("focus", ""),
+            final_report=report_text,
+            steps=detective_meta["step_summaries"],
+            graph_events=graph_state.get("graph_events", 0),
+            graph_edges=graph_state.get("graph_edges", 0),
+            elapsed_ms=elapsed_ms,
+            figures=report_figures,
+            figure_interpretations=figure_interpretations,
+        )
+
+        import asyncpg as _apg
+        _pg_url = os.getenv(
+            "SYNC_DATABASE_URL",
+            "postgresql://2ndopinionmd@localhost:5432/2ndopinionmd",
+        )
+        _conn = await _apg.connect(_pg_url)
+        try:
+            row = await _conn.fetchrow(
+                """
+                INSERT INTO ehr.detective_runs
+                    (patient_id, question, focus, plan_json, steps_json,
+                     final_report, graph_events, graph_edges, elapsed_ms)
+                VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+                RETURNING run_id
+                """,
+                timeline_patient_id,
+                q,
+                detective_meta.get("focus"),
+                json.dumps(plan, ensure_ascii=False, cls=DateTimeJSONEncoder),
+                json.dumps(detective_meta["step_summaries"], ensure_ascii=False, cls=DateTimeJSONEncoder),
+                report_text,
+                graph_state.get("graph_events"),
+                graph_state.get("graph_edges"),
+                elapsed_ms,
+            )
+            run_id = str(row["run_id"]) if row else None
+        finally:
+            await _conn.close()
+
+        if run_id and pdf_bytes:
+            pdf_path = save_detective_pdf(
+                pdf_bytes, timeline_patient_id, run_id
+            )
+            # Update the row with pdf_path
+            _conn2 = await _apg.connect(_pg_url)
+            try:
+                await _conn2.execute(
+                    "UPDATE ehr.detective_runs SET pdf_path = $1 WHERE run_id = $2::uuid",
+                    pdf_path,
+                    run_id,
+                )
+            finally:
+                await _conn2.close()
+
+        yield sse(
+            "detective_run_saved",
+            {
+                "run_id": run_id,
+                "patient_id": timeline_patient_id,
+                "pdf_path": pdf_path,
+                "detail": f"Run persisted. PDF: {pdf_path or 'none'}",
+            },
+        )
+        logger.info("eoh_detective: run %s persisted, PDF: %s", run_id, pdf_path)
+
+    except Exception:
+        logger.exception("eoh_detective: failed to persist run or generate PDF")
+        yield sse(
+            "status",
+            {
+                "status": "detective_persist_error",
+                "detail": "Failed to persist run or generate PDF",
+            },
+        )
+
     # Final end marker
     yield sse(
         "end",
@@ -917,6 +1230,8 @@ async def eoh_detective_stream_event_generator(
                 "focus": detective_meta["focus"],
                 "n_steps": detective_meta["n_steps"],
                 "elapsed_ms": elapsed_ms,
+                "run_id": run_id,
+                "pdf_path": pdf_path,
             }
         },
     )

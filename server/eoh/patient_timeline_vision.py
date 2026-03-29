@@ -25,7 +25,9 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from server.utils.parse_date import parse_clinical_date
 
 # Connascence types (coupling between timeline events)
 CONNASCENCE_TEMPORAL = "temporal"  # Events close in time
@@ -163,6 +165,65 @@ class PatientTimelineVision:
             for conn_list in event.connascence.values():
                 total += len(conn_list)
         return total
+
+    def snapshot(self) -> Dict[str, Any]:
+        """The ``git ls-files`` of a patient timeline.
+
+        Produces a lightweight JSON-serializable dict that shows the shape
+        of the graph without the content.  An agent reads this first to
+        decide what to explore, zoom, traverse, or enrich.
+        """
+        from collections import Counter, defaultdict
+
+        type_counts: Counter[str] = Counter()
+        type_date_ranges: Dict[str, list] = defaultdict(list)
+        nodes: list = []
+
+        for e in self.events.values():
+            type_counts[e.event_type] += 1
+            if e.timestamp and e.timestamp.lower() not in ("unknown", "n/a", ""):
+                dt = parse_clinical_date(e.timestamp)
+                if dt:
+                    type_date_ranges[e.event_type].append(dt)
+
+            edge_summary: Dict[str, int] = {}
+            for kind, targets in e.connascence.items():
+                if targets:
+                    edge_summary[kind] = len(targets)
+
+            nodes.append({
+                "id": e.event_id,
+                "type": e.event_type,
+                "ts": e.timestamp or None,
+                "edges": edge_summary or None,
+            })
+
+        # Sort nodes chronologically (unknown timestamps last)
+        nodes.sort(key=lambda n: n["ts"] or "~")
+
+        # Per-type summary
+        type_summary: Dict[str, Any] = {}
+        for etype, count in type_counts.most_common():
+            entry: Dict[str, Any] = {"count": count}
+            dates = sorted(type_date_ranges.get(etype, []))
+            if dates:
+                entry["first"] = dates[0].strftime("%Y-%m-%d")
+                entry["last"] = dates[-1].strftime("%Y-%m-%d")
+                entry["parseable"] = len(dates)
+                if len(dates) >= 2:
+                    gaps = [(dates[i+1] - dates[i]).days for i in range(len(dates)-1)]
+                    entry["median_gap_days"] = sorted(gaps)[len(gaps)//2]
+                    entry["max_gap_days"] = max(gaps)
+            type_summary[etype] = entry
+
+        return {
+            "patient_id": self.patient_id,
+            "snapshot_at": _iso_now(),
+            "total_events": len(self.events),
+            "total_edges": self.count_edges(),
+            "types": type_summary,
+            "nodes": nodes,
+        }
     
     def save(self, path: str, force: bool = False) -> None:
         """
@@ -176,7 +237,9 @@ class PatientTimelineVision:
             # Session-only: no persistence (unless forced)
             return
         
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
     
@@ -244,6 +307,57 @@ class PatientTimelineVision:
         
         if to_event_id in self.events:
             self.events[to_event_id].add_connascence(kind, from_event_id)
+
+    def add_edge(
+        self,
+        *,
+        source_event_id: str,
+        target_event_id: str,
+        connascence_type: str,
+        strength: float = 1.0,
+        discovered_by: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Gap/synthesis agents: bidirectional link plus optional provenance on source event."""
+        self.add_connascence_link(source_event_id, target_event_id, connascence_type)
+        if not (discovered_by or metadata):
+            return
+        prov: Dict[str, Any] = {
+            "peer": target_event_id,
+            "kind": connascence_type,
+            "strength": strength,
+            "by": discovered_by,
+        }
+        if metadata:
+            prov.update(metadata)
+        if source_event_id in self.events:
+            self.events[source_event_id].annotations.setdefault("edge_provenance", []).append(prov)
+
+    def iter_connascence_edges(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Denormalized edges for LLM agents (deduped by sorted pair + kind)."""
+        seen: Set[Tuple[str, str, str]] = set()
+        out: List[Dict[str, Any]] = []
+        for eid, ev in self.events.items():
+            for kind, targets in ev.connascence.items():
+                for tid in targets:
+                    if tid not in self.events:
+                        continue
+                    a, b = sorted((eid, tid))
+                    key = (a, b, kind)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(
+                        {
+                            "source_event_id": eid,
+                            "target_event_id": tid,
+                            "connascence_type": kind,
+                            "strength": 1.0,
+                        }
+                    )
+                    if len(out) >= limit:
+                        return out
+        return out
     
     def get_events_by_type(self, event_type: str) -> List[TimelineEventVision]:
         """Get all events of a specific type."""
@@ -364,45 +478,63 @@ def _infer_temporal_connascence(vision: PatientTimelineVision, window_days: int 
     
     This is a simple heuristic to bootstrap connascence tracking.
     """
-    from datetime import datetime, timedelta
+    import logging
+    logger = logging.getLogger("server.eoh.timeline_summarizer")
     
-    # Sort events by timestamp
+    total_events = len(vision.events)
+    no_ts = 0
+    parse_fail = 0
+    parse_ok = 0
+    sample_fails: list[str] = []
+    edges_before = vision.count_edges()
+
     events_sorted = sorted(
         vision.events.values(),
         key=lambda e: e.timestamp if e.timestamp else ""
     )
     
-    for i, event in enumerate(events_sorted):
+    parseable: list[tuple[TimelineEventVision, datetime]] = []
+    for event in events_sorted:
         if not event.timestamp:
+            no_ts += 1
             continue
-        
-        try:
-            ts = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
-        except Exception:
+        dt = parse_clinical_date(event.timestamp)
+        if dt is None:
+            parse_fail += 1
+            if len(sample_fails) < 5:
+                sample_fails.append(event.timestamp)
             continue
-        
-        # Look at subsequent events within window
-        for j in range(i + 1, len(events_sorted)):
-            other = events_sorted[j]
-            if not other.timestamp:
-                continue
-            
-            try:
-                other_ts = datetime.fromisoformat(other.timestamp.replace("Z", "+00:00"))
-            except Exception:
-                continue
-            
+        parse_ok += 1
+        parseable.append((event, dt))
+
+    MAX_TEMPORAL_NEIGHBORS = 10
+    edges_added = 0
+    for i, (event, ts) in enumerate(parseable):
+        added = 0
+        for j in range(i + 1, len(parseable)):
+            if added >= MAX_TEMPORAL_NEIGHBORS:
+                break
+            other, other_ts = parseable[j]
             delta = abs((other_ts - ts).days)
             if delta <= window_days:
-                # Temporally coupled
                 vision.add_connascence_link(
                     from_event_id=event.event_id,
                     to_event_id=other.event_id,
                     kind=CONNASCENCE_TEMPORAL,
                 )
+                added += 1
+                edges_added += 1
             else:
-                # Beyond window; stop checking
                 break
+
+    edges_after = vision.count_edges()
+    logger.info(
+        "Temporal connascence pass: %d events total, %d no-timestamp, "
+        "%d parse-ok, %d parse-fail%s → +%d links (edges %d→%d)",
+        total_events, no_ts, parse_ok, parse_fail,
+        f" (samples: {sample_fails})" if sample_fails else "",
+        edges_added, edges_before, edges_after,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -434,18 +566,29 @@ def add_events_from_pdf_page(
         timestamp = event.get("timestamp", "")
         preview = event.get("preview", "")
         
+        annotations: Dict[str, Any] = {"pdf_page": page_num}
+        drug_name = event.get("drug_name")
+        if drug_name and isinstance(drug_name, str) and drug_name.strip():
+            annotations["drug_name"] = drug_name.strip()
+            annotations["drug_norm_source"] = "llm_extraction"
+        drug_dosage = event.get("drug_dosage")
+        if drug_dosage and isinstance(drug_dosage, str) and drug_dosage.strip():
+            annotations["drug_dosage"] = drug_dosage.strip()
+        drug_route = event.get("drug_route")
+        if drug_route and isinstance(drug_route, str) and drug_route.strip():
+            annotations["drug_route"] = drug_route.strip().lower()
+        
         vision.add_event(
             event_id=event_id,
             event_type=event_type,
             timestamp=timestamp,
             preview=preview,
             discovered_by=discovered_by,
-            annotations={"pdf_page": page_num},
+            annotations=annotations,
         )
     
-    # Re-infer temporal connascence after adding new events
-    # (This is lightweight; only checks new events against existing)
-    _infer_temporal_connascence(vision, window_days=7)
+    # Temporal connascence is now inferred once per batch in the caller
+    # (timeline_summarizer.py) rather than per-page, avoiding O(n²) rescans.
 
 
 # ---------------------------------------------------------------------------
@@ -475,4 +618,50 @@ def load_timeline_vision(patient_id: str, path: Optional[str] = None) -> Patient
         path = get_default_vision_path(patient_id)
     
     return PatientTimelineVision.load(path)
+
+
+# ---------------------------------------------------------------------------
+# Postgres persistence
+# ---------------------------------------------------------------------------
+
+async def load_timeline_vision_pg(pool, patient_id: str) -> Optional[PatientTimelineVision]:
+    """Load vision graph from ehr.patient_graph_vision. Returns None if not found."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT graph_json FROM ehr.patient_graph_vision WHERE patient_id = $1",
+            patient_id,
+        )
+    if not row:
+        return None
+    import json as _json
+    data = _json.loads(row["graph_json"]) if isinstance(row["graph_json"], str) else row["graph_json"]
+    return PatientTimelineVision.from_dict(data)
+
+
+async def save_timeline_vision_pg(pool, vision: PatientTimelineVision) -> None:
+    """Save vision graph to ehr.patient_graph_vision."""
+    if vision.session_only:
+        return
+    import json as _json
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO ehr.patient_graph_vision (patient_id, graph_json, updated_at)
+            VALUES ($1, $2::jsonb, NOW())
+            ON CONFLICT (patient_id)
+            DO UPDATE SET graph_json = EXCLUDED.graph_json, updated_at = NOW()
+            """,
+            vision.patient_id,
+            _json.dumps(vision.to_dict(), ensure_ascii=False),
+        )
+
+
+async def is_graph_ready_pg(pool, patient_id: str) -> bool:
+    """Check readiness gate in ehr.patient_graph_status."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT is_ready FROM ehr.patient_graph_status WHERE patient_id = $1",
+            patient_id,
+        )
+    return bool(row and row["is_ready"])
 
