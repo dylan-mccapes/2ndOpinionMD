@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 from server.eoh.patient_timeline_vision import (
+    ClinicalArc,
+    EDGE_PRIORITY,
     PatientTimelineVision,
     TimelineEventVision,
 )
@@ -521,6 +523,171 @@ def build_graph_context_docs(
                 "event_type": etype,
                 "event_count": len(events),
                 "edge_count": n_edges,
+                "event_ids": [ev.event_id for ev in events_sorted[:10]],
+            },
+        })
+
+    return docs
+
+
+# ------------------------------------------------------------------
+# Strategic retrieval helpers (arc-aware, topology-aware)
+# ------------------------------------------------------------------
+
+def build_arc_context_docs(
+    vision: PatientTimelineVision,
+    arc: ClinicalArc,
+    *,
+    max_events: int = 20,
+) -> List[Dict[str, Any]]:
+    """Build context docs for a single clinical arc's temporal spine.
+
+    Returns a list of context dicts (same schema as build_graph_context_docs)
+    containing the arc's events in chronological order grouped by type.
+    Useful when a detective step is investigating a specific arc via DFS.
+    """
+    spine = vision.dfs_temporal_spine(arc.event_ids)[:max_events]
+    if not spine:
+        return []
+
+    from collections import defaultdict as _dd
+    by_type: Dict[str, List[TimelineEventVision]] = _dd(list)
+    for ev in spine:
+        by_type[ev.event_type].append(ev)
+
+    docs: List[Dict[str, Any]] = []
+    for etype, events in sorted(by_type.items()):
+        lines = []
+        for ev in events[:10]:
+            ts = ev.timestamp or "unknown"
+            drug = ev.annotations.get("drug_name", "")
+            extra = f" [{drug}]" if drug else ""
+            lines.append(f"  \u2022 {ts}: {ev.preview[:150]}{extra}")
+
+        text = (
+            f"Arc \"{arc.name}\" \u2014 {etype} events "
+            f"({len(events)}/{len(arc.event_ids)} total in arc):\n"
+            + "\n".join(lines)
+        )
+
+        docs.append({
+            "id": f"arc:{arc.arc_id}:{etype}",
+            "source": "patient_graph_arc",
+            "source_id": f"patient_graph_arc:{arc.arc_id}:{etype}",
+            "title": f"Arc: {arc.name} \u2014 {etype.title()}",
+            "text": text,
+            "score": 1.0,
+            "method": "arc_dfs_spine",
+            "meta": {
+                "arc_id": arc.arc_id,
+                "arc_name": arc.name,
+                "event_type": etype,
+                "event_count": len(events),
+                "event_ids": [ev.event_id for ev in events[:10]],
+            },
+        })
+
+    return docs
+
+
+def build_cross_arc_context_docs(
+    vision: PatientTimelineVision,
+    *,
+    max_edges: int = 30,
+) -> List[Dict[str, Any]]:
+    """Build context docs from cross-arc edges.
+
+    Cross-arc edges are where diagnostic mysteries live: treatment in arc A
+    producing symptoms attributed to arc B, lab trends that span multiple
+    arcs, etc.  Returns a single context doc summarizing the cross-arc
+    connections for LLM consumption.
+    """
+    cross_edges = vision.walk_cross_arc_edges()
+    if not cross_edges:
+        return []
+
+    lines = []
+    for edge in cross_edges[:max_edges]:
+        lines.append(
+            f"  \u2022 [{edge['source_arc']}] {edge['source_preview'][:80]} "
+            f"\u2014({edge['edge_type']})\u2192 "
+            f"[{edge['target_arc']}] {edge['target_preview'][:80]}"
+        )
+
+    text = (
+        f"Cross-arc connections ({len(cross_edges)} edges across arc boundaries):\n"
+        + "\n".join(lines)
+    )
+
+    return [{
+        "id": "graph:cross_arc",
+        "source": "patient_graph",
+        "source_id": "patient_graph:cross_arc",
+        "title": "Patient Graph \u2014 Cross-Arc Connections",
+        "text": text,
+        "score": 1.0,
+        "method": "cross_arc_walk",
+        "meta": {
+            "edge_count": len(cross_edges),
+            "arcs_involved": list({
+                e["source_arc"] for e in cross_edges
+            } | {e["target_arc"] for e in cross_edges}),
+        },
+    }]
+
+
+def build_priority_context_docs(
+    vision: PatientTimelineVision,
+    seed_event_id: str,
+    *,
+    max_nodes: int = 25,
+) -> List[Dict[str, Any]]:
+    """Build context docs via priority-weighted traversal from a seed.
+
+    Follows highest-value edges first (causal > diagnostic > treatment >
+    temporal) so the agent gets the most clinically meaningful neighborhood
+    rather than just the closest-in-time events.
+    """
+    traversed_ids = vision.priority_traverse(seed_event_id, max_nodes=max_nodes)
+    if not traversed_ids:
+        return []
+
+    from collections import defaultdict as _dd
+    by_type: Dict[str, List[TimelineEventVision]] = _dd(list)
+    for eid in traversed_ids:
+        ev = vision.events.get(eid)
+        if ev:
+            by_type[ev.event_type].append(ev)
+
+    docs: List[Dict[str, Any]] = []
+    seed_ev = vision.events.get(seed_event_id)
+    seed_label = seed_ev.preview[:60] if seed_ev else seed_event_id
+
+    for etype, events in sorted(by_type.items()):
+        events_sorted = sorted(events, key=lambda e: e.timestamp or "~")
+        lines = []
+        for ev in events_sorted[:10]:
+            ts = ev.timestamp or "unknown"
+            lines.append(f"  \u2022 {ts}: {ev.preview[:150]}")
+
+        text = (
+            f"Priority traversal from \"{seed_label}\" \u2014 {etype} "
+            f"({len(events)} events):\n"
+            + "\n".join(lines)
+        )
+
+        docs.append({
+            "id": f"priority:{seed_event_id}:{etype}",
+            "source": "patient_graph",
+            "source_id": f"patient_graph:priority:{seed_event_id}:{etype}",
+            "title": f"Priority Neighborhood \u2014 {etype.title()}",
+            "text": text,
+            "score": 1.0,
+            "method": "priority_traverse",
+            "meta": {
+                "seed_event_id": seed_event_id,
+                "event_type": etype,
+                "event_count": len(events),
                 "event_ids": [ev.event_id for ev in events_sorted[:10]],
             },
         })

@@ -29,6 +29,22 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from server.utils.parse_date import parse_clinical_date
 
+# ---------------------------------------------------------------------------
+# Edge-type priority for priority-weighted traversal.
+# Higher value = more clinically meaningful = follow first.
+# ---------------------------------------------------------------------------
+EDGE_PRIORITY: Dict[str, int] = {
+    "caused_by": 100,
+    "confounded_by": 95,
+    "causal": 90,
+    "diagnostic": 80,
+    "treatment": 70,
+    "drug_response": 65,
+    "lab_trend": 60,
+    "symptom_cluster": 50,
+    "temporal": 10,
+}
+
 # Connascence types (coupling between timeline events)
 CONNASCENCE_TEMPORAL = "temporal"  # Events close in time
 CONNASCENCE_CAUSAL = "causal"  # One event caused/triggered another
@@ -118,6 +134,51 @@ class TimelineEventVision:
 
 
 @dataclass
+class ClinicalArc:
+    """A named subgraph representing a diagnostic thread or organ-system story.
+
+    Arcs are the macro-structure of a patient timeline. They partition events
+    into clinically coherent threads so an agent can reason at the right
+    abstraction level — not individual events (too granular) and not the whole
+    graph (too coarse).
+    """
+    arc_id: str
+    name: str
+    event_ids: List[str] = field(default_factory=list)
+    date_range: Tuple[str, str] = ("", "")
+    summary: str = ""
+    status: str = "unexplored"  # unexplored | partial | complete
+    open_questions: List[str] = field(default_factory=list)
+    cross_arc_edges: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "arc_id": self.arc_id,
+            "name": self.name,
+            "event_ids": list(self.event_ids),
+            "date_range": list(self.date_range),
+            "summary": self.summary,
+            "status": self.status,
+            "open_questions": list(self.open_questions),
+            "cross_arc_edges": list(self.cross_arc_edges),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ClinicalArc":
+        dr = data.get("date_range", ["", ""])
+        return cls(
+            arc_id=data.get("arc_id", ""),
+            name=data.get("name", ""),
+            event_ids=data.get("event_ids", []),
+            date_range=(dr[0] if len(dr) > 0 else "", dr[1] if len(dr) > 1 else ""),
+            summary=data.get("summary", ""),
+            status=data.get("status", "unexplored"),
+            open_questions=data.get("open_questions", []),
+            cross_arc_edges=data.get("cross_arc_edges", []),
+        )
+
+
+@dataclass
 class PatientTimelineVision:
     """
     Complete timeline vision for a patient (similar to RepoVision).
@@ -130,6 +191,7 @@ class PatientTimelineVision:
     session_only: bool = False  # If True, no persistence (in-memory only)
     
     events: Dict[str, TimelineEventVision] = field(default_factory=dict)
+    arcs: Dict[str, ClinicalArc] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -138,6 +200,7 @@ class PatientTimelineVision:
             "built_at": self.built_at,
             "session_only": self.session_only,
             "events": {eid: e.to_dict() for eid, e in self.events.items()},
+            "arcs": {aid: a.to_dict() for aid, a in self.arcs.items()},
             "metadata": self.metadata or {},
         }
     
@@ -146,15 +209,20 @@ class PatientTimelineVision:
         data = data if isinstance(data, dict) else {}
         events_section = data.get("events", {}) or {}
         events: Dict[str, TimelineEventVision] = {}
-        
         for eid, entry in events_section.items():
             events[eid] = TimelineEventVision.from_dict(entry)
-        
+
+        arcs_section = data.get("arcs", {}) or {}
+        arcs: Dict[str, ClinicalArc] = {}
+        for aid, arc_data in arcs_section.items():
+            arcs[aid] = ClinicalArc.from_dict(arc_data)
+
         return cls(
             patient_id=data.get("patient_id", ""),
             built_at=data.get("built_at", _iso_now()),
             session_only=bool(data.get("session_only", False)),
             events=events,
+            arcs=arcs,
             metadata=data.get("metadata") or {},
         )
     
@@ -389,6 +457,359 @@ class PatientTimelineVision:
                 result_ids.update(conn_list)
         
         return [self.events[eid] for eid in result_ids if eid in self.events]
+
+    # ------------------------------------------------------------------
+    # Topology primitives (pure graph algorithms, no LLM)
+    # ------------------------------------------------------------------
+
+    def topology_scan(self) -> Dict[str, Any]:
+        """Structural MRI of the graph. Runs before any LLM call.
+
+        Returns a JSON-serializable dict with:
+          - connected_components: sizes + sample event_ids per component
+          - orphan_events: events with zero edges (suspicious)
+          - hub_events: top-20 by degree
+          - temporal_gaps: date ranges > 90 days with no events
+          - edge_type_distribution: counts per connascence type
+          - density: edges / (V * (V-1)) for V > 1
+        """
+        from collections import Counter
+
+        components = self.connected_components()
+        hubs = self.find_hubs(top_k=20)
+        gaps = self.detect_temporal_gaps(min_gap_days=90)
+
+        edge_types: Counter[str] = Counter()
+        orphans: List[str] = []
+        for eid, ev in self.events.items():
+            degree = sum(len(t) for t in ev.connascence.values())
+            if degree == 0:
+                orphans.append(eid)
+            for kind, targets in ev.connascence.items():
+                edge_types[kind] += len(targets)
+
+        v = len(self.events)
+        total_edges = self.count_edges()
+        density = total_edges / (v * (v - 1)) if v > 1 else 0.0
+
+        return {
+            "total_events": v,
+            "total_edges": total_edges,
+            "density": round(density, 6),
+            "connected_components": [
+                {"size": len(c), "sample": c[:5]} for c in components
+            ],
+            "orphan_events": orphans[:50],
+            "orphan_count": len(orphans),
+            "hub_events": [
+                {"event_id": eid, "degree": deg, "by_type": bt}
+                for eid, deg, bt in hubs
+            ],
+            "temporal_gaps": gaps[:20],
+            "edge_type_distribution": dict(edge_types.most_common()),
+        }
+
+    def connected_components(self) -> List[List[str]]:
+        """Find disconnected subgraphs via BFS. Returns components sorted
+        largest-first. Isolated components may indicate orphan data, events
+        from a separate care system, or extraction gaps."""
+        from collections import deque
+
+        visited: Set[str] = set()
+        components: List[List[str]] = []
+
+        for eid in self.events:
+            if eid in visited:
+                continue
+            component: List[str] = []
+            queue: deque[str] = deque([eid])
+            while queue:
+                cur = queue.popleft()
+                if cur in visited:
+                    continue
+                visited.add(cur)
+                component.append(cur)
+                ev = self.events.get(cur)
+                if ev:
+                    for targets in ev.connascence.values():
+                        for tid in targets:
+                            if tid not in visited and tid in self.events:
+                                queue.append(tid)
+            components.append(component)
+
+        components.sort(key=len, reverse=True)
+        return components
+
+    def find_hubs(self, top_k: int = 20) -> List[Tuple[str, int, Dict[str, int]]]:
+        """Find highest-degree events (most connascence edges).
+
+        Returns list of (event_id, total_degree, {edge_type: count}).
+        High-degree events are clinical pivots — a diagnosis that connects
+        to dozens of labs, meds, and symptoms, or a hospitalization that
+        links multiple arcs.
+        """
+        scored: List[Tuple[str, int, Dict[str, int]]] = []
+        for eid, ev in self.events.items():
+            by_type: Dict[str, int] = {}
+            total = 0
+            for kind, targets in ev.connascence.items():
+                n = len(targets)
+                by_type[kind] = n
+                total += n
+            scored.append((eid, total, by_type))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:top_k]
+
+    def detect_temporal_gaps(
+        self,
+        min_gap_days: int = 90,
+    ) -> List[Dict[str, Any]]:
+        """Find silences in the timeline (periods > min_gap_days with no events).
+
+        Returns list of gaps with context about the events immediately before
+        and after each silence.  Record gaps in chronic patients often indicate
+        lost-to-follow-up periods, care system transitions, or extraction misses.
+        """
+        parseable: List[Tuple[str, datetime]] = []
+        for ev in self.events.values():
+            if not ev.timestamp:
+                continue
+            dt = parse_clinical_date(ev.timestamp)
+            if dt:
+                parseable.append((ev.event_id, dt))
+
+        parseable.sort(key=lambda x: x[1])
+
+        gaps: List[Dict[str, Any]] = []
+        for i in range(len(parseable) - 1):
+            eid_a, dt_a = parseable[i]
+            eid_b, dt_b = parseable[i + 1]
+            delta_days = (dt_b - dt_a).days
+            if delta_days >= min_gap_days:
+                ev_a = self.events.get(eid_a)
+                ev_b = self.events.get(eid_b)
+                gaps.append({
+                    "gap_start_event": eid_a,
+                    "gap_start_date": dt_a.strftime("%Y-%m-%d"),
+                    "gap_start_preview": ev_a.preview[:100] if ev_a else "",
+                    "gap_end_event": eid_b,
+                    "gap_end_date": dt_b.strftime("%Y-%m-%d"),
+                    "gap_end_preview": ev_b.preview[:100] if ev_b else "",
+                    "gap_days": delta_days,
+                })
+
+        gaps.sort(key=lambda g: g["gap_days"], reverse=True)
+        return gaps
+
+    # ------------------------------------------------------------------
+    # Traversal primitives
+    # ------------------------------------------------------------------
+
+    def dfs_temporal_spine(self, event_ids: List[str]) -> List[TimelineEventVision]:
+        """Trace a set of events in chronological order (DFS along time).
+
+        Unlike BFS (which radiates outward from a seed), this follows the
+        temporal thread of a clinical arc from first event to last. Pass an
+        arc's event_ids to get its narrative spine.
+        """
+        events_with_dates: List[Tuple[TimelineEventVision, Optional[datetime]]] = []
+        for eid in event_ids:
+            ev = self.events.get(eid)
+            if not ev:
+                continue
+            dt = parse_clinical_date(ev.timestamp) if ev.timestamp else None
+            events_with_dates.append((ev, dt))
+
+        events_with_dates.sort(key=lambda x: x[1] or datetime.max.replace(tzinfo=timezone.utc))
+        return [ev for ev, _ in events_with_dates]
+
+    def priority_traverse(
+        self,
+        seed_event_id: str,
+        max_nodes: int = 30,
+    ) -> List[str]:
+        """Traverse from a seed following highest-value edges first.
+
+        Priority order (from EDGE_PRIORITY):
+          caused_by > confounded_by > causal > diagnostic > treatment >
+          drug_response > lab_trend > symptom_cluster > temporal
+
+        This ensures the agent follows clinically meaningful paths first,
+        not just proximity-in-time edges.
+        """
+        if seed_event_id not in self.events:
+            return []
+
+        visited: Set[str] = set()
+        result: List[str] = []
+        # (negative priority for max-heap via sorted, event_id)
+        frontier: List[Tuple[int, str]] = [(-100, seed_event_id)]
+
+        while frontier and len(result) < max_nodes:
+            frontier.sort()
+            neg_pri, eid = frontier.pop(0)
+            if eid in visited:
+                continue
+            visited.add(eid)
+            result.append(eid)
+
+            ev = self.events.get(eid)
+            if not ev:
+                continue
+            for kind, targets in ev.connascence.items():
+                pri = EDGE_PRIORITY.get(kind, 5)
+                for tid in targets:
+                    if tid not in visited and tid in self.events:
+                        frontier.append((-pri, tid))
+
+        return result
+
+    def walk_cross_arc_edges(self) -> List[Dict[str, Any]]:
+        """Find all edges that connect events in different arcs.
+
+        Cross-arc edges are the highest-value signal in the graph:
+          - Treatment in arc A -> side effect attributed to arc B
+          - Lab trend in arc A deteriorates when arc B treatment escalates
+          - Diagnosis in arc A shares symptoms with arc C
+
+        Returns a list of dicts with source/target event_ids, arc labels,
+        edge type, and previews.
+        """
+        if not self.arcs:
+            return []
+
+        event_to_arc: Dict[str, str] = {}
+        for arc_id, arc in self.arcs.items():
+            for eid in arc.event_ids:
+                event_to_arc[eid] = arc_id
+
+        cross_edges: List[Dict[str, Any]] = []
+        seen: Set[Tuple[str, str, str]] = set()
+
+        for eid, ev in self.events.items():
+            src_arc = event_to_arc.get(eid, "unassigned")
+            for kind, targets in ev.connascence.items():
+                for tid in targets:
+                    tgt_arc = event_to_arc.get(tid, "unassigned")
+                    if src_arc == tgt_arc:
+                        continue
+                    a, b = sorted((eid, tid))
+                    key = (a, b, kind)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    tgt_ev = self.events.get(tid)
+                    cross_edges.append({
+                        "source_event_id": eid,
+                        "source_arc": src_arc,
+                        "source_preview": ev.preview[:100],
+                        "target_event_id": tid,
+                        "target_arc": tgt_arc,
+                        "target_preview": tgt_ev.preview[:100] if tgt_ev else "",
+                        "edge_type": kind,
+                    })
+
+        return cross_edges
+
+    def detect_negative_space(self) -> List[Dict[str, Any]]:
+        """Identify expected-but-absent patterns (the gaps where diagnostic
+        mysteries often hide).
+
+        Heuristics:
+          - Diagnosis with no follow-up labs within 180 days
+          - Medication started with no efficacy assessment within 180 days
+          - Abnormal lab with no repeat or clinical response within 90 days
+          - Arc that goes silent for > 6 months then reappears
+        """
+        findings: List[Dict[str, Any]] = []
+
+        dx_events = self.get_events_by_type("diagnosis")
+        lab_events = self.get_events_by_type("lab")
+        med_events = self.get_events_by_type("medication")
+
+        lab_dates: Dict[str, datetime] = {}
+        for ev in lab_events:
+            dt = parse_clinical_date(ev.timestamp) if ev.timestamp else None
+            if dt:
+                lab_dates[ev.event_id] = dt
+
+        for dx in dx_events:
+            dx_dt = parse_clinical_date(dx.timestamp) if dx.timestamp else None
+            if not dx_dt:
+                continue
+            has_followup_lab = False
+            for kind, targets in dx.connascence.items():
+                if kind in ("diagnostic", "lab_trend"):
+                    for tid in targets:
+                        lab_dt = lab_dates.get(tid)
+                        if lab_dt and 0 < (lab_dt - dx_dt).days <= 180:
+                            has_followup_lab = True
+                            break
+                if has_followup_lab:
+                    break
+            if not has_followup_lab:
+                findings.append({
+                    "type": "dx_no_followup_lab",
+                    "event_id": dx.event_id,
+                    "preview": dx.preview[:120],
+                    "timestamp": dx.timestamp,
+                    "detail": "Diagnosis with no connected follow-up lab within 180 days",
+                })
+
+        for med in med_events:
+            med_dt = parse_clinical_date(med.timestamp) if med.timestamp else None
+            if not med_dt:
+                continue
+            has_response = any(
+                kind in ("treatment", "drug_response", "lab_trend")
+                for kind in med.connascence
+            )
+            if not has_response:
+                findings.append({
+                    "type": "med_no_response_tracking",
+                    "event_id": med.event_id,
+                    "preview": med.preview[:120],
+                    "timestamp": med.timestamp,
+                    "detail": "Medication with no connected treatment response or lab trend",
+                })
+
+        return findings[:100]
+
+    # ------------------------------------------------------------------
+    # Agent manifest (continuation protocol)
+    # ------------------------------------------------------------------
+
+    def read_agent_manifest(self) -> Optional[Dict[str, Any]]:
+        """Read the continuation state from a previous investigation.
+
+        Returns None if no manifest exists yet (first run).
+        """
+        return self.metadata.get("agent_manifest")
+
+    def write_agent_manifest(self, manifest: Dict[str, Any]) -> None:
+        """Write investigation continuation state to the graph.
+
+        The manifest records: which arcs were explored, hypotheses formed,
+        cross-arc findings, open questions (frontier), and recommended
+        next traversal strategy. The graph is the agent's persistent
+        working memory; the manifest is the tape head position.
+        """
+        manifest["last_updated"] = _iso_now()
+        self.metadata["agent_manifest"] = manifest
+
+    def set_arc(self, arc: ClinicalArc) -> None:
+        """Add or replace a clinical arc on the graph."""
+        self.arcs[arc.arc_id] = arc
+
+    def event_arc_map(self) -> Dict[str, str]:
+        """Return a mapping of event_id -> arc_id for all assigned events."""
+        out: Dict[str, str] = {}
+        for arc_id, arc in self.arcs.items():
+            for eid in arc.event_ids:
+                out[eid] = arc_id
+        return out
 
 
 # ---------------------------------------------------------------------------
