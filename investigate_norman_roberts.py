@@ -33,10 +33,10 @@ async def run_detective_investigation(question: Optional[str] = None):
     
     url = f"{BASE_URL}/api/rag/eoh_detective_stream"
     
-    params = {
+    payload = {
         "q": question,
         "patient_id": "NORMAN_ROBERTS",
-        "sources": "norman_eric_roberts",  # This is the source we just ingested
+        "sources": "norman_eric_roberts",
         "max_steps": 6,
         "limit": 20,
         "ctx_k": 64,
@@ -52,13 +52,14 @@ async def run_detective_investigation(question: Optional[str] = None):
     print("=" * 80, file=sys.stderr)
     print(f"Question: {question}\n", file=sys.stderr)
     print(f"Data source: 4,223 pages from medical record", file=sys.stderr)
-    print(f"Max investigation steps: {params['max_steps']}", file=sys.stderr)
+    print(f"Summarizer model: gpt-4.1 (1M context, 80% cap)", file=sys.stderr)
+    print(f"Max investigation steps: {payload['max_steps']}", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
     print(file=sys.stderr)
     
     async with httpx.AsyncClient(timeout=None) as client:
         try:
-            async with client.stream("GET", url, params=params) as resp:
+            async with client.stream("POST", url, json=payload) as resp:
                 resp.raise_for_status()
                 
                 step_buffer = ""

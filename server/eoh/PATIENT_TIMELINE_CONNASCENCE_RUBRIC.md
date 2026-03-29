@@ -1,7 +1,7 @@
 # Patient Timeline Connascence Rubric
 
-**Version:** 0.1  
-**Status:** Mechanical rules only (no LLM inference)  
+**Version:** 0.2  
+**Status:** Mechanical + LLM (batched, fixed format)  
 **Purpose:** Define explicit, auditable rules for inferring edges between timeline events
 
 ---
@@ -12,22 +12,28 @@
 
 **Definition:** Events that occur close in time, suggesting temporal clustering or shared context.
 
-**Rule:**
+**Rule (v0.2 — two windows):**
 ```
-IF abs(event_a.timestamp - event_b.timestamp) <= 7 days
-THEN add_edge(event_a, event_b, type="temporal")
+SHORT WINDOW (≤30 days): any two events → temporal edge
+EPISODE WINDOW (31–90 days): only cross-type pairs (e.g. lab + diagnosis, not lab + lab)
 ```
 
 **Parameters:**
-- Window: 7 days (±7 days from reference event)
+- Short window: 30 days (tight clinical episode, same hospitalization, same flare)
+- Episode window: 31–90 days, cross-type only (avoids noise from same-test repetition)
 - Bidirectional: Yes (A→B and B→A)
 
+**v0.1 was:** 7 days. Too narrow for multi-decade chronic disease records.
+
 **Examples:**
-- Lab test on 2024-01-15 + Diagnosis on 2024-01-18 → temporal edge
-- Medication start on 2024-02-01 + Symptom note on 2024-02-03 → temporal edge
+- Lab test on 2024-01-15 + Diagnosis on 2024-01-18 → temporal (short window)
+- Medication start on 2024-02-01 + Symptom note on 2024-02-28 → temporal (short window)
+- Diagnosis on 2024-01-01 + Lab on 2024-03-15 → temporal (episode window, cross-type)
+- Lab A on 2024-01-01 + Lab B on 2024-02-28 → NO edge (same type, episode window)
 
 **Rationale:**
-Events within a week often reflect the same clinical episode, hospital stay, or flare.
+Events within a month typically reflect the same clinical episode. 30–90 day cross-type
+pairs often represent diagnostic workup → result → treatment chains.
 
 ---
 
@@ -104,16 +110,18 @@ Tracking the same lab over time reveals progression, treatment response, or wors
 
 **Definition:** Events linked by treatment → response (medication → labs, symptoms, outcomes).
 
-**Rule:**
+**Rule (v0.2):**
 ```
-IF event_a.event_type IN ("medication", "med", "rx")
-AND event_b.event_type IN ("lab", "symptom", "note")
-AND 0 <= (event_b.timestamp - event_a.timestamp).days <= 30
+IF event_a.event_type IN ("medication", "med", "rx", "drug", "prescription")
+AND event_b.event_type IN ("lab", "symptom", "note", "imaging")
+AND 0 <= (event_b.timestamp - event_a.timestamp).days <= 60
 THEN add_edge(event_a, event_b, type="treatment")
 ```
 
 **Parameters:**
-- Window: 0-30 days (medication starts → downstream effects)
+- Window: 0-60 days (extended from 30 to catch biologic/immunosuppressant responses)
+- Med types: medication, med, rx, drug, prescription (v0.1 missed "drug", "prescription")
+- Response types: added "imaging" (post-treatment scans are common)
 - Directional: Yes (medication → response)
 - Bidirectional for navigation: Yes
 
@@ -133,21 +141,23 @@ Linking medications to downstream labs/symptoms enables treatment response analy
 
 ## Implementation Status
 
-### Phase 1: Current Implementation
-- ✅ Temporal connascence (±7 days) - **Mechanical rule**
-- ✅ Diagnostic connascence - **LLM-based (GPT-4o/5.1)**
-- ✅ Lab trend connascence - **LLM-based (GPT-4o/5.1)**
-- ✅ Treatment connascence (med → response within 30 days) - **Mechanical rule**
+### v0.2: Current Implementation
+- ✅ Temporal connascence (≤30 days all types; 31–90 days cross-type) - **Mechanical**
+- ✅ Diagnostic connascence - **LLM batched (GPT-4.1, 300 events/batch)**
+- ✅ Lab trend connascence - **LLM batched (GPT-4.1, 300 events/batch)**
+- ✅ Treatment connascence (med → response 0-60 days, extended type sets) - **Mechanical**
 
-**Why mixed approach:**
-- Temporal & Treatment: Time-based rules are precise and deterministic
-- Diagnostic & Lab Trend: Require semantic understanding (abbreviations, synonyms, codes)
+**v0.1 bugs fixed in v0.2:**
+- Temporal window too narrow (7d → 30d short + 90d episode)
+- LLM prompt format conflict: said "return a list" but json_object forces an object → always returned 0 edges
+- LLM batching: sampled 200 events evenly across all types → most events never seen; now batched per-type at 300/batch
+- Treatment window too narrow (30d → 60d)
+- Treatment type set incomplete (added "drug", "prescription", "imaging")
 
-### Phase 1.5: Enhanced LLM Inference (Future)
-- [ ] Batch processing (multiple calls for large timelines)
-- [ ] LOINC/ICD code awareness (provide codes to LLM for additional context)
-- [ ] Confidence scores (LLM reports confidence per edge)
-- [ ] Temporal clustering by episode (group events within same hospitalization)
+### Phase 1.5: Next (Future)
+- [ ] LOINC/ICD code awareness
+- [ ] Confidence scores per edge
+- [ ] Episode clustering (same hospitalization grouping)
 
 ### Phase 2: Advanced Causal Inference (Future)
 - [ ] Causal connascence (did medication *cause* lab change?)
@@ -230,6 +240,7 @@ logger.info(
 
 **Version History:**
 - v0.1 (2026-01-19): Initial implementation (temporal & treatment mechanical, diagnostic & lab_trend LLM-based)
+- v0.2 (2026-03-27): Fixed LLM format bug (0 edges → batched), expanded windows, extended type sets, sorted temporal pass
 
 ---
 

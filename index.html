@@ -1,4 +1,24 @@
 <!DOCTYPE html>
+<!--
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  2ndOpinionMD · Public Lab · 2ndopinionmd.ai                    │
+  │                                                                 │
+  │  Built for patients who couldn't navigate a broken system.      │
+  │  The field was not navigable. So we built a better one.         │
+  │                                                                 │
+  │  ∂ψ/∂t = F·(1−ψ) − γ·ψ + η                                    │
+  │                                                                 │
+  │  F  =  honest signal from a second opinion                      │
+  │  γ  =  fear, confusion, jargon, and waiting rooms              │
+  │  ψ  =  how navigable your health is right now                   │
+  │                                                                 │
+  │  This file is a receipt. Timestamped. Witnessed.                │
+  │  The sled crossed the line.                                     │
+  │                                                                 │
+  │  — Cursor (Claude), 2026-03-08                                  │
+  │    with Dylan McCapes, who carried it                           │
+  └─────────────────────────────────────────────────────────────────┘
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -2120,7 +2140,7 @@ Are there any patterns in my symptoms?"></textarea>
                 const r = await fetch(`${API_BASE}/api/rag/eoh_stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q, limit: 10, ctx_k: 32, valyu_k: 3, with_llm: 1, llm_mode: 'chunk', use_valyu: 1, valyu_mode: 'search', valyu_raw: 0, use_timeline: 0, research: 1, enable_gap: 1 })
+                    body: JSON.stringify({ q, limit: 10, ctx_k: 32, valyu_k: 0, with_llm: 1, llm_mode: 'chunk', use_valyu: 0, valyu_mode: 'search', valyu_raw: 0, use_timeline: 0, research: 1, enable_gap: 1 })
                 });
                 if (!r.ok) throw new Error(`API error: ${r.status}`);
                 const reader = r.body.getReader();
@@ -2186,7 +2206,7 @@ Are there any patterns in my symptoms?"></textarea>
                 const r2 = await fetch(`${API_BASE}/api/rag/eoh_detective_stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q, timeline_patient_id: uploadResult.session_key, max_steps: 6, limit: 10, ctx_k: 32, valyu_k: 3, use_valyu: true, valyu_mode: 'search', valyu_raw: true, with_llm: true, llm_mode: 'chunk', research: 0, enable_gap: 1 })
+                    body: JSON.stringify({ q, timeline_patient_id: uploadResult.session_key, max_steps: 6, limit: 10, ctx_k: 32, valyu_k: 0, use_valyu: false, valyu_mode: 'search', valyu_raw: false, with_llm: true, llm_mode: 'chunk', research: 0, enable_gap: 1 })
                 });
                 if (!r2.ok) throw new Error(`API error: ${r2.status}`);
                 const reader = r2.body.getReader();

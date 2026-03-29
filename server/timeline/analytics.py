@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from server.utils.parse_date import parse_clinical_date
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -124,9 +126,8 @@ def build_windowed_vectors(
         if ts is None:
             continue
         if isinstance(ts, str):
-            try:
-                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            except Exception:
+            ts = parse_clinical_date(ts)
+            if ts is None:
                 continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
@@ -166,18 +167,13 @@ def build_windowed_vectors(
         for edge in connascence_edges:
             edge_ts = edge.get("ts")
             if edge_ts and isinstance(edge_ts, str):
-                try:
-                    ets = datetime.fromisoformat(edge_ts.replace("Z", "+00:00"))
-                    if ets.tzinfo is None:
-                        ets = ets.replace(tzinfo=timezone.utc)
-                    if win_start <= ets < win_end:
-                        kind = edge.get("kind", "unknown")
-                        edge_types[kind] = edge_types.get(kind, 0) + 1
-                        eid = edge.get("id", "")
-                        if eid:
-                            edge_ids.append(str(eid))
-                except Exception:
-                    pass
+                ets = parse_clinical_date(edge_ts)
+                if ets is not None and win_start <= ets < win_end:
+                    kind = edge.get("kind", "unknown")
+                    edge_types[kind] = edge_types.get(kind, 0) + 1
+                    eid = edge.get("id", "")
+                    if eid:
+                        edge_ids.append(str(eid))
 
         vectors.append(WindowVector(
             window_start=win_start_iso,
@@ -255,8 +251,8 @@ def compute_window_metrics(
                 "event_ids": v.event_ids,
                 "edge_ids": v.edge_ids,
                 "window_days": (
-                    datetime.fromisoformat(v.window_end)
-                    - datetime.fromisoformat(v.window_start)
+                    (parse_clinical_date(v.window_end) or datetime.min.replace(tzinfo=timezone.utc))
+                    - (parse_clinical_date(v.window_start) or datetime.min.replace(tzinfo=timezone.utc))
                 ).days if v.window_start and v.window_end else 7,
             },
         ))
@@ -382,9 +378,8 @@ def compute_precedence_edges(
         if ts is None:
             continue
         if isinstance(ts, str):
-            try:
-                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            except Exception:
+            ts = parse_clinical_date(ts)
+            if ts is None:
                 continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
@@ -526,9 +521,8 @@ def compute_analytics_summary(
             if ts is None:
                 continue
             if isinstance(ts, str):
-                try:
-                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                except Exception:
+                ts = parse_clinical_date(ts)
+                if ts is None:
                     continue
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)

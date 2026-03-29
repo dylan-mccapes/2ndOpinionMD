@@ -154,13 +154,19 @@ async def synthesize_timeline_enrichment(
         compact_vision["events"].append(event_dict)
         vision_chars += len(event_str)
     
-    for edge in patient_timeline_vision.edges:
-        edge_dict = edge.to_dict()
-        edge_str = json.dumps(edge_dict)
-        if vision_chars + len(edge_str) > MAX_VISION_CHARS:
-            break
-        compact_vision["edges"].append(edge_dict)
-        vision_chars += len(edge_str)
+    for event in patient_timeline_vision.events.values():
+        for conn_type, targets in event.connascence.items():
+            for target_id in targets:
+                edge_dict = {
+                    "from": event.event_id,
+                    "to": target_id,
+                    "type": conn_type,
+                }
+                edge_str = json.dumps(edge_dict)
+                if vision_chars + len(edge_str) > MAX_VISION_CHARS:
+                    break
+                compact_vision["edges"].append(edge_dict)
+                vision_chars += len(edge_str)
     
     print(f"  Compact vision: {len(compact_vision['events'])} events, {len(compact_vision['edges'])} edges (~{vision_chars} chars)")
     

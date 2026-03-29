@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 
 from .rag_routes import _handle_rag_ask
+from .stream_config import CHAT_MODEL_CODING_CORE
 from .citation_utils import (
     choose_citation, split_matches_by_role, enrich_missing_code_from_matches, explain_missing_citation
 )
@@ -143,7 +144,7 @@ async def coding(
 
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    model_used = CHAT_MODEL_CODING_CORE
 
     PROMPT = f"""
 You are a clinical assistant. Return STRICT JSON ONLY (no code fences). Schema:

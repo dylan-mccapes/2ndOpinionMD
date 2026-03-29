@@ -5,6 +5,14 @@
 #          synthesize_valyu_evidence (shared Valyu LLM helper).
 
 from .rag_stream_shared import *  # noqa: F401,F403
+from .rag_stream_shared import (
+    _chat_completion_async,
+    _openai_client,
+    _send_large_request_warning,
+    _build_qa_ledger,
+    _summarize_qa_ledger,
+    _run_qa_grader,
+)
 
 async def ask_stream_event_generator(
     *,

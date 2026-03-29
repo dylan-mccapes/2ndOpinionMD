@@ -52,10 +52,8 @@ def _fig_to_base64(fig: plt.Figure) -> str:
 
 
 def _parse_ts(ts_str: str) -> Optional[datetime]:
-    try:
-        return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-    except Exception:
-        return None
+    from server.utils.parse_date import parse_clinical_date
+    return parse_clinical_date(ts_str)
 
 
 def _add_footer(ax: plt.Axes, patient_id: str, date_range: str) -> None:

@@ -1,0 +1,1630 @@
+{
+  "patient_id": "NORMAN_ROBERTS",
+  "built_at": "2026-02-26T19:39:51.520798",
+  "session_only": false,
+  "events": {
+    "page_1443_procedure_1": {
+      "event_id": "page_1443_procedure_1",
+      "event_type": "procedure",
+      "timestamp": "2019-06-13",
+      "preview": "Bilateral subacromial bursa injections were performed for shoulder impingement, with Kenalog and lidocaine, resulting in decreased pain and increased range of motion.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1449_diagnosis_1"
+        ],
+        "temporal": [
+          "page_1449_diagnosis_1",
+          "page_1440_lab_1",
+          "page_1453_diagnosis_2",
+          "page_1454_procedure_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1449_diagnosis_1": {
+      "event_id": "page_1449_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "2019-06-13",
+      "preview": "Patient diagnosed with bilateral shoulder impingement, confirmed by clinical exam and radiology showing severe degenerative changes of the acromioclavicular joint.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1443_procedure_1"
+        ],
+        "temporal": [
+          "page_1443_procedure_1",
+          "page_1440_lab_1",
+          "page_1453_diagnosis_2",
+          "page_1454_procedure_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1453_diagnosis_2": {
+      "event_id": "page_1453_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "2019-06-19",
+      "preview": "Patient sustained a left distal ulna fracture after a ground-level fall, confirmed by x-ray as a closed, non-displaced fracture.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1454_procedure_2"
+        ],
+        "temporal": [
+          "page_1443_procedure_1",
+          "page_1449_diagnosis_1",
+          "page_1440_lab_1",
+          "page_1454_procedure_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1454_procedure_2": {
+      "event_id": "page_1454_procedure_2",
+      "event_type": "procedure",
+      "timestamp": "2019-06-19",
+      "preview": "A short arm cast was applied for immobilization of the left distal ulna fracture, with instructions for non-weight bearing and range of motion as tolerated.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1453_diagnosis_2"
+        ],
+        "temporal": [
+          "page_1473_procedure_3",
+          "page_1443_procedure_1",
+          "page_1449_diagnosis_1",
+          "page_1440_lab_1",
+          "page_1453_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1473_procedure_3": {
+      "event_id": "page_1473_procedure_3",
+      "event_type": "procedure",
+      "timestamp": "2019-07-12",
+      "preview": "Cast was removed and a Muenster cast was applied for further immobilization of the healing left distal ulna fracture.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_1454_procedure_2",
+          "page_1573_procedure_4",
+          "page_1471_lab_2",
+          "page_1535_lab_3",
+          "page_1533_symptom_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1573_procedure_4": {
+      "event_id": "page_1573_procedure_4",
+      "event_type": "procedure",
+      "timestamp": "2019-08-07",
+      "preview": "Cast was removed and patient was fitted for a left wrist brace; fracture appeared healed and patient was advised to wean out of the brace over 2-3 weeks.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_1473_procedure_3"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1440_lab_1": {
+      "event_id": "page_1440_lab_1",
+      "event_type": "lab",
+      "timestamp": "2019-06-13",
+      "preview": "CBC and metabolic panel drawn for myasthenia gravis monitoring; results within expected ranges for ongoing immunosuppressive therapy.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_1443_procedure_1",
+          "page_1449_diagnosis_1",
+          "page_1453_diagnosis_2",
+          "page_1454_procedure_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1471_lab_2": {
+      "event_id": "page_1471_lab_2",
+      "event_type": "lab",
+      "timestamp": "2019-07-08",
+      "preview": "Osteoporosis panel and vitamin D levels checked after recent fracture; bone density was normal, vitamin D sufficient, and calcium within normal limits.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1560_note_1"
+        ],
+        "temporal": [
+          "page_1473_procedure_3"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1560_note_1": {
+      "event_id": "page_1560_note_1",
+      "event_type": "note",
+      "timestamp": "2019-07-30",
+      "preview": "Pharmacist reviewed osteoporosis risk and discussed alendronate therapy with patient, who declined bisphosphonate at this time but agreed to continue calcium and vitamin D supplementation.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_1471_lab_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1535_lab_3": {
+      "event_id": "page_1535_lab_3",
+      "event_type": "lab",
+      "timestamp": "2019-07-19",
+      "preview": "MRI brain performed for new-onset ataxia and wooziness; no acute intracranial abnormality detected, with chronic small vessel disease and old lacunar infarct noted.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "page_1533_symptom_1"
+        ],
+        "temporal": [
+          "page_1473_procedure_3",
+          "page_1533_symptom_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_1533_symptom_1": {
+      "event_id": "page_1533_symptom_1",
+      "event_type": "symptom",
+      "timestamp": "2019-07-19",
+      "preview": "Patient reported new-onset ataxia, wooziness, and balance difficulties, with falls at night; symptoms improved somewhat as the day progressed.",
+      "discovered_by": [
+        "enrich_batch_0_1-1653"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "page_1535_lab_3"
+        ],
+        "temporal": [
+          "page_1473_procedure_3",
+          "page_1535_lab_3"
+        ]
+      },
+      "annotations": {
+        "page_range": "1-1653",
+        "batch_index": 0,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3345_procedure_1": {
+      "event_id": "page_3345_procedure_1",
+      "event_type": "procedure",
+      "timestamp": "2023-12-07",
+      "preview": "IVIG (intravenous immune globulin) therapy was ordered for myasthenia gravis, with detailed pre-medication and infusion protocols, to be given monthly for 3 months.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_3385_procedure_2"
+        ],
+        "treatment": [
+          "page_3385_procedure_2",
+          "page_3437_lab_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3385_procedure_2": {
+      "event_id": "page_3385_procedure_2",
+      "event_type": "procedure",
+      "timestamp": "2023-12-20",
+      "preview": "First IVIG infusion administered for myasthenia gravis exacerbation. Pre-meds included Tylenol and Zyrtec. Patient tolerated infusion without adverse reaction.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_3345_procedure_1",
+          "page_3396_procedure_3",
+          "page_3422_note_1"
+        ],
+        "treatment": [
+          "page_3345_procedure_1",
+          "page_3396_procedure_3"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3396_procedure_3": {
+      "event_id": "page_3396_procedure_3",
+      "event_type": "procedure",
+      "timestamp": "2023-12-21",
+      "preview": "Second IVIG infusion administered for myasthenia gravis exacerbation. Pre-meds included Tylenol and Zyrtec. Infusion completed without complications.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_3385_procedure_2",
+          "page_3422_note_1",
+          "page_3428_visit_1",
+          "page_3437_lab_1"
+        ],
+        "treatment": [
+          "page_3385_procedure_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3422_note_1": {
+      "event_id": "page_3422_note_1",
+      "event_type": "note",
+      "timestamp": "2023-12-27",
+      "preview": "Patient called with recurring joint pains (knees, shoulder, hips), requesting another appointment for evaluation. No new injury reported.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_3428_visit_1",
+          "page_3385_procedure_2",
+          "page_3396_procedure_3",
+          "page_3437_lab_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3428_visit_1": {
+      "event_id": "page_3428_visit_1",
+      "event_type": "visit",
+      "timestamp": "2023-12-28",
+      "preview": "Primary care visit for bilateral knee pain, right shoulder pain, and bilateral hip pain. Patient frustrated with lack of opioid prescriptions and progress with physical therapy. Encounter ended early due to disagreement on pain management.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_3422_note_1",
+          "page_3437_lab_1",
+          "page_3396_procedure_3"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_3437_lab_1": {
+      "event_id": "page_3437_lab_1",
+      "event_type": "lab",
+      "timestamp": "2023-12-28",
+      "preview": "Routine labs drawn for interstitial lung disease, myasthenia gravis, and long-term drug therapy monitoring. ALT mildly elevated at 160 U/L, AST 21 U/L, Alk Phos 88 U/L, creatinine 0.96, eGFR >60, HgbA1c 6.2% (prediabetes), uric acid 4.2.",
+      "discovered_by": [
+        "enrich_batch_1_1654-3461"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_3345_procedure_1"
+        ],
+        "temporal": [
+          "page_3428_visit_1",
+          "page_3396_procedure_3",
+          "page_3422_note_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "1654-3461",
+        "batch_index": 1,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4004_dx_pe_1": {
+      "event_id": "page_4004_dx_pe_1",
+      "event_type": "diagnosis",
+      "timestamp": "2024-07-05",
+      "preview": "Acute pulmonary embolism diagnosed after CT chest revealed nonocclusive filling defects in multiple pulmonary arteries. Patient started on anticoagulation.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4005_rx_xarelto_1"
+        ],
+        "temporal": [
+          "page_4005_rx_xarelto_1",
+          "page_4010_rx_pradaxa_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4005_rx_xarelto_1": {
+      "event_id": "page_4005_rx_xarelto_1",
+      "event_type": "medication",
+      "timestamp": "2024-07-05",
+      "preview": "Rivaroxaban (Xarelto) 15 mg BID x21 days, then 20 mg daily, started for acute pulmonary embolism.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4004_dx_pe_1"
+        ],
+        "temporal": [
+          "page_4010_rx_pradaxa_1",
+          "page_4004_dx_pe_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4010_rx_pradaxa_1": {
+      "event_id": "page_4010_rx_pradaxa_1",
+      "event_type": "medication",
+      "timestamp": "2024-07-09",
+      "preview": "Plan to transition to dabigatran (Pradaxa) 150 mg BID after 30 days of Xarelto for ongoing anticoagulation.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_4005_rx_xarelto_1",
+          "page_4004_dx_pe_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4040_dx_nstemi_1": {
+      "event_id": "page_4040_dx_nstemi_1",
+      "event_type": "diagnosis",
+      "timestamp": "2024-07-31",
+      "preview": "Admitted for acute non-ST elevation myocardial infarction (NSTEMI) with severe multivessel coronary artery disease managed medically.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_4042_fu_nstemi_1",
+          "page_4056_cardio_visit_1",
+          "page_4213_hospice_referral_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4042_fu_nstemi_1": {
+      "event_id": "page_4042_fu_nstemi_1",
+      "event_type": "visit",
+      "timestamp": "2024-08-05",
+      "preview": "Telephone follow-up after NSTEMI hospitalization and transfusion/iron infusion; patient clinically stable, awaiting cardiology follow-up.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_4040_dx_nstemi_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4056_cardio_visit_1": {
+      "event_id": "page_4056_cardio_visit_1",
+      "event_type": "visit",
+      "timestamp": "2024-08-15",
+      "preview": "Cardiology follow-up: severe 3-vessel CAD, chronic PE, anemia, myasthenia gravis, and multiple comorbidities. Medical management continued.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_4040_dx_nstemi_1",
+          "page_4071_rx_ultracet_1"
+        ],
+        "treatment": [
+          "page_4071_rx_ultracet_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4071_rx_ultracet_1": {
+      "event_id": "page_4071_rx_ultracet_1",
+      "event_type": "medication",
+      "timestamp": "2024-08-16",
+      "preview": "Tramadol-acetaminophen (Ultracet) prescribed as needed for severe bilateral knee osteoarthritis pain.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4056_cardio_visit_1",
+          "page_4095_knee_inj_1"
+        ],
+        "temporal": [
+          "page_4056_cardio_visit_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4095_knee_inj_1": {
+      "event_id": "page_4095_knee_inj_1",
+      "event_type": "procedure",
+      "timestamp": "2024-09-09",
+      "preview": "Bilateral knee injections with triamcinolone and lidocaine performed for severe osteoarthritis pain.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4071_rx_ultracet_1",
+          "page_4117_rx_norco_1",
+          "page_4193_rx_ultracet_2"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4117_rx_norco_1": {
+      "event_id": "page_4117_rx_norco_1",
+      "event_type": "medication",
+      "timestamp": "2024-10-02",
+      "preview": "Short course of hydrocodone-acetaminophen (Norco) prescribed for severe knee pain after other therapies failed.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4095_knee_inj_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4134_dx_dysuria_1": {
+      "event_id": "page_4134_dx_dysuria_1",
+      "event_type": "symptom",
+      "timestamp": "2024-11-08",
+      "preview": "Patient reports several days of urinary urgency, incontinence, and new right ankle lump.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "page_4143_lab_uti_1"
+        ],
+        "temporal": [
+          "page_4143_lab_uti_1",
+          "page_4170_rx_fosfomycin_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4143_lab_uti_1": {
+      "event_id": "page_4143_lab_uti_1",
+      "event_type": "lab",
+      "timestamp": "2024-11-12",
+      "preview": "Urine culture positive for Citrobacter freundii complex, resistant to several antibiotics but susceptible to cefepime, ceftazidime, ceftriaxone, ciprofloxacin, nitrofurantoin, and others.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "page_4134_dx_dysuria_1"
+        ],
+        "treatment": [
+          "page_4170_rx_fosfomycin_1"
+        ],
+        "temporal": [
+          "page_4134_dx_dysuria_1",
+          "page_4170_rx_fosfomycin_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4170_rx_fosfomycin_1": {
+      "event_id": "page_4170_rx_fosfomycin_1",
+      "event_type": "medication",
+      "timestamp": "2024-11-15",
+      "preview": "Fosfomycin prescribed for multidrug-resistant UTI in setting of myasthenia gravis (ciprofloxacin avoided).",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4143_lab_uti_1"
+        ],
+        "temporal": [
+          "page_4134_dx_dysuria_1",
+          "page_4143_lab_uti_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4193_rx_ultracet_2": {
+      "event_id": "page_4193_rx_ultracet_2",
+      "event_type": "medication",
+      "timestamp": "2024-11-29",
+      "preview": "Tramadol-acetaminophen (Ultracet) refill requested for ongoing severe knee pain.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4095_knee_inj_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4213_hospice_referral_1": {
+      "event_id": "page_4213_hospice_referral_1",
+      "event_type": "procedure",
+      "timestamp": "2025-03-07",
+      "preview": "Referral to hospice placed for terminal prognosis (CAD with unstable angina, life expectancy <6 months).",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "page_4040_dx_nstemi_1",
+          "page_4214_doac_stop_1"
+        ],
+        "treatment": [
+          "page_4214_doac_stop_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "page_4214_doac_stop_1": {
+      "event_id": "page_4214_doac_stop_1",
+      "event_type": "medication",
+      "timestamp": "2025-03-10",
+      "preview": "Direct oral anticoagulant (Pradaxa) permanently discontinued after hospice enrollment.",
+      "discovered_by": [
+        "enrich_batch_2_3462-4223"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "page_4213_hospice_referral_1"
+        ],
+        "temporal": [
+          "page_4213_hospice_referral_1"
+        ]
+      },
+      "annotations": {
+        "page_range": "3462-4223",
+        "batch_index": 2,
+        "enrichment_source": "ingestion"
+      }
+    },
+    "step_A1_diagnosis_1": {
+      "event_id": "step_A1_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "2024",
+      "preview": "Rapid hemoglobin decline over one year in 2024 without overt bleeding, suggesting a new or worsening hematologic complication (unexplained anemia).",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ],
+        "diagnostic": [
+          "step_B1_flare_3",
+          "step_E1_note_1",
+          "step_C2_note_1"
+        ],
+        "causal": [
+          "step_A1_flare_1",
+          "step_D1_note_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_A1_diagnosis_2": {
+      "event_id": "step_A1_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "2021",
+      "preview": "Onset and progression of interstitial lung disease (ILD) noted in pulmonology follow-ups around 2021.",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ],
+        "diagnostic": [
+          "step_B1_flare_2",
+          "step_C1_diagnosis_1",
+          "step_C2_diagnosis_1",
+          "step_D1_diagnosis_1",
+          "step_E1_note_1",
+          "step_C1_diagnosis_2",
+          "step_C2_note_1"
+        ],
+        "treatment": [
+          "step_probe_rag_diagnosis_6"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_A1_diagnosis_3": {
+      "event_id": "step_A1_diagnosis_3",
+      "event_type": "diagnosis",
+      "timestamp": "2025",
+      "preview": "Transition to hospice care in 2025, indicating advanced overall disease burden and end-of-life care planning.",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_1",
+          "step_A1_diagnosis_2",
+          "step_A1_diagnosis_4",
+          "step_A1_flare_1",
+          "step_probe_rag_note_1",
+          "step_probe_rag_note_3"
+        ],
+        "causal": [
+          "step_D1_note_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_A1_diagnosis_4": {
+      "event_id": "step_A1_diagnosis_4",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Chronic low back pain and right ankle joint pain have persisted for years, contributing to ongoing musculoskeletal symptom burden.",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ],
+        "symptom_cluster": [
+          "step_B1_flare_1"
+        ],
+        "diagnostic": [
+          "step_C1_diagnosis_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_A1_diagnosis_5": {
+      "event_id": "step_A1_diagnosis_5",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Pancreatic cystic lesions under surveillance, considered low-risk but requiring ongoing monitoring.",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_B1_flare_1": {
+      "event_id": "step_B1_flare_1",
+      "event_type": "flare",
+      "timestamp": "2021-08",
+      "preview": "Chronic musculoskeletal pain flare (low back and right ankle) with repeat urgent visits and physical therapy in August 2021, representing a genuine symptomatic exacerbation without systemic inflammatory markers.",
+      "discovered_by": [
+        "detective_step_B1"
+      ],
+      "status": "included",
+      "connascence": {
+        "symptom_cluster": [
+          "step_A1_diagnosis_4",
+          "step_B1_flare_4"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "B1"
+      }
+    },
+    "step_B1_flare_2": {
+      "event_id": "step_B1_flare_2",
+      "event_type": "flare",
+      "timestamp": "2021-08",
+      "preview": "Pulmonology follow-up in August 2021 documented stable interstitial lung disease (ILD) with no evidence of acute flare or new infiltrates.",
+      "discovered_by": [
+        "detective_step_B1"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_A1_diagnosis_2"
+        ],
+        "symptom_cluster": [
+          "step_B1_flare_4"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "B1"
+      }
+    },
+    "step_B1_flare_3": {
+      "event_id": "step_B1_flare_3",
+      "event_type": "flare",
+      "timestamp": "",
+      "preview": "No objective evidence of myasthenia gravis (MG) exacerbation; recent symptom episodes classified as noise or controlled baseline rather than true flare.",
+      "discovered_by": [
+        "detective_step_B1"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_A1_diagnosis_1"
+        ],
+        "symptom_cluster": [
+          "step_B1_flare_4"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "B1"
+      }
+    },
+    "step_C1_diagnosis_1": {
+      "event_id": "step_C1_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Diagnostic landscape analysis reveals early RA-like dominance (circa 1947), followed by a shift to a mixed, nonspecific 'other' autoimmune/inflammatory pattern with minor vasculitis-like signals emerging in recent decades, but without formal RA or vasculitis diagnosis.",
+      "discovered_by": [
+        "detective_step_C1"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_A1_diagnosis_2",
+          "step_A1_diagnosis_4"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C1"
+      }
+    },
+    "step_C2_diagnosis_1": {
+      "event_id": "step_C2_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "2020-01-01",
+      "preview": "By 2020, the diagnostic landscape is dominated by an 'other' category (~0.44), with secondary RA-like (~0.32–0.35), vasculitis-like (~0.14–0.16), and minor PsA-like (~0.07) features, reflecting a complex, overlapping multisystem illness.",
+      "discovered_by": [
+        "detective_step_C2"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_C2_diagnosis_2",
+          "step_C1_diagnosis_2"
+        ],
+        "diagnostic": [
+          "step_A1_diagnosis_2",
+          "step_E1_note_1",
+          "step_C2_note_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C2"
+      }
+    },
+    "step_C2_diagnosis_2": {
+      "event_id": "step_C2_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "2004-01-01",
+      "preview": "In 2004, the diagnostic landscape shifted to a full predominance of 'other' diagnoses (weight 1.0), with classic autoimmune clusters (RA-like, SLE-like, PsA-like) absent, suggesting reclassification or emergence of non-autoimmune chronic conditions.",
+      "discovered_by": [
+        "detective_step_C2"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_C2_diagnosis_3",
+          "step_C2_diagnosis_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C2"
+      }
+    },
+    "step_C2_diagnosis_3": {
+      "event_id": "step_C2_diagnosis_3",
+      "event_type": "diagnosis",
+      "timestamp": "1947-01-01",
+      "preview": "In 1947, the RA-like diagnosis was dominant (weight ~0.56), with no significant SLE or PsA signal, reflecting an early classical autoimmune phenotype.",
+      "discovered_by": [
+        "detective_step_C2"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_C2_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C2"
+      }
+    },
+    "step_D1_diagnosis_1": {
+      "event_id": "step_D1_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Moderate sleep apnea diagnosed as part of the patient's chronic pulmonary involvement, contributing to progressive organ impairment alongside interstitial lung disease.",
+      "discovered_by": [
+        "detective_step_D1"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_A1_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "D1"
+      }
+    },
+    "step_E1_note_1": {
+      "event_id": "step_E1_note_1",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Systematic data quality audit reveals critical gaps: incomplete note bodies, missing medication details, and sparse lab/imaging data, limiting diagnostic confidence and trajectory mapping.",
+      "discovered_by": [
+        "detective_step_E1"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_C2_diagnosis_1",
+          "step_A1_diagnosis_1",
+          "step_A1_diagnosis_2"
+        ],
+        "temporal": [
+          "step_E1_note_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "E1"
+      }
+    },
+    "step_A1_flare_1": {
+      "event_id": "step_A1_flare_1",
+      "event_type": "flare",
+      "timestamp": "2024",
+      "preview": "Major clinical flare: rapid hemoglobin drop over one year in 2024, representing a significant biological instability event.",
+      "discovered_by": [
+        "detective_step_A1"
+      ],
+      "status": "included",
+      "connascence": {
+        "causal": [
+          "step_A1_diagnosis_1"
+        ],
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "A1"
+      }
+    },
+    "step_B1_flare_4": {
+      "event_id": "step_B1_flare_4",
+      "event_type": "flare",
+      "timestamp": "",
+      "preview": "Flare classification across myasthenia gravis, ILD, and pain domains is indeterminate due to lack of objective evidence; suppression logic (M4-M9) minimizes false positives from symbolic pain, treatment effects, and lab noise.",
+      "discovered_by": [
+        "detective_step_B1"
+      ],
+      "status": "included",
+      "connascence": {
+        "symptom_cluster": [
+          "step_B1_flare_1",
+          "step_B1_flare_2",
+          "step_B1_flare_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "B1"
+      }
+    },
+    "step_C1_diagnosis_2": {
+      "event_id": "step_C1_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "By 2020, the diagnostic landscape shows a mixed autoimmune/inflammatory profile: 'other' remains the top label (~0.44), with moderate RA-like (~0.32–0.35), minor vasculitis-like (~0.14–0.16), and minor psoriatic arthritis-like (~0.07–0.08) signatures; SLE and Sjögren’s-like features are absent.",
+      "discovered_by": [
+        "detective_step_C1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_C2_diagnosis_1"
+        ],
+        "diagnostic": [
+          "step_A1_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C1"
+      }
+    },
+    "step_C2_note_1": {
+      "event_id": "step_C2_note_1",
+      "event_type": "note",
+      "timestamp": "2024-06-01",
+      "preview": "Structured review highlights substantial diagnostic discordance: persistent anemia of uncertain etiology (microcytic, 6 g/dL Hgb drop over 1 year, negative GI workup), ILD without classic SARD markers, and unresolved neuromuscular symptoms (including pyridostigmine trial), with diagnostic labels drifting from RA-like to 'other' over decades.",
+      "discovered_by": [
+        "detective_step_C2"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_C2_diagnosis_1",
+          "step_A1_diagnosis_1",
+          "step_A1_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "C2"
+      }
+    },
+    "step_D1_diagnosis_2": {
+      "event_id": "step_D1_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Statin intolerance documented as a management challenge in the context of coronary artery disease, requiring alternative lipid-lowering strategies.",
+      "discovered_by": [
+        "detective_step_D1"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "D1"
+      }
+    },
+    "step_D1_note_1": {
+      "event_id": "step_D1_note_1",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Immunomodulatory therapy (IVIG, rituximab) for myasthenia gravis is ongoing and tolerated without clear documented adverse events, but effectiveness may be limited by progressive anemia and multisystem disease.",
+      "discovered_by": [
+        "detective_step_D1"
+      ],
+      "status": "included",
+      "connascence": {
+        "causal": [
+          "step_A1_diagnosis_1",
+          "step_A1_diagnosis_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "D1"
+      }
+    },
+    "step_E1_note_2": {
+      "event_id": "step_E1_note_2",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Meta-calibration review identifies critical data gaps: missing structured diagnoses, incomplete medication details, unstructured imaging, and sparse lab trends, leading to moderate confidence but notable uncertainty in the diagnostic landscape.",
+      "discovered_by": [
+        "detective_step_E1"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_E1_note_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "E1"
+      }
+    },
+    "step_probe_rag_diagnosis_1": {
+      "event_id": "step_probe_rag_diagnosis_1",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "No clear documentation of thymoma on imaging; absence of thymoma as a complicating factor in MG course.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_2": {
+      "event_id": "step_probe_rag_diagnosis_2",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Chronic anemia with unclear etiology and microcytic indices, possibly due to chronic disease or other complicating factors.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_3",
+          "step_probe_rag_diagnosis_5",
+          "step_probe_rag_note_2",
+          "step_probe_rag_diagnosis_7"
+        ],
+        "causal": [
+          "step_probe_rag_diagnosis_4"
+        ],
+        "treatment": [
+          "step_probe_rag_medication_2",
+          "step_probe_rag_medication_4"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_3": {
+      "event_id": "step_probe_rag_diagnosis_3",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Multiple comorbidities including interstitial lung disease, prediabetes, chronic anemia, hepatitis B, and myocardial infarction complicate MG management.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_1",
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_4": {
+      "event_id": "step_probe_rag_diagnosis_4",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "History of severe alcohol use disorder and remote hepatitis B, both contributing to the patient's complex multi-morbid trajectory.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "causal": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_5": {
+      "event_id": "step_probe_rag_diagnosis_5",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Pancreatic cystic lesions under surveillance, with family history of colorectal cancer, adding to the patient's risk profile.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_6": {
+      "event_id": "step_probe_rag_diagnosis_6",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Statin intolerance due to myalgia, complicating management of coronary artery disease.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_A1_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_note_1": {
+      "event_id": "step_probe_rag_note_1",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Patient was diverted to hospice care in March 2025, indicating late-stage or refractory disease and/or cumulative organ dysfunction.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_note_2": {
+      "event_id": "step_probe_rag_note_2",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Treatment evolution included physical therapy, short-term opioid use for pain, and at least one episode of rituximab therapy, but details on immunosuppressive or DMARD use are sparse.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_7": {
+      "event_id": "step_probe_rag_diagnosis_7",
+      "event_type": "diagnosis",
+      "timestamp": "2024-06-14",
+      "preview": "Significant, unexplained drop in hemoglobin (loss of 6 g over a year) with microcytic indices, no overt bleeding, and negative endoscopic workup, raising concern for chronic disease, iron deficiency, or occult process.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "diagnostic": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_8": {
+      "event_id": "step_probe_rag_diagnosis_8",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Documented paroxysmal atrial fibrillation as a persistent unresolved clinical issue.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_9": {
+      "event_id": "step_probe_rag_diagnosis_9",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Hypertension and hyperlipidemia are ongoing, with hyperlipidemia management complicated by statin intolerance due to myalgia.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_medication_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_10": {
+      "event_id": "step_probe_rag_diagnosis_10",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "History of acute non-ST elevation myocardial infarction (NSTEMI) and severe coronary artery disease, with ongoing cardiac risk.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_medication_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_11": {
+      "event_id": "step_probe_rag_diagnosis_11",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Interstitial lung disease (ILD) and moderate sleep apnea are persistent pulmonary issues.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_12": {
+      "event_id": "step_probe_rag_diagnosis_12",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Chronic low back pain and right ankle joint pain are ongoing musculoskeletal complaints.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_medication_1"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_13": {
+      "event_id": "step_probe_rag_diagnosis_13",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Pancreatic cystic lesions under surveillance, considered low-risk but requiring ongoing monitoring.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_14": {
+      "event_id": "step_probe_rag_diagnosis_14",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "History of hepatitis B (remote), GERD, and possible steroid exposure (prednisone taper noted), suggesting immunosuppressive therapy at times.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_diagnosis_15": {
+      "event_id": "step_probe_rag_diagnosis_15",
+      "event_type": "diagnosis",
+      "timestamp": "",
+      "preview": "Bilateral cataracts and family history of colorectal cancer, with personal history of colonic polyps.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {},
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_medication_1": {
+      "event_id": "step_probe_rag_medication_1",
+      "event_type": "medication",
+      "timestamp": "",
+      "preview": "Pain management has included non-opioid and short-term opioid use, with ongoing medication review and therapy adjustments.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_diagnosis_12"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_medication_2": {
+      "event_id": "step_probe_rag_medication_2",
+      "event_type": "medication",
+      "timestamp": "",
+      "preview": "Immunosuppression for myasthenia gravis has included prednisone and IVIG, with evidence of steroid tapering.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_medication_3": {
+      "event_id": "step_probe_rag_medication_3",
+      "event_type": "medication",
+      "timestamp": "",
+      "preview": "Statin therapy was discontinued due to myalgia, complicating hyperlipidemia and CAD management.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_diagnosis_9",
+          "step_probe_rag_diagnosis_10"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_medication_4": {
+      "event_id": "step_probe_rag_medication_4",
+      "event_type": "medication",
+      "timestamp": "",
+      "preview": "Patient was treated with ofev (nintedanib) for interstitial lung disease, initiated after multidisciplinary discussion in 2020.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "treatment": [
+          "step_probe_rag_diagnosis_2"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    },
+    "step_probe_rag_note_3": {
+      "event_id": "step_probe_rag_note_3",
+      "event_type": "note",
+      "timestamp": "",
+      "preview": "Recent care transitions included referral to hospice in March 2025, reflecting late-stage or cumulative disease burden.",
+      "discovered_by": [
+        "timeline_summarizer_probe_rag"
+      ],
+      "status": "included",
+      "connascence": {
+        "temporal": [
+          "step_A1_diagnosis_3"
+        ]
+      },
+      "annotations": {
+        "enrichment_source": "opportunistic",
+        "step_id": "probe_rag"
+      }
+    }
+  },
+  "metadata": {
+    "source": "pdf_ingestion",
+    "total_pages": 4223
+  }
+}

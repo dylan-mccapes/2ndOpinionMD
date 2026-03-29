@@ -38,10 +38,11 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")  # legacy default
 #   - Missing-slot detector
 #   - Short, JSON-only, token-light tasks
 #
-# Set these in .env to override defaults. If not set, falls back to CHAT_MODEL.
+# Set these in .env to override defaults.
+# Spec: guidelines=4o (reasoning), coding_core=4.1 (synthesis), util=4.1-mini (routing).
 
-CHAT_MODEL_GUIDELINES = os.getenv("CHAT_MODEL_GUIDELINES", CHAT_MODEL)
-CHAT_MODEL_CODING_CORE = os.getenv("CHAT_MODEL_CODING_CORE", CHAT_MODEL)
+CHAT_MODEL_GUIDELINES = os.getenv("CHAT_MODEL_GUIDELINES", "gpt-4o")
+CHAT_MODEL_CODING_CORE = os.getenv("CHAT_MODEL_CODING_CORE", "gpt-4.1")
 CHAT_MODEL_UTIL = os.getenv("CHAT_MODEL_UTIL", CHAT_MODEL)
 
 # How many total internal context chunks to give the LLM
@@ -49,7 +50,8 @@ BASE_RRF_K = 32
 BASE_LIMIT = 10
 
 # Hard cap on context size passed to LLM (chars; rough guard vs token overflows)
-MAX_CONTEXT_CHARS = 64_000
+# GPT-4.1 supports 1M tokens (~3M chars). 800K chars ≈ 80% of capacity.
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "800_000"))
 
 # Valyu-related env (used by valyu_client, kept here for centralization)
 VALYU_BASE_URL = os.getenv("VALYU_BASE_URL", "").strip()
@@ -1905,6 +1907,11 @@ Definitions:
 Rules:
 - DO NOT invent new evidence or documents.
 - Use ONLY the provided context docs as evidence.
+- **Patient Graph docs (source: "patient_graph", IDs like "graph:diagnosis", "graph:medication",
+  "graph:lab", etc.) are FIRST-CLASS evidence. They contain structured, timestamped clinical
+  events extracted from the patient's full medical record. ALWAYS cite them by their specific
+  type ID (e.g., "graph:diagnosis", "graph:medication") — never use a generic "graph_evidence" ID.
+  Graph evidence should appear in supporting_evidence_ids for any patient-specific clinical claim.**
 - If a claim is more of a conceptual summary and not clearly supported by any
   single doc, you may leave its evidence list empty.
 - Prefer a small number of high-signal claims (3–10), not dozens of tiny ones.
@@ -2459,7 +2466,21 @@ EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT = textwrap.dedent(
     """
 ).strip()
 
-EOH_TIMELINE_SUMMARIZER_MODEL = "gpt-4.1-mini"
+# Timeline JSON summarizer, PDF batched event extraction (_extract_events_from_pages_batch),
+# graph enrichment opportunistic pass, and related high-context EoH timeline calls.
+EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-4.1")
+
+# PDF event extraction (_extract_events_from_pages_batch) and connascence LLM passes.
+# Swap to a local Ollama model (e.g. "llama3.1:8b") via the INGESTION_MODEL env var
+# or the --ingestion-model CLI flag to eliminate ingestion API costs.
+# Defaults to EOH_TIMELINE_SUMMARIZER_MODEL so existing behaviour is unchanged.
+INGESTION_MODEL = os.getenv("INGESTION_MODEL", EOH_TIMELINE_SUMMARIZER_MODEL)
+
+# Ollama inference server base URL. Used when --llm-backend ollama|ollama-full is set.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
+# Gap analysis, connascence LLM pass, and similar “precision second opinion” calls.
+EOH_TIMELINE_GAP_MODEL = os.getenv("EOH_TIMELINE_GAP_MODEL", "gpt-4o")
 
 # Enable / disable probe+RAG timeline summarization for large timelines.
 # Default ON, but can be disabled via env if needed.

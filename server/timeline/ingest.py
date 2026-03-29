@@ -343,25 +343,8 @@ class DocumentParser:
     
     def _parse_timestamp_string(self, ts_str: str) -> Optional[datetime]:
         """Parse a timestamp string into datetime."""
-        formats = [
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%dT%H:%M:%SZ",
-            "%Y-%m-%d",
-            "%m/%d/%Y",
-            "%m/%d/%y",
-            "%B %d, %Y",
-            "%b %d, %Y",
-            "%d %B %Y",
-            "%d %b %Y",
-        ]
-        
-        for fmt in formats:
-            try:
-                return datetime.strptime(ts_str.strip(), fmt)
-            except ValueError:
-                continue
-        
-        return None
+        from server.utils.parse_date import parse_clinical_date
+        return parse_clinical_date(ts_str)
     
     def _classify_and_extract(
         self, 
@@ -765,7 +748,7 @@ class DirectoryIngestor:
 
 
 # ============================================================================
-# PDF Bytes Ingestion (for API upload)
+# PDF Bytes Ingestion (for API upload) — dynamic batching + graph enrichment
 # ============================================================================
 
 async def run_ingest_from_pdf_bytes(
@@ -773,11 +756,27 @@ async def run_ingest_from_pdf_bytes(
     pdf_bytes: bytes,
     patient_id: str,
     password: Optional[str] = None,
-) -> int:
+    enable_graph_enrichment: bool = True,
+) -> Dict[str, Any]:
     """
-    Extract text from PDF bytes, parse into timeline events, store in ehr.patient_timeline.
-    Used by POST /api/timeline/import-pdf.
+    Extract text from PDF bytes, parse into timeline events, store in
+    ehr.patient_timeline, and optionally run GPT-4.1 graph enrichment on
+    each batch.
+
+    Batches are sized to fill ~60% of GPT-4.1's context window so the
+    enrichment agent sees maximum clinical context per call.
+
+    Returns a stats dict:
+        {
+            "events_stored": int,
+            "total_pages": int,
+            "pages_with_text": int,
+            "batches": int,
+            "enrichment_stats": [...],
+            "vision": PatientTimelineVision (if enrichment enabled),
+        }
     """
+    import time as _time
     from io import BytesIO
 
     try:
@@ -785,6 +784,11 @@ async def run_ingest_from_pdf_bytes(
     except ImportError as e:
         raise ImportError("pypdf required for PDF ingestion") from e
 
+    t0 = _time.perf_counter()
+
+    # ------------------------------------------------------------------
+    # 1. Read PDF pages
+    # ------------------------------------------------------------------
     stream = BytesIO(pdf_bytes)
     reader = PdfReader(stream)
     if reader.is_encrypted:
@@ -792,29 +796,177 @@ async def run_ingest_from_pdf_bytes(
             raise ValueError("PDF is encrypted; password required")
         if reader.decrypt(password) == 0:
             raise ValueError("Incorrect PDF password")
-    text_chunks = []
+
+    total_pages = len(reader.pages)
+    logger.info("INGEST [%s] PDF has %d total pages", patient_id, total_pages)
+    print(f"\n{'='*70}")
+    print(f"  PDF INGESTION — patient: {patient_id}")
+    print(f"  total pages: {total_pages}  pdf bytes: {len(pdf_bytes):,}")
+    print(f"{'='*70}")
+
+    pages: List[Tuple[int, str]] = []
+    chars_total = 0
     for idx, page in enumerate(reader.pages):
         t = (page.extract_text() or "").strip().replace("\x00", "")
         if t:
-            text_chunks.append(f"=== Page {idx + 1} ===\n{t}")
-    timeline_text = "\n\n".join(text_chunks)
-    if not timeline_text.strip():
+            pages.append((idx + 1, t))
+            chars_total += len(t)
+
+    if not pages:
         raise ValueError("No text could be extracted from PDF")
 
+    logger.info(
+        "INGEST [%s] %d/%d pages yielded text — %s total chars",
+        patient_id, len(pages), total_pages, f"{chars_total:,}",
+    )
+    print(
+        f"  pages with text: {len(pages)}/{total_pages}\n"
+        f"  total chars extracted: {chars_total:,}\n"
+        f"  avg chars/page: {chars_total // max(len(pages), 1):,}"
+    )
+
+    # ------------------------------------------------------------------
+    # 2. Compute dynamic batches (60% of GPT-4.1 context)
+    # ------------------------------------------------------------------
+    from server.eoh.graph_enrichment import compute_batch_boundaries, BATCH_MAX_CHARS
+
+    batches = compute_batch_boundaries(pages, max_chars=BATCH_MAX_CHARS)
+    logger.info(
+        "INGEST [%s] split into %d batches (target %s chars each, 60%% GPT-4.1 context)",
+        patient_id, len(batches), f"{BATCH_MAX_CHARS:,}",
+    )
+    print(
+        f"  batch target: {BATCH_MAX_CHARS:,} chars (60% of GPT-4.1 1M-token context)\n"
+        f"  batches: {len(batches)}"
+    )
+
+    # ------------------------------------------------------------------
+    # 3. Process each batch: store events + enrich graph
+    # ------------------------------------------------------------------
     parser = DocumentParser()
     engine = TimelineEngine()
-    events = parser.parse_document(
-        timeline_text,
-        patient_id,
-        source=EventSource.PATIENT_UPLOAD,
-        filename="uploaded.pdf",
-    )
-    count = 0
-    for event in events:
-        await engine.store_event(db, event)
-        count += 1
+    events_stored = 0
+    enrichment_stats_list: List[Dict[str, Any]] = []
+    vision = None
+
+    if enable_graph_enrichment:
+        from server.eoh.patient_timeline_vision import PatientTimelineVision
+        vision = PatientTimelineVision(
+            patient_id=patient_id,
+            built_at=datetime.now().isoformat(),
+            session_only=False,
+            metadata={"source": "pdf_ingestion", "total_pages": total_pages},
+        )
+
+    for batch_idx, batch_pages in enumerate(batches):
+        batch_page_nums = [p[0] for p in batch_pages]
+        page_range_str = f"{batch_page_nums[0]}-{batch_page_nums[-1]}"
+        batch_text = "\n\n".join(
+            f"=== Page {pn} ===\n{txt}" for pn, txt in batch_pages
+        )
+        batch_chars = len(batch_text)
+
+        logger.info(
+            "INGEST [%s] batch %d/%d — pages %s (%d pages, %s chars)",
+            patient_id, batch_idx + 1, len(batches),
+            page_range_str, len(batch_pages), f"{batch_chars:,}",
+        )
+        print(
+            f"\n  ── batch {batch_idx+1}/{len(batches)} ──\n"
+            f"     pages: {page_range_str}  ({len(batch_pages)} pages, {batch_chars:,} chars)"
+        )
+
+        # 3a. Parse + store timeline events (regex-based, fast)
+        batch_events_stored = 0
+        for pn, txt in batch_pages:
+            page_text = f"=== Page {pn} ===\n{txt}"
+            events = parser.parse_document(
+                page_text,
+                patient_id,
+                source=EventSource.PATIENT_UPLOAD,
+                filename="uploaded.pdf",
+            )
+            for event in events:
+                event.meta = event.meta or {}
+                event.meta["page"] = pn
+                event.meta["batch_index"] = batch_idx
+                event.meta["page_range"] = page_range_str
+                await engine.store_event(db, event)
+                batch_events_stored += 1
+
+        events_stored += batch_events_stored
+        logger.info(
+            "INGEST [%s] batch %d stored %d timeline events (total so far: %d)",
+            patient_id, batch_idx + 1, batch_events_stored, events_stored,
+        )
+        print(f"     timeline events stored: {batch_events_stored} (running total: {events_stored})")
+
+        # 3b. Graph enrichment via GPT-4.1 (if enabled)
+        if enable_graph_enrichment and vision is not None:
+            from server.eoh.graph_enrichment import enrich_graph_from_batch
+
+            enrich_stats = await enrich_graph_from_batch(
+                batch_text=batch_text,
+                page_range=page_range_str,
+                patient_id=patient_id,
+                vision=vision,
+                batch_index=batch_idx,
+                total_batches=len(batches),
+            )
+            enrichment_stats_list.append(enrich_stats)
+
+            logger.info(
+                "INGEST [%s] graph state after batch %d: %d events, %d edges",
+                patient_id, batch_idx + 1,
+                len(vision.events), vision.count_edges(),
+            )
+            print(
+                f"     graph state: {len(vision.events)} events, "
+                f"{vision.count_edges()} edges"
+            )
+
+    # ------------------------------------------------------------------
+    # 4. Commit + save vision
+    # ------------------------------------------------------------------
     await db.commit()
-    return count
+
+    if vision is not None:
+        from server.eoh.patient_timeline_vision import (
+            _infer_temporal_connascence,
+            save_timeline_vision,
+        )
+        _infer_temporal_connascence(vision, window_days=7)
+        save_timeline_vision(vision)
+        logger.info(
+            "INGEST [%s] final graph: %d events, %d edges — saved to disk",
+            patient_id, len(vision.events), vision.count_edges(),
+        )
+
+    elapsed_ms = int((_time.perf_counter() - t0) * 1000)
+    logger.info(
+        "INGEST [%s] COMPLETE — %d events stored, %d batches, %dms",
+        patient_id, events_stored, len(batches), elapsed_ms,
+    )
+    print(
+        f"\n{'='*70}\n"
+        f"  INGESTION COMPLETE\n"
+        f"  events stored: {events_stored}\n"
+        f"  batches processed: {len(batches)}\n"
+        f"  graph events: {len(vision.events) if vision else 'N/A'}\n"
+        f"  graph edges: {vision.count_edges() if vision else 'N/A'}\n"
+        f"  elapsed: {elapsed_ms:,}ms\n"
+        f"{'='*70}"
+    )
+
+    return {
+        "events_stored": events_stored,
+        "total_pages": total_pages,
+        "pages_with_text": len(pages),
+        "batches": len(batches),
+        "enrichment_stats": enrichment_stats_list,
+        "vision": vision,
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 # ============================================================================

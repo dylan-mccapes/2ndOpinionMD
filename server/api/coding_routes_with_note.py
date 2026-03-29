@@ -10,6 +10,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 
 from .rag_routes import _handle_rag_ask
+from .stream_config import CHAT_MODEL_CODING_CORE
 
 router = APIRouter(prefix="/api/rag", tags=["coding"])
 # --------------- JSON Coercion & Parsing ---------------
@@ -269,7 +270,7 @@ async def coding(request: Request, payload: Dict[str, Any] = Body(...),
     # Build strict prompting and force JSON output
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model_used = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    model_used = CHAT_MODEL_CODING_CORE
 
     PROMPT = f"""
 You are a clinical assistant. Return STRICT JSON ONLY (no code fences). Schema:

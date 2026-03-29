@@ -3,6 +3,11 @@
 # Covers: EoH patient helpers, eoh_stream_event_generator, eoh_stream route.
 
 from .rag_stream_shared import *  # noqa: F401,F403
+from .rag_stream_shared import (
+    _chat_completion_async,
+    _openai_client,
+    _send_large_request_warning,
+)
 from .rag_stream_ask import synthesize_valyu_evidence
 
 async def _fetch_ethos_module_docs_text(
@@ -199,8 +204,14 @@ You receive:
 - A fused context of documents from multiple sources (guidelines, Ethos/EoH internal docs, patient timeline, diagnostic landscape, Valyu research, etc.).
 
 When using context:
+- **Patient Graph evidence (source: "patient_graph") is the PRIMARY clinical evidence source.**
+  These are structured, typed graph nodes (diagnoses, medications, labs, procedures, symptoms, etc.)
+  extracted and enriched from the patient's full medical record. Each graph doc contains timestamped
+  events with connascence edges. When graph evidence is present, treat it as the highest-fidelity
+  patient-specific data. Cite specific graph event types (e.g., "Graph: Diagnoses", "Graph: Medications")
+  in your claims and evidence map — they are individually citable first-class sources.
 - Treat guideline and Ethos/EoH sources as primary normative references.
-- Treat patient timeline and diagnostic landscape as the ground truth about this specific patient.
+- Treat patient timeline and diagnostic landscape as supplementary patient context (lower fidelity than graph).
 - Treat Valyu research sources (source names beginning with 'valyu/' or method containing 'valyu') as:
   - Secondary research evidence that can support or challenge internal guidelines.
   - Never the sole basis for a clinical recommendation when it conflicts with strong guideline consensus.
@@ -842,6 +853,8 @@ async def eoh_stream_event_generator(
     timeline_patient_id: Optional[str] = None,
     research: int = 0,
     enable_gap: int = 1,
+    graph_context: Optional[str] = None,
+    graph_context_docs: Optional[List[Dict[str, Any]]] = None,
 ) -> AsyncIterator[Dict[str, str]]:
     """
     Dedicated event generator for /eoh_stream with EoH LLM Router integration.
@@ -1152,13 +1165,25 @@ async def eoh_stream_event_generator(
                 },
             )
 
-            # Signals
+            # Signals (truncated for SSE)
+            _raw_signals = (timeline_ctx_local.key_signals or [])[:5]
+            _compact_sigs = []
+            for _sig in _raw_signals:
+                if isinstance(_sig, dict):
+                    _compact_sigs.append({
+                        k: (v[:200] + "..." if isinstance(v, str) and len(v) > 200 else v)
+                        for k, v in _sig.items()
+                    })
+                elif isinstance(_sig, str):
+                    _compact_sigs.append(_sig[:200] + "..." if len(_sig) > 200 else _sig)
+                else:
+                    _compact_sigs.append(_sig)
             yield sse(
                 "timeline_signals_summary",
                 {
                     "patient_id": timeline_patient_id,
                     "n_signals": len(timeline_ctx_local.key_signals or []),
-                    "sample_signals": (timeline_ctx_local.key_signals or [])[:5],
+                    "sample_signals": _compact_sigs,
                 },
             )
 
@@ -1172,11 +1197,32 @@ async def eoh_stream_event_generator(
                 )
 
             if timeline_ctx_local.flare_features:
+                def _truncate_flare(item: Any) -> Any:
+                    if isinstance(item, dict):
+                        return {
+                            k: (v[:200] + "..." if isinstance(v, str) and len(v) > 200 else v)
+                            for k, v in item.items()
+                        }
+                    if isinstance(item, str):
+                        return item[:200] + "..." if len(item) > 200 else item
+                    return item
+
+                _ff = timeline_ctx_local.flare_features
+                if isinstance(_ff, list):
+                    _ff_compact = [_truncate_flare(x) for x in _ff[:15]]
+                elif isinstance(_ff, dict):
+                    _ff_compact = {
+                        k: ([_truncate_flare(x) for x in v[:15]] if isinstance(v, list) else _truncate_flare(v))
+                        for k, v in _ff.items()
+                    }
+                else:
+                    _ff_compact = _ff
                 yield sse(
                     "timeline_flare_features",
                     {
                         "patient_id": timeline_patient_id,
-                        "flare_features": timeline_ctx_local.flare_features,
+                        "flare_features_count": len(_ff) if isinstance(_ff, (list, dict)) else 0,
+                        "flare_features": _ff_compact,
                     },
                 )
 
@@ -1951,6 +1997,23 @@ async def eoh_stream_event_generator(
     # 8) Case analog docs at the tail to avoid drowning core guideline/timeline
     if case_analog_docs:
         final_ctx.extend(case_analog_docs)
+
+    # 9) Graph evidence — FIRST CLASS, at position 0 so it's PRIMARY context.
+    #    Structured docs (per-type) take precedence; fall back to legacy blob.
+    if graph_context_docs:
+        for gdoc in reversed(graph_context_docs):
+            final_ctx.insert(0, gdoc)
+    elif graph_context:
+        graph_ctx_doc = {
+            "id": "graph_evidence",
+            "source": "patient_graph",
+            "source_id": "patient_graph:chart",
+            "title": "Graph Evidence (semantic + traversal)",
+            "text": graph_context,
+            "score": 1.0,
+            "method": "graph_probe",
+        }
+        final_ctx.insert(0, graph_ctx_doc)
 
     # Valyu context accounting
     valyu_ctx_count = 0

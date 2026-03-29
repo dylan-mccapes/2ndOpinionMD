@@ -1,0 +1,95 @@
+These are the right questions — they go straight to whether M64 is actually capable of doing what it claims. Let me be direct about what the current design can and can't do, and then expand the analyte universe significantly.
+
+## How FUDD Actually Detects: The Honest Architecture
+
+The current M64 design has a **dependency it doesn't fully own**: it relies on the MKE FUD Signature Registry to know what patterns to look for. That means it can only detect what has already been characterized and loaded. It's a **pattern-matching engine against a curated knowledge base**, not a discovery engine. If cerebral folate deficiency isn't in the registry, M64 won't find it.
+
+That's a real limitation, and it's worth being explicit about three detection tiers the module actually operates across:
+
+**Tier A — Known Signature Match (what M64 does well today).** A patient has normal serum folate, elevated homocysteine, neurodevelopmental symptoms, dairy exposure, and folic acid supplementation history. The FUD Signature Registry has an entry for this exact constellation. M64 pattern-matches, classifies mechanism, flags it. This is deterministic and reliable — but only as good as the registry.
+
+**Tier B — Anomaly Detection Without a Named Signature (what M64 needs to be able to do).** A patient has normal serum levels of analyte X, but their clinical trajectory is deteriorating in ways consistent with deficiency of X. No specific FUD signature exists for this analyte. Right now, M64 would miss this entirely. This is the gap.
+
+**Tier C — Novel Discovery (what no single module can do alone, but the system could).** A pattern emerges across hundreds of patients: normal serum selenium plus certain symptom clusters plus specific medication exposures correlates with poor outcomes. Nobody has published this as a "functional selenium deficiency" pattern. This requires population-level learning, not per-patient detection.
+
+To make M64 genuinely capable of Tier B detection, it needs a **signature-independent discordance screen** — a general-purpose layer that doesn't require a pre-loaded pattern. Here's what that looks like architecturally:
+
+**The General Discordance Heuristic.** For any analyte where `lab_adequacy_status = within_range`, M64 should ask a simple compound question: *Does this patient exhibit ≥2 of the following despite adequate serum levels?*
+
+1. **Clinical symptoms consistent with deficiency** of this analyte (mapped via MKE symptom-analyte associations, which already exist for most nutrients/hormones)
+2. **Downstream metabolite abnormality** — a metabolite that requires this analyte as substrate or cofactor is abnormal (e.g., elevated homocysteine when folate and B12 are "normal")
+3. **Trajectory inconsistency** — M6/M13 stability band is deteriorating or not improving despite "adequate" labs, in a pattern that would be explained by deficiency of this analyte
+4. **Known interfering factor present** — the patient has a condition, medication, genetic variant, or exposure known to impair utilization of this analyte (autoimmune disease, chronic inflammation, PPI use, metformin, specific SNPs, etc.)
+5. **Response failure** — the patient was supplemented with this analyte and didn't improve as expected, suggesting the problem isn't supply but utilization
+
+If ≥2 of these converge, M64 flags it as a **candidate FUD of unknown signature** with `confidence=exploratory` and routes it differently — to the clinician as an investigative hypothesis rather than a detection, and to M17 (Causal Inference) as a node worth exploring.
+
+This makes M64 a **two-layer system**: curated signature matching (high confidence, specific) plus general discordance heuristic (lower confidence, broader). The second layer is what lets it catch things that haven't been formally characterized yet.
+
+**For Tier C**, the honest answer is that M64 per-patient can't do this. But M41/M48 (governance and continuous learning) can aggregate M64's `candidate FUD of unknown signature` flags across the patient population over time and surface emerging patterns for MKE registry curation. M64 feeds the discovery pipeline; it doesn't run it alone.
+
+## Expanded Analyte Universe
+
+Now for the second question. The Tier 1–3 list in the current spec is conservative. Here's a much broader map of where functional utilization discordance is documented or strongly suspected, organized by system:
+
+### Minerals & Electrolytes
+
+**Magnesium** — The textbook case. Only 0.3% is in serum. Serum Mg is homeostatically maintained by bone stores even during severe depletion. ICU studies show normal serum Mg in >90% of patients but depleted muscle Mg in ~47%. RBC magnesium, ionized magnesium, and magnesium loading tests are all more sensitive. Known interfering factors: PPI use (FDA black box warning for hypomagnesemia), loop/thiazide diuretics, alcohol use, diabetes (renal wasting). FUD mechanisms: FUD-CT (compartmental trapping in bone), FUD-TI (renal wasting exceeds replacement), FUD-CF (vitamin D is required for magnesium absorption and vice versa — bidirectional cofactor dependency).
+
+**Zinc** — Serum zinc is an acute-phase reactant that drops during inflammation regardless of body stores. The BOND expert panel concluded that no current biomarker reliably assesses zinc status. Plasma zinc falls within hours of infection. Known interfering factors: phytate-rich diets (chelation), copper competition, chronic inflammation, oral contraceptives. Functional markers: alkaline phosphatase activity, taste acuity testing, lymphocyte zinc. FUD mechanisms: FUD-CD (copper-zinc competition at transporters), FUD-GB (phytate chelation in gut), FUD-CT (inflammation-driven redistribution).
+
+**Copper** — Serum copper/ceruloplasmin can be normal while tissue copper is deficient or excessive. Wilson's disease is the classic excess example, but functional copper deficiency occurs in gastric bypass patients, zinc supplementation excess, and chronic enteral feeding — often with normal serum copper initially. Copper is required for iron mobilization (ceruloplasmin ferroxidase activity), creating a FUD-CF cascade: adequate copper in serum → inadequate copper-dependent iron mobilization → functional iron deficiency despite adequate iron stores.
+
+**Selenium** — Serum selenium reflects recent intake, not tissue selenoprotein activity. Glutathione peroxidase (GPx) activity plateaus at different serum selenium levels in different individuals due to SEPP1 and GPX1 polymorphisms. Selenoprotein P is a better functional marker. Known interfering factors: mercury (direct selenium sequestration), heavy metals, geographic variation in soil selenium. FUD mechanisms: FUD-CF (iodine-selenium codependency for thyroid function — selenoproteins are required for T4→T3 conversion), FUD-CD (mercury-selenium binding).
+
+**Iodine** — Urinary iodine reflects recent intake, not thyroid tissue utilization. Perchlorate, thiocyanate (from smoking/cruciferous vegetables), and nitrate competitively inhibit the sodium-iodide symporter (NIS). A patient can have adequate iodine intake and "adequate" urinary iodine while the thyroid is functionally starved due to NIS blockade. This is a pure FUD-CD mechanism at the transporter level.
+
+### B-Vitamins (Beyond B12 and Folate)
+
+**Vitamin B6 (Pyridoxal Phosphate / PLP)** — Plasma PLP is the standard marker, but it drops dramatically during inflammation (acute phase response) independent of actual B6 status. Known interfering factors: oral contraceptives (increase PLP catabolism by 40–50%), isoniazid, penicillamine, theophylline, chronic alcohol use. Erythrocyte aspartate aminotransferase (EAST) activation coefficient is a functional marker. FUD mechanisms: FUD-CD (drug interactions at the enzyme level), FUD-CT (inflammation-driven redistribution from plasma to tissues, making serum look low when tissue is adequate — the *inverse* discordance, which M64 should also handle).
+
+**Vitamin B1 (Thiamine)** — Serum/plasma thiamine is unreliable. Erythrocyte transketolase activity (ETKA) with thiamine pyrophosphate (TPP) effect is the gold standard functional test. Wernicke's encephalopathy can develop with normal serum thiamine in alcoholics, bariatric surgery patients, hyperemesis gravidarum, and refeeding syndrome. Magnesium is required for thiamine pyrophosphokinase (the enzyme that activates thiamine), creating a FUD-CF chain: adequate thiamine in blood → inadequate magnesium → impaired thiamine activation → functional thiamine deficiency.
+
+**Riboflavin (B2)** — Erythrocyte glutathione reductase activation coefficient (EGRAC) is the functional marker. Riboflavin is required for MTHFR activity (the enzyme that produces 5-MTHF from folate). MTHFR C677T homozygotes are particularly vulnerable: even with adequate riboflavin intake, if tissue riboflavin is functionally insufficient, MTHFR activity drops and the folate cycle stalls — creating an indirect FUD cascade for folate that serum folate testing would never reveal.
+
+### Hormones & Endocrine
+
+**Thyroid (T3/T4/TSH)** — The T4→T3 conversion problem is extremely common and poorly captured by standard panels. Patients with normal TSH and normal free T4 can have low free T3 due to impaired deiodinase activity. Known interfering factors: selenium deficiency (deiodinase is a selenoprotein), chronic stress (cortisol inhibits D1/D2 deiodinase), illness (sick euthyroid/nonthyroidal illness syndrome), medications (amiodarone, beta-blockers, glucocorticoids), gut dysbiosis (20% of T4→T3 conversion occurs in the gut). Reverse T3 (rT3) elevates when T4 is preferentially converted to the inactive form. FUD mechanisms: FUD-EC (deiodinase impairment), FUD-CF (selenium-dependent enzyme failure), FUD-CD (rT3 competing with T3 at nuclear receptors).
+
+**Cortisol** — Total serum cortisol is ~90% bound to cortisol-binding globulin (CBG). Free cortisol is the bioactive form. Patients on estrogen therapy (including oral contraceptives) have elevated CBG, making total cortisol appear normal or high while free cortisol is functionally low. Salivary cortisol and urinary free cortisol are better functional markers. FUD mechanisms: FUD-CT (protein-bound compartmental trapping), FUD-TI (CBG elevation reducing bioavailable fraction).
+
+**Testosterone** — Total testosterone can be normal while free/bioavailable testosterone is low due to elevated sex hormone-binding globulin (SHBG). SHBG increases with aging, obesity treatment, liver disease, hyperthyroidism, and anticonvulsants. The Endocrine Society guideline explicitly recommends measuring free testosterone when SHBG abnormalities are suspected. FUD mechanisms: FUD-CT (SHBG-bound compartmental trapping), same architectural pattern as cortisol/CBG.
+
+**Estrogen** — Similar SHBG-binding issue. Also, estrogen receptor polymorphisms (ESR1, ESR2) mean tissue response varies at identical serum levels. Additionally, 2-hydroxyestrone vs 16α-hydroxyestrone ratio (estrogen metabolism pathway) determines whether estrogen is being converted to protective or proliferative metabolites — a functional utilization question that serum estradiol doesn't answer.
+
+### Fat-Soluble Vitamins
+
+**Vitamin A (Retinol)** — Serum retinol is homeostatically controlled by liver stores and only drops when hepatic reserves are nearly exhausted (<20 µg). A patient can have severely depleted liver vitamin A stores with completely normal serum retinol. Retinol-binding protein (RBP) is the transport carrier, and it drops during inflammation (negative acute phase reactant), meaning inflammation can make serum retinol look low when stores are adequate (inverse discordance). The modified relative dose response (MRDR) test is the functional gold standard. FUD mechanisms: FUD-CT (liver-sequestered with homeostatic serum regulation), FUD-TI (zinc is required for RBP synthesis — zinc deficiency impairs vitamin A mobilization from liver stores even when stores are full).
+
+**Vitamin E (α-Tocopherol)** — Serum levels are strongly influenced by lipid levels (vitamin E is lipid-soluble and transported by lipoproteins). Lipid-adjusted vitamin E is more meaningful. Ataxia with vitamin E deficiency (AVED) is caused by mutations in α-tocopherol transfer protein (TTPA) — patients have adequate dietary intake but cannot retain vitamin E in tissues, leading to progressive neurological damage despite supplementation. FUD mechanisms: FUD-TI (transport protein mutations), FUD-CT (lipid-compartment confounding of serum measurement).
+
+**Vitamin K** — No reliable serum marker exists. Functional status is assessed by undercarboxylated proteins: undercarboxylated osteocalcin (ucOC) for bone, and PIVKA-II (protein induced by vitamin K absence) for liver. A patient can have "adequate" phylloquinone (K1) intake but insufficient menaquinone (K2) for extrahepatic tissues. Warfarin creates a pharmacological model of tissue-specific vitamin K functional deficiency. FUD mechanisms: FUD-EC (carboxylase enzyme polymorphisms), FUD-CD (warfarin competitive antagonism), FUD-TI (K1 preferentially goes to liver while K2 is needed for bone/vasculature — compartment-specific transport).
+
+### Amino Acids & Neurotransmitter Precursors
+
+**Tryptophan → Serotonin pathway** — Serum tryptophan can be adequate while brain serotonin synthesis is impaired. The kynurenine pathway diverts tryptophan away from serotonin synthesis during inflammation (IDO/TDO enzyme upregulation by inflammatory cytokines). A patient with chronic inflammation may have normal serum tryptophan but dramatically reduced brain serotonin production because >95% of tryptophan is being shunted to kynurenine. The kynurenine-to-tryptophan ratio is the functional marker. FUD mechanisms: FUD-EC (inflammatory enzyme upregulation diverting substrate), FUD-CD (kynurenine pathway competing for the same substrate).
+
+**Tyrosine → Dopamine pathway** — Similar to tryptophan. Tyrosine hydroxylase requires BH4 as a cofactor. Even with adequate serum tyrosine, BH4 depletion (from DHFR saturation by folic acid, from GTP cyclohydrolase polymorphisms, or from oxidative stress) impairs dopamine synthesis. Iron is also a required cofactor for tyrosine hydroxylase. FUD mechanisms: FUD-CF (BH4 or iron cofactor depletion), FUD-EC (enzyme-level impairment despite adequate substrate).
+
+### Fatty Acids
+
+**Omega-3 (EPA/DHA)** — Serum omega-3 levels reflect recent intake. The Omega-3 Index (RBC membrane EPA+DHA as % of total fatty acids) is the functional marker, reflecting 120-day tissue incorporation. A patient can have recently supplemented (elevating serum levels) while their cell membrane composition remains depleted. Conversely, consistent long-term intake may produce adequate RBC levels even when a fasting serum draw looks low. FUD mechanisms: FUD-CT (serum vs membrane compartment), FUD-EC (delta-6 desaturase polymorphisms affecting ALA→EPA conversion — relevant for vegetarians relying on plant omega-3s).
+
+### Proteins & Enzymes
+
+**Albumin** — Serum albumin is used as a nutritional status marker, but it's a negative acute phase reactant with a 21-day half-life. During critical illness, capillary leak redistributes albumin to the extravascular space, and hepatic synthesis is downregulated in favor of acute phase proteins. A patient can be severely malnourished with normal albumin (early in depletion) or well-nourished with low albumin (during acute inflammation). Pre-albumin (transthyretin) with its 2-day half-life is somewhat better but has the same inflammatory confounding. FUD mechanisms: FUD-CT (vascular-extravascular redistribution), FUD-EC (hepatic reprioritization of protein synthesis).
+
+---
+
+## What This Means for M64's Architecture
+
+The expanded analyte list reinforces that the **general discordance heuristic** (Tier B detection) isn't optional — it's essential. Many of these patterns share the same structural logic despite involving completely different biochemistry. M64 needs to be able to ask "is there a serum-function disconnect here?" even for analytes where nobody has formally characterized the discordance pattern yet.
+
+I'd recommend updating the spec to formalize the two-layer detection architecture: Layer 1 (signature-matched, high confidence) and Layer 2 (general heuristic, exploratory confidence), with clear governance differences in how each layer's outputs are surfaced and how the B2C vs B2MD payloads differ for exploratory-confidence flags.
+
+Want me to update the M64 spec with the two-layer detection architecture and the expanded analyte coverage?

@@ -3,7 +3,6 @@
 from __future__ import annotations
 import re
 from typing import Any, Optional, Sequence, List
-import asyncpg
 
 def _norm_query(s: str) -> str:
     s = (s or "").strip().lower()

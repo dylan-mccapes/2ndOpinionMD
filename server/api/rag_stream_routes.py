@@ -2579,9 +2579,15 @@ def format_context_for_llm(
                 f"{title} | {text}"
             )
         else:
-            # Non-coding mode: distinguish Valyu vs internal MKG for the prompt
+            # Non-coding mode: distinguish graph vs Valyu vs internal MKG
+            is_graph = src == "patient_graph" or method == "graph_probe"
             is_valyu = src.startswith("valyu") or method == "valyu"
-            kind = "VALYU_LIT" if is_valyu else "INTERNAL_MKG"
+            if is_graph:
+                kind = "PATIENT_GRAPH"
+            elif is_valyu:
+                kind = "VALYU_LIT"
+            else:
+                kind = "INTERNAL_MKG"
 
             block = f"[{i}] kind={kind} {src}{source_id_str} | {title} | {text}"
 
@@ -4417,12 +4423,16 @@ def _classify_citation_kind(row: Dict[str, Any]) -> str:
             meta = {"raw": meta_raw}
 
     meta_kind = (meta or {}).get("kind")
-    if meta_kind in {"valyu", "ethos", "guideline", "timeline", "router"}:
+    if meta_kind in {"valyu", "ethos", "guideline", "timeline", "router", "patient_graph"}:
         return meta_kind
 
     src = str(row.get("source", "")).lower()
     method = str(row.get("method", "")).lower()
     text = (row.get("text") or "")[:200].lower()
+
+    # 0) Patient graph evidence (first-class clinical data)
+    if src == "patient_graph" or method == "graph_probe":
+        return "patient_graph"
 
     # 1) Internal synthetic docs
     if src == "patient_timeline":
@@ -4488,8 +4498,11 @@ def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         )
         source_id_str = str(source_id).strip()
 
-        if src == "patient_timeline":
-            # Prefer patient_id if present
+        if src == "patient_graph" or method == "graph_probe":
+            graph_type = meta.get("event_type") or source_id_str or row.get("id") or "chart"
+            key = f"patient_graph:{graph_type}"
+            title = row.get("title") or f"Patient Graph — {graph_type.title()}"
+        elif src == "patient_timeline":
             patient_id = meta.get("patient_id") or row.get("id") or source_id_str or "unknown"
             key = f"patient_timeline:{patient_id}"
             title = row.get("title") or f"Patient Timeline – {patient_id}"
@@ -4541,15 +4554,16 @@ def build_citations(context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             }
         )
 
-    # Group by kind: Valyu -> Ethos -> everything else
+    # Group by kind: Patient Graph (primary) -> Valyu -> Ethos -> everything else
     kind_order = {
-        "valyu": 0,
-        "ethos": 1,
+        "patient_graph": 0,
+        "valyu": 1,
+        "ethos": 2,
         # internal narrative scaffolding
-        "timeline": 2,
-        "router": 3,
+        "timeline": 3,
+        "router": 4,
         # guidelines and other internal docs
-        "guideline": 4,
+        "guideline": 5,
     }
 
     raw_citations.sort(

@@ -15,7 +15,7 @@ import logging
 import textwrap
 from typing import Any, Dict, List, Optional
 
-from server.api.stream_config import EOH_TIMELINE_SUMMARIZER_MODEL
+from server.api.stream_config import EOH_TIMELINE_GAP_MODEL
 from server.eoh.patient_timeline_vision import PatientTimelineVision
 from server.eoh.timeline_summarizer import (
     _safe_get_choice_content,
@@ -131,12 +131,12 @@ async def analyze_timeline_enrichment_gaps(
         ],
         "edges": [
             {
-                "source_event_id": edge.source_event_id,
-                "target_event_id": edge.target_event_id,
-                "connascence_type": edge.connascence_type,
-                "strength": edge.strength,
+                "source_event_id": edge["source_event_id"],
+                "target_event_id": edge["target_event_id"],
+                "connascence_type": edge["connascence_type"],
+                "strength": edge.get("strength", 1.0),
             }
-            for edge in patient_timeline_vision.edges[:100]  # Cap at 100 edges
+            for edge in patient_timeline_vision.iter_connascence_edges(limit=100)
         ],
     }
     
@@ -169,7 +169,7 @@ async def analyze_timeline_enrichment_gaps(
     try:
         resp = await chat_completion_async(
             client=client,
-            model=EOH_TIMELINE_SUMMARIZER_MODEL,
+            model=EOH_TIMELINE_GAP_MODEL,
             messages=messages,
             max_tokens=4096,
             response_format={"type": "json_object"},
