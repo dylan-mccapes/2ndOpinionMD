@@ -1,0 +1,55 @@
+{
+  "patient_id": "NORMAN_ROBERTS",
+  "query": "What are the key unresolved clinical issues and how has treatment failed?",
+  "focus": "diagnostic_landscape",
+  "events": [],
+  "plan": {
+    "patient_id": "NORMAN_ROBERTS",
+    "focus": "diagnostic_landscape",
+    "steps": [
+      {
+        "step_id": "A1",
+        "kind": "terrain_risk",
+        "question_type": "A",
+        "debug": false
+      },
+      {
+        "step_id": "B1",
+        "kind": "flare_vs_noise",
+        "question_type": "B",
+        "debug": false
+      },
+      {
+        "step_id": "C1",
+        "kind": "diagnostic_landscape",
+        "question_type": "C",
+        "debug": false
+      },
+      {
+        "step_id": "C2",
+        "kind": "diagnostic_landscape",
+        "question_type": "C",
+        "debug": false
+      },
+      {
+        "step_id": "D1",
+        "kind": "trajectory",
+        "question_type": "D",
+        "debug": false
+      },
+      {
+        "step_id": "E1",
+        "kind": "meta_calibration",
+        "question_type": "E",
+        "debug": false
+      }
+    ]
+  },
+  "step_reports": [],
+  "evidence_maps": [],
+  "final_report": null,
+  "run_id": null,
+  "pdf_path": null,
+  "elapsed_s": 9.8,
+  "event_count": 6
+}
