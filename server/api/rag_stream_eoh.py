@@ -666,6 +666,16 @@ ABSOLUTE PROHIBITIONS
 ❌ No numeric risk estimates or tiers not shown in context  
 ❌ No fabricated alerts or system outputs  
 ❌ No pretending you saw DB rows or metrics that are not in the text/JSON you were given  
+❌ No social commentary, social determinants framing, or health equity language  
+❌ No demographic sensitivity disclaimers  
+❌ No editorializing about why populations experience conditions  
+❌ No language a patient would read as a social agenda rather than a clinical opinion  
+
+When demographic or phenotypic factors are clinically relevant (HLA associations,
+obesity-related inflammatory modulation, race-stratified prevalence), state them as
+clinical facts — biochemistry, epidemiology, pharmacokinetics. No social framing.
+
+This is a clinical artifact for sick people who want answers. Give them the medicine.
 
 --------------------------------------------------------------------------------
 STYLE & TONE
@@ -733,14 +743,30 @@ async def _run_evidence_mapping(
     ]
 
     try:
-        resp = await _chat_completion_async(
-            model=model,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.0,
-        )
-        content = resp.choices[0].message.content or "{}"
-        data = json.loads(content)
+        # Try Claude for higher-quality evidence mapping
+        from server.llm.llm_client import claude_chat_async, get_anthropic_client
+        if get_anthropic_client() is not None:
+            logger.info("evidence_mapping: using Claude")
+            raw = await claude_chat_async(
+                system=EVIDENCE_MAPPING_SYSTEM_PROMPT.strip()
+                    + "\n\nRespond with valid JSON only. No markdown fences.",
+                messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+                max_tokens=4096,
+                temperature=0.0,
+            )
+            content = raw.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0]
+            data = json.loads(content)
+        else:
+            resp = await _chat_completion_async(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+            content = resp.choices[0].message.content or "{}"
+            data = json.loads(content)
     except Exception as e:
         logger.exception("evidence mapping LLM call failed")
         return {"claims": [], "error": str(e)}

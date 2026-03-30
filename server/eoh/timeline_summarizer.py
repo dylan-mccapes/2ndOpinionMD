@@ -2706,6 +2706,8 @@ async def _call_timeline_summarizer_model(
     max_tokens: int,
     extra_system_hint: str = "",
     fallback_context: str | None = None,
+    use_claude: bool = False,
+    summarizer_model: str | None = None,
 ) -> TimelineSummaries:
     """
     Call the LLM to summarize a timeline segment (or reduce multiple segments).
@@ -2722,6 +2724,9 @@ async def _call_timeline_summarizer_model(
     It is best-effort:
     - Tries to parse JSON.
     - On failure, falls back to treating the raw text as the summary.
+
+    When ``use_claude=True``, calls Claude Opus via the Anthropic SDK
+    instead of using the OpenAI-compatible ``client``.
     """
 
     # Mode is just metadata for the prompt; we don't need a separate arg.
@@ -2741,31 +2746,54 @@ async def _call_timeline_summarizer_model(
         }
     )
 
-    messages = [
-        {
-            "role": "system",
-            "content": system_content,
-        },
-        {
-            "role": "user",
-            "content": user_content,
-        },
-    ]
+    if use_claude:
+        from server.llm.llm_client import claude_chat_async, CLAUDE_SYNTHESIS_MODEL
+        claude_system = (
+            system_content
+            + "\n\nIMPORTANT: You MUST respond with valid JSON only. "
+            "No markdown, no code fences, no prose — just a single JSON object."
+        )
+        raw = await claude_chat_async(
+            messages=[{"role": "user", "content": user_content}],
+            system=claude_system,
+            model=CLAUDE_SYNTHESIS_MODEL,
+            max_tokens=4096,
+            temperature=0.0,
+        )
+        raw = (raw or "").strip()
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            raw = "\n".join(lines).strip()
+    else:
+        messages = [
+            {
+                "role": "system",
+                "content": system_content,
+            },
+            {
+                "role": "user",
+                "content": user_content,
+            },
+        ]
 
-    # Support both AsyncOpenAI and sync-style clients.
-    resp = await chat_completion_async(
-        client=client,
-        model=EOH_TIMELINE_SUMMARIZER_MODEL,
-        messages=messages,
-        max_tokens=4096,
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
-    if iscoroutine(resp):
-        resp = await resp
+        _model = summarizer_model or EOH_TIMELINE_SUMMARIZER_MODEL
+        resp = await chat_completion_async(
+            client=client,
+            model=_model,
+            messages=messages,
+            max_tokens=4096,
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
+        if iscoroutine(resp):
+            resp = await resp
 
-    raw = _safe_get_choice_content(resp)
-    raw = (raw or "").strip()
+        raw = _safe_get_choice_content(resp)
+        raw = (raw or "").strip()
 
     if not raw:
         logger.error("Timeline summarizer: empty response from model")
@@ -2914,11 +2942,16 @@ def _select_pages_lite(
 def _iter_pdf_event_extraction_batches(
     page_entries: List[Tuple[int, str]],
     max_chars: Optional[int] = None,
+    max_pages: Optional[int] = None,
 ) -> List[List[Tuple[int, str]]]:
     """
-    Group (pdf_page_num, text) tuples into batches that fit under max_chars.
-    Defaults to PDF_EVENT_BATCH_MAX_INPUT_CHARS (sized for GPT-4.1 1M context).
-    Pass a smaller value for local models with limited context windows.
+    Group (pdf_page_num, text) tuples into batches that fit under max_chars
+    AND under max_pages (whichever is reached first).
+
+    max_chars: cap on total input chars per batch (default: GPT-4.1 sized).
+    max_pages: cap on page count per batch.  Use this to keep the output
+               token budget from overflowing on small models that generate
+               ~800-1000 tokens per page.
     """
     if not page_entries:
         return []
@@ -2941,7 +2974,9 @@ def _iter_pdf_event_extraction_batches(
             text = text[: max(0, max_chars - overhead)]
             need = len(text) + overhead
 
-        if current and current_size + need > max_chars:
+        chars_full = current and current_size + need > max_chars
+        pages_full = max_pages and len(current) >= max_pages
+        if current and (chars_full or pages_full):
             batches.append(current)
             current = []
             current_size = 0
@@ -3002,7 +3037,7 @@ async def _ollama_chat_direct(
     max_tokens: int = 8192,
     temperature: float = 0.1,
     num_ctx: Optional[int] = None,
-    timeout: float = 600.0,
+    timeout: float = 900.0,
 ) -> str:
     """
     Call Ollama via its **native** ``/api/chat`` endpoint using httpx.
@@ -3136,6 +3171,7 @@ async def _extract_events_from_pages_batch(
     model: str = INGESTION_MODEL,
     force_json_format: bool = True,
     ollama_num_ctx: Optional[int] = None,
+    ollama_native_api: bool = False,
 ) -> Dict[int, List[Dict[str, Any]]]:
     """
     One LLM call for many PDF pages. Returns map pdf_page_num -> event dicts.
@@ -3144,6 +3180,8 @@ async def _extract_events_from_pages_batch(
     5-10x slower than normal generation and causes timeout failures.
     Set ollama_num_ctx to override Ollama's KV cache size (e.g. 65536 halves
     the default 16 GB KV cache to 8 GB, leaving headroom for generation).
+    Set ollama_native_api=True only for localhost Ollama (validated on M2 Ultra).
+    Remote Ollama should use ollama_native_api=False (OpenAI-compat with extra_body).
     """
     if not pages:
         return {}
@@ -3198,13 +3236,13 @@ async def _extract_events_from_pages_batch(
         1. medication (ALWAYS emit; drug_name REQUIRED)
         2. diagnosis
         3. lab
-        4. procedure
+        4. procedure (includes vaccinations/immunizations)
         5. symptom
         6. note (only if clinically significant)
 
         Fields per event:
         - event_type: medication|diagnosis|lab|procedure|symptom|note
-        - timestamp: YYYY-MM-DD or "unknown"
+        - timestamp: YYYY-MM-DD extracted from the page text, or "unknown" if no date is present. NEVER invent a date.
         - preview: ≤80 chars, be brief
         - drug_name: REQUIRED for medication — generic name (e.g. "pyridostigmine"). NEVER omit.
         - drug_dosage: medication only, optional — dose as written (e.g. "60 mg daily")
@@ -3212,8 +3250,8 @@ async def _extract_events_from_pages_batch(
 
         Output ONLY this JSON (no markdown, no explanation):
         {"pages":[{"page_num":<int>,"events":[
-          {"event_type":"medication","timestamp":"2019-03-01","preview":"Started pyridostigmine for MG","drug_name":"pyridostigmine","drug_dosage":"60 mg","drug_route":"oral"},
-          {"event_type":"diagnosis","timestamp":"2019-03-01","preview":"Myasthenia gravis confirmed"}
+          {"event_type":"medication","timestamp":"YYYY-MM-DD","preview":"Started pyridostigmine for MG","drug_name":"pyridostigmine","drug_dosage":"60 mg","drug_route":"oral"},
+          {"event_type":"diagnosis","timestamp":"YYYY-MM-DD","preview":"Myasthenia gravis confirmed"}
         ]},{"page_num":<int>,"events":[]},...]}
 
         Rules:
@@ -3221,6 +3259,8 @@ async def _extract_events_from_pages_batch(
         - Empty page → "events": []
         - Do NOT merge events across pages
         - NEVER omit drug_name for any medication event
+        - Vaccinations and immunizations are type "procedure", NOT "lab"
+        - Timestamps must come from the actual page text — do not copy dates from these instructions
     """).strip()
 
     system_prompt = _SYSTEM_PROMPT_OLLAMA if not force_json_format else _SYSTEM_PROMPT_FULL
@@ -3250,16 +3290,18 @@ async def _extract_events_from_pages_batch(
                 **call_kwargs,
             )
             raw_content = _safe_get_choice_content(resp) or ""
-        else:
-            # Ollama path: bypass the OpenAI SDK and use httpx directly so that
-            # empty-body HTTP 200 responses surface a meaningful error rather than
-            # a cryptic JSONDecodeError from inside the SDK's Pydantic layer.
-            # Output budget: use up to half the context window for output. The
-            # input batch is sized to use ~69% of context, but char-to-token
-            # estimates are conservative — in practice input uses ~20-25% of
-            # context, leaving plenty of room.
+        elif ollama_native_api:
+            # Localhost Ollama: bypass the OpenAI SDK and use httpx directly so
+            # that empty-body HTTP 200 responses surface a meaningful error
+            # rather than a cryptic JSONDecodeError inside the SDK's Pydantic
+            # layer.  Only safe on localhost — remote Ollama (e.g. RTX 4090 over
+            # LAN) has shown silent httpx.ReadError failures with this path.
             _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
             _ollama_url = str(client.base_url).rstrip("/")
+            logger.info(
+                "Ollama native /api/chat: model=%s  num_ctx=%s  num_predict=%s  pages=%s",
+                model, ollama_num_ctx, _max_tok, [p for p, _ in pages],
+            )
             raw_content = await _ollama_chat_direct(
                 base_url=_ollama_url,
                 model=model,
@@ -3271,6 +3313,31 @@ async def _extract_events_from_pages_batch(
                 temperature=0.1,
                 num_ctx=ollama_num_ctx,
             )
+        else:
+            # Remote Ollama (or any non-native Ollama): OpenAI-compat path
+            # /v1/chat/completions WITHOUT response_format (grammar-constrained
+            # mode is 5-10x slower).  Pass num_ctx and num_predict via
+            # extra_body["options"] so Ollama respects our context budget.
+            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _extra: Optional[Dict[str, Any]] = None
+            if ollama_num_ctx:
+                _extra = {"options": {"num_ctx": ollama_num_ctx, "num_predict": _max_tok}}
+            logger.info(
+                "Ollama OpenAI-compat /v1/chat/completions: model=%s  num_ctx=%s  num_predict=%s  pages=%s",
+                model, ollama_num_ctx, _max_tok, [p for p, _ in pages],
+            )
+            resp = await _llm_chat_completion_async(
+                client=client,
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=_max_tok,
+                temperature=0.1,
+                extra_body=_extra,
+            )
+            raw_content = _safe_get_choice_content(resp) or ""
 
         raw_content = _strip_markdown_fences(raw_content)
 
@@ -3344,7 +3411,10 @@ async def _extract_events_from_pages_batch(
         return out
 
     except Exception as e:
-        logger.error("Batched PDF event extraction failed for pages %s: %s", input_page_nums, e)
+        logger.error(
+            "Batched PDF event extraction failed for pages %s: %r",
+            input_page_nums, e, exc_info=True,
+        )
         return {
             pn: [
                 {
@@ -3532,6 +3602,8 @@ async def summarize_timeline_from_pdf(
     ingestion_model: str = INGESTION_MODEL,
     ingestion_context_tokens: Optional[int] = None,
     extraction_concurrency: int = 1,
+    use_claude: bool = False,
+    summarizer_model: str | None = None,
 ) -> TimelineSummaries:
     """
     Import and summarize a timeline PDF for session-only use.
@@ -3594,13 +3666,28 @@ async def summarize_timeline_from_pdf(
     # slower on llama.cpp / Ollama than unconstrained generation.  Detect Ollama
     # by inspecting the client's base URL and disable the constraint — the
     # prompts explicitly request JSON so output quality is maintained.
-    _base_url = str(getattr(getattr(_ingestion_client, "_base_url", None), "host", "") or "")
-    _force_json_format: bool = "localhost" not in _base_url and "127.0.0.1" not in _base_url
+    _base_url_full = str(getattr(_ingestion_client, "_base_url", "") or "")
+    _is_ollama = (
+        "11434" in _base_url_full
+        or "localhost" in _base_url_full
+        or "127.0.0.1" in _base_url_full
+        or "ollama" in _base_url_full.lower()
+    )
+    _force_json_format: bool = not _is_ollama
     # For Ollama, explicitly set num_ctx.  65536 caused HTTP 500 on the M2 Ultra
     # (KV cache ~8GB + model ~5GB = memory pressure on back-to-back batches).
     # 32768 comfortably fits our batches (~6K input + 8K output = ~14K tokens)
     # while keeping KV cache at ~4GB — stable for 71 sequential batches.
     _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
+    # Native /api/chat is only used for localhost Ollama (validated on M2 Ultra).
+    # Remote Ollama (e.g. RTX 4090 at 192.168.x.x) uses the OpenAI-compat
+    # /v1/chat/completions path with num_ctx/num_predict passed via extra_body
+    # options.  The native path caused silent httpx.ReadError failures on remote
+    # setups, while the compat path is stable across network boundaries.
+    _is_local_ollama = (
+        "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
+    )
+    _ollama_native_api: bool = _is_ollama and _is_local_ollama
     from pathlib import Path
     from pypdf import PdfReader
     import getpass
@@ -3723,7 +3810,28 @@ async def summarize_timeline_from_pdf(
 
     _batch_max_chars = max(_batch_max_chars, 8_000)
 
-    batches = _iter_pdf_event_extraction_batches(extraction_pages, max_chars=_batch_max_chars)
+    # Cap pages per batch so the output token budget isn't exceeded.
+    # Dense clinical pages (labs, medication lists) can require 2000-3000 output
+    # tokens each.  Prior runs with a 10-page cap on llama3.1:8b produced 15
+    # fully-failed batches from output truncation.  Capping at 5 pages keeps the
+    # worst-case output under 15K tokens, safely inside the 16K num_predict limit.
+    _OLLAMA_MAX_PAGES_PER_BATCH = 5
+    _OUTPUT_TOKENS_PER_PAGE_ESTIMATE = 2400
+    _output_token_cap = (
+        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+        if _ctx_tokens >= 500_000
+        else min(16384, max(4096, _ctx_tokens // 2))
+    )
+    _max_pages_per_batch: Optional[int] = min(
+        _OLLAMA_MAX_PAGES_PER_BATCH,
+        max(3, _output_token_cap // _OUTPUT_TOKENS_PER_PAGE_ESTIMATE),
+    )
+    if _ctx_tokens >= 500_000:
+        _max_pages_per_batch = None  # GPT-4.1 has ample output budget
+
+    batches = _iter_pdf_event_extraction_batches(
+        extraction_pages, max_chars=_batch_max_chars, max_pages=_max_pages_per_batch,
+    )
     oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
     _effective_output_reserve = (
         _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
@@ -3758,6 +3866,7 @@ async def summarize_timeline_from_pdf(
                 _ingestion_client, batch, model=_ingestion_model,
                 force_json_format=_force_json_format,
                 ollama_num_ctx=_ollama_num_ctx,
+                ollama_native_api=_ollama_native_api,
             )
         return b_idx, batch, result
 
@@ -3772,6 +3881,7 @@ async def summarize_timeline_from_pdf(
     # (more accurate than per-batch passes since it sees the full event set).
     from server.eoh.patient_timeline_vision import _infer_temporal_connascence
     for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
+        ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
         batch_event_count = sum(len(evts) for evts in page_to_events.values())
         ts_samples: list[str] = []
         for evts in page_to_events.values():
@@ -3779,10 +3889,12 @@ async def summarize_timeline_from_pdf(
                 t = ev.get("timestamp", "")
                 if t and t != "unknown" and len(ts_samples) < 6:
                     ts_samples.append(t)
-        logger.info(
-            "Batch %d/%d extracted %d events across %d pages; timestamp samples: %s",
-            b_idx, len(batches), batch_event_count, len(page_to_events), ts_samples,
+        log_msg = (
+            "Batch %d/%d extracted %d events across %d pages; timestamp samples: %s"
         )
+        if ts_scrubbed:
+            log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
+        logger.info(log_msg, b_idx, len(batches), batch_event_count, len(page_to_events), ts_samples)
 
         edges_before = vision.count_edges()
         for page_num in sorted(page_to_events.keys()):
@@ -3809,6 +3921,13 @@ async def summarize_timeline_from_pdf(
         logger.info(
             "PDF event type reclassification: %d events upgraded from generic type",
             n_reclassified,
+        )
+
+    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+    if n_ts_scrubbed:
+        logger.info(
+            "PDF timestamp sanity: %d prompt-bleed timestamps scrubbed from graph",
+            n_ts_scrubbed,
         )
 
     # Save vision snapshot (session_only still true; path is for sharing / gap artifacts)
@@ -3896,6 +4015,8 @@ async def summarize_timeline_from_pdf(
         patient_id=patient_id,
         use_timeline_rag=True if pool else False,
         timeline_vision=vision,
+        use_claude=use_claude,
+        summarizer_model=summarizer_model,
     )
 
     summaries.vision_path = vision_path
@@ -3922,6 +4043,41 @@ async def summarize_timeline_from_pdf(
         print(f"\nTimeline graph written: {summaries.graph_out_path}", flush=True)
 
     return summaries
+
+
+_PROMPT_BLEED_DATES = frozenset({
+    "2019-03-01",
+    "YYYY-MM-DD",
+})
+
+
+def _sanitize_timestamps_batch(page_to_events: Dict[int, List[Dict[str, Any]]]) -> int:
+    """
+    Scrub prompt-bleed and placeholder timestamps from extraction output
+    before events are added to the graph.  Returns the number of timestamps
+    replaced with "unknown".
+    """
+    fixed = 0
+    for evts in page_to_events.values():
+        for ev in evts:
+            ts = ev.get("timestamp", "")
+            if ts in _PROMPT_BLEED_DATES:
+                ev["timestamp"] = "unknown"
+                fixed += 1
+    return fixed
+
+
+def _sanitize_timestamps_graph(vision: "PatientTimelineVision") -> int:
+    """
+    Post-hoc sweep over the full graph to scrub prompt-bleed dates that
+    were missed during batch processing (e.g., from prior runs).
+    """
+    fixed = 0
+    for event in vision.events.values():
+        if event.timestamp in _PROMPT_BLEED_DATES:
+            event.timestamp = "unknown"
+            fixed += 1
+    return fixed
 
 
 def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
@@ -4003,6 +4159,21 @@ def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
                 event.event_type = new_type
                 reclassified += 1
                 break
+
+    _VACCINE_RE = re.compile(
+        r"\b(?:vaccin|immuniz|inoculat|covid.{0,8}(?:dose|shot|booster)|"
+        r"influenza.{0,8}(?:shot|vaccine)|tdap|shingrix|prevnar|pneumovax|"
+        r"moderna|pfizer|biontech|janssen|flu shot|hepatitis [ab].{0,8}vaccine|"
+        r"mmr|varicella vaccine|hpv vaccine|zostavax)\b",
+        re.I,
+    )
+    for event in vision.events.values():
+        if event.event_type != "lab":
+            continue
+        text = (event.preview or "").lower()
+        if text and _VACCINE_RE.search(text):
+            event.event_type = "procedure"
+            reclassified += 1
 
     return reclassified
 
@@ -4496,6 +4667,8 @@ def _compact_graph_for_reduce(
 # ---------------------------------------------------------------------------
 
 
+CLAUDE_CHUNK_TARGET_CHAR_LEN = 400_000
+
 async def summarize_timeline_for_eoh(
     client: AsyncOpenAI,
     question: str,
@@ -4505,6 +4678,8 @@ async def summarize_timeline_for_eoh(
     patient_id: str | None = None,
     use_timeline_rag: bool | None = None,
     timeline_vision: Optional[PatientTimelineVision] = None,
+    use_claude: bool = False,
+    summarizer_model: str | None = None,
 ) -> TimelineSummaries:
     """
     Main entrypoint used by the EoH stack.
@@ -4578,6 +4753,8 @@ async def summarize_timeline_for_eoh(
                     "You are seeing the patient's full timeline in one block. "
                     "Produce concise but information-dense JSON fields as specified."
                 ),
+                use_claude=use_claude,
+                summarizer_model=summarizer_model,
             )
             return await _finalize(single, "single_pass")
 
@@ -4657,18 +4834,20 @@ async def summarize_timeline_for_eoh(
             total_chars,
             SINGLE_PASS_CHAR_THRESHOLD,
         )
+        effective_chunk_target = CLAUDE_CHUNK_TARGET_CHAR_LEN if use_claude else CHUNK_TARGET_CHAR_LEN
         chunks = _split_timeline_into_chunks(
             timeline_text,
-            target_chars=CHUNK_TARGET_CHAR_LEN,
+            target_chars=effective_chunk_target,
             max_chunks_floor=MAX_CHUNKS,
         )
         n_chunks = len(chunks)
         logger.info(
-            "Timeline summarizer: split into %d chunk(s) (target=%d chars/floor, cap=%d); "
+            "Timeline summarizer: split into %d chunk(s) (target=%d chars/floor, cap=%d)%s; "
             "sizes=%s",
             n_chunks,
-            CHUNK_TARGET_CHAR_LEN,
+            effective_chunk_target,
             HIERARCHICAL_MAX_CHUNKS_CAP,
+            " [Claude Opus]" if use_claude else "",
             str([len(c) for c in chunks[:8]]) + ("…" if n_chunks > 8 else ""),
         )
 
@@ -4717,6 +4896,8 @@ async def summarize_timeline_for_eoh(
                         "Make the JSON fields reflect only information visible in this segment, "
                         "but include temporal cues (dates/relative timing) where possible."
                     ),
+                    use_claude=use_claude,
+                    summarizer_model=summarizer_model,
                 )
                 chunk_summaries.append(seg_summary)
             except Exception:
@@ -4815,6 +4996,8 @@ async def summarize_timeline_for_eoh(
             payload=reduce_payload,
             max_tokens=max_tokens,
             extra_system_hint=reduce_hint,
+            use_claude=use_claude,
+            summarizer_model=summarizer_model,
         )
 
         return await _finalize(final_summaries, "hierarchical_reduce")

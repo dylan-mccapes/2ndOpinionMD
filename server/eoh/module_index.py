@@ -316,9 +316,186 @@ MODULE_INDEX: Dict[str, Dict[str, Any]] = {
             "the focus is on how diagnosis and flare interact)."
         ),
         "doc_handles": [
-            # Runtime / DB-facing views will be added later as we implement them.
-            # For now, we at least expose the policy text from eoh_gold_2025.
             {"kind": "ethos_module_doc", "name": "eoh_gold_2025:mod_50"},
+        ],
+    },
+
+    # =========================================================================
+    # V6 MODULES (M55–M68)
+    # =========================================================================
+    "M55": {
+        "id": "M55",
+        "name": "Execution Modes (QUERY_ONLY / DEBUG_LOOP)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Determining whether the system is in QUERY_ONLY (read-only posture, "
+            "no computation/scheduling/mutation) or DEBUG_LOOP (human-directed "
+            "inspection with no autonomous progression). Enforces execution-mode "
+            "MUST-NOT guarantees."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m55"},
+        ],
+    },
+    "M56": {
+        "id": "M56",
+        "name": "Patient Vision Unification",
+        "layer": "governance",
+        "llm_use_when": (
+            "Reasoning about how to unify the patient view across modules — "
+            "ensuring terrain, narrative, suppression, and plan state present a "
+            "single coherent patient picture. Analysis-only / non-executable."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m56"},
+        ],
+    },
+    "M57": {
+        "id": "M57",
+        "name": "Clinical Invariants System",
+        "layer": "governance",
+        "llm_use_when": (
+            "You need to reference, verify, or audit the hard non-negotiable "
+            "constraints that shape reasoning flow (ordering, gating, eligibility) "
+            "across EoH modules. Invariants constrain flow, never answers or scores."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m57"},
+        ],
+    },
+    "M58": {
+        "id": "M58",
+        "name": "HITL Interruption Controller (HIC)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Handling mid-stream human interruption of EoH processing — suppression, "
+            "pause, and audit-controlled behaviour for clinician or governance overrides."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m58"},
+        ],
+    },
+    "M59": {
+        "id": "M59",
+        "name": "Plan Co-Creation Contract (PCC)",
+        "layer": "care_planning",
+        "llm_use_when": (
+            "Defining how human input shapes care plans through confirmation-gated, "
+            "draft-only artifacts. Plans remain non-authoritative until confirmed "
+            "through V5.2 execution gates."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m59"},
+        ],
+    },
+    "M60": {
+        "id": "M60",
+        "name": "HITL Audit & Replay Frame (HARF)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Reconstructing or replaying HITL interactions (interruptions, edits, "
+            "approvals) in an audit-grade, read-only fashion. Replay is derived, "
+            "not re-executed."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m60"},
+        ],
+    },
+    "M61": {
+        "id": "M61",
+        "name": "Pattern Inspiration (Non-binding)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Reference-only pattern recognition inspired by prior clinical usage. "
+            "Non-authoritative — names patterns but does not own or execute "
+            "escalation, routing, or tier logic."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m61"},
+        ],
+    },
+    "M63": {
+        "id": "M63",
+        "name": "Derivation Transparency Contract",
+        "layer": "governance",
+        "llm_use_when": (
+            "Ensuring every output carries a DerivationChain (inputs, "
+            "transformations, assumptions, uncertainty markers). No output may "
+            "claim transparency without a traceable derivation record."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m63"},
+        ],
+    },
+    "M64": {
+        "id": "M64",
+        "name": "Functional Utilization Discordance Detector (FUDD)",
+        "layer": "signal_tagging",
+        "llm_use_when": (
+            "Detecting cases where serum/plasma levels appear normal but tissue-level "
+            "utilization is impaired (or inverse: abnormal serum but adequate tissue "
+            "status). Two-layer detection: curated FUD signatures + general "
+            "discordance heuristic. Generates role-differentiated output payloads."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m64"},
+        ],
+    },
+    "M65": {
+        "id": "M65",
+        "name": "Dark Passenger — Voice Identity Drift Detection",
+        "layer": "signal_tagging",
+        "llm_use_when": (
+            "Detecting longitudinal voice identity drift in patient journal text — "
+            "persona shifts, addiction-driven concealment, metabolic mimics. Scores "
+            "engagement severity on a six-stage ladder and emits coaching posture "
+            "advisories for patient-facing modules."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m65"},
+        ],
+    },
+    "M66": {
+        "id": "M66",
+        "name": "Exploratory Wellness Actions (EWA)",
+        "layer": "care_planning",
+        "llm_use_when": (
+            "Surfacing terrain-stabilizing, low-risk, reversible lifestyle/diet/"
+            "nervous-system actions that reduce load and increase reserve without "
+            "asserting causality or claiming treatment. Non-diagnostic, "
+            "non-prescriptive, non-escalatory."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m66"},
+        ],
+    },
+    "M67": {
+        "id": "M67",
+        "name": "Adversarial Reasoning Governance Layer (ARGL)",
+        "layer": "governance",
+        "llm_use_when": (
+            "Enforcing reasoning quality: evidence provenance (typed, traceable tags), "
+            "contextual validity rebinding, and mandatory falsification before "
+            "publishing conclusions. Meta-governance above reasoning modules, below "
+            "user-facing response layer."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m67"},
+        ],
+    },
+    "M68": {
+        "id": "M68",
+        "name": "Inflammatory Capacity Model (ICM)",
+        "layer": "flare_detection",
+        "llm_use_when": (
+            "Estimating real-time allostatic headroom (inflammatory capacity) via "
+            "three-valve dynamics (inflow/outflow/capacity), turbulence regime, and "
+            "physiological infrastructure variables (lymphatic tone, vagal tone, "
+            "system viscosity). Proactive flare prevention through headroom-based "
+            "risk assessment."
+        ),
+        "doc_handles": [
+            {"kind": "ethos_module_doc", "name": "eoh_canon_v6:m68"},
         ],
     },
 }
@@ -329,27 +506,39 @@ QUESTION_TYPES: Dict[str, Dict[str, Any]] = {
     "A": {
         "description": "What is this patient's flare risk over the next X days/weeks?",
         "goal": "Compute flare probability, interpret trajectory, give drivers + safety context.",
-        "canonical_modules": ["M1", "M2", "M3A", "M7A", "M4", "M5", "M9", "M12", "M13", "M14", "M21", "M24", "M25", "M41"],
+        "canonical_modules": [
+            "M1", "M2", "M3A", "M7A", "M4", "M5", "M9", "M12", "M13", "M14",
+            "M21", "M24", "M25", "M41", "M64", "M68",
+        ],
     },
     "B": {
         "description": "Is this a real flare or symbolic / overshoot / lab error?",
         "goal": "Classification of the instability event.",
-        "canonical_modules": ["M1", "M2", "M3A", "M7A", "M12", "M4", "M5", "M9", "M6", "M11", "M7B", "M10", "M14"],
+        "canonical_modules": [
+            "M1", "M2", "M3A", "M7A", "M12", "M4", "M5", "M9", "M6", "M11",
+            "M7B", "M10", "M14", "M64", "M65", "M68",
+        ],
     },
     "C": {
         "description": "Why did the system predict / escalate a flare? (Explainability)",
         "goal": "Reconstruct the decision chain.",
-        "canonical_modules": ["M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19", "M25", "M48", "M48B", "M48C", "M50"],
+        "canonical_modules": [
+            "M21", "M13", "M12", "M4", "M5", "M14", "M9", "M41", "M7A", "M19",
+            "M25", "M48", "M48B", "M48C", "M50", "M63", "M67",
+        ],
     },
     "D": {
         "description": "Given this state, how should we adjust the plan? (non-emergency)",
         "goal": "Adjust tasks/plan intensity, not trigger crisis.",
-        "canonical_modules": ["M1", "M2", "M3A", "M7A", "M12", "M13", "M14", "M15", "M7B", "M22", "M23", "M24", "M25"],
+        "canonical_modules": [
+            "M1", "M2", "M3A", "M7A", "M12", "M13", "M14", "M15", "M7B",
+            "M22", "M23", "M24", "M25", "M59", "M66",
+        ],
     },
     "E": {
         "description": "Is the model still calibrated / are we over-suppressing flares? (meta)",
         "goal": "Meta on performance, not per-patient.",
-        "canonical_modules": ["M19", "M41", "M48", "M48B", "M48C", "M50"],
+        "canonical_modules": ["M19", "M41", "M48", "M48B", "M48C", "M50", "M57", "M67"],
     },
 }
 

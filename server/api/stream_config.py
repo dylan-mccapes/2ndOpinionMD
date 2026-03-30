@@ -2264,6 +2264,28 @@ Avoid:
 - Generic RA or ICU boilerplate that is not clearly tied to this patient.
 - Re-summarizing the full timeline; focus on higher-order patterns and risks.
 - Repeating the same fact in multiple sections unless it serves a new purpose.
+
+======================================================================
+CLINICAL-ONLY OUTPUT (MANDATORY)
+======================================================================
+
+This report is a clinical artifact. Every sentence must be medically necessary.
+
+DO NOT include:
+- Social commentary, social determinants of health framing, or health equity language
+- Demographic sensitivity disclaimers beyond standard medical-legal
+- Editorializing about why certain populations experience certain conditions
+- Any language that a patient would interpret as the system having a social agenda
+  rather than providing a clinical opinion
+
+DO include:
+- Observed clinical data, including demographic and phenotypic factors when medically
+  relevant (e.g., HLA associations, obesity-related inflammatory modulation,
+  race-stratified prevalence data) — stated as clinical facts, not social commentary
+- Biochemistry, pharmacokinetics, disease mechanisms, and treatment response patterns
+- Honest uncertainty about what the data does and does not show
+
+The patient is sick. They want an answer. Give them the medicine.
 """
 
 

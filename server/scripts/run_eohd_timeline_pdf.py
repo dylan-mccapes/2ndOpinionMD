@@ -34,6 +34,7 @@ if str(parent_of_server) not in sys.path:
 os.chdir(server_dir)
 
 from dotenv import load_dotenv
+load_dotenv(server_dir.parent / ".env", override=False)
 load_dotenv(server_dir / ".env", override=True)
 
 
@@ -156,6 +157,14 @@ def main() -> None:
             "Each concurrent slot uses one full model context worth of VRAM."
         ),
     )
+    parser.add_argument(
+        "--use-claude",
+        action="store_true",
+        help=(
+            "Use Claude Opus for the narrative summarization step "
+            "instead of the default OpenAI model. Requires ANTHROPIC_API_KEY."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--trace-http", action="store_true")
     args = parser.parse_args()
@@ -164,7 +173,7 @@ def main() -> None:
     log = logging.getLogger("run_eohd_timeline_pdf")
 
     from openai import AsyncOpenAI
-    from server.api.stream_config import INGESTION_MODEL, OLLAMA_BASE_URL
+    from server.api.stream_config import INGESTION_MODEL, OLLAMA_BASE_URL, EOH_TIMELINE_SUMMARIZER_MODEL
     from server.llm.llm_client import get_ollama_client
     from server.eoh.timeline_summarizer import summarize_timeline_from_pdf
 
@@ -233,7 +242,7 @@ def main() -> None:
     _log(f"PDF: {pdf_file.resolve()}", emoji="📄")
     _log(f"Patient id: {args.patient_id}", emoji="🧾")
     _log(f"Extraction mode: {args.extraction_mode}", emoji="🔬")
-    _log(f"LLM backend: {backend}  |  ingestion model: {ingestion_model}", emoji="🤖")
+    _log(f"LLM backend: {backend}  |  ingestion model: {ingestion_model}  |  summarizer: {'Claude Opus' if args.use_claude else EOH_TIMELINE_SUMMARIZER_MODEL}", emoji="🤖")
     if backend in ("ollama", "ollama-full"):
         _log(f"Ollama URL: {ollama_url}", emoji="🦙")
     if artifact_dir_str:
@@ -242,6 +251,7 @@ def main() -> None:
     async def run() -> None:
         t0 = time.perf_counter()
 
+        _summarizer_model = ingestion_model if backend == "ollama-full" and not args.use_claude else None
         summaries = await summarize_timeline_from_pdf(
             client=summary_client,
             question=args.question,
@@ -255,6 +265,8 @@ def main() -> None:
             ingestion_model=ingestion_model,
             ingestion_context_tokens=ingestion_context_tokens,
             extraction_concurrency=args.extraction_concurrency,
+            use_claude=args.use_claude,
+            summarizer_model=_summarizer_model,
         )
 
         elapsed = time.perf_counter() - t0

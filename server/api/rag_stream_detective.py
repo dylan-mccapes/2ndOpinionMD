@@ -205,11 +205,29 @@ async def detective_report_llm(
     """
     Final EoH Detective report LLM.
 
-    Builds a compact payload from step answers + evidence maps (NOT raw
-    citations or full timeline) so the synthesis stays within context limits.
+    Uses Claude (Anthropic) for synthesis when available — highest-quality
+    reasoning for the patient-facing report. Falls back to GPT-4.1 if
+    ANTHROPIC_API_KEY is not set.
     """
     compact = _compact_report_payload(report_payload)
+    user_content = json.dumps(compact, ensure_ascii=False, cls=DateTimeJSONEncoder)
 
+    # Try Claude first for superior synthesis quality
+    try:
+        from server.llm.llm_client import claude_chat_async, get_anthropic_client
+        if get_anthropic_client() is not None:
+            logger.info("detective_report_llm: using Claude for synthesis")
+            result = await claude_chat_async(
+                system=EOH_DETECTIVE_REPORT_SYSTEM_PROMPT.strip(),
+                messages=[{"role": "user", "content": user_content}],
+                max_tokens=8192,
+                temperature=0.2,
+            )
+            return result.strip()
+    except Exception:
+        logger.warning("detective_report_llm: Claude call failed, falling back to GPT", exc_info=True)
+
+    # Fallback: GPT-4.1
     resp = await _chat_completion_async(
         model=CHAT_MODEL_GUIDELINES,
         messages=[
@@ -219,11 +237,7 @@ async def detective_report_llm(
             },
             {
                 "role": "user",
-                "content": json.dumps(
-                    compact,
-                    ensure_ascii=False,
-                    cls=DateTimeJSONEncoder,
-                ),
+                "content": user_content,
             },
         ],
         temperature=0.2,
@@ -1083,39 +1097,62 @@ async def eoh_detective_stream_event_generator(
                                 "caption": fig["caption"],
                             })
 
-                    interp_resp = await asyncio.wait_for(
-                        _chat_completion_async(
-                            model=CHAT_MODEL_UTIL,
-                            messages=[
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "You are a clinical data analyst interpreting graph analysis "
-                                        "results from a patient's electronic health record timeline graph. "
-                                        "For each figure, provide a 2-3 sentence clinical interpretation "
-                                        "of what the analysis reveals about the patient's health trajectory, "
-                                        "treatment patterns, or data quality. Be specific and actionable. "
-                                        "Do NOT give medical advice. Return a JSON array of strings, one "
-                                        "interpretation per figure, in the same order as the input."
-                                    ),
-                                },
-                                {
-                                    "role": "user",
-                                    "content": json.dumps({
-                                        "patient_id": timeline_patient_id,
-                                        "question": q,
-                                        "final_report_excerpt": (report_text or "")[:2000],
-                                        "figures": fig_summaries,
-                                    }, ensure_ascii=False),
-                                },
-                            ],
-                            response_format={"type": "json_object"},
-                            temperature=0.2,
-                        ),
-                        timeout=30,
+                    _FIG_INTERP_SYSTEM = (
+                        "You are a clinical data analyst interpreting graph analysis "
+                        "results from a patient's electronic health record timeline graph. "
+                        "For each figure, provide a 2-3 sentence clinical interpretation "
+                        "of what the analysis reveals about the patient's health trajectory, "
+                        "treatment patterns, or data quality. Be specific and actionable. "
+                        "Do NOT give medical advice. Return a JSON object with key "
+                        '"interpretations" containing an array of strings, one '
+                        "interpretation per figure, in the same order as the input."
                     )
+                    _fig_user_content = json.dumps({
+                        "patient_id": timeline_patient_id,
+                        "question": q,
+                        "final_report_excerpt": (report_text or "")[:2000],
+                        "figures": fig_summaries,
+                    }, ensure_ascii=False)
 
-                    raw_interp = json.loads(interp_resp.choices[0].message.content or "{}") 
+                    # Try Claude for figure interpretation
+                    _used_claude_fig = False
+                    try:
+                        from server.llm.llm_client import claude_chat_async, get_anthropic_client
+                        if get_anthropic_client() is not None:
+                            logger.info("figure_interpretation: using Claude")
+                            _raw_text = await asyncio.wait_for(
+                                claude_chat_async(
+                                    system=_FIG_INTERP_SYSTEM + "\n\nRespond with valid JSON only.",
+                                    messages=[{"role": "user", "content": _fig_user_content}],
+                                    max_tokens=4096,
+                                    temperature=0.2,
+                                ),
+                                timeout=45,
+                            )
+                            _ctext = _raw_text.strip()
+                            if _ctext.startswith("```"):
+                                _ctext = _ctext.split("\n", 1)[-1].rsplit("```", 1)[0]
+                            interp_resp_data = json.loads(_ctext)
+                            _used_claude_fig = True
+                    except Exception:
+                        logger.warning("figure_interpretation: Claude failed, falling back to GPT", exc_info=True)
+
+                    if not _used_claude_fig:
+                        interp_resp = await asyncio.wait_for(
+                            _chat_completion_async(
+                                model=CHAT_MODEL_UTIL,
+                                messages=[
+                                    {"role": "system", "content": _FIG_INTERP_SYSTEM},
+                                    {"role": "user", "content": _fig_user_content},
+                                ],
+                                response_format={"type": "json_object"},
+                                temperature=0.2,
+                            ),
+                            timeout=30,
+                        )
+                        interp_resp_data = json.loads(interp_resp.choices[0].message.content or "{}")
+
+                    raw_interp = interp_resp_data
                     if isinstance(raw_interp, dict):
                         figure_interpretations = raw_interp.get("interpretations", [])
                         if not figure_interpretations:

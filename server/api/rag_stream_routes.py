@@ -4335,6 +4335,20 @@ def stream_llm_events(
     # Use explicit chat_model if provided, else default to CHAT_MODEL_GUIDELINES
     model_to_use = chat_model if chat_model is not None else CHAT_MODEL_GUIDELINES
 
+    # Try Claude for per-step answer generation (higher-quality clinical reasoning)
+    try:
+        from server.llm.llm_client import get_anthropic_client
+        if get_anthropic_client() is not None:
+            _sys = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
+            logger.info("stream_llm_events: using Claude for answer generation")
+            yield from _stream_llm_events_claude(
+                messages, _sys,
+                event_prefix=event_prefix, phase=phase, llm_mode=mode,
+            )
+            return
+    except Exception:
+        logger.warning("stream_llm_events: Claude streaming failed, falling back to GPT", exc_info=True)
+
     stream = client.chat.completions.create(
         model=model_to_use,
         messages=messages,
@@ -4403,6 +4417,67 @@ def stream_llm_events(
 
     full_text = "".join(full_pieces).strip()
     yield sse(f"{event_prefix}_done", {"text": full_text})
+
+
+def _stream_llm_events_claude(
+    messages: List[Dict[str, str]],
+    system_prompt: str,
+    *,
+    event_prefix: str = "llm",
+    phase: str = "reasoning",
+    llm_mode: str = "chunk",
+) -> Iterable[Dict[str, str]]:
+    """Claude-native streaming with same SSE output contract as stream_llm_events."""
+    from server.llm.llm_client import get_anthropic_client, CLAUDE_SYNTHESIS_MODEL
+
+    anthropic_client = get_anthropic_client()
+    if anthropic_client is None:
+        raise RuntimeError("Anthropic client not available")
+
+    mode = (llm_mode or "chunk").lower()
+    CHUNK_CHAR_THRESHOLD = 300
+    SENTENCE_ENDINGS = (". ", ".\n", "? ", "?\n", "! ", "!\n")
+
+    api_messages = [m for m in messages if m["role"] != "system"]
+
+    with anthropic_client.messages.stream(
+        model=CLAUDE_SYNTHESIS_MODEL,
+        max_tokens=8192,
+        temperature=0.2,
+        system=system_prompt,
+        messages=api_messages,
+    ) as stream:
+        full_pieces: List[str] = []
+        buf = ""
+
+        for text_piece in stream.text_stream:
+            if not text_piece:
+                continue
+            full_pieces.append(text_piece)
+
+            if mode == "delta":
+                yield sse(f"{event_prefix}_delta", {"phase": phase, "content": text_piece})
+            else:
+                buf += text_piece
+                should_flush = False
+                if any(buf.endswith(end) for end in SENTENCE_ENDINGS):
+                    should_flush = True
+                elif buf.endswith("\n\n"):
+                    should_flush = True
+                elif len(buf) > CHUNK_CHAR_THRESHOLD:
+                    should_flush = True
+
+                if should_flush:
+                    text = buf.strip()
+                    if text:
+                        yield sse(f"{event_prefix}_chunk", {"phase": phase, "content": text})
+                    buf = ""
+
+        if mode == "chunk" and buf.strip():
+            yield sse(f"{event_prefix}_chunk", {"phase": phase, "content": buf.strip()})
+
+        full_text = "".join(full_pieces).strip()
+        yield sse(f"{event_prefix}_done", {"text": full_text})
 
 
 def _classify_citation_kind(row: Dict[str, Any]) -> str:
