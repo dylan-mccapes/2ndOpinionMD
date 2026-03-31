@@ -2757,7 +2757,7 @@ async def _call_timeline_summarizer_model(
             messages=[{"role": "user", "content": user_content}],
             system=claude_system,
             model=CLAUDE_SYNTHESIS_MODEL,
-            max_tokens=4096,
+            max_tokens=max_tokens,
             temperature=0.0,
         )
         raw = (raw or "").strip()
@@ -2785,7 +2785,7 @@ async def _call_timeline_summarizer_model(
             client=client,
             model=_model,
             messages=messages,
-            max_tokens=4096,
+            max_tokens=max_tokens,
             response_format={"type": "json_object"},
             temperature=0.0,
         )
@@ -3132,33 +3132,122 @@ async def _ollama_chat_direct(
     return content
 
 
+def _close_truncated_string(raw: str) -> str:
+    """If *raw* ends inside an unterminated JSON string, close the string.
+
+    Walks through the raw text tracking whether we're inside a string
+    literal (handling backslash escapes).  If we end up inside a string,
+    truncate back to the opening quote and close it, which lets the
+    structural-repair pass find a valid ``}`` to close against.
+    """
+    in_string = False
+    last_open_quote = -1
+    i = 0
+    while i < len(raw):
+        c = raw[i]
+        if c == '\\' and in_string:
+            i += 2
+            continue
+        if c == '"':
+            if not in_string:
+                last_open_quote = i
+            in_string = not in_string
+        i += 1
+    if in_string and last_open_quote >= 0:
+        return raw[:last_open_quote] + '""'
+    return raw
+
+
+def _extract_complete_page_objects(raw: str) -> list:
+    """Regex-extract complete ``{"page_num": N, "events": [...]}`` objects.
+
+    Last-resort salvage: even when the overall JSON structure is
+    irrecoverable, individual page objects that were fully generated
+    before the truncation point can still be parsed.
+    """
+    import re
+    pages: list = []
+    for m in re.finditer(r'\{\s*"page_num"\s*:', raw):
+        start = m.start()
+        depth = 0
+        pos = start
+        while pos < len(raw):
+            c = raw[pos]
+            if c == '"':
+                pos += 1
+                while pos < len(raw) and raw[pos] != '"':
+                    if raw[pos] == '\\':
+                        pos += 1
+                    pos += 1
+            elif c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = raw[start:pos + 1]
+                    try:
+                        obj = json.loads(candidate)
+                        if isinstance(obj, dict) and "page_num" in obj:
+                            pages.append(obj)
+                    except json.JSONDecodeError:
+                        pass
+                    break
+            pos += 1
+    return pages
+
+
 def _repair_truncated_extraction_json(raw: str) -> dict:
     """Salvage a truncated JSON extraction response.
 
-    When the model hits num_predict and the output is cut mid-JSON, walk
-    backwards from the truncation point trying to close the structure at
-    each ``}`` character.  This recovers all complete page entries before
-    the cutoff — typically losing only the last partially-generated page.
+    When the model hits num_predict and the output is cut mid-JSON, try
+    three repair strategies in order:
+
+    1. Walk backwards from the truncation point, closing structure at
+       each ``}`` character.
+    2. Close any unterminated string literal first, then retry (1).
+    3. Regex-extract individually complete page objects and reconstruct.
     """
-    # Walk backwards from the end.  At each `}` character, try appending
-    # `]}` to close the pages array + outer object and parse.  This is
-    # brute-force but reliable regardless of whitespace or minification.
-    for i in range(len(raw) - 1, max(0, len(raw) - 10000), -1):
-        if raw[i] != "}":
-            continue
-        for suffix in ("\n]}", "]}"):
-            candidate = raw[: i + 1] + suffix
-            try:
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict) and isinstance(parsed.get("pages"), list):
-                    logger.warning(
-                        "Repaired truncated JSON: salvaged %d page(s) "
-                        "(cut at char %d of %d)",
-                        len(parsed["pages"]), i + 1, len(raw),
-                    )
-                    return parsed
-            except json.JSONDecodeError:
+    def _try_walk_backwards(text: str, strategy_label: str) -> dict | None:
+        for i in range(len(text) - 1, max(0, len(text) - 10000), -1):
+            if text[i] != "}":
                 continue
+            for suffix in ("\n]}", "]}"):
+                candidate = text[: i + 1] + suffix
+                try:
+                    parsed = json.loads(candidate)
+                    if isinstance(parsed, dict) and isinstance(parsed.get("pages"), list):
+                        logger.warning(
+                            "Repaired truncated JSON (%s): salvaged %d page(s) "
+                            "(cut at char %d of %d)",
+                            strategy_label,
+                            len(parsed["pages"]), i + 1, len(raw),
+                        )
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
+        return None
+
+    # Strategy 1: walk-backwards on raw text
+    result = _try_walk_backwards(raw, "close-brace")
+    if result is not None:
+        return result
+
+    # Strategy 2: close unterminated string literal, then walk-backwards
+    closed = _close_truncated_string(raw)
+    if closed != raw:
+        result = _try_walk_backwards(closed, "close-string")
+        if result is not None:
+            return result
+
+    # Strategy 3: regex-extract individually complete page objects
+    pages = _extract_complete_page_objects(raw)
+    if pages:
+        logger.warning(
+            "Repaired truncated JSON (regex-extract): salvaged %d page(s) "
+            "from %d chars of output",
+            len(pages), len(raw),
+        )
+        return {"pages": pages}
 
     raise json.JSONDecodeError(
         "Could not repair truncated extraction JSON", raw, len(raw) - 1
@@ -3411,9 +3500,41 @@ async def _extract_events_from_pages_batch(
         return out
 
     except Exception as e:
-        logger.error(
-            "Batched PDF event extraction failed for pages %s: %r",
-            input_page_nums, e, exc_info=True,
+        # Retry with single-page batches when the multi-page batch fails.
+        # The most common failure mode is output truncation on dense pages;
+        # processing one page at a time keeps the output well within budget.
+        if len(pages) > 1:
+            logger.warning(
+                "Batch extraction failed for pages %s (%s) — retrying %d pages individually",
+                [p for p, _ in pages], type(e).__name__, len(pages),
+            )
+            out: Dict[int, List[Dict[str, Any]]] = {}
+            for pn, txt in pages:
+                try:
+                    single_result = await _extract_events_from_pages_batch(
+                        client, [(pn, txt)], model=model,
+                        force_json_format=force_json_format,
+                        ollama_num_ctx=ollama_num_ctx,
+                        ollama_native_api=ollama_native_api,
+                    )
+                    out.update(single_result)
+                except Exception as e2:
+                    logger.warning(
+                        "Single-page retry also failed for page %d: %s",
+                        pn, type(e2).__name__,
+                    )
+                    out[pn] = [{
+                        "event_type": "page",
+                        "timestamp": "unknown",
+                        "preview": txt[:200],
+                        "event_id": f"pdf_p{pn:04d}_batch_error",
+                    }]
+            return out
+
+        # Single-page batch failed — nothing left to split.
+        logger.warning(
+            "PDF event extraction failed for page %s: %s",
+            input_page_nums, type(e).__name__,
         )
         return {
             pn: [
@@ -3604,6 +3725,8 @@ async def summarize_timeline_from_pdf(
     extraction_concurrency: int = 1,
     use_claude: bool = False,
     summarizer_model: str | None = None,
+    claude_scope: Optional[str] = None,
+    skip_summarization: bool = False,
 ) -> TimelineSummaries:
     """
     Import and summarize a timeline PDF for session-only use.
@@ -3654,6 +3777,9 @@ async def summarize_timeline_from_pdf(
             ``_PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS`` (1M).  Set to e.g.
             32_768 for local 8B models that have a 128K context but cannot
             sustain a full-context KV cache without timing out.
+        skip_summarization: If True, stop after extraction + graph enrichment
+            (no narrative summarization). Returns TimelineSummaries with only
+            vision_path and graph_out_path populated.
 
     Returns:
         TimelineSummaries object ready for EoHD execution
@@ -3880,9 +4006,20 @@ async def summarize_timeline_from_pdf(
     # temporal document order.  Run one final connascence pass at the end
     # (more accurate than per-batch passes since it sees the full event set).
     from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+
+    _stat_total_events = 0
+    _stat_fallback_pages = 0
+
     for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
         ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
         batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        _stat_total_events += batch_event_count
+
+        for evts in page_to_events.values():
+            for ev in evts:
+                if ev.get("event_id", "").endswith("_batch_error"):
+                    _stat_fallback_pages += 1
+
         ts_samples: list[str] = []
         for evts in page_to_events.values():
             for ev in evts:
@@ -3909,6 +4046,12 @@ async def summarize_timeline_from_pdf(
             b_idx, len(batches), len(vision.events), vision.count_edges(),
             vision.count_edges() - edges_before,
         )
+
+    logger.info(
+        "═══ PDF extraction complete: %d batches, %d total events, %d fallback pages "
+        "(pages where extraction failed and only raw text was preserved)",
+        len(batches), _stat_total_events, _stat_fallback_pages,
+    )
 
     # Single final connascence pass over the complete event set.
     # More accurate than incremental per-batch passes and avoids redundant work.
@@ -3998,6 +4141,32 @@ async def summarize_timeline_from_pdf(
             vision.count_edges(),
         )
 
+    # Early exit: extraction-only mode (no narrative summarization).
+    if skip_summarization:
+        logger.info(
+            "PDF pipeline: skip_summarization=True — returning extraction-only results "
+            "(events=%d, edges=%d)",
+            len(vision.events),
+            vision.count_edges(),
+        )
+        extract_only = TimelineSummaries(
+            timeline_summary="",
+            meds_and_labs_snapshot="",
+        )
+        extract_only.vision_path = vision_path
+        if pdf_graph_enrichment:
+            extract_only.timeline_enrichment = {"pdf_pre_summary_enrichment": pdf_graph_enrichment}
+        if graph_out_path:
+            out_p = Path(graph_out_path).expanduser().resolve()
+            out_p.parent.mkdir(parents=True, exist_ok=True)
+            vision.save(str(out_p), force=True)
+            extract_only.graph_out_path = str(out_p)
+            logger.info(
+                "PatientTimelineVision graph export: %s (events=%d, edges=%d)",
+                str(out_p), len(vision.events), vision.count_edges(),
+            )
+        return extract_only
+
     # Step 3: Pass to standard timeline summarizer
     # This handles single-pass vs. hierarchical vs. RAG automatically
     logger.info(
@@ -4017,6 +4186,7 @@ async def summarize_timeline_from_pdf(
         timeline_vision=vision,
         use_claude=use_claude,
         summarizer_model=summarizer_model,
+        claude_scope=claude_scope,
     )
 
     summaries.vision_path = vision_path
@@ -4667,7 +4837,37 @@ def _compact_graph_for_reduce(
 # ---------------------------------------------------------------------------
 
 
-CLAUDE_CHUNK_TARGET_CHAR_LEN = 400_000
+# Claude hierarchical chunks default large to limit segment count; each map call
+# bills input tokens on the full segment. Opus × many × ~400k chars can exhaust
+# prepaid credits in one run. Override: EOH_TIMELINE_CLAUDE_CHUNK_CHARS (e.g. 200000).
+CLAUDE_CHUNK_TARGET_CHAR_LEN = int(os.getenv("EOH_TIMELINE_CLAUDE_CHUNK_CHARS", "400000"))
+CLAUDE_CHUNK_TARGET_CHAR_LEN = max(80_000, min(CLAUDE_CHUNK_TARGET_CHAR_LEN, 900_000))
+
+
+def _anthropic_credit_or_billing_block(exc: BaseException) -> bool:
+    """Detect Anthropic 400s that mean credits/plan, not bad prompts."""
+    s = str(exc).lower()
+    if "credit balance" in s and "too low" in s:
+        return True
+    if "purchase credits" in s or "plans & billing" in s:
+        return True
+    return False
+
+
+def _normalize_claude_scope(explicit: Optional[str]) -> str:
+    """
+    Where to spend Anthropic when use_claude=True (timeline summarizer).
+
+    - reduce_only (default): no Anthropic in the timeline summarizer — hierarchical map+reduce
+      and single-pass use OpenAI (e.g. GPT-4.1). Reserve Opus for real decision routes elsewhere.
+    - all: Claude on hierarchical map+reduce and single-pass (legacy, very expensive).
+
+    Env: EOH_TIMELINE_CLAUDE_SCOPE. Parameter ``explicit`` overrides env when set.
+    """
+    raw = (explicit if explicit is not None else os.getenv("EOH_TIMELINE_CLAUDE_SCOPE", "reduce_only"))
+    v = (raw or "reduce_only").strip().lower()
+    return v if v in ("all", "reduce_only") else "reduce_only"
+
 
 async def summarize_timeline_for_eoh(
     client: AsyncOpenAI,
@@ -4680,6 +4880,7 @@ async def summarize_timeline_for_eoh(
     timeline_vision: Optional[PatientTimelineVision] = None,
     use_claude: bool = False,
     summarizer_model: str | None = None,
+    claude_scope: Optional[str] = None,
 ) -> TimelineSummaries:
     """
     Main entrypoint used by the EoH stack.
@@ -4701,6 +4902,10 @@ async def summarize_timeline_for_eoh(
     `PatientTimelineVision` and runs opportunistic graph enrichment from the
     composed summary fields. Pass `timeline_vision` to enrich an in-memory
     graph (e.g. PDF session import) instead of loading from disk.
+
+    Claude spend control (when ``use_claude=True``):
+    - ``claude_scope`` / ``EOH_TIMELINE_CLAUDE_SCOPE``: ``reduce_only`` (default) uses OpenAI
+      for hierarchical and single-pass. ``all`` uses Claude for those steps too (expensive).
     """
 
     async def _finalize(summaries: TimelineSummaries, step_id: str) -> TimelineSummaries:
@@ -4725,14 +4930,25 @@ async def summarize_timeline_for_eoh(
         timeline_text = timeline_text.replace("\r\n", "\n")
 
         total_chars = len(timeline_text)
+        scope = _normalize_claude_scope(claude_scope)
+        # Hierarchical: Anthropic only when scope=all (legacy). Otherwise map+reduce = OpenAI.
+        claude_map = bool(use_claude and scope == "all")
+        claude_single_pass = bool(use_claude and scope == "all")
         logger.info(
             "Timeline summarizer: received timeline of %d characters for question=%r",
             total_chars,
             question[:120],
         )
+        if use_claude:
+            logger.info(
+                "Timeline summarizer: Claude scope=%r (hierarchical_claude=%s single_pass_claude=%s)",
+                scope,
+                claude_map,
+                claude_single_pass,
+            )
 
         # -------------------------------------------------------------------
-        # 1) Simple path: single-pass summary for modest timelines
+        # 1) Simple-path summary for modest timelines (one pivotal LLM call)
         # -------------------------------------------------------------------
         if total_chars <= SINGLE_PASS_CHAR_THRESHOLD:
             logger.info(
@@ -4744,18 +4960,40 @@ async def summarize_timeline_for_eoh(
                 "mode": "single_pass",
                 "timeline_text": timeline_text,
             }
-            single = await _call_timeline_summarizer_model(
-                client,
-                question=question,
-                payload=payload,
-                max_tokens=max_tokens,
-                extra_system_hint=(
-                    "You are seeing the patient's full timeline in one block. "
-                    "Produce concise but information-dense JSON fields as specified."
-                ),
-                use_claude=use_claude,
-                summarizer_model=summarizer_model,
-            )
+            try:
+                single = await _call_timeline_summarizer_model(
+                    client,
+                    question=question,
+                    payload=payload,
+                    max_tokens=max_tokens,
+                    extra_system_hint=(
+                        "You are seeing the patient's full timeline in one block. "
+                        "Produce concise but information-dense JSON fields as specified."
+                    ),
+                    use_claude=claude_single_pass,
+                    summarizer_model=summarizer_model,
+                )
+            except Exception as e:
+                if claude_single_pass and _anthropic_credit_or_billing_block(e):
+                    logger.error(
+                        "Timeline summarizer: single-pass Claude blocked (credits/billing); "
+                        "retrying with OpenAI (%s).",
+                        EOH_TIMELINE_SUMMARIZER_MODEL,
+                    )
+                    single = await _call_timeline_summarizer_model(
+                        client,
+                        question=question,
+                        payload=payload,
+                        max_tokens=max_tokens,
+                        extra_system_hint=(
+                            "You are seeing the patient's full timeline in one block. "
+                            "Produce concise but information-dense JSON fields as specified."
+                        ),
+                        use_claude=False,
+                        summarizer_model=summarizer_model,
+                    )
+                else:
+                    raise
             return await _finalize(single, "single_pass")
 
         # -------------------------------------------------------------------
@@ -4834,22 +5072,47 @@ async def summarize_timeline_for_eoh(
             total_chars,
             SINGLE_PASS_CHAR_THRESHOLD,
         )
-        effective_chunk_target = CLAUDE_CHUNK_TARGET_CHAR_LEN if use_claude else CHUNK_TARGET_CHAR_LEN
+        effective_chunk_target = (
+            CLAUDE_CHUNK_TARGET_CHAR_LEN if claude_map else CHUNK_TARGET_CHAR_LEN
+        )
         chunks = _split_timeline_into_chunks(
             timeline_text,
             target_chars=effective_chunk_target,
             max_chunks_floor=MAX_CHUNKS,
         )
         n_chunks = len(chunks)
+        hier_label = (
+            " [map+reduce Claude]"
+            if claude_map
+            else f" [map+reduce {EOH_TIMELINE_SUMMARIZER_MODEL}]"
+        )
         logger.info(
             "Timeline summarizer: split into %d chunk(s) (target=%d chars/floor, cap=%d)%s; "
             "sizes=%s",
             n_chunks,
             effective_chunk_target,
             HIERARCHICAL_MAX_CHUNKS_CAP,
-            " [Claude Opus]" if use_claude else "",
+            hier_label,
             str([len(c) for c in chunks[:8]]) + ("…" if n_chunks > 8 else ""),
         )
+        if claude_map:
+            logger.warning(
+                "Timeline summarizer: Claude on every map + reduce — up to %d Opus-class map "
+                "calls plus reduce; huge input tokens per map. If credits run out, steps fall "
+                "back to OpenAI (%s). Default scope reduce_only keeps hierarchical on OpenAI.",
+                n_chunks,
+                EOH_TIMELINE_SUMMARIZER_MODEL,
+            )
+        else:
+            logger.info(
+                "Timeline summarizer: hierarchical map+reduce on %s (%d chunks); "
+                "no Anthropic in this path unless EOH_TIMELINE_CLAUDE_SCOPE=all.",
+                EOH_TIMELINE_SUMMARIZER_MODEL,
+                n_chunks,
+            )
+
+        map_use_claude = claude_map
+        reduce_use_claude = claude_map
 
         # Map step: summarize each chunk.
         chunk_summaries: List[TimelineSummaries] = []
@@ -4896,17 +5159,47 @@ async def summarize_timeline_for_eoh(
                         "Make the JSON fields reflect only information visible in this segment, "
                         "but include temporal cues (dates/relative timing) where possible."
                     ),
-                    use_claude=use_claude,
+                    use_claude=map_use_claude,
                     summarizer_model=summarizer_model,
                 )
                 chunk_summaries.append(seg_summary)
-            except Exception:
+            except Exception as e:
+                if map_use_claude and _anthropic_credit_or_billing_block(e):
+                    logger.error(
+                        "Timeline summarizer: Anthropic blocked chunk %d/%d (credits/billing). "
+                        "Switching to OpenAI for this and remaining map/reduce steps.",
+                        idx + 1,
+                        n_chunks,
+                    )
+                    map_use_claude = False
+                    reduce_use_claude = False
+                    try:
+                        seg_summary = await _call_timeline_summarizer_model(
+                            client,
+                            question=chunk_question,
+                            payload=payload,
+                            max_tokens=min(MAP_STEP_MAX_TOKENS, max_tokens),
+                            extra_system_hint=(
+                                "You are summarizing ONE SEGMENT of a longer timeline. "
+                                "Make the JSON fields reflect only information visible in this segment, "
+                                "but include temporal cues (dates/relative timing) where possible."
+                            ),
+                            use_claude=False,
+                            summarizer_model=summarizer_model,
+                        )
+                        chunk_summaries.append(seg_summary)
+                    except Exception:
+                        logger.exception(
+                            "Timeline summarizer: map-step failed for chunk %d/%d after OpenAI fallback; continuing.",
+                            idx + 1,
+                            n_chunks,
+                        )
+                    continue
                 logger.exception(
                     "Timeline summarizer: map-step failed for chunk %d/%d; continuing.",
                     idx + 1,
                     n_chunks,
                 )
-                # Even if one segment fails, continue with what we have.
                 continue
 
         if not chunk_summaries:
@@ -4990,15 +5283,34 @@ async def summarize_timeline_for_eoh(
         if graph_hint:
             reduce_hint = f"{reduce_hint}\n\n{graph_hint}"
 
-        final_summaries = await _call_timeline_summarizer_model(
-            client,
-            question=question,
-            payload=reduce_payload,
-            max_tokens=max_tokens,
-            extra_system_hint=reduce_hint,
-            use_claude=use_claude,
-            summarizer_model=summarizer_model,
-        )
+        try:
+            final_summaries = await _call_timeline_summarizer_model(
+                client,
+                question=question,
+                payload=reduce_payload,
+                max_tokens=max_tokens,
+                extra_system_hint=reduce_hint,
+                use_claude=reduce_use_claude,
+                summarizer_model=summarizer_model,
+            )
+        except Exception as e:
+            if reduce_use_claude and _anthropic_credit_or_billing_block(e):
+                logger.error(
+                    "Timeline summarizer: reduce step blocked by Anthropic credits/billing; "
+                    "retrying reduce with OpenAI (%s).",
+                    EOH_TIMELINE_SUMMARIZER_MODEL,
+                )
+                final_summaries = await _call_timeline_summarizer_model(
+                    client,
+                    question=question,
+                    payload=reduce_payload,
+                    max_tokens=max_tokens,
+                    extra_system_hint=reduce_hint,
+                    use_claude=False,
+                    summarizer_model=summarizer_model,
+                )
+            else:
+                raise
 
         return await _finalize(final_summaries, "hierarchical_reduce")
 

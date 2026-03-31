@@ -4335,12 +4335,11 @@ def stream_llm_events(
     # Use explicit chat_model if provided, else default to CHAT_MODEL_GUIDELINES
     model_to_use = chat_model if chat_model is not None else CHAT_MODEL_GUIDELINES
 
-    # Try Claude for per-step answer generation (higher-quality clinical reasoning)
     try:
-        from server.llm.llm_client import get_anthropic_client
-        if get_anthropic_client() is not None:
+        from server.llm.llm_client import should_prefer_claude
+        if should_prefer_claude():
             _sys = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
-            logger.info("stream_llm_events: using Claude for answer generation")
+            logger.info("stream_llm_events: using Claude (PREFER_CLAUDE_SYNTHESIS=true)")
             yield from _stream_llm_events_claude(
                 messages, _sys,
                 event_prefix=event_prefix, phase=phase, llm_mode=mode,

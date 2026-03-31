@@ -205,18 +205,16 @@ async def detective_report_llm(
     """
     Final EoH Detective report LLM.
 
-    Uses Claude (Anthropic) for synthesis when available — highest-quality
-    reasoning for the patient-facing report. Falls back to GPT-4.1 if
-    ANTHROPIC_API_KEY is not set.
+    Defaults to GPT-4.1.  Uses Claude (Anthropic) only when
+    PREFER_CLAUDE_SYNTHESIS=true is set in the environment.
     """
     compact = _compact_report_payload(report_payload)
     user_content = json.dumps(compact, ensure_ascii=False, cls=DateTimeJSONEncoder)
 
-    # Try Claude first for superior synthesis quality
     try:
-        from server.llm.llm_client import claude_chat_async, get_anthropic_client
-        if get_anthropic_client() is not None:
-            logger.info("detective_report_llm: using Claude for synthesis")
+        from server.llm.llm_client import claude_chat_async, should_prefer_claude
+        if should_prefer_claude():
+            logger.info("detective_report_llm: using Claude (PREFER_CLAUDE_SYNTHESIS=true)")
             result = await claude_chat_async(
                 system=EOH_DETECTIVE_REPORT_SYSTEM_PROMPT.strip(),
                 messages=[{"role": "user", "content": user_content}],
@@ -1114,12 +1112,11 @@ async def eoh_detective_stream_event_generator(
                         "figures": fig_summaries,
                     }, ensure_ascii=False)
 
-                    # Try Claude for figure interpretation
                     _used_claude_fig = False
                     try:
-                        from server.llm.llm_client import claude_chat_async, get_anthropic_client
-                        if get_anthropic_client() is not None:
-                            logger.info("figure_interpretation: using Claude")
+                        from server.llm.llm_client import claude_chat_async, should_prefer_claude
+                        if should_prefer_claude():
+                            logger.info("figure_interpretation: using Claude (PREFER_CLAUDE_SYNTHESIS=true)")
                             _raw_text = await asyncio.wait_for(
                                 claude_chat_async(
                                     system=_FIG_INTERP_SYSTEM + "\n\nRespond with valid JSON only.",

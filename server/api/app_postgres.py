@@ -103,6 +103,11 @@ from PortalVision.audio_routes import router as audio_router
 
 from server.api.schemas import DiagnoseResponse
 
+# --- B2B API infrastructure ---
+from server.b2b.v1_mkg_router import mkg_router as b2b_mkg_router, evidence_router as b2b_evidence_router, health_router as b2b_health_router
+from server.b2b.middleware import B2BUsageMiddleware
+from server.b2b.usage import meter as b2b_meter
+
 
 # --- lifespan: init async engine + session + RAG engine -----------------------
 @asynccontextmanager
@@ -147,12 +152,20 @@ async def lifespan(app: FastAPI):
     global query_engine
     query_engine = PostgreSQLMedicalQueryEngine()
 
+    # Bind B2B usage meter to the DB session factory
+    b2b_meter.bind(session_maker)
+
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info("Database connection initialized successfully")
+
+        await b2b_meter.start()
+        logger.info("B2B usage meter started")
+
         yield
     finally:
+        await b2b_meter.stop()
         await engine.dispose()
         logger.info("DB engine disposed")
 
@@ -253,6 +266,14 @@ app.include_router(timeline_router)
 app.include_router(timeline_analytics_router)
 app.include_router(printer_router)
 app.include_router(audio_router)
+
+# --- B2B /v1/ routers (API-key authenticated) ---------------------------------
+app.include_router(b2b_mkg_router)
+app.include_router(b2b_evidence_router)
+app.include_router(b2b_health_router)
+
+# --- B2B usage logging middleware (must be before other middleware) ------------
+app.add_middleware(B2BUsageMiddleware)
 
 # --- Middlewares---------------------------------------------------------------
 @app.middleware("http")

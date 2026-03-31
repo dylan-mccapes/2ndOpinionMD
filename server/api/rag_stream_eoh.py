@@ -743,10 +743,9 @@ async def _run_evidence_mapping(
     ]
 
     try:
-        # Try Claude for higher-quality evidence mapping
-        from server.llm.llm_client import claude_chat_async, get_anthropic_client
-        if get_anthropic_client() is not None:
-            logger.info("evidence_mapping: using Claude")
+        from server.llm.llm_client import claude_chat_async, should_prefer_claude
+        if should_prefer_claude():
+            logger.info("evidence_mapping: using Claude (PREFER_CLAUDE_SYNTHESIS=true)")
             raw = await claude_chat_async(
                 system=EVIDENCE_MAPPING_SYSTEM_PROMPT.strip()
                     + "\n\nRespond with valid JSON only. No markdown fences.",

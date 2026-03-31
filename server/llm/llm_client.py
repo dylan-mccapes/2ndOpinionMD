@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 CLAUDE_SYNTHESIS_MODEL = os.getenv("CLAUDE_SYNTHESIS_MODEL", "claude-opus-4-20250514")
 
+PREFER_CLAUDE_SYNTHESIS = os.getenv("PREFER_CLAUDE_SYNTHESIS", "false").lower() in ("1", "true", "yes")
+
 _anthropic_client = None
 
 
@@ -36,6 +38,17 @@ def get_anthropic_client():
     except Exception:
         logger.warning("Failed to initialize Anthropic client", exc_info=True)
         return None
+
+
+def should_prefer_claude() -> bool:
+    """True only when PREFER_CLAUDE_SYNTHESIS=true AND the Anthropic client is available.
+
+    Having ANTHROPIC_API_KEY set is not enough — Opus must be explicitly
+    opted-in via PREFER_CLAUDE_SYNTHESIS.  Without this gate, every call
+    site that checks ``get_anthropic_client() is not None`` silently
+    routes to Opus, burning ~10× the cost of GPT-4.1 for comparable work.
+    """
+    return PREFER_CLAUDE_SYNTHESIS and get_anthropic_client() is not None
 
 
 async def claude_chat_async(
@@ -60,14 +73,14 @@ async def claude_chat_async(
     _model = model or CLAUDE_SYNTHESIS_MODEL
 
     def _call():
-        resp = client.messages.create(
+        with client.messages.stream(
             model=_model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system,
             messages=messages,
-        )
-        return resp.content[0].text
+        ) as stream:
+            return stream.get_final_text()
 
     return await anyio.to_thread.run_sync(_call)
 

@@ -196,6 +196,9 @@ def main() -> None:
             use_timeline_rag=False,
             timeline_vision=vision,
             use_claude=True,
+            # Full Opus map+reduce: this script uses a dummy OpenAI client; reduce_only would
+            # send map steps to OpenAI and fail without a real key.
+            claude_scope="all",
         )
 
         elapsed = time.perf_counter() - t0

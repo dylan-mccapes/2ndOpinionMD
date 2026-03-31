@@ -161,8 +161,22 @@ def main() -> None:
         "--use-claude",
         action="store_true",
         help=(
-            "Use Claude Opus for the narrative summarization step "
-            "instead of the default OpenAI model. Requires ANTHROPIC_API_KEY."
+            "Use Claude (Opus via CLAUDE_SYNTHESIS_MODEL) where the summarizer allows it. "
+            "Requires ANTHROPIC_API_KEY. With default --claude-scope reduce_only, the timeline "
+            "summarizer uses OpenAI only (including hierarchical map+reduce). "
+            "Use --claude-scope all to run Opus inside this summarizer (expensive)."
+        ),
+    )
+    parser.add_argument(
+        "--claude-scope",
+        choices=["reduce_only", "all"],
+        default=None,
+        help=(
+            "Anthropic usage when --use-claude is set. "
+            "reduce_only (default via EOH_TIMELINE_CLAUDE_SCOPE): timeline summarizer uses OpenAI "
+            "only (hierarchical + single-pass). "
+            "all: Opus for hierarchical map+reduce and single-pass (legacy, very expensive). "
+            "When omitted, env EOH_TIMELINE_CLAUDE_SCOPE applies (default reduce_only)."
         ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -242,7 +256,20 @@ def main() -> None:
     _log(f"PDF: {pdf_file.resolve()}", emoji="📄")
     _log(f"Patient id: {args.patient_id}", emoji="🧾")
     _log(f"Extraction mode: {args.extraction_mode}", emoji="🔬")
-    _log(f"LLM backend: {backend}  |  ingestion model: {ingestion_model}  |  summarizer: {'Claude Opus' if args.use_claude else EOH_TIMELINE_SUMMARIZER_MODEL}", emoji="🤖")
+    _cs = args.claude_scope or os.getenv("EOH_TIMELINE_CLAUDE_SCOPE", "reduce_only")
+    if args.use_claude and _cs == "all":
+        _summ_desc = f"Claude Opus allowed in timeline summarizer (scope=all) / base {EOH_TIMELINE_SUMMARIZER_MODEL}"
+    elif args.use_claude:
+        _summ_desc = (
+            f"{EOH_TIMELINE_SUMMARIZER_MODEL} for timeline summarizer "
+            f"(scope={_cs}; --use-claude does not send Opus there)"
+        )
+    else:
+        _summ_desc = str(EOH_TIMELINE_SUMMARIZER_MODEL)
+    _log(
+        f"LLM backend: {backend}  |  ingestion model: {ingestion_model}  |  summarizer: {_summ_desc}",
+        emoji="🤖",
+    )
     if backend in ("ollama", "ollama-full"):
         _log(f"Ollama URL: {ollama_url}", emoji="🦙")
     if artifact_dir_str:
@@ -251,7 +278,10 @@ def main() -> None:
     async def run() -> None:
         t0 = time.perf_counter()
 
-        _summarizer_model = ingestion_model if backend == "ollama-full" and not args.use_claude else None
+        _opus_in_summarizer = args.use_claude and _cs == "all"
+        _summarizer_model = (
+            ingestion_model if backend == "ollama-full" and not _opus_in_summarizer else None
+        )
         summaries = await summarize_timeline_from_pdf(
             client=summary_client,
             question=args.question,
@@ -267,6 +297,7 @@ def main() -> None:
             extraction_concurrency=args.extraction_concurrency,
             use_claude=args.use_claude,
             summarizer_model=_summarizer_model,
+            claude_scope=args.claude_scope,
         )
 
         elapsed = time.perf_counter() - t0

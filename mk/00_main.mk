@@ -201,5 +201,6 @@ check-rag-guideline-sources:
 -include mk/51_pubmd.mk
 -include mk/90_reports.mk
 -include mk/91_coding.mk
+-include mk/95_b2b.mk
 -include mk/98_backups.mk
 -include mk/99_backend.mk
