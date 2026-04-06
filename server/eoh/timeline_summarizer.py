@@ -3261,6 +3261,7 @@ async def _extract_events_from_pages_batch(
     force_json_format: bool = True,
     ollama_num_ctx: Optional[int] = None,
     ollama_native_api: bool = False,
+    heuristic_results: Optional[Dict[int, Any]] = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
     """
     One LLM call for many PDF pages. Returns map pdf_page_num -> event dicts.
@@ -3313,6 +3314,14 @@ async def _extract_events_from_pages_batch(
 
         Include exactly one entry in "pages" for every input page_num, in ascending page_num order.
         Do not merge events across pages. Do not include markdown or commentary outside JSON.
+
+        Some pages may include a "pre_extracted" field with events already found by
+        regex heuristics (dates, ICD codes, medication patterns). When present:
+        - Correct any misclassified events
+        - Add events the heuristics missed (especially symptoms, clinical notes, procedures)
+        - Improve previews where the heuristic preview is poor
+        - Do NOT re-emit events that the heuristics already captured correctly
+        Focus your output tokens on what the heuristics MISSED.
     """).strip()
 
     # Compact prompt for Ollama / small models.
@@ -3350,13 +3359,25 @@ async def _extract_events_from_pages_batch(
         - NEVER omit drug_name for any medication event
         - Vaccinations and immunizations are type "procedure", NOT "lab"
         - Timestamps must come from the actual page text — do not copy dates from these instructions
+        - If a page has "pre_extracted" data, focus on what it MISSED (symptoms, notes, procedures).
+          Do NOT re-emit events the heuristics already found correctly.
     """).strip()
 
     system_prompt = _SYSTEM_PROMPT_OLLAMA if not force_json_format else _SYSTEM_PROMPT_FULL
 
-    payload = {
-        "pages": [{"page_num": pn, "text": txt} for pn, txt in pages],
-    }
+    # Build payload — include heuristic skeleton when available so the LLM
+    # can correct/supplement rather than extracting from scratch.
+    page_dicts = []
+    for pn, txt in pages:
+        d: Dict[str, Any] = {"page_num": pn, "text": txt}
+        if heuristic_results and pn in heuristic_results:
+            from server.eoh.heuristic_page_extract import skeleton_for_llm
+            skel = skeleton_for_llm(pn, txt, heuristic_results[pn])
+            if skel:
+                d["pre_extracted"] = skel
+        page_dicts.append(d)
+
+    payload = {"pages": page_dicts}
     user_content = json.dumps(payload, ensure_ascii=False)
     input_page_nums = {pn for pn, _ in pages}
 
@@ -3901,6 +3922,71 @@ async def summarize_timeline_from_pdf(
         len(page_entries),
     )
 
+    # ── Heuristic pre-extraction pass ─────────────────────────────────────
+    # Pure Python regex pass over all pages BEFORE the LLM touches anything.
+    # Extracts dates, ICD codes, medication patterns, lab orders, and section
+    # context. ~1 second for 4,000 pages. The LLM then corrects and supplements.
+    from server.eoh.heuristic_page_extract import (
+        heuristic_extract_batch,
+        HeuristicPageResult,
+    )
+
+    import time as _time
+    _heur_t0 = _time.perf_counter()
+    _heuristic_results = heuristic_extract_batch(extraction_pages)
+    _heur_elapsed = _time.perf_counter() - _heur_t0
+
+    _heur_events = sum(len(r.events) for r in _heuristic_results.values())
+    _heur_pages_with_date = sum(1 for r in _heuristic_results.values() if r.page_date)
+    logger.info(
+        "Heuristic pre-extraction: %d pages in %.0fms (%.2fms/page) — "
+        "%d events, %d/%d pages with encounter dates",
+        len(extraction_pages), _heur_elapsed * 1000,
+        _heur_elapsed / max(len(extraction_pages), 1) * 1000,
+        _heur_events, _heur_pages_with_date, len(extraction_pages),
+    )
+
+    # Add heuristic events to vision immediately — these are the "free" events
+    # that don't cost any LLM tokens.
+    _heur_added = 0
+    for pn, heur_result in sorted(_heuristic_results.items()):
+        if not heur_result.events:
+            continue
+        heur_event_dicts = []
+        for he in heur_result.events:
+            d = he.to_dict()
+            d["annotations"] = {"heuristic_source": he.source}
+            if he.drug_name:
+                d["drug_name"] = he.drug_name
+                d["annotations"]["drug_name"] = he.drug_name
+            if he.drug_dosage:
+                d["drug_dosage"] = he.drug_dosage
+                d["annotations"]["drug_dosage"] = he.drug_dosage
+            if he.drug_route:
+                d["drug_route"] = he.drug_route
+                d["annotations"]["drug_route"] = he.drug_route
+            if he.icd_code:
+                d["annotations"]["icd_code"] = he.icd_code
+            heur_event_dicts.append(d)
+        add_events_from_pdf_page(
+            vision=vision,
+            page_num=pn,
+            events=heur_event_dicts,
+        )
+        _heur_added += len(heur_event_dicts)
+
+    logger.info(
+        "Heuristic events added to vision: %d events (pre-LLM)",
+        _heur_added,
+    )
+
+    # Build page date lookup for timestamp recovery on LLM results
+    _page_date_lookup: Dict[int, str] = {
+        pn: r.page_date
+        for pn, r in _heuristic_results.items()
+        if r.page_date
+    }
+
     # Batched LLM extraction: batch size scales with the ingestion model's
     # context window.  For small local models (e.g. llama3.1:8b with 128K
     # context) we must use far fewer input chars per batch so the KV cache
@@ -3987,12 +4073,21 @@ async def summarize_timeline_from_pdf(
             "PDF event extraction batch %d/%d: %d pages, ~%d chars in payload",
             b_idx, len(batches), len(batch), batch_chars,
         )
+        # Pass heuristic results for pages in this batch so the LLM prompt
+        # includes the pre-extracted skeleton.
+        batch_heur = {
+            pn: _heuristic_results[pn]
+            for pn, _ in batch
+            if pn in _heuristic_results
+        } if _heuristic_results else None
+
         async with _sem:
             result = await _extract_events_from_pages_batch(
                 _ingestion_client, batch, model=_ingestion_model,
                 force_json_format=_force_json_format,
                 ollama_num_ctx=_ollama_num_ctx,
                 ollama_native_api=_ollama_native_api,
+                heuristic_results=batch_heur,
             )
         return b_idx, batch, result
 
@@ -4010,6 +4105,8 @@ async def summarize_timeline_from_pdf(
     _stat_total_events = 0
     _stat_fallback_pages = 0
 
+    _stat_ts_recovered = 0
+
     for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
         ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
         batch_event_count = sum(len(evts) for evts in page_to_events.values())
@@ -4019,6 +4116,25 @@ async def summarize_timeline_from_pdf(
             for ev in evts:
                 if ev.get("event_id", "").endswith("_batch_error"):
                     _stat_fallback_pages += 1
+
+        # Timestamp recovery: apply heuristic page dates to LLM events
+        # that have unknown timestamps.
+        for page_num, evts in page_to_events.items():
+            page_date = _page_date_lookup.get(page_num)
+            if not page_date:
+                continue
+            for ev in evts:
+                ts = ev.get("timestamp", "")
+                if ts.lower() in ("unknown", "", "n/a", "none"):
+                    from server.utils.parse_date import extract_date_from_text
+                    preview_date = extract_date_from_text(ev.get("preview", ""))
+                    if preview_date:
+                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    else:
+                        ev["timestamp"] = page_date
+                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                    _stat_ts_recovered += 1
 
         ts_samples: list[str] = []
         for evts in page_to_events.values():
@@ -4049,8 +4165,9 @@ async def summarize_timeline_from_pdf(
 
     logger.info(
         "═══ PDF extraction complete: %d batches, %d total events, %d fallback pages "
-        "(pages where extraction failed and only raw text was preserved)",
-        len(batches), _stat_total_events, _stat_fallback_pages,
+        "(pages where extraction failed and only raw text was preserved), "
+        "%d timestamps recovered from heuristic page dates",
+        len(batches), _stat_total_events, _stat_fallback_pages, _stat_ts_recovered,
     )
 
     # Single final connascence pass over the complete event set.

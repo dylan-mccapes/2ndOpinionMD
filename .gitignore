@@ -134,3 +134,4 @@ sha256:*
 
 # Nested repo companion
 ai_code_pipelines/.BeatingHeart/
+.envt

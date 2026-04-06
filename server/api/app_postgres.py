@@ -56,6 +56,7 @@ query_engine: Optional[PostgreSQLMedicalQueryEngine] = None
 
 # --- Routers ------------------------------------------------------------------
 from server.api.journal import router as journal_router
+from server.api.chat_graph_routes import router as chat_graph_router
 from server.api.auth_routes_postgres import router as auth_router
 from server.api.session_routes import router as session_router, timeline_router as session_timeline_router
 from server.api.doctor_routes import router as doctor_router
@@ -227,6 +228,7 @@ app.include_router(doctor_router, prefix="/api/doctor", tags=["doctor"])
 app.include_router(patient_router, prefix="/api/patient", tags=["patient"])
 app.include_router(portal_router, prefix="/api/portal", tags=["portal"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
+app.include_router(chat_graph_router, prefix="/api/chat", tags=["chat"])
 
 app.include_router(loinc_router)
 app.include_router(snomed_router)

@@ -1,0 +1,73 @@
+{
+  "source_file": "/Users/2ndopinionmd/dev/provenance-engines/PortalVision/2ndOpinionMD-MVP/artifacts/timeline_ollama_20260330_1312/patient_timeline_vision_norman_eric_roberts_20260330_151754.json",
+  "patient_id": "norman_eric_roberts",
+  "built_at": "2026-03-30T20:14:20.898303+00:00",
+  "total_events": 8917,
+  "clinical_events": 8401,
+  "hard_gates": [
+    {
+      "name": "1.1 Timestamp Integrity",
+      "metric": 66.8,
+      "threshold_accept": 95,
+      "threshold_candidate": 90,
+      "level": "reject",
+      "detail": "Coverage: 66.8% (5612/8401 have timestamps) | Future/implausible: 0 (0.00%) | Pre-1900: 0 | Recoverable from preview text: 932 (potential +11.1%)",
+      "emoji": "\u274c"
+    },
+    {
+      "name": "1.2 Event-Type Accuracy",
+      "metric": 0.54,
+      "threshold_accept": 5,
+      "threshold_candidate": 10,
+      "level": "accept",
+      "detail": "Mis-typed: 45/8401 (0.5%)",
+      "emoji": "\ud83d\udfe2"
+    },
+    {
+      "name": "1.3 Deduplication",
+      "metric": 21.71,
+      "threshold_accept": 10,
+      "threshold_candidate": 20,
+      "level": "reject",
+      "detail": "Duplicate rate: 1824/8401 (21.7%)",
+      "emoji": "\u274c"
+    },
+    {
+      "name": "1.4 Medication Normalization",
+      "metric": 86.92,
+      "threshold_accept": 60,
+      "threshold_candidate": 40,
+      "level": "accept",
+      "detail": "drug_name: 2446/2814 (86.9%) | dose/route: 1953/2814, 1897/2814 | RxNorm: 0/2814 (0.0%)",
+      "emoji": "\ud83d\udfe2"
+    },
+    {
+      "name": "1.5 Graph Connectivity",
+      "metric": 32.01,
+      "threshold_accept": 30,
+      "threshold_candidate": 50,
+      "level": "candidate",
+      "detail": "Orphans: 2689/8401 (32.0%) | Avg edges/node: 27.5 | Edge types: {'treatment': 146400, 'temporal': 84045, 'diagnostic': 352, 'lab_trend': 24}",
+      "emoji": "\ud83d\udfe1"
+    }
+  ],
+  "soft_gates": [
+    {
+      "name": "2.1 Section Awareness",
+      "score": "mixed",
+      "detail": "413/621 section-matched (66.5%)"
+    },
+    {
+      "name": "2.3 Clinical Plausibility (Date Clustering)",
+      "score": "mixed",
+      "detail": "Suspicious clusters: [('2024-08-15', 43), ('2021-02-02', 36), ('2018-02-08', 27), ('2017-05-01', 24), ('2021-03-15', 21)] \u2014 may be problem-list 'as of' dates"
+    },
+    {
+      "name": "2.4 Vocabulary Hygiene",
+      "score": "mixed",
+      "detail": "2 events with empty type"
+    }
+  ],
+  "overall_level": "reject",
+  "summary": "\u274c Overall: REJECT \u2014 8401 clinical events from 8917 total"
+}

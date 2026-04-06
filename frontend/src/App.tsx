@@ -21,6 +21,7 @@ import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { AcceptDoctorInvitePage } from './pages/auth/AcceptDoctorInvitePage';
 import { AcceptPatientInvitePage } from './pages/auth/AcceptPatientInvitePage';
+import { ChatPage } from './pages/ChatPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 const basename = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/coding" element={<ProtectedRoute><CodingPage /></ProtectedRoute>} />
           <Route path="/eoh" element={<ProtectedRoute><EohPage /></ProtectedRoute>} />
           <Route path="/eohd" element={<ProtectedRoute><EohdPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
           <Route path="/journal" element={<RoleProtectedRoute role="patient"><JournalPage /></RoleProtectedRoute>} />
           <Route path="/patient" element={<RoleProtectedRoute role="patient"><PatientPortalPage /></RoleProtectedRoute>} />
           <Route path="/timeline" element={<ProtectedRoute><TimelinePage /></ProtectedRoute>} />

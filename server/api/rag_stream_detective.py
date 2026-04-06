@@ -711,6 +711,43 @@ async def eoh_detective_stream_event_generator(
                 logger.warning("eoh_detective: graph probe failed for step %s", step_id, exc_info=True)
                 step_graph_context_docs = None
 
+        # Chat graph context injection — surface patient/doctor chat messages
+        # that are relevant to this detective step (anchored to queried events,
+        # high-decay doctor observations, recent patient disclosures).
+        _chat_context_str: Optional[str] = None
+        try:
+            from server.eoh.chat_graph import (
+                ChatMessage as _ChatMsg,
+                build_chat_context_for_eohd,
+                update_all_decay_scores,
+            )
+            from server.api.chat_graph_routes import _load_active_messages
+            from server.db.session import get_session as _get_session_factory
+            # Use pool to get async session for chat graph
+            _chat_msgs = await _load_active_messages(
+                pool, timeline_patient_id,
+            ) if hasattr(pool, 'execute') else []
+            if _chat_msgs:
+                update_all_decay_scores(_chat_msgs)
+                _chat_context_str = build_chat_context_for_eohd(
+                    _chat_msgs,
+                    event_ids=step_graph_event_ids or None,
+                    max_chars=4000,
+                )
+                if _chat_context_str:
+                    logger.info(
+                        "eoh_detective: injected %d chars of chat context for step %s",
+                        len(_chat_context_str), step_id,
+                    )
+        except Exception:
+            logger.debug("eoh_detective: chat graph context unavailable for step %s", step_id, exc_info=True)
+
+        # Prepend chat context to graph context so the LLM sees it
+        if _chat_context_str and step_graph_context:
+            step_graph_context = _chat_context_str + "\n\n" + step_graph_context
+        elif _chat_context_str:
+            step_graph_context = _chat_context_str
+
         # Inner EoH stream generator
         inner_gen = eoh_stream_event_generator(
             request=request,
@@ -1243,6 +1280,35 @@ async def eoh_detective_stream_event_generator(
             },
         )
         logger.info("eoh_detective: run %s persisted, PDF: %s", run_id, pdf_path)
+
+        # Save detective report summary to chat graph as agent message.
+        # Anchored to all event IDs discovered during the investigation.
+        try:
+            from server.eoh.chat_graph import create_message as _cg_create
+            _report_summary = report_text[:2000] if report_text else ""
+            if _report_summary and timeline_patient_id:
+                _all_event_ids = []
+                for step_sum in detective_meta.get("step_summaries", []):
+                    _all_event_ids.extend(step_sum.get("event_ids", []))
+                _cg_msg = _cg_create(
+                    patient_id=timeline_patient_id,
+                    role="agent",
+                    content=f"[EoHD Report] {_report_summary}",
+                    reference_edges={
+                        "detective_report": [run_id or "unknown"],
+                    },
+                    anchored_event_ids=_all_event_ids[:20],
+                    retention_reason=f"detective_report:{run_id}",
+                )
+                from server.api.chat_graph_routes import _persist_message, _ensure_budget
+                if hasattr(pool, 'execute'):
+                    await _persist_message(pool, _cg_msg)
+                    logger.info(
+                        "eoh_detective: saved report to chat graph — %d chars anchored to %d events",
+                        len(_report_summary), len(_all_event_ids),
+                    )
+        except Exception:
+            logger.debug("eoh_detective: chat graph save failed (non-critical)", exc_info=True)
 
     except Exception:
         logger.exception("eoh_detective: failed to persist run or generate PDF")

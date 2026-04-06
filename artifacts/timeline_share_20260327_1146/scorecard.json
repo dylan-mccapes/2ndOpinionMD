@@ -1,0 +1,73 @@
+{
+  "source_file": "/Users/2ndopinionmd/dev/provenance-engines/PortalVision/2ndOpinionMD-MVP/artifacts/timeline_share_20260327_1146/patient_timeline_vision_norman_eric_roberts_20260327_115433.json",
+  "patient_id": "norman_eric_roberts",
+  "built_at": "2026-03-27T18:54:28.935301+00:00",
+  "total_events": 4223,
+  "clinical_events": 0,
+  "hard_gates": [
+    {
+      "name": "1.1 Timestamp Integrity",
+      "metric": 0,
+      "threshold_accept": 95,
+      "threshold_candidate": 90,
+      "level": "reject",
+      "detail": "No clinical events",
+      "emoji": "\u274c"
+    },
+    {
+      "name": "1.2 Event-Type Accuracy",
+      "metric": 100,
+      "threshold_accept": 5,
+      "threshold_candidate": 10,
+      "level": "reject",
+      "detail": "No clinical events",
+      "emoji": "\u274c"
+    },
+    {
+      "name": "1.3 Deduplication",
+      "metric": 0,
+      "threshold_accept": 10,
+      "threshold_candidate": 20,
+      "level": "reject",
+      "detail": "No clinical events",
+      "emoji": "\u274c"
+    },
+    {
+      "name": "1.4 Medication Normalization",
+      "metric": 0,
+      "threshold_accept": 60,
+      "threshold_candidate": 40,
+      "level": "candidate",
+      "detail": "No medication events",
+      "emoji": "\ud83d\udfe1"
+    },
+    {
+      "name": "1.5 Graph Connectivity",
+      "metric": 100,
+      "threshold_accept": 30,
+      "threshold_candidate": 50,
+      "level": "reject",
+      "detail": "No clinical events",
+      "emoji": "\u274c"
+    }
+  ],
+  "soft_gates": [
+    {
+      "name": "2.1 Section Awareness",
+      "score": "poor",
+      "detail": "0/990 section-matched (0.0%)"
+    },
+    {
+      "name": "2.3 Clinical Plausibility (Date Clustering)",
+      "score": "not_assessed",
+      "detail": "No dated diagnoses"
+    },
+    {
+      "name": "2.4 Vocabulary Hygiene",
+      "score": "consistent",
+      "detail": "Clean"
+    }
+  ],
+  "overall_level": "reject",
+  "summary": "\u274c Overall: REJECT \u2014 0 clinical events from 4223 total"
+}
