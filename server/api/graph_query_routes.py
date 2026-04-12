@@ -14,13 +14,15 @@ POST /api/graph/{patient_id}/ask         — Free-text question → 8B answers f
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
+import os
 import time
 import textwrap
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from server.eoh.patient_timeline_vision import (
@@ -33,12 +35,38 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/graph", tags=["graph", "query"])
 
+_FORWARD_TOKEN = os.getenv("FORWARD_API_TOKEN", "")
+
+
+# ---------------------------------------------------------------------------
+# Auth: FORWARD patient IDs require bearer token
+# ---------------------------------------------------------------------------
+
+def _check_forward_auth(patient_id: str, authorization: Optional[str]) -> None:
+    """If patient_id starts with 'forward_', require a valid bearer token."""
+    if not patient_id.startswith("forward_"):
+        return
+    if not _FORWARD_TOKEN:
+        raise HTTPException(500, "FORWARD_API_TOKEN not configured on server")
+    if not authorization:
+        raise HTTPException(
+            401,
+            "FORWARD patient graphs require authentication. "
+            "Pass: -H 'Authorization: Bearer <token>'",
+        )
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(401, "Expected: Authorization: Bearer <token>")
+    if not hmac.compare_digest(token.encode(), _FORWARD_TOKEN.encode()):
+        raise HTTPException(403, "Invalid FORWARD API token")
+
 
 # ---------------------------------------------------------------------------
 # Graph loader (file-based for now; PG upgrade is one-line swap)
 # ---------------------------------------------------------------------------
 
-def _load_graph(patient_id: str) -> PatientTimelineVision:
+def _load_graph(patient_id: str, authorization: Optional[str] = None) -> PatientTimelineVision:
+    _check_forward_auth(patient_id, authorization)
     vision = load_timeline_vision(patient_id)
     if not vision.events:
         raise HTTPException(
@@ -54,14 +82,14 @@ def _load_graph(patient_id: str) -> PatientTimelineVision:
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/full")
-async def graph_full(patient_id: str):
+async def graph_full(patient_id: str, authorization: Optional[str] = Header(None)):
     """Return the complete graph as JSON (all events, edges, arcs, metadata).
 
     This is the full PatientTimelineVision serialised.  Use /snapshot for
     a lightweight overview; use this when you need the entire dataset for
     downstream analysis, visualisation, or import into another system.
     """
-    return _load_graph(patient_id).to_dict()
+    return _load_graph(patient_id, authorization).to_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -69,13 +97,13 @@ async def graph_full(patient_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/snapshot")
-async def graph_snapshot(patient_id: str):
+async def graph_snapshot(patient_id: str, authorization: Optional[str] = Header(None)):
     """The 'git ls-files' of the patient graph.
 
     Returns event counts by type, date ranges, and a compact node list.
     This is the first thing to call after an infer run completes.
     """
-    return _load_graph(patient_id).snapshot()
+    return _load_graph(patient_id, authorization).snapshot()
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +111,11 @@ async def graph_snapshot(patient_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/topology")
-async def graph_topology(patient_id: str):
+async def graph_topology(patient_id: str, authorization: Optional[str] = Header(None)):
     """Structural analysis: connected components, orphan events, hubs,
     temporal gaps (>90 days), edge type distribution, and graph density.
     """
-    return _load_graph(patient_id).topology_scan()
+    return _load_graph(patient_id, authorization).topology_scan()
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +131,12 @@ async def graph_events(
     date_to: Optional[str] = Query(None, description="ISO date upper bound (inclusive)"),
     limit: int = Query(200, ge=1, le=2000),
     offset: int = Query(0, ge=0),
+    authorization: Optional[str] = Header(None),
 ):
     """Search and filter events in the patient graph."""
     from server.utils.parse_date import parse_clinical_date
 
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     results: List[Dict[str, Any]] = []
 
     dt_from = parse_clinical_date(date_from) if date_from else None
@@ -147,9 +176,9 @@ async def graph_events(
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/event/{event_id}")
-async def graph_event_detail(patient_id: str, event_id: str):
+async def graph_event_detail(patient_id: str, event_id: str, authorization: Optional[str] = Header(None)):
     """Return a single event with all its connascence neighbours."""
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     ev = vision.events.get(event_id)
     if ev is None:
         raise HTTPException(404, f"Event '{event_id}' not found in graph")
@@ -178,13 +207,14 @@ async def graph_traverse(
     patient_id: str,
     seed: str = Query(..., description="Event ID to start from"),
     max_nodes: int = Query(30, ge=1, le=200),
+    authorization: Optional[str] = Header(None),
 ):
     """Priority-weighted graph traversal from a seed event.
 
     Follows highest-value edges first (caused_by > causal > diagnostic >
     treatment > drug_response > lab_trend > symptom_cluster > temporal).
     """
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     if seed not in vision.events:
         raise HTTPException(404, f"Seed event '{seed}' not found")
 
@@ -210,13 +240,14 @@ async def graph_traverse(
 async def graph_gaps(
     patient_id: str,
     min_gap_days: int = Query(90, ge=1, description="Minimum silence in days"),
+    authorization: Optional[str] = Header(None),
 ):
     """Detect periods of silence in the timeline.
 
     Gaps often indicate lost-to-follow-up periods, care system transitions,
     or extraction misses.
     """
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     gaps = vision.detect_temporal_gaps(min_gap_days=min_gap_days)
     return {
         "patient_id": patient_id,
@@ -231,13 +262,13 @@ async def graph_gaps(
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/negative")
-async def graph_negative_space(patient_id: str):
+async def graph_negative_space(patient_id: str, authorization: Optional[str] = Header(None)):
     """Identify expected-but-absent patterns.
 
     Finds diagnoses without follow-up labs, medications without efficacy
     assessments, and other gaps where diagnostic mysteries often hide.
     """
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     findings = vision.detect_negative_space()
     return {
         "patient_id": patient_id,
@@ -251,13 +282,13 @@ async def graph_negative_space(patient_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{patient_id}/arcs")
-async def graph_arcs(patient_id: str):
+async def graph_arcs(patient_id: str, authorization: Optional[str] = Header(None)):
     """Return all clinical arcs (macro-level threads in the timeline).
 
     Arcs partition events into clinically coherent threads: organ-system
     stories, treatment arcs, diagnostic threads, etc.
     """
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     arcs = [a.to_dict() for a in vision.arcs.values()]
     cross_edges = vision.walk_cross_arc_edges()
     return {
@@ -277,13 +308,14 @@ async def graph_edges(
     patient_id: str,
     kind: Optional[str] = Query(None, description="Filter by edge type (temporal, causal, diagnostic, etc.)"),
     limit: int = Query(500, ge=1, le=5000),
+    authorization: Optional[str] = Header(None),
 ):
     """Return denormalised, deduplicated edge list.
 
     Useful for building adjacency matrices, visualisations, or feeding
     to downstream graph algorithms.
     """
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
     edges = vision.iter_connascence_edges(limit=limit)
     if kind:
         edges = [e for e in edges if e["connascence_type"] == kind]
@@ -307,7 +339,7 @@ class AskRequest(BaseModel):
 
 
 @router.post("/{patient_id}/ask")
-async def graph_ask(patient_id: str, body: AskRequest):
+async def graph_ask(patient_id: str, body: AskRequest, authorization: Optional[str] = Header(None)):
     """Ask a free-text question about this patient's graph.
 
     Loads the graph, builds a compact context from the most relevant events
@@ -316,7 +348,7 @@ async def graph_ask(patient_id: str, body: AskRequest):
     """
     import httpx
 
-    vision = _load_graph(patient_id)
+    vision = _load_graph(patient_id, authorization)
 
     events_sorted = sorted(
         vision.events.values(),

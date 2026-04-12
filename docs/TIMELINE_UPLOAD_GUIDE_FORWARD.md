@@ -61,6 +61,7 @@ the 8B model.
 
 ```bash
 curl -N https://2ndopinionmd.ai/api/timeline/forward_patient_00142/infer \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -F "file=@/path/to/patient_timeline.pdf" \
   -F "store_results=true" \
   -F "build_graph=true"
@@ -84,31 +85,49 @@ curl -N https://2ndopinionmd.ai/api/timeline/forward_patient_00142/infer \
 1. **Upload** — File bytes are received (progress visible in curl).
 2. **PDF extraction** — pypdf extracts text from every page in a background
    thread.  An SSE `status` event reports progress.
-3. **Heuristic pre-scan** — A fast regex pass (~0.5 ms/page) runs over every
-   extracted page, pulling dates, medications (with dose and route), lab
+3. **PII scrub** — Extracted text is scrubbed of personally identifiable
+   information (MRN, SSN, DOB, phone/fax numbers, email addresses, street
+   addresses, and detected patient names).  Clinically relevant fields
+   (e.g. sex) are preserved.  An SSE `pii_scrub_done` event confirms
+   completion.
+4. **Heuristic pre-scan** — A fast regex pass (~0.5 ms/page) runs over the
+   scrubbed pages, pulling dates, medications (with dose and route), lab
    results, diagnoses, ICD-10 codes, and section context.  Pre-scan events
    are immediately added to the knowledge graph and temporal connascence
    edges (events within 7 days) are auto-linked.  An SSE `pre_scan_done`
    event reports what was found.
-4. **Batching** — Pages are grouped into batches that fit the 8B model's
+5. **Batching** — Pages are grouped into batches that fit the 8B model's
    context window (~48k characters, up to 10 pages per batch).  Each batch
    includes a "pre-scan skeleton" showing what regex already extracted.
-5. **Inference** — Each batch is sent to eoh-llama 8B.  The model verifies
+6. **Inference** — Each batch is sent to eoh-llama 8B.  The model verifies
    the skeleton, corrects any errors, and supplements with events regex
    cannot find (symptoms, flares, treatment responses, clinical reasoning,
-   causal relationships).  SSE events report per-batch progress.
-6. **Graph construction** — LLM-extracted events merge into the pre-scan
-   graph.  A final temporal connascence pass runs over the complete graph.
-7. **Complete** — A final SSE event reports totals.
+   causal relationships).  LLM output is scrubbed a second time to catch
+   any PII fragments the model may echo.  SSE events report per-batch
+   progress.
+7. **Graph construction** — Scrubbed, LLM-extracted events merge into the
+   pre-scan graph.  A final temporal connascence pass runs over the
+   complete graph.
+8. **Complete** — A final SSE event reports totals.
+
+### Processing time estimates
+
+Benchmarked on PortalNode-01 (RTX 4090, eoh-llama 8B, 32k context):
+
+| Input | Size | Batches | Events extracted | Wall clock |
+|-------|------|---------|-----------------|------------|
+| PDF (Kaiser full record) | 4,223 pages / 177 MB | 423 | 3,556 | ~2.1 hours |
+| PDF (typical visit record) | ~50 pages | ~5 | ~40–80 | ~2–4 min |
+| PDF (specialist referral) | ~10 pages | 1 | ~10–20 | ~30 sec |
+
+**Rule of thumb for PDFs**: ~30 seconds per batch, ~10 pages per batch.
+Divide the page count by 10, multiply by 30 seconds.
 
 ### Notes on large PDFs
 
 - PDFs of any size are supported (tested with 4,223-page, 177 MB records).
 - The heuristic pre-scan completes in seconds even for very large PDFs
   (~2 seconds for 4,000 pages) and immediately populates the graph.
-- A 4,000+ page PDF produces ~420 batches at 10 pages each.
-- Each batch takes 10–45 seconds depending on content density.
-- Full processing of a very large record may take several hours.
 - Only one inference can run at a time (GPU constraint).  A second request
   returns HTTP 409 with details about the active job.
 
@@ -124,6 +143,7 @@ entirely and goes straight to batching and inference.
 
 ```bash
 curl -N https://2ndopinionmd.ai/api/timeline/forward_patient_00142/infer \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -F "file=@/path/to/patient_ehr_export.json" \
   -F "format=json" \
   -F "store_results=true" \
@@ -185,11 +205,21 @@ A bare JSON array (without the `events` wrapper) is also accepted:
 ]
 ```
 
-### Batching for large JSON
+### Processing time estimates for JSON
 
 Events are serialized to text blocks and grouped into batches the same way
-PDF pages are.  A JSON file with 2,000 events will typically produce 15–20
-batches, each processed in 10–45 seconds.
+PDF pages are.  JSON skips PDF extraction entirely, so it starts inference
+faster.
+
+| Input | Events | Batches (approx) | Wall clock |
+|-------|--------|-------------------|------------|
+| Small study export | ~30–50 | 1–2 | ~30–60 sec |
+| FORWARD registry (one patient, years) | ~200–500 | 5–15 | ~3–8 min |
+| Large longitudinal EHR dump | ~2,000+ | 15–25 | ~8–12 min |
+
+**Rule of thumb for JSON**: each batch holds ~48k characters of serialized
+events (~80–150 events depending on text density).  Divide event count by
+100, multiply by 30 seconds.
 
 ---
 
@@ -259,10 +289,14 @@ For initial integration testing, a dedicated endpoint is available that
 does not require a patient ID — it uses a fixed de-identified ID
 (`forward_patient_00142`) and an RA-specific extraction prompt.
 
+**This endpoint requires a bearer token.**  The token was delivered to you
+via Signal.  Include it in every request as shown below.
+
 ### Upload a PDF (simplest)
 
 ```bash
 curl -N https://2ndopinionmd.ai/api/timeline/forward/upload \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -F "file=@patient_timeline.pdf"
 ```
 
@@ -270,6 +304,7 @@ curl -N https://2ndopinionmd.ai/api/timeline/forward/upload \
 
 ```bash
 curl -N https://2ndopinionmd.ai/api/timeline/forward/upload \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -F "file=@patient_ehr_export.json" \
   -F "format=json"
 ```
@@ -279,6 +314,11 @@ Both default to `store_results=true` and `build_graph=true`.
 The general endpoint (`/api/timeline/{patient_id}/infer`) is also available
 if you need to specify patient IDs per upload.
 
+> **Token delivery**: Your API token was sent via Signal with a
+> disappearing-message timer.  If you need the token re-issued, contact
+> Dylan via Signal.  Do not store the token in shared documents, email,
+> or version control.
+
 ---
 
 # 7. Querying the Graph
@@ -287,10 +327,15 @@ Once a timeline has been ingested, the knowledge graph is available for
 queries via the `/api/graph/` endpoints.  All endpoints use the same
 `patient_id` used during upload (e.g. `forward_patient_00142`).
 
+**All `forward_*` graph queries require the same bearer token** used for
+upload.  Include `-H "Authorization: Bearer YOUR_TOKEN_HERE"` in every
+request.
+
 ### Full graph export
 
 ```bash
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/full -o graph.json
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/full -o graph.json
 ```
 
 Returns the complete knowledge graph as JSON — every event, edge, arc,
@@ -300,7 +345,8 @@ analysis, visualisation, or import into another system.
 ### Graph snapshot (lightweight overview)
 
 ```bash
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/snapshot | python3 -m json.tool
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/snapshot | python3 -m json.tool
 ```
 
 Returns event counts by type, date ranges, and a compact node list.
@@ -308,7 +354,8 @@ Returns event counts by type, date ranges, and a compact node list.
 ### Structural topology
 
 ```bash
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/topology
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/topology
 ```
 
 Connected components, orphan events, hub events (most connected), temporal
@@ -318,19 +365,23 @@ gaps (>90 days), edge type distribution, and graph density.
 
 ```bash
 # All medications
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?event_type=medication"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?event_type=medication"
 
 # Search by keyword
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?q=methotrexate"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?q=methotrexate"
 
 # Filter by date range
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?date_from=2020-01-01&date_to=2024-12-31"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/events?date_from=2020-01-01&date_to=2024-12-31"
 ```
 
 ### Single event + neighbours
 
 ```bash
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/event/dx_001
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/event/dx_001
 ```
 
 Returns the event detail and all connected events grouped by edge type.
@@ -338,7 +389,8 @@ Returns the event detail and all connected events grouped by edge type.
 ### Priority traversal
 
 ```bash
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/traverse?seed=dx_001&max_nodes=50"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/traverse?seed=dx_001&max_nodes=50"
 ```
 
 Walks the graph from a seed event following highest-value edges first
@@ -347,7 +399,8 @@ Walks the graph from a seed event following highest-value edges first
 ### Temporal gaps
 
 ```bash
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/gaps?min_gap_days=60"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/gaps?min_gap_days=60"
 ```
 
 Periods of silence — often indicating lost-to-follow-up, care transitions,
@@ -356,7 +409,8 @@ or extraction gaps.
 ### Negative space
 
 ```bash
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/negative
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/negative
 ```
 
 Expected-but-absent patterns: diagnoses without follow-up labs, medications
@@ -365,8 +419,9 @@ without efficacy assessments — the gaps where diagnostic mysteries hide.
 ### Ask a question (LLM-powered)
 
 ```bash
-curl -X POST https://2ndopinionmd.ai/api/graph/forward_patient_00142/ask \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/ask \
   -d '{"question": "What biologic switches has this patient had and why?"}'
 ```
 
@@ -377,10 +432,12 @@ cited answer.
 
 ```bash
 # All edges
-curl https://2ndopinionmd.ai/api/graph/forward_patient_00142/edges
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/graph/forward_patient_00142/edges
 
 # Only causal edges
-curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/edges?kind=causal"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  "https://2ndopinionmd.ai/api/graph/forward_patient_00142/edges?kind=causal"
 ```
 
 ---
@@ -388,15 +445,17 @@ curl "https://2ndopinionmd.ai/api/graph/forward_patient_00142/edges?kind=causal"
 # 8. Quick Reference
 
 
-### FORWARD endpoint (recommended for testing)
+### FORWARD endpoint (recommended for testing — requires bearer token)
 
 ```bash
 # PDF
-curl -N https://2ndopinionmd.ai/api/timeline/forward/upload \
+curl -N -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/timeline/forward/upload \
   -F "file=@TIMELINE.pdf"
 
 # JSON
-curl -N https://2ndopinionmd.ai/api/timeline/forward/upload \
+curl -N -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  https://2ndopinionmd.ai/api/timeline/forward/upload \
   -F "file=@EHR_EXPORT.json" \
   -F "format=json"
 ```
@@ -424,6 +483,14 @@ curl https://2ndopinionmd.ai/api/timeline/infer/status
 
 # 9. Security and Privacy
 
+- **Bearer token authentication**: The FORWARD upload endpoint and all
+  `forward_*` graph queries require a bearer token.  Tokens are delivered
+  via Signal with disappearing-message timers.  Constant-time comparison
+  prevents timing-based attacks.
+- **PII scrubbing**: All uploaded data passes through an automatic PII
+  scrubber before LLM processing and graph storage.  MRN, SSN, DOB,
+  phone/fax numbers, email addresses, and street addresses are redacted.
+  Clinically relevant fields (e.g. sex) are preserved.
 - All inference runs locally on PortalNode hardware. No data is sent to
   external APIs.
 - Patient identifiers should be de-identified before upload (use study IDs,

@@ -516,6 +516,7 @@ async def timeline_infer(
         total_batches: int = 0
         _prescan_by_page: Dict[int, Any] = {}
         prescan_vision: Optional[Any] = None
+        known_names: Optional[List[str]] = None
 
         # ── Immediate acknowledgement ──────────────────────────────
         yield _sse("accepted", {
@@ -831,11 +832,17 @@ async def timeline_infer(
                     total_elapsed += elapsed
 
                     extracted = _parse_extraction_response(raw_response)
+
+                    from server.utils.pii_scrub import scrub_pii as _scrub
                     for ev in extracted:
                         ev["_batch"] = batch_idx
                         ev["_model"] = model
                         if page_range:
                             ev["_page_range"] = page_range
+                        if ev.get("text"):
+                            ev["text"] = _scrub(ev["text"], known_names=known_names if input_source == "pdf" else None)
+                        if ev.get("preview"):
+                            ev["preview"] = _scrub(ev["preview"], known_names=known_names if input_source == "pdf" else None)
 
                     all_extracted.extend(extracted)
 
@@ -921,10 +928,37 @@ async def infer_status():
 
 
 # ---------------------------------------------------------------------------
+# FORWARD bearer token auth
+# ---------------------------------------------------------------------------
+
+import os as _os
+from fastapi import Header
+
+_FORWARD_TOKEN = _os.getenv("FORWARD_API_TOKEN", "")
+
+
+def _verify_forward_token(authorization: str = Header(...)) -> None:
+    """Validate Bearer token for FORWARD endpoints."""
+    if not _FORWARD_TOKEN:
+        raise HTTPException(500, "FORWARD_API_TOKEN not configured on server")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(401, "Expected: Authorization: Bearer <token>")
+    if not _hmac_compare(token, _FORWARD_TOKEN):
+        raise HTTPException(403, "Invalid FORWARD API token")
+
+
+def _hmac_compare(a: str, b: str) -> bool:
+    """Constant-time comparison to prevent timing attacks."""
+    import hmac
+    return hmac.compare_digest(a.encode(), b.encode())
+
+
+# ---------------------------------------------------------------------------
 # FORWARD registry convenience endpoint — fixed patient ID for Dr. Michaud
 # ---------------------------------------------------------------------------
 
-@router.post("/forward/upload")
+@router.post("/forward/upload", dependencies=[Depends(_verify_forward_token)])
 async def forward_upload(
     file: UploadFile = File(...),
     format: str = Form("pdf"),
@@ -937,6 +971,8 @@ async def forward_upload(
 ):
     """
     Convenience endpoint for FORWARD registry uploads.
+
+    Requires: Authorization: Bearer <FORWARD_API_TOKEN>
 
     Identical to POST /{patient_id}/infer but uses a fixed de-identified
     patient ID (forward_patient_00142) so the caller doesn't need to

@@ -85,6 +85,20 @@ _ADDRESS_MULTILINE = re.compile(
     r"\b\d{1,6}\s+[A-Z][a-zA-Z\s]{2,40}\n[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\b",
 )
 
+# City, STATE ZIP (catches fragments like "Walnut Creek, CA 94598")
+_CITY_STATE_ZIP = re.compile(
+    r"[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?"
+    r"\s*,\s*"
+    r"(?:CA|AZ|TX|NY|FL|WA|OR|NV|CO|IL|OH|PA|GA|NC|VA|MA|NJ|MD|MI|MN|WI|MO|TN|IN|SC|AL|LA|KY|OK|CT|IA|UT|MS|AR|KS|NE|NM|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|DC)"
+    r"\s+\d{5}(?:-\d{4})?"
+)
+
+# Bare 5-digit zip preceded by state abbreviation
+_STATE_ZIP = re.compile(
+    r"\b(?:CA|AZ|TX|NY|FL|WA|OR|NV|CO|IL|OH|PA|GA|NC|VA|MA|NJ|MD|MI|MN|WI|MO|TN|IN|SC|AL|LA|KY|OK|CT|IA|UT|MS|AR|KS|NE|NM|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|DC)"
+    r"\s+(\d{5})(?:-\d{4})?\b"
+)
+
 # ── Patient name in header ───────────────────────────────────────────────────
 
 # Kaiser format: "Norman Eric Roberts" appearing after MRN/DOB block
@@ -127,9 +141,11 @@ def scrub_pii(
     # Email
     text = _EMAIL.sub("[EMAIL]", text)
 
-    # Address (multiline first, then single-line)
+    # Address (multiline first, then single-line, then fragments)
     text = _ADDRESS_MULTILINE.sub("[ADDRESS]", text)
     text = _ADDRESS.sub("[ADDRESS]", text)
+    text = _CITY_STATE_ZIP.sub("[ADDRESS]", text)
+    text = _STATE_ZIP.sub("[ADDRESS]", text)
 
     # Phone (after fax/address to avoid double-scrubbing)
     text = _PHONE.sub("[PHONE]", text)

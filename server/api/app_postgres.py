@@ -110,6 +110,14 @@ from server.api.schemas import DiagnoseResponse
 from server.b2b.v1_mkg_router import mkg_router as b2b_mkg_router, evidence_router as b2b_evidence_router, health_router as b2b_health_router
 from server.b2b.middleware import B2BUsageMiddleware
 from server.b2b.usage import meter as b2b_meter
+from server.b2b.auth import require_scope
+from server.b2b.rate_limit import b2b_rate_limit
+
+# Shared dependency lists for API-key gating on /api/ routes
+_MKG_READ_AUTH = [Depends(require_scope("mkg:read")), Depends(b2b_rate_limit)]
+_MKG_EVIDENCE_AUTH = [Depends(require_scope("mkg:evidence")), Depends(b2b_rate_limit)]
+_PTV_READ_AUTH = [Depends(require_scope("ptv:read")), Depends(b2b_rate_limit)]
+_PTV_EXTRACT_AUTH = [Depends(require_scope("ptv:extract")), Depends(b2b_rate_limit)]
 
 
 # --- lifespan: init async engine + session + RAG engine -----------------------
@@ -232,44 +240,52 @@ app.include_router(portal_router, prefix="/api/portal", tags=["portal"])
 app.include_router(journal_router, prefix="/api/journal", tags=["journal"])
 app.include_router(chat_graph_router, prefix="/api/chat", tags=["chat"])
 
-app.include_router(loinc_router)
-app.include_router(snomed_router)
-app.include_router(rxnorm_router)
-app.include_router(orphanet_router)
-app.include_router(chv_router)
-app.include_router(hpo_router)
-app.include_router(clingen_actionability_router)
-app.include_router(mimic3_router)
-app.include_router(mimic4_router)
-app.include_router(notes_router)
-app.include_router(panelapp_router)
-app.include_router(guidelines_router)
-app.include_router(diagnostic_rules_routes.router)
-app.include_router(disgenet_router)
-app.include_router(gwas_router)
-app.include_router(neurolex_router)
-app.include_router(neurolex_xref_router)
-app.include_router(rag_router)
-app.include_router(who_routes.router)
+# --- MKG ontology routers (API-key gated: mkg:read) --------------------------
+app.include_router(loinc_router, dependencies=_MKG_READ_AUTH)
+app.include_router(snomed_router, dependencies=_MKG_READ_AUTH)
+app.include_router(rxnorm_router, dependencies=_MKG_READ_AUTH)
+app.include_router(orphanet_router, dependencies=_MKG_READ_AUTH)
+app.include_router(chv_router, dependencies=_MKG_READ_AUTH)
+app.include_router(hpo_router, dependencies=_MKG_READ_AUTH)
+app.include_router(clingen_actionability_router, dependencies=_MKG_READ_AUTH)
+app.include_router(mimic3_router, dependencies=_MKG_READ_AUTH)
+app.include_router(mimic4_router, dependencies=_MKG_READ_AUTH)
+app.include_router(notes_router, dependencies=_MKG_READ_AUTH)
+app.include_router(panelapp_router, dependencies=_MKG_READ_AUTH)
+app.include_router(guidelines_router, dependencies=_MKG_READ_AUTH)
+app.include_router(diagnostic_rules_routes.router, dependencies=_MKG_READ_AUTH)
+app.include_router(disgenet_router, dependencies=_MKG_READ_AUTH)
+app.include_router(gwas_router, dependencies=_MKG_READ_AUTH)
+app.include_router(neurolex_router, dependencies=_MKG_READ_AUTH)
+app.include_router(neurolex_xref_router, dependencies=_MKG_READ_AUTH)
+app.include_router(who_routes.router, dependencies=_MKG_READ_AUTH)
 app.include_router(cdc_opioid_router,
                     prefix="/api/guidelines/cdc/opioid",
-                    tags=["guidelines.cdc.opioid"])
-app.include_router(va_router)
-app.include_router(coding_router)
-app.include_router(ask_eoh_router)
-app.include_router(rag_ask_router)
-app.include_router(ask_compat_v2_router)
-app.include_router(coding_v2_router)
-app.include_router(kg_router)
-app.include_router(rag_stream_router)
-app.include_router(llm_stream_router)
-app.include_router(rag_stream_custom_router)
-app.include_router(eoh_router_router)
-app.include_router(eoh_demo_routes.router)
-app.include_router(timeline_router)
-app.include_router(timeline_analytics_router)
-app.include_router(timeline_infer_router)
-app.include_router(graph_query_router)
+                    tags=["guidelines.cdc.opioid"],
+                    dependencies=_MKG_READ_AUTH)
+app.include_router(va_router, dependencies=_MKG_READ_AUTH)
+app.include_router(kg_router, dependencies=_MKG_READ_AUTH)
+
+# --- MKG evidence/RAG routers (API-key gated: mkg:evidence) -----------------
+app.include_router(rag_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(coding_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(ask_eoh_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(rag_ask_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(ask_compat_v2_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(coding_v2_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(rag_stream_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(llm_stream_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(rag_stream_custom_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(eoh_router_router, dependencies=_MKG_EVIDENCE_AUTH)
+app.include_router(eoh_demo_routes.router, dependencies=_MKG_EVIDENCE_AUTH)
+
+# --- PTV routers (API-key gated: ptv:read / ptv:extract) --------------------
+app.include_router(timeline_router, dependencies=_PTV_READ_AUTH)
+app.include_router(timeline_analytics_router, dependencies=_PTV_READ_AUTH)
+app.include_router(timeline_infer_router, dependencies=_PTV_EXTRACT_AUTH)
+app.include_router(graph_query_router, dependencies=_PTV_READ_AUTH)
+
+# --- Internal / utility (no API key) ----------------------------------------
 app.include_router(printer_router)
 app.include_router(audio_router)
 
