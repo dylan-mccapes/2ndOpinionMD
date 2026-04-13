@@ -78,7 +78,7 @@ export function HomePage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
+      <div className="mb-10">
         <h1
           className="text-2xl font-mono font-bold mb-2"
           style={{ color: 'var(--text-primary)' }}
@@ -86,7 +86,7 @@ export function HomePage() {
           2ndOpinionMD
         </h1>
         <p
-          className="text-sm font-mono"
+          className="text-sm font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           AI-driven clinical second opinions for autoimmune disease.
@@ -95,7 +95,7 @@ export function HomePage() {
 
       {!isAuthenticated && (
         <div
-          className="flex items-center gap-3 mb-6 p-4 rounded border"
+          className="flex items-center gap-3 mb-8 p-5 rounded-lg border"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--accent-green)' }}
         >
           <p className="text-sm font-mono flex-1" style={{ color: 'var(--text-secondary)' }}>
@@ -118,22 +118,22 @@ export function HomePage() {
         </div>
       )}
 
-      <div className="mb-4">
+      <div className="mb-6">
         <h2
-          className="text-lg font-mono font-bold mb-1"
+          className="text-lg font-mono font-bold mb-2"
           style={{ color: 'var(--text-primary)' }}
         >
           CLINICAL MODES
         </h2>
         <p
-          className="text-xs font-mono"
+          className="text-xs font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           Four orthogonal modes. Select one. No shortcuts. No recommendations.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {MODES.map((mode) => (
           <button
             key={mode.id}
@@ -145,23 +145,28 @@ export function HomePage() {
               }
             }}
             disabled={isAuthenticated && !mode.enabled}
-            className="text-left p-6 rounded border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-left p-6 rounded-xl border-y border-r border-l-[3px] transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               backgroundColor: 'var(--bg-secondary)',
               borderColor: 'var(--border-color)',
+              borderLeftColor: 'transparent',
             }}
             onMouseEnter={(e) => {
               if (mode.enabled || !isAuthenticated) {
-                e.currentTarget.style.borderColor = 'var(--accent-green)';
+                e.currentTarget.style.borderColor = 'var(--border-color)';
+                e.currentTarget.style.borderLeftColor = 'var(--accent-green)';
+                e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.borderColor = 'var(--border-color)';
+              e.currentTarget.style.borderLeftColor = 'transparent';
+              e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
             }}
           >
             <div className="flex items-center justify-between mb-3">
               <span
-                className="text-lg font-mono font-bold tracking-wider"
+                className="text-lg font-mono font-bold tracking-widest uppercase"
                 style={{
                   color: mode.enabled || !isAuthenticated
                     ? 'var(--accent-green)'
@@ -184,7 +189,7 @@ export function HomePage() {
               )}
             </div>
             <p
-              className="text-sm"
+              className="text-sm font-sans leading-relaxed"
               style={{ color: 'var(--text-secondary)' }}
             >
               {mode.description}

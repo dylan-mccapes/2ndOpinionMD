@@ -125,6 +125,27 @@ async def get_current_user_postgres(
     token: str = Depends(oauth2_scheme), 
     session: AsyncSession = Depends(get_session)
 ):
+    # Dev bypass: accept synthetic token without DB lookup.
+    if (
+        token == "dev-bypass"
+        and os.getenv("DEV_AUTH_BYPASS", "").lower() == "true"
+        and os.getenv("APP_ENV", "local") != "production"
+    ):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            id="dev-user-id",
+            email="dev@local",
+            full_name="Dev User",
+            hashed_password="",
+            birthdate=None,
+            subscription_tier="pro",
+            user_type=os.getenv("VITE_DEV_USER_TYPE", "patient"),
+            created_at=datetime.utcnow(),
+            last_login=None,
+            is_verified=True,
+            locked_until=None,
+        )
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

@@ -342,6 +342,10 @@ async def timeline_status(
     Return whether the current user (JWT) has a timeline and event count.
     Frontend uses this to show "Upload timeline" vs "Timeline ready".
     """
+    from server.dev_fixtures import get_timeline_status as _dev_status, is_active as _dev_active
+    if _dev_active():
+        return _dev_status()
+
     user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
     if not user_id:
         return {"has_timeline": False, "timeline_id": None, "event_count": 0, "last_updated": None}

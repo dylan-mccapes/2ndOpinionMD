@@ -9,12 +9,10 @@ export function TransparencyPanel({
 }: TransparencyPanelProps) {
   return (
     <div
-      className="p-3 rounded border text-xs font-mono"
+      className="p-4 rounded-lg border text-xs font-mono"
       style={{
         backgroundColor: 'var(--bg-secondary)',
-        borderColor: externalCallMade
-          ? 'var(--accent-yellow)'
-          : 'var(--border-color)',
+        borderColor: 'var(--border-color)',
       }}
     >
       <div className="flex items-center gap-2 mb-1">
@@ -28,17 +26,16 @@ export function TransparencyPanel({
       <ul className="space-y-1">
         <li style={{ color: 'var(--text-muted)' }}>
           {externalCallMade ? (
-            <span style={{ color: 'var(--accent-yellow)' }}>
-              ⚠ API call made (backend)
+            <span style={{ color: 'var(--text-secondary)' }}>
+              ↑ External call — backend
               {callTimestamp && (
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {' '}
-                  — {callTimestamp}
+                  {' '}— {callTimestamp}
                 </span>
               )}
             </span>
           ) : (
-            <span>No API calls made</span>
+            <span>No external calls</span>
           )}
         </li>
         <li style={{ color: 'var(--text-muted)' }}>No state mutated</li>

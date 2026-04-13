@@ -44,15 +44,15 @@ export function EohPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-8">
         <h1
-          className="text-xl font-mono font-bold mb-1"
+          className="text-xl font-mono font-bold mb-2"
           style={{ color: 'var(--accent-green)' }}
         >
           EoH MODE
         </h1>
         <p
-          className="text-sm font-mono"
+          className="text-sm font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           Single Ethos-of-Health reasoning cycle. Hypothesis set + evidence
@@ -61,7 +61,7 @@ export function EohPage() {
       </div>
 
       <div
-        className="p-4 rounded border mb-4"
+        className="p-5 rounded-lg border mb-6"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',
@@ -77,7 +77,7 @@ export function EohPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="e.g. 34F, bilateral joint pain, morning stiffness >1hr, fatigue, ANA+, family hx SLE"
-          className="w-full p-3 rounded border text-sm font-mono resize-y"
+          className="w-full p-3 rounded-lg border text-sm font-mono resize-y"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -86,7 +86,7 @@ export function EohPage() {
           }}
           disabled={isRunning}
         />
-        <div className="flex justify-end mt-3">
+        <div className="flex justify-end mt-4">
           <button
             onClick={handleSubmit}
             disabled={!query.trim() || isRunning}
@@ -101,7 +101,7 @@ export function EohPage() {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-6">
         <TransparencyPanel
           externalCallMade={externalCallMade}
           callTimestamp={callTimestamp}

@@ -8,11 +8,17 @@ Usage in a router:
     @router.get("/v1/mkg/snomed/search")
     async def search(ctx: B2BContext = Depends(require_scope("mkg:read"))):
         ...
+
+Dev bypass:
+    Set DEV_AUTH_BYPASS=true in .env (only honoured when APP_ENV != production).
+    All scope checks are skipped; a synthetic admin context is injected.
 """
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
@@ -24,6 +30,38 @@ from .api_keys import APIKeyRecord, has_scope
 from .key_store import lookup_by_raw_key
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Dev bypass — active only when DEV_AUTH_BYPASS=true AND APP_ENV != production
+# ---------------------------------------------------------------------------
+_DEV_BYPASS_ACTIVE = (
+    os.getenv("DEV_AUTH_BYPASS", "").lower() == "true"
+    and os.getenv("APP_ENV", "local") != "production"
+)
+
+if _DEV_BYPASS_ACTIVE:
+    logger.warning(
+        "DEV_AUTH_BYPASS=true — B2B API key auth is DISABLED. "
+        "Never set this in production."
+    )
+
+_DEV_KEY_RECORD = APIKeyRecord(
+    id="dev-bypass",
+    tenant_id="dev",
+    key_hash="dev",
+    key_prefix="2opmd_dev_",
+    key_last4="byps",
+    name="Dev Bypass (local only)",
+    scopes=["admin"],          # admin grants all scopes via has_scope()
+    rate_limit_rpm=9999,
+    rate_limit_rpd=999_999,
+    is_active=True,
+    expires_at=None,
+    created_at=datetime.utcnow(),
+    last_used_at=None,
+)
+
+_DEV_B2B_CONTEXT: "B2BContext | None" = None  # populated after class definition
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -37,6 +75,15 @@ class B2BContext:
     key_record: APIKeyRecord
 
 
+# Finish wiring the dev sentinel now that B2BContext is defined.
+_DEV_B2B_CONTEXT = B2BContext(
+    tenant_id="dev",
+    api_key_id="dev-bypass",
+    scopes=["admin"],
+    key_record=_DEV_KEY_RECORD,
+)
+
+
 async def _resolve_key(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
@@ -45,6 +92,10 @@ async def _resolve_key(
     """
     Core dependency: extract Bearer token, validate against DB, return context.
     """
+    if _DEV_BYPASS_ACTIVE:
+        request.state.b2b = _DEV_B2B_CONTEXT
+        return _DEV_B2B_CONTEXT  # type: ignore[return-value]
+
     if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

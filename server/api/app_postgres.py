@@ -166,17 +166,38 @@ async def lifespan(app: FastAPI):
     # Bind B2B usage meter to the DB session factory
     b2b_meter.bind(session_maker)
 
+    _dev_bypass = os.getenv("DEV_AUTH_BYPASS", "").lower() == "true" and APP_ENV != "production"
+
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info("Database connection initialized successfully")
+    except Exception as _db_err:
+        if _dev_bypass:
+            logger.warning(
+                "DEV_AUTH_BYPASS: DB unreachable (%s). "
+                "Server starting without DB — DB-dependent endpoints will return 503.",
+                _db_err,
+            )
+        else:
+            raise
 
+    try:
         await b2b_meter.start()
         logger.info("B2B usage meter started")
+    except Exception as _meter_err:
+        if _dev_bypass:
+            logger.warning("DEV_AUTH_BYPASS: B2B meter skipped (%s).", _meter_err)
+        else:
+            raise
 
+    try:
         yield
     finally:
-        await b2b_meter.stop()
+        try:
+            await b2b_meter.stop()
+        except Exception:
+            pass
         await engine.dispose()
         logger.info("DB engine disposed")
 
@@ -201,7 +222,14 @@ async def get_pool():
 # psycopg2 pool for sync endpoints
 @app.on_event("startup")
 async def _attach_pool():
-    app.state.pool = await get_pool()
+    try:
+        app.state.pool = await get_pool()
+    except Exception as e:
+        if os.getenv("DEV_AUTH_BYPASS", "").lower() == "true" and APP_ENV != "production":
+            logger.warning("DEV_AUTH_BYPASS: psycopg2 pool skipped (%s).", e)
+            app.state.pool = None
+        else:
+            raise
 
 
 # --- CORS (safe with credentials) ---------------------------------------------

@@ -23,11 +23,46 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const DEV_BYPASS = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+
+const DEV_USER: UserProfile = {
+  id: 'dev-user-id',
+  email: 'dev@local',
+  full_name: 'Dev User',
+  birthdate: null,
+  subscription_tier: 'pro',
+  user_type: 'patient',
+  created_at: new Date().toISOString(),
+};
+
 function getStoredToken(): string | null {
+  if (DEV_BYPASS) return 'dev-bypass';
   return sessionStorage.getItem('2opmd-token');
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  if (DEV_BYPASS) {
+    return (
+      <AuthContext.Provider
+        value={{
+          token: 'dev-bypass',
+          user: DEV_USER,
+          isAuthenticated: true,
+          isLoading: false,
+          setToken: () => {},
+          logout: () => {},
+          refreshUser: async () => {},
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
+  return <AuthProviderReal>{children}</AuthProviderReal>;
+}
+
+function AuthProviderReal({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(getStoredToken);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(!!getStoredToken());

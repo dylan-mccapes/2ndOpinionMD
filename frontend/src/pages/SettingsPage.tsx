@@ -13,7 +13,7 @@ export function SettingsPage() {
           SETTINGS
         </h1>
         <p
-          className="text-sm font-mono"
+          className="text-sm font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           Minimal. No personalization by design.
@@ -21,7 +21,7 @@ export function SettingsPage() {
       </div>
 
       <div
-        className="p-4 rounded border"
+        className="p-5 rounded-lg border"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',

@@ -116,14 +116,14 @@ export function PatientPortalPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-8">
         <h1
-          className="text-xl font-mono font-bold mb-1"
+          className="text-xl font-mono font-bold mb-2"
           style={{ color: 'var(--accent-green)' }}
         >
           PATIENT PORTAL
         </h1>
-        <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
           {user?.full_name ? `Welcome, ${user.full_name}` : `Welcome, ${user?.email ?? 'Patient'}`}
         </p>
       </div>
@@ -153,7 +153,7 @@ export function PatientPortalPage() {
 
       {/* MY DOCTOR / CONNECT DOCTOR */}
       <div
-        className="p-4 rounded border mb-4"
+        className="p-5 rounded-lg border mb-6"
         style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
       >
         <span className="text-sm font-mono font-bold block mb-3" style={{ color: 'var(--accent-green)' }}>
@@ -166,7 +166,7 @@ export function PatientPortalPage() {
 
         {!doctorLoading && doctor && (
           <div
-            className="p-3 rounded mb-3"
+            className="p-3 rounded-lg mb-3"
             style={{ backgroundColor: 'var(--bg-tertiary)' }}
           >
             <span className="text-sm font-mono font-bold block" style={{ color: 'var(--text-primary)' }}>
@@ -192,7 +192,7 @@ export function PatientPortalPage() {
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="doctor@example.com"
                 required
-                className="flex-1 px-3 py-2 rounded text-sm font-mono border"
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono border"
                 style={{
                   backgroundColor: 'var(--bg-primary)',
                   borderColor: 'var(--border-color)',
@@ -241,34 +241,34 @@ export function PatientPortalPage() {
       </div>
 
       {hasTimeline && token && status?.timeline_id && (
-        <div className="mb-4">
+        <div className="mb-6">
           <TimelineChartCard patientId={status.timeline_id} token={token} />
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Link
           to="/journal"
-          className="p-4 rounded border no-underline block"
+          className="p-5 rounded-lg border no-underline block"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
           <span className="text-sm font-mono font-bold block mb-1" style={{ color: 'var(--accent-green)' }}>
             JOURNAL
           </span>
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             Create and manage health journal entries. AI-powered symptom analysis.
           </p>
         </Link>
 
         <Link
           to="/timeline"
-          className="p-4 rounded border no-underline block"
+          className="p-5 rounded-lg border no-underline block"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
           <span className="text-sm font-mono font-bold block mb-1" style={{ color: hasTimeline ? 'var(--accent-green)' : 'var(--accent-yellow)' }}>
             TIMELINE
           </span>
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             {hasTimeline
               ? `Timeline uploaded. ${status?.event_count ?? 0} events ingested.`
               : 'Upload your patient timeline PDF to enable EoHD investigations.'}
@@ -277,7 +277,7 @@ export function PatientPortalPage() {
 
         <Link
           to="/eohd"
-          className="p-4 rounded border no-underline block"
+          className="p-5 rounded-lg border no-underline block"
           style={{
             backgroundColor: 'var(--bg-secondary)',
             borderColor: 'var(--border-color)',
@@ -287,7 +287,7 @@ export function PatientPortalPage() {
           <span className="text-sm font-mono font-bold block mb-1" style={{ color: hasTimeline ? 'var(--accent-green)' : 'var(--text-muted)' }}>
             EoHD
           </span>
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             {hasTimeline
               ? 'Timeline-aware EoH Detective reasoning. Query your health data.'
               : 'Upload timeline to unlock EoHD investigations.'}
@@ -296,13 +296,13 @@ export function PatientPortalPage() {
 
         <Link
           to="/settings"
-          className="p-4 rounded border no-underline block"
+          className="p-5 rounded-lg border no-underline block"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
           <span className="text-sm font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
             SETTINGS
           </span>
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             Profile and account settings.
           </p>
         </Link>

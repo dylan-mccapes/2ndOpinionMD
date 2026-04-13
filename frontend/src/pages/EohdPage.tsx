@@ -64,7 +64,7 @@ export function EohdPage() {
   if (!isAuthenticated) {
     return (
       <div className="max-w-4xl mx-auto">
-        <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
           Please log in to access EoHD.
         </p>
       </div>
@@ -74,22 +74,22 @@ export function EohdPage() {
   if (!hasTimeline) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-xl font-mono font-bold mb-1" style={{ color: 'var(--accent-yellow)' }}>
+        <div className="mb-8">
+          <h1 className="text-xl font-mono font-bold mb-2" style={{ color: 'var(--accent-yellow)' }}>
             EoHD MODE
           </h1>
-          <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
             Timeline-aware EoH Detective reasoning.
           </p>
         </div>
         <div
-          className="p-6 rounded border text-center"
+          className="p-6 rounded-lg border text-center"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--accent-yellow)' }}
         >
           <p className="text-sm font-mono mb-2" style={{ color: 'var(--accent-yellow)' }}>
             TIMELINE REQUIRED
           </p>
-          <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-sm font-sans mb-4" style={{ color: 'var(--text-secondary)' }}>
             Upload your patient timeline PDF to unlock EoHD investigations.
           </p>
           <button
@@ -168,21 +168,21 @@ export function EohdPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-mono font-bold mb-1" style={{ color: 'var(--accent-green)' }}>
+      <div className="mb-8">
+        <h1 className="text-xl font-mono font-bold mb-2" style={{ color: 'var(--accent-green)' }}>
           EoHD MODE
         </h1>
-        <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
           Timeline-aware EoH Detective reasoning. {status?.event_count} events loaded.
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div
-          className="p-4 rounded border"
+          className="p-5 rounded-lg border"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
-          <span className="text-sm font-mono font-bold block mb-3" style={{ color: 'var(--accent-green)' }}>
+          <span className="text-sm font-mono font-bold block mb-4" style={{ color: 'var(--accent-green)' }}>
             EoH ROUTER QUERY
           </span>
           <form onSubmit={handlePlanQuery} className="space-y-3">
@@ -191,7 +191,7 @@ export function EohdPage() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="flex-1 p-2 rounded border text-sm font-mono"
+                className="flex-1 p-2 rounded-lg border text-sm font-mono"
                 style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                 placeholder="Ask a clinical question about the timeline..."
               />
@@ -207,13 +207,13 @@ export function EohdPage() {
           </form>
 
           {error && (
-            <div className="mt-3 p-3 rounded text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div className="mt-3 p-3 rounded-lg text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
               {error}
             </div>
           )}
 
           {plan && (
-            <div className="mt-3 space-y-3">
+            <div className="mt-4 space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>
                   QUESTION TYPE:
@@ -221,7 +221,7 @@ export function EohdPage() {
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded" style={{ color: questionTypeColor(plan.question_type), backgroundColor: 'var(--bg-tertiary)' }}>
                   {plan.question_type}
                 </span>
-                <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                <span className="text-xs font-sans" style={{ color: 'var(--text-muted)' }}>
                   {plan.question_type_explanation}
                 </span>
               </div>
@@ -247,7 +247,7 @@ export function EohdPage() {
                             </span>
                           ))}
                         </div>
-                        <p className="text-xs font-mono mt-1" style={{ color: 'var(--text-muted)' }}>
+                        <p className="text-xs font-sans leading-relaxed mt-1" style={{ color: 'var(--text-muted)' }}>
                           {step.why}
                         </p>
                       </div>
@@ -262,7 +262,7 @@ export function EohdPage() {
                     DATA RETRIEVAL:
                   </span>
                   {plan.doc_retrieval_plan.map((item, i) => (
-                    <div key={i} className="text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                    <div key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--text-muted)' }}>
                       <span style={{ color: 'var(--accent-blue)' }}>{item.module}</span>: {item.purpose}
                     </div>
                   ))}
@@ -273,10 +273,10 @@ export function EohdPage() {
         </div>
 
         <div
-          className="p-4 rounded border"
+          className="p-5 rounded-lg border"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-red)' }}>
               FLARE REPORT
             </span>
@@ -292,7 +292,7 @@ export function EohdPage() {
           </div>
 
           {flareError && (
-            <div className="p-3 rounded text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div className="p-3 rounded-lg text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
               {flareError}
             </div>
           )}
@@ -300,106 +300,132 @@ export function EohdPage() {
           {flareReport && (
             <div className="space-y-3">
               <div
-                className="p-3 rounded text-sm font-mono"
+                className="p-3 rounded-lg text-sm font-mono"
                 style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderLeft: '3px solid var(--accent-red)' }}
               >
                 {flareReport.flare_forecast}
               </div>
 
-              <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+              <div className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                 {flareReport.timeline_summary}
               </div>
 
               {Object.keys(flareReport.probabilistic_differential).length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    DIAGNOSTIC LANDSCAPE:
-                  </span>
-                  <div className="space-y-1">
-                    {Object.entries(flareReport.probabilistic_differential)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([dx, prob]) => (
-                        <div key={dx} className="flex items-center gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{dx}</span>
-                              <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>{(prob * 100).toFixed(1)}%</span>
-                            </div>
-                            <div className="w-full h-1 rounded mt-0.5" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                              <div className="h-1 rounded" style={{ width: `${prob * 100}%`, backgroundColor: 'var(--accent-yellow)' }} />
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                      DIAGNOSTIC LANDSCAPE:
+                    </span>
+                    <div className="space-y-1">
+                      {Object.entries(flareReport.probabilistic_differential)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([dx, prob]) => (
+                          <div key={dx} className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{dx}</span>
+                                <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>{(prob * 100).toFixed(1)}%</span>
+                              </div>
+                              <div className="w-full h-2 rounded mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                                <div
+                                  className="h-2 rounded transition-all duration-300"
+                                  style={{
+                                    width: `${prob * 100}%`,
+                                    backgroundColor: prob > 0.5 ? 'var(--accent-red)' :
+                                                     prob > 0.25 ? 'var(--accent-yellow)' :
+                                                     'var(--accent-blue)',
+                                  }}
+                                />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {flareReport.precursor_signals.length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    PRECURSOR SIGNALS:
-                  </span>
-                  {flareReport.precursor_signals.map((sig, i) => (
-                    <div key={i} className="text-xs font-mono mb-1 pl-2" style={{ borderLeft: '2px solid var(--accent-yellow)', color: 'var(--text-primary)' }}>
-                      {sig.signal} — {sig.description}
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                      PRECURSOR SIGNALS:
+                    </span>
+                    {flareReport.precursor_signals.map((sig, i) => (
+                      <div key={i} className="text-xs font-sans leading-relaxed mb-1 pl-2" style={{ borderLeft: '2px solid var(--accent-yellow)', color: 'var(--text-primary)' }}>
+                        {sig.signal} — {sig.description}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
               {flareReport.risk_drivers.length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    RISK DRIVERS:
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    {flareReport.risk_drivers.map((d, i) => (
-                      <span key={i} className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
-                        {d.driver} ({(d.weight * 100).toFixed(0)}%)
-                      </span>
-                    ))}
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                      RISK DRIVERS:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {flareReport.risk_drivers.map((d, i) => (
+                        <span key={i} className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+                          {d.driver} ({(d.weight * 100).toFixed(0)}%)
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {flareReport.contradictions.length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-yellow)' }}>
-                    CONTRADICTIONS:
-                  </span>
-                  {flareReport.contradictions.map((c, i) => (
-                    <p key={i} className="text-xs font-mono mb-1" style={{ color: 'var(--accent-yellow)' }}>
-                      {c}
-                    </p>
-                  ))}
-                </div>
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-yellow)' }}>
+                      CONTRADICTIONS:
+                    </span>
+                    {flareReport.contradictions.map((c, i) => (
+                      <p key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--accent-yellow)' }}>
+                        {c}
+                      </p>
+                    ))}
+                  </div>
+                </>
               )}
 
               {flareReport.guidance_for_clinician.length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    CLINICIAN GUIDANCE:
-                  </span>
-                  {flareReport.guidance_for_clinician.map((g, i) => (
-                    <p key={i} className="text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
-                      {g}
-                    </p>
-                  ))}
-                </div>
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                      CLINICIAN GUIDANCE:
+                    </span>
+                    {flareReport.guidance_for_clinician.map((g, i) => (
+                      <p key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--text-muted)' }}>
+                        {g}
+                      </p>
+                    ))}
+                  </div>
+                </>
               )}
 
               {flareReport.safety_warnings && flareReport.safety_warnings.length > 0 && (
-                <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-red)' }}>
-                    SAFETY WARNINGS:
-                  </span>
-                  {flareReport.safety_warnings.map((w, i) => (
-                    <p key={i} className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>
-                      {w}
-                    </p>
-                  ))}
-                </div>
+                <>
+                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-red)' }}>
+                      SAFETY WARNINGS:
+                    </span>
+                    {flareReport.safety_warnings.map((w, i) => (
+                      <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: 'var(--accent-red)' }}>
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}

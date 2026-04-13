@@ -39,15 +39,15 @@ export function CodingPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-8">
         <h1
-          className="text-xl font-mono font-bold mb-1"
+          className="text-xl font-mono font-bold mb-2"
           style={{ color: 'var(--accent-blue)' }}
         >
           CODING MODE
         </h1>
         <p
-          className="text-sm font-mono"
+          className="text-sm font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           Medical coding and classification. JSON REST.
@@ -55,7 +55,7 @@ export function CodingPage() {
       </div>
 
       <div
-        className="p-4 rounded border mb-4"
+        className="p-5 rounded-lg border mb-6"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',
@@ -71,7 +71,7 @@ export function CodingPage() {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="e.g. 62F presenting with chest pain and dyspnea"
-          className="w-full p-3 rounded border text-sm font-mono resize-y"
+          className="w-full p-3 rounded-lg border text-sm font-mono resize-y"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -82,7 +82,7 @@ export function CodingPage() {
         />
 
         <label
-          className="block text-xs font-mono mb-2 mt-3"
+          className="block text-xs font-mono mb-2 mt-4"
           style={{ color: 'var(--text-secondary)' }}
         >
           CONTEXT (optional)
@@ -92,7 +92,7 @@ export function CodingPage() {
           value={context}
           onChange={(e) => setContext(e.target.value)}
           placeholder="e.g. Emergency department, initial encounter"
-          className="w-full p-2 rounded border text-sm font-mono"
+          className="w-full p-2 rounded-lg border text-sm font-mono"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -101,7 +101,7 @@ export function CodingPage() {
           disabled={isLoading}
         />
 
-        <div className="flex justify-end mt-3">
+        <div className="flex justify-end mt-4">
           <button
             onClick={handleSubmit}
             disabled={!note.trim() || isLoading}
@@ -116,7 +116,7 @@ export function CodingPage() {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-6">
         <TransparencyPanel
           externalCallMade={externalCallMade}
           callTimestamp={callTimestamp}

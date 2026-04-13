@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         style={{ color: 'var(--text-primary)' }}
       >
         <div
-          className="p-6 rounded border"
+          className="p-6 rounded-xl border"
           style={{
             backgroundColor: 'var(--bg-secondary)',
             borderColor: 'var(--accent-red)',
@@ -77,10 +77,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 CAUSE
               </p>
               <p
-                className="text-sm font-mono p-3 rounded"
+                className="text-sm font-mono p-3 rounded-lg"
                 style={{
                   backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--accent-red)',
+                  color: 'var(--text-primary)',
+                  borderLeft: '2px solid var(--accent-red)',
                 }}
               >
                 {error?.message ?? 'Unknown error'}
@@ -113,7 +114,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   COMPONENT STACK
                 </p>
                 <pre
-                  className="text-xs font-mono p-3 rounded overflow-auto"
+                  className="text-xs font-mono p-3 rounded-lg overflow-auto"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     color: 'var(--text-muted)',

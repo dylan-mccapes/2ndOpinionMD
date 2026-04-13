@@ -5,16 +5,16 @@ interface StatusBarProps {
 
 const STATUS_STYLES: Record<
   StatusBarProps['status'],
-  { color: string; label: string }
+  { color: string; label: string; pulse: boolean }
 > = {
-  idle: { color: 'var(--text-muted)', label: 'IDLE' },
-  running: { color: 'var(--accent-yellow)', label: 'RUNNING' },
-  complete: { color: 'var(--accent-green)', label: 'COMPLETE' },
-  error: { color: 'var(--accent-red)', label: 'ERROR' },
+  idle:     { color: 'var(--text-muted)',   label: 'IDLE',     pulse: false },
+  running:  { color: 'var(--accent-cyan)',  label: 'RUNNING',  pulse: true  },
+  complete: { color: 'var(--accent-green)', label: 'COMPLETE', pulse: false },
+  error:    { color: 'var(--accent-red)',   label: 'ERROR',    pulse: false },
 };
 
 export function StatusBar({ status, message }: StatusBarProps) {
-  const { color, label } = STATUS_STYLES[status];
+  const { color, label, pulse } = STATUS_STYLES[status];
 
   return (
     <footer
@@ -27,7 +27,7 @@ export function StatusBar({ status, message }: StatusBarProps) {
     >
       <div className="flex items-center gap-2">
         <span
-          className="inline-block w-2 h-2 rounded-full"
+          className={`inline-block w-2 h-2 rounded-full${pulse ? ' animate-pulse' : ''}`}
           style={{ backgroundColor: color }}
         />
         <span style={{ color }}>{label}</span>

@@ -45,6 +45,10 @@ async def get_timeline(
       "total_events": N
     }
     """
+    from server.dev_fixtures import is_active as _dev_active, is_dev_patient_id, get_timeline_events
+    if _dev_active() and is_dev_patient_id(patient_id):
+        return get_timeline_events(limit=limit, offset=offset)
+
     # total count
     total_q = await db.execute(
         text(

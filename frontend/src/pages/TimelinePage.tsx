@@ -22,6 +22,72 @@ interface TimelineEvent {
   meta?: Record<string, unknown>;
 }
 
+function typeColor(type: string): string {
+  const t = type.toLowerCase();
+  if (t.includes('medication') || t.includes('rx')) return 'var(--accent-blue)';
+  if (t.includes('lab') || t.includes('result'))    return 'var(--accent-yellow)';
+  if (t.includes('diagnosis') || t.includes('dx'))  return 'var(--accent-red)';
+  if (t.includes('visit') || t.includes('encounter')) return 'var(--accent-green)';
+  return 'var(--text-muted)';
+}
+
+function TimelineTrack({ events }: { events: TimelineEvent[] }) {
+  const sorted = [...events].sort(
+    (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime(),
+  );
+
+  return (
+    <div className="relative pl-6">
+      <div
+        className="absolute left-2 top-0 bottom-0 w-px"
+        style={{ backgroundColor: 'var(--border-color)' }}
+      />
+      <div className="space-y-3">
+        {sorted.map((ev, idx) => (
+          <div key={`${ev.ts}-${idx}`} className="relative">
+            <div
+              className="absolute -left-[18px] top-1.5 w-2 h-2 rounded-full border"
+              style={{
+                backgroundColor: 'var(--bg-primary)',
+                borderColor: typeColor(ev.event_type),
+              }}
+            />
+            <div
+              className="p-3 rounded-lg"
+              style={{ backgroundColor: 'var(--bg-tertiary)' }}
+            >
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <span
+                  className="text-xs font-mono font-bold"
+                  style={{ color: typeColor(ev.event_type) }}
+                >
+                  {(ev.event_type || 'unknown').toUpperCase()}
+                </span>
+                <span
+                  className="text-xs font-mono flex-shrink-0"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {new Date(ev.ts).toLocaleDateString(undefined, {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                  })}
+                </span>
+              </div>
+              {ev.text && (
+                <p
+                  className="text-xs font-sans leading-relaxed"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {ev.text}
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface TimelineResponse {
   patient_id: string;
   events: TimelineEvent[];
@@ -148,20 +214,20 @@ export function TimelinePage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-mono font-bold mb-1 text-[var(--accent-green)]">
+        <h1 className="text-xl font-mono font-bold mb-2 text-[var(--accent-green)]">
           TIMELINE
         </h1>
-        <p className="text-xs font-mono text-[var(--text-muted)]">
+        <p className="text-xs font-sans" style={{ color: 'var(--text-muted)' }}>
           View event timeline and generate analytics charts.
         </p>
       </div>
 
       {!isDoctor && (
         <>
-          <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-            <div className="flex items-center justify-between mb-2">
+          <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
+            <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-mono font-bold text-[var(--accent-green)]">PATIENT TIMELINE</span>
               <Link to="/timeline/upload" className="text-xs font-mono no-underline text-[var(--accent-green)]">
                 UPLOAD / REPLACE
@@ -172,8 +238,8 @@ export function TimelinePage() {
             {patientError && <p className="text-xs font-mono text-[var(--accent-red)]">{patientError}</p>}
 
             {!patientLoading && !patientError && (!patientTimelineStatus || !patientTimelineStatus.has_timeline) && (
-              <div className="p-3 rounded bg-[var(--bg-tertiary)]">
-                <p className="text-xs font-mono mb-2 text-[var(--text-muted)]">
+              <div className="p-3 rounded-lg bg-[var(--bg-tertiary)]">
+                <p className="text-xs font-sans leading-relaxed mb-2 text-[var(--text-muted)]">
                   No timeline data yet. Upload a timeline PDF to enable charts and timeline browsing.
                 </p>
                 <Link
@@ -186,22 +252,8 @@ export function TimelinePage() {
             )}
 
             {!patientLoading && patientTimeline && patientTimeline.events.length > 0 && (
-              <div className="max-h-80 overflow-y-auto space-y-2">
-                {patientTimeline.events.slice().reverse().map((ev, idx) => (
-                  <div key={`${ev.ts}-${idx}`} className="p-2 rounded bg-[var(--bg-tertiary)]">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-mono font-bold text-[var(--text-primary)]">
-                        {(ev.event_type || 'unknown').toUpperCase()}
-                      </span>
-                      <span className="text-xs font-mono text-[var(--text-muted)]">
-                        {new Date(ev.ts).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-xs font-mono text-[var(--text-secondary)]">
-                      {ev.text || `Source: ${ev.source}`}
-                    </p>
-                  </div>
-                ))}
+              <div className="max-h-[32rem] overflow-y-auto pr-2">
+                <TimelineTrack events={patientTimeline.events} />
               </div>
             )}
           </div>
@@ -214,8 +266,8 @@ export function TimelinePage() {
 
       {isDoctor && (
         <>
-          <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-            <span className="text-sm font-mono font-bold block mb-2 text-[var(--accent-blue)]">
+          <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
+            <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-blue)]">
               DOCTOR TIMELINE VIEW
             </span>
             {doctorLoading ? (
@@ -224,7 +276,7 @@ export function TimelinePage() {
               <select
                 value={selectedPatientId}
                 onChange={(e) => setSelectedPatientId(e.target.value)}
-                className="w-full px-3 py-2 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
+                className="w-full px-3 py-2 rounded-lg text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
               >
                 <option value="">— Select patient —</option>
                 {doctorPatients.map((p) => (
@@ -240,15 +292,15 @@ export function TimelinePage() {
           </div>
 
           {selectedPatientId && !selectedTimelineId && !doctorError && (
-            <div className="p-3 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-muted)]">
+            <div className="p-3 rounded-lg border text-xs font-sans bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-muted)]">
               Selected patient has no ingested timeline yet.
             </div>
           )}
 
           {selectedTimelineId && doctorTimeline && (
             <>
-              <div className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
+                <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
                     TIMELINE EVENTS {selectedPatient ? `— ${selectedPatient.full_name ?? selectedPatient.email}` : ''}
                   </span>
@@ -256,22 +308,8 @@ export function TimelinePage() {
                     {doctorTimeline.total_events} events
                   </span>
                 </div>
-                <div className="max-h-80 overflow-y-auto space-y-2">
-                  {doctorTimeline.events.slice().reverse().map((ev, idx) => (
-                    <div key={`${ev.ts}-${idx}`} className="p-2 rounded bg-[var(--bg-tertiary)]">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-mono font-bold text-[var(--text-primary)]">
-                          {(ev.event_type || 'unknown').toUpperCase()}
-                        </span>
-                        <span className="text-xs font-mono text-[var(--text-muted)]">
-                          {new Date(ev.ts).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-xs font-mono text-[var(--text-secondary)]">
-                        {ev.text || `Source: ${ev.source}`}
-                      </p>
-                    </div>
-                  ))}
+                <div className="max-h-[32rem] overflow-y-auto pr-2">
+                  <TimelineTrack events={doctorTimeline.events} />
                 </div>
               </div>
               <AnalyticsPanel patientId={selectedTimelineId} token={token} />
@@ -279,6 +317,8 @@ export function TimelinePage() {
           )}
         </>
       )}
+    </div>
+  );
     </div>
   );
 }

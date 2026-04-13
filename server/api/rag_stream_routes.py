@@ -2646,7 +2646,14 @@ async def resolve_pg_pool() -> asyncpg.Pool:
         dsn = _get_pg_dsn()
         max_size = int(os.getenv("PGPOOL_MAX", "10"))
         logger.info("Creating asyncpg pool dsn=%s max_size=%s", dsn, max_size)
-        _PG_POOL = await asyncpg.create_pool(dsn, min_size=1, max_size=max_size)
+        try:
+            _PG_POOL = await asyncpg.create_pool(dsn, min_size=1, max_size=max_size)
+        except Exception as e:
+            if os.getenv("DEV_AUTH_BYPASS", "").lower() == "true":
+                logger.warning("DEV_AUTH_BYPASS: asyncpg pool unavailable (%s). Endpoint will return 503.", e)
+                from fastapi import HTTPException
+                raise HTTPException(status_code=503, detail="Database unavailable in dev-bypass mode.")
+            raise
     return _PG_POOL
 
 

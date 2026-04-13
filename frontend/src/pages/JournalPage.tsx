@@ -98,14 +98,14 @@ export function JournalPage() {
           SYMPTOM JOURNAL
         </h1>
         <p
-          className="text-sm font-mono"
+          className="text-sm font-sans"
           style={{ color: 'var(--text-muted)' }}
         >
           Track symptoms, environmental factors, and lifestyle data. AI-powered analysis available.
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         <JournalEditor onEntryCreated={handleEntryCreated} />
 
         <JournalAIQuery />

@@ -10,7 +10,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BASE =
-  'rounded font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+  'rounded font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150';
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-[var(--accent-green)] text-black',
@@ -37,4 +37,3 @@ export function Button({
     </button>
   );
 }
-

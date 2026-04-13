@@ -59,12 +59,14 @@ export function Header() {
             <Link
               key={to}
               to={to}
-              className="text-xs font-mono tracking-wide no-underline transition-colors"
+              className="text-xs font-mono tracking-wide no-underline transition-colors pb-0.5"
               style={{
-                color:
-                  location.pathname === to
-                    ? 'var(--accent-green)'
-                    : 'var(--text-secondary)',
+                color: location.pathname === to
+                  ? 'var(--accent-green)'
+                  : 'var(--text-secondary)',
+                borderBottom: location.pathname === to
+                  ? '1px solid var(--accent-green)'
+                  : '1px solid transparent',
               }}
             >
               {label}

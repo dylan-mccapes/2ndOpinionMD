@@ -44,6 +44,19 @@ interface StreamingDisplayProps {
   onExternalCall?: () => void;
 }
 
+function statusColor(s: StreamStatus): string {
+  switch (s) {
+    case 'connecting':
+    case 'running':   return 'var(--accent-cyan)';
+    case 'evidence':  return 'var(--accent-blue)';
+    case 'reasoning':
+    case 'streaming': return 'var(--accent-yellow)';
+    case 'complete':  return 'var(--accent-green)';
+    case 'error':     return 'var(--accent-red)';
+    default:          return 'var(--text-muted)';
+  }
+}
+
 function processSseEvent(
   data: Record<string, unknown>,
   handlers: {
@@ -337,24 +350,25 @@ export function StreamingDisplay({
 
   return (
     <div className="space-y-4">
-      {/*
-        Keep status color logic dynamic while moving all static styling into utility classes.
-      */}
       <div
-        className={`px-4 py-2 rounded border text-sm font-mono bg-[var(--bg-secondary)] ${
-          status === 'error'
-            ? 'border-[var(--accent-red)] text-[var(--accent-red)]'
-            : status === 'complete'
-              ? 'border-[var(--accent-green)] text-[var(--accent-green)]'
-              : 'border-[var(--accent-yellow)] text-[var(--accent-yellow)]'
-        }`}
+        className="px-5 py-3 rounded-lg border text-sm font-mono bg-[var(--bg-secondary)] flex items-center gap-2"
+        style={{
+          borderColor: statusColor(status),
+          color: statusColor(status),
+        }}
       >
+        {(status === 'connecting' || status === 'running' || status === 'reasoning' || status === 'streaming') && (
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0"
+            style={{ backgroundColor: statusColor(status) }}
+          />
+        )}
         {statusText}
       </div>
 
       {retrieval && (
         <div
-          className="px-4 py-2 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
+          className="px-5 py-3 rounded-lg border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Sources: {retrieval.sources_used}/{retrieval.sources_considered} |
           Retrieval confidence: {retrieval.confidence}
@@ -363,7 +377,7 @@ export function StreamingDisplay({
 
       {error && (
         <div
-          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--accent-red)] text-[var(--accent-red)]"
+          className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--accent-red)] text-[var(--accent-red)]"
         >
           <p className="text-sm font-mono font-bold mb-1">ERROR</p>
           <p className="text-sm">{error}</p>
@@ -371,16 +385,28 @@ export function StreamingDisplay({
       )}
 
       {answer && (
-        <div
-          className="p-4 rounded border prose prose-sm max-w-none bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-primary)]"
-        >
-          <Markdown>{answer}</Markdown>
+        <div className="animate-fade-in">
+          <div
+            className="p-5 rounded-lg border prose prose-sm max-w-none bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-primary)]"
+          >
+            <div className="relative">
+              <Markdown>{answer}</Markdown>
+              {status === 'streaming' && (
+                <span
+                  className="inline-block animate-blink text-[var(--accent-green)] select-none"
+                  aria-hidden="true"
+                >
+                  ▌
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {limitations.length > 0 && (
         <div
-          className="p-3 rounded border bg-[var(--bg-secondary)] border-[var(--accent-yellow)]"
+          className="p-4 rounded-lg border bg-[var(--bg-secondary)] border-[var(--accent-yellow)]"
         >
           <p className="text-xs font-mono font-bold mb-2 text-[var(--accent-yellow)]">
             LIMITATIONS
@@ -397,7 +423,7 @@ export function StreamingDisplay({
 
       {confidence !== null && status === 'complete' && (
         <div
-          className="px-4 py-2 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
+          className="px-5 py-3 rounded-lg border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Confidence: {Math.round(confidence * 100)}%
           {completion &&
@@ -421,7 +447,7 @@ export function StreamingDisplay({
 
       {showReceipts && (
         <div
-          className="p-4 rounded border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
+          className="p-5 rounded-lg border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
         >
           <pre className="text-xs font-mono whitespace-pre-wrap text-[var(--text-secondary)]">
             {JSON.stringify(getReceipt(), null, 2)}

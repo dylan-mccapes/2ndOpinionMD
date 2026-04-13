@@ -9,11 +9,10 @@ export function Layout() {
 
   return (
     <div
-      className="flex flex-col min-h-screen"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      className="flex flex-col min-h-screen bg-[var(--bg-primary)]"
     >
       <Header />
-      <main className="flex-1 p-6">
+      <main className="flex-1 px-6 py-8">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
