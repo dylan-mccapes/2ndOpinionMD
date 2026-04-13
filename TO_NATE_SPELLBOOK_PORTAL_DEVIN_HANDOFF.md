@@ -142,7 +142,7 @@ I spec'd out every component Devin needs to build:
 
 ## THE DOCTOR PORTAL (THE NEW THING)
 
-I also wrote GAME_PLAN_DOCTOR_PORTAL.md. This is the ambient coding feature — the reason we copied TranscriptionMachine and WaveModulationMachine into the repo.
+I also wrote `game_plans/GAME_PLAN_DOCTOR_PORTAL.md`. This is the ambient coding feature — the reason we copied TranscriptionMachine and WaveModulationMachine into the repo.
 
 **The pitch:** Doctor clicks record. Whisper transcribes the appointment in real time. The transcript feeds into the coding pipeline. Medical codes appear live in a side panel. Doctor accepts or rejects codes as they talk. When the appointment ends, they have a structured encounter note with codes already done.
 

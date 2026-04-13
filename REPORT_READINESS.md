@@ -15,9 +15,9 @@
 | SpellBook | `2opmd_spellbook.json` | 404-line manifest: every endpoint, UX invariants, aesthetic spec, component specs, page routes, build priority, environment config, Docker setup, Make targets, security model, Devin constraints |
 | ASK Streaming Contract | `ASK_STREAMING_CONTRACT.md` | 5-event SSE contract (phase_start, retrieval_summary, reasoning_progress, llm_chunk/llm_done, completion), receipt cache integration, UI behavior spec, transparency panel behavior |
 | Frontend Integration | `FRONTEND_INTEGRATION.md` | Current wiring: mode-endpoint mapping, receipt cache event schema, transparency panel states, error handling, UI state management, CORS notes |
-| Doctor Portal Game Plan | `GAME_PLAN_DOCTOR_PORTAL.md` | Ambient coding pipeline: audio capture -> Whisper (local) -> transcript -> NLP extraction -> /api/coding -> code suggestions -> encounter note -> timeline. 4 phases, 8 weeks. 5 new endpoints required. |
-| Patient & Doctor Portals | `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` | Role selection at registration (doctor/patient). Splash page = modes + login. Patient portal: journal, timeline, EoHD. Doctor portal: patient list, read-only patient data. Data model: user_type, doctor_id. |
-| Timeline Charts + Matplotlib | `GAME_PLAN_TIMELINE_CHARTS_MATPLOTLIB.md` | Graph-grounded timeline analytics plan using `ehr.patient_timeline` + connascence edges (`temporal`, `diagnostic`, `treatment`, `lab_trend`), interpretable metrics (`v_t`, `k_t`, `L_t`, `S_t`), portal chart strategy, and doctor-ready PDF export plan. |
+| Doctor Portal Game Plan | `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` | Ambient coding pipeline: audio capture -> Whisper (local) -> transcript -> NLP extraction -> /api/coding -> code suggestions -> encounter note -> timeline. 4 phases, 8 weeks. 5 new endpoints required. |
+| Patient & Doctor Portals | `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` | Role selection at registration (doctor/patient). Splash page = modes + login. Patient portal: journal, timeline, EoHD. Doctor portal: patient list, read-only patient data. Data model: user_type, doctor_id. |
+| Timeline Charts + Matplotlib | `game_plans/GAME_PLAN_TIMELINE_CHARTS_MATPLOTLIB.md` | Graph-grounded timeline analytics plan using `ehr.patient_timeline` + connascence edges (`temporal`, `diagnostic`, `treatment`, `lab_trend`), interpretable metrics (`v_t`, `k_t`, `L_t`, `S_t`), portal chart strategy, and doctor-ready PDF export plan. |
 | Deploy Better UX | `DEPLOY_BETTER_UX.md` | One-line docker-compose volume swap from `./index.html` to `./rag-demo-ui/index.html` for nginx |
 
 ---
@@ -73,24 +73,24 @@
 
 | # | Task | Routing |
 |---|---|---|
-| 5a.1 | **Build TimelineUploadPage** | Route: `/timeline/upload`. File picker (PDF only, max 10MB), optional password field for encrypted PDFs, progress states (Idle → Uploading → Extracting → Ingesting → Done). Calls `POST /api/timeline/import-pdf` (multipart/form-data: `file` + optional `password`). Response: `{ timeline_id, patient_id, event_count, status }`. Auth required (Bearer JWT). Errors: 401, 403 (not system user), 400 (invalid PDF/wrong password), 413 (too large). See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Upload Page". |
-| 5a.2 | **Build TimelineStatusIndicator** | Calls `GET /api/timeline/status`. Response: `{ has_timeline, timeline_id, event_count, last_updated }`. Renders "Timeline ready" or "Upload timeline" link. Shown in header or mode selector. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Status Indicator". |
-| 5a.3 | **Build EoHD gate logic** | If user has no timeline + is system user: show "Upload timeline to unlock EoHD" with link to `/timeline/upload`. If user has timeline: enable EoHD, pass `timeline_patient_id` to `/api/rag/eoh_stream` (or `/api/eoh/router_plan`). Free users: EoHD remains disabled with current message. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
+| 5a.1 | **Build TimelineUploadPage** | Route: `/timeline/upload`. File picker (PDF only, max 10MB), optional password field for encrypted PDFs, progress states (Idle → Uploading → Extracting → Ingesting → Done). Calls `POST /api/timeline/import-pdf` (multipart/form-data: `file` + optional `password`). Response: `{ timeline_id, patient_id, event_count, status }`. Auth required (Bearer JWT). Errors: 401, 403 (not system user), 400 (invalid PDF/wrong password), 413 (too large). See `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Upload Page". |
+| 5a.2 | **Build TimelineStatusIndicator** | Calls `GET /api/timeline/status`. Response: `{ has_timeline, timeline_id, event_count, last_updated }`. Renders "Timeline ready" or "Upload timeline" link. Shown in header or mode selector. See `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → Timeline Status Indicator". |
+| 5a.3 | **Build EoHD gate logic** | If user has no timeline + is system user: show "Upload timeline to unlock EoHD" with link to `/timeline/upload`. If user has timeline: enable EoHD, pass `timeline_patient_id` to `/api/rag/eoh_stream` (or `/api/eoh/router_plan`). Free users: EoHD remains disabled with current message. See `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
 | 5a.4 | **Build EohdPage (enabled state)** | When timeline exists: show query input, call EoHD endpoints (`POST /api/eoh/router_plan`, `GET /api/eoh/flarereport/{patient_id}`, `GET /api/eoh/landscape/{patient_id}`). Display: question type classification, module execution plan, flare forecast, diagnostic landscape, precursor signals, risk drivers. See `server/api/eoh_router_routes.py` and `server/api/timeline_routes.py`. |
-| 5a.5 | **Add /timeline/upload route** | Protected route (auth required). Add to App.tsx router. Redirect system users without timeline here after first login. See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "User Flow". |
-| 5a.6 | **Update ModeSelector EoHD card** | Replace static "Blocked" message with dynamic state: disabled (free user), "Upload timeline" (system user, no timeline), enabled (system user, has timeline). See `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
+| 5a.5 | **Add /timeline/upload route** | Protected route (auth required). Add to App.tsx router. Redirect system users without timeline here after first login. See `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "User Flow". |
+| 5a.6 | **Update ModeSelector EoHD card** | Replace static "Blocked" message with dynamic state: disabled (free user), "Upload timeline" (system user, no timeline), enabled (system user, has timeline). See `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` → "Frontend Components → EoHD Gate". |
 
 ### Phase 5c: Patient & Doctor Portals
 
 | # | Task | Routing |
 |---|---|---|
-| 5c.1 | **Add user_type to users** | Migration: add `user_type VARCHAR(20) NOT NULL DEFAULT 'patient'`. Values: `patient` \| `doctor`. Add `doctor_id UUID REFERENCES users(id)` to users or create doctor_patients table. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Data Model Changes". |
+| 5c.1 | **Add user_type to users** | Migration: add `user_type VARCHAR(20) NOT NULL DEFAULT 'patient'`. Values: `patient` \| `doctor`. Add `doctor_id UUID REFERENCES users(id)` to users or create doctor_patients table. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Data Model Changes". |
 | 5c.2 | **Update registration API** | `POST /api/auth/register`: require `user_type` in body. Validate `user_type in ("patient", "doctor")`. Store in users. Update `GET /api/auth/me` to return `user_type`. |
-| 5c.3 | **Add role selector to RegisterPage** | UI: radio or card select "I am a patient" \| "I am a doctor". Submit `user_type` in registration payload. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Registration (New Requirement)". |
-| 5c.4 | **Splash page (modes + login)** | HomePage `/`: unauthenticated → mode cards (ASK, CODING, EoH, EoHD) + LOGIN and REGISTER buttons. Authenticated → redirect to `/patient` or `/doctor` by user_type. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Splash Page". |
-| 5c.5 | **Patient portal shell** | Route `/patient`. Layout: nav (Journal, Timeline, EoHD, Settings). Guard: `user_type === "patient"`. Nest existing JournalPage, TimelineUploadPage, EohdPage. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient Portal". |
-| 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
-| 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
+| 5c.3 | **Add role selector to RegisterPage** | UI: radio or card select "I am a patient" \| "I am a doctor". Submit `user_type` in registration payload. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Registration (New Requirement)". |
+| 5c.4 | **Splash page (modes + login)** | HomePage `/`: unauthenticated → mode cards (ASK, CODING, EoH, EoHD) + LOGIN and REGISTER buttons. Authenticated → redirect to `/patient` or `/doctor` by user_type. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Splash Page". |
+| 5c.5 | **Patient portal shell** | Route `/patient`. Layout: nav (Journal, Timeline, EoHD, Settings). Guard: `user_type === "patient"`. Nest existing JournalPage, TimelineUploadPage, EohdPage. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient Portal". |
+| 5c.6 | **Doctor portal + patient list** | Route `/doctor`. `GET /api/doctor/patients`: list patients for current doctor (`doctor_id = current_user.id`). Patient list UI. DoctorPatientDetailPage `/doctor/patients/:id`: read-only journal, timeline status. Guard: `user_type === "doctor"`. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Doctor Portal". |
+| 5c.7 | **Patient–doctor linking (MVP)** | Seed/script to link test patients to doctors, or `POST /api/doctor/link-patient` (patient_email). See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` → "Patient–Doctor Linking". |
 
 ### Phase 6: Doctor Portal — Patient Connection + Ambient Coding
 
@@ -98,19 +98,19 @@
 
 | # | Task | Routing |
 |---|---|---|
-| 6.0a | **Doctor invites patient (doctor portal)** | Doctor portal: "Connect patient" — enter patient email. System sends email to patient: register or log in and accept the connection. Backend: `POST /api/doctor/invite-patient` (body: `{ email }`). Creates pending link; sends email with magic link or token to `/auth/accept-doctor-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
-| 6.0b | **Patient invites doctor (patient portal)** | Patient portal: "Connect doctor" — enter doctor email. System sends email to doctor: register or log in and accept the connection. Backend: `POST /api/patient/invite-doctor` (body: `{ email }`). Creates pending link; sends email with magic link to `/auth/accept-patient-invite?token=...`. See `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
+| 6.0a | **Doctor invites patient (doctor portal)** | Doctor portal: "Connect patient" — enter patient email. System sends email to patient: register or log in and accept the connection. Backend: `POST /api/doctor/invite-patient` (body: `{ email }`). Creates pending link; sends email with magic link or token to `/auth/accept-doctor-invite?token=...`. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
+| 6.0b | **Patient invites doctor (patient portal)** | Patient portal: "Connect doctor" — enter doctor email. System sends email to doctor: register or log in and accept the connection. Backend: `POST /api/patient/invite-doctor` (body: `{ email }`). Creates pending link; sends email with magic link to `/auth/accept-patient-invite?token=...`. See `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md`. |
 | 6.0c | **Accept-invite flow** | New routes: `/auth/accept-doctor-invite`, `/auth/accept-patient-invite`. Token in query. If unauthenticated: redirect to login/register, then return to accept. If authenticated: confirm link, create `doctor_patients` (or set `doctor_id`), redirect to portal. Email templates: "Dr. X invites you to connect" / "Patient Y invites you as their doctor". |
 
 #### 6a: Ambient Coding (Audio → Transcript → Codes)
 
 | # | Task | Routing |
 |---|---|---|
-| 6.1 | **Build AudioCapture** | Browser `MediaRecorder` API. States: IDLE → RECORDING → PAUSED → STOPPED. 15s chunks, WAV format, 2s overlap. Red indicator when mic live. Patient consent required before recording. Route: `/portal`. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 1" and "UI Components → AudioCapture". |
-| 6.2 | **Build LiveTranscript** | Chunks sent to `POST /api/portal/transcribe` (new endpoint, multipart). Whisper runs locally (privacy invariant — audio never leaves machine). Rolling text with timestamps. See `GAME_PLAN_DOCTOR_PORTAL.md` → "UI Components → LiveTranscript". |
-| 6.3 | **Build ClinicalCodingOverlay / CodeSuggestions** | Transcript text → `POST /api/coding`. Live code cards with confidence. Accept/reject per code. Re-code every 60s or on significant new symptom. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 2" and "UI Components → CodeSuggestions". |
-| 6.4 | **Build EncounterSummary** | New endpoint: `POST /api/portal/encounter_note`. Generates structured note from accepted codes + transcript. Export as PDF. Save to journal via `POST /api/journal`. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 3". |
-| 6.5 | **Build Timeline Integration** | Auto-generate timeline events from encounters. Feed into `/api/timeline` endpoints. Enable EoHD when timeline data exists. See `GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 4". |
+| 6.1 | **Build AudioCapture** | Browser `MediaRecorder` API. States: IDLE → RECORDING → PAUSED → STOPPED. 15s chunks, WAV format, 2s overlap. Red indicator when mic live. Patient consent required before recording. Route: `/portal`. See `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 1" and "UI Components → AudioCapture". |
+| 6.2 | **Build LiveTranscript** | Chunks sent to `POST /api/portal/transcribe` (new endpoint, multipart). Whisper runs locally (privacy invariant — audio never leaves machine). Rolling text with timestamps. See `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "UI Components → LiveTranscript". |
+| 6.3 | **Build ClinicalCodingOverlay / CodeSuggestions** | Transcript text → `POST /api/coding`. Live code cards with confidence. Accept/reject per code. Re-code every 60s or on significant new symptom. See `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 2" and "UI Components → CodeSuggestions". |
+| 6.4 | **Build EncounterSummary** | New endpoint: `POST /api/portal/encounter_note`. Generates structured note from accepted codes + transcript. Export as PDF. Save to journal via `POST /api/journal`. See `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 3". |
+| 6.5 | **Build Timeline Integration** | Auto-generate timeline events from encounters. Feed into `/api/timeline` endpoints. Enable EoHD when timeline data exists. See `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "Phase 4". |
 
 #### 6b: Timeline Graph Charts (Matplotlib)
 
@@ -144,10 +144,10 @@
 | SSE streaming protocol | `ASK_STREAMING_CONTRACT.md` |
 | Current frontend wiring | `FRONTEND_INTEGRATION.md` |
 | Receipt cache event schema | `FRONTEND_INTEGRATION.md` → "Receipt Cache Integration" |
-| Timeline upload + EoHD game plan | `GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` |
-| Patient & doctor portals game plan | `GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` |
-| Doctor portal pipeline | `GAME_PLAN_DOCTOR_PORTAL.md` |
-| New portal endpoints needed | `GAME_PLAN_DOCTOR_PORTAL.md` → "New Endpoints Required" |
+| Timeline upload + EoHD game plan | `game_plans/GAME_PLAN_TIMELINE_UPLOAD_EOHD.md` |
+| Patient & doctor portals game plan | `game_plans/GAME_PLAN_PATIENT_DOCTOR_PORTALS.md` |
+| Doctor portal pipeline | `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` |
+| New portal endpoints needed | `game_plans/GAME_PLAN_DOCTOR_PORTAL.md` → "New Endpoints Required" |
 | Ambient transcription tools | `transcription_machine.py`, `wave_modulation_machine.py`, `wave_modulation_agent.py` (repo root) |
 | Transcription pipeline docs | `TRANSCRIPTION_PIPELINE_README.md` |
 | Docker deployment | `DEPLOY_BETTER_UX.md`, `docker-compose.yml`, `docker/` |

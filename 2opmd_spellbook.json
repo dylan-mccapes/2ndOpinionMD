@@ -225,7 +225,7 @@
       "/auth/forgot-password": "Password reset request",
       "/auth/reset-password/:token": "Password reset form",
       "/settings": "User settings (minimal — no personalization)",
-      "/portal": "Doctor portal — ambient transcription + coding (see GAME_PLAN_DOCTOR_PORTAL.md)"
+      "/portal": "Doctor portal — ambient transcription + coding (see game_plans/GAME_PLAN_DOCTOR_PORTAL.md)"
     },
     "components": {
       "ModeSelector": "Four-button mode selector (ask/coding/eoh/eohd). No recommendations. No shortcuts. Explicit selection only.",
@@ -385,7 +385,8 @@
     "README.md": "Project overview, setup, features.",
     "TRANSCRIPTION_PIPELINE_README.md": "TranscriptionMachine + TranscriptionSummarizer pipeline docs.",
     ".env.example": "All environment variables with comments.",
-    "GAME_PLAN_DOCTOR_PORTAL.md": "Ambient coding portal for doctor appointments (new)."
+    "game_plans/GAME_PLAN_DOCTOR_PORTAL.md": "Ambient coding portal for doctor appointments (new).",
+    "game_plans/STRATEGY_GRAPH_TRAVERSAL.md": "Core 12 PTV graph traversal tools for agents (executable via server/graph_traversal/agent_tools.py)."
   },
 
   "devin_instructions": {

@@ -1,4 +1,7 @@
 # requirements-dev.txt — minimal install for local UX/API development
+#
+# Debian/Ubuntu/WSL: use a venv (PEP 668). Example:
+#   python3 -m venv .BeatingHeart && source .BeatingHeart/bin/activate && pip install -r requirements-dev.txt
 # Excludes: torch, transformers, sentence-transformers, datasets, accelerate,
 #           wandb, sentry-sdk, huggingface-hub, safetensors, tokenizers, scipy,
 #           scikit-learn, pyarrow, evaluate, biothings_client, mygene, motor, pymongo
@@ -57,6 +60,8 @@ rich==14.1.0
 click==8.2.1
 tqdm==4.67.1
 networkx==3.5
+# Graph sandbox: Lorenz Portal GC + optional PE CLI alignment (see sandbox/norman_graph_retrieval/)
+provenance-engine>=0.2.0,<1
 numpy>=1.26.3,<2.5
 pandas==2.3.3
 beautifulsoup4==4.14.2

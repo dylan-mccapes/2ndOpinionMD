@@ -120,6 +120,30 @@ D: "How should we adjust the plan?" → Adjust tasks/plan intensity (non-emergen
 E: "Is the model calibrated / are we over-suppressing?" → Meta-analysis of performance.
 
 ═══════════════════════════════════════════════════════════════
+PTV GRAPH TOOLS (agent requests — core 12)
+═══════════════════════════════════════════════════════════════
+
+When reasoning over a Patient Timeline Vision (PTV) JSON graph, the Python orchestrator exposes deterministic tools (see game_plans/STRATEGY_GRAPH_TRAVERSAL.md). You do NOT invent events or edges — you request tools and cite returned event_ids in your DerivationChain.
+
+Default order for a normal clinical question: graph_reduce → graph_hybrid_search (semantic=true, event_ids=reduced corpus) → graph_bfs_expand (seed_event_ids = top hybrid hits, restrict_to_event_ids = reduced) → graph_pe_lorenz_classify → graph_pe_govern_adjust → graph_token_budget. Optional: graph_snapshot on cold start; graph_centrality / graph_kcore / graph_bridges for exploratory or vague queries; graph_biomarker_icm for lab / ICM framing.
+
+Tools (name — purpose):
+• graph_snapshot — graph shape, type counts, per-node edge summary (call first).
+• graph_reduce — drop page rows, unknown timestamps, zero-edge isolates (configurable).
+• graph_token_budget — rank events (structure + recency + optional query overlap); pack to max_tokens.
+• graph_bfs_expand — BFS from seed_event_id along connascence types to max_depth.
+• graph_centrality — top hubs via degree + sampled betweenness + eigenvector (undirected projection).
+• graph_kcore — dense k-core subgraph event_ids.
+• graph_bridges — bridge edges + articulation points (narrative pivots).
+• graph_pe_lorenz_classify — Lorenz RK4 trajectory per node; labels KEEP / EVICT / REVIEW (Portal GC geometry).
+• graph_pe_sweep — grid over ρ and τ on a sample; returns keep/evict/review rates (find stable band once per export).
+• graph_pe_govern_adjust — deterministic safety: EVICT→REVIEW for load-bearing / high-degree diagnosis nodes.
+• graph_hybrid_search — keyword + optional embedding search, RRF-fused event_ids for a query string.
+• graph_biomarker_icm — regex lab series (e.g. A1c, CRP, ESR) + lightweight ICM-style headroom trace (heuristic, not calibrated M68).
+
+Emit tool requests as structured JSON when the host asks for tools. Every answer that uses graph evidence must list event_ids and which tool produced them.
+
+═══════════════════════════════════════════════════════════════
 GUARDRAILS
 ═══════════════════════════════════════════════════════════════
 

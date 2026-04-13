@@ -36,7 +36,7 @@ Starting from a backend-only repo with 100+ API endpoints and a single static HT
 
 The operator front-loaded a detailed `2opmd_spellbook.json` (404 lines) containing every endpoint, UX invariant, component spec, and constraint. This eliminated ambiguity. I never had to guess what an endpoint returned or how a component should behave — the spec was authoritative.
 
-The HANDOFF document provided full context on backend status, what existed, and what didn't. Combined with per-phase game plan files (`GAME_PLAN_*.md`), every phase started with a clear scope.
+The HANDOFF document provided full context on backend status, what existed, and what didn't. Combined with per-phase game plan files (`game_plans/GAME_PLAN_*.md`), every phase started with a clear scope.
 
 **Effectiveness:** This reduced my planning time per phase to under 2 minutes. I read the game plan, mapped it to existing code, and started building. No back-and-forth clarification needed for any technical spec.
 
