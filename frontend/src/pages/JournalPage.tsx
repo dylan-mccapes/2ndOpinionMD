@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { PatientNav } from '../lib/ui';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { JournalEditor } from '../components/JournalEditor';
@@ -85,12 +86,23 @@ export function JournalPage() {
   };
 
   const handleSelectEntry = (entry: JournalEntryResponse) => {
-    setSelectedEntry(prev => prev?.id === entry.id ? null : entry);
+    setSelectedEntry(entry);
   };
 
+  // Close modal on Escape key
+  const closeModal = useCallback(() => setSelectedEntry(null), []);
+  const closeModalRef = useRef(closeModal);
+  closeModalRef.current = closeModal;
+  useEffect(() => {
+    if (!selectedEntry) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModalRef.current(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [selectedEntry]);
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-1"
           style={{ color: 'var(--accent-green)' }}
@@ -105,7 +117,9 @@ export function JournalPage() {
         </p>
       </div>
 
-      <div className="space-y-6">
+      <PatientNav />
+
+      <div className="space-y-8">
         <JournalEditor onEntryCreated={handleEntryCreated} />
 
         <JournalAIQuery />
@@ -113,9 +127,12 @@ export function JournalPage() {
         <JournalTimeline reportId="default" />
 
         <div>
-          <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--text-secondary)' }}>
-            ENTRIES ({entries.length})
-          </span>
+          <p className="text-xs font-sans font-medium uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+            Entries
+            {entries.length > 0 && (
+              <span className="font-mono ml-2" style={{ color: 'var(--accent-green)' }}>({entries.length})</span>
+            )}
+          </p>
           <JournalEntryList
             entries={entries}
             loading={loading}
@@ -126,13 +143,33 @@ export function JournalPage() {
           />
         </div>
 
-        {selectedEntry && (
-          <JournalEntryDetail
-            entry={selectedEntry}
-            onClose={() => setSelectedEntry(null)}
-          />
-        )}
       </div>
+
+      {/* Modal overlay */}
+      {selectedEntry && (
+        <div
+          className="animate-fade-in"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: '3rem 1rem',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            overflowY: 'auto',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div style={{ width: '100%', maxWidth: '42rem' }}>
+            <JournalEntryDetail
+              entry={selectedEntry}
+              onClose={closeModal}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

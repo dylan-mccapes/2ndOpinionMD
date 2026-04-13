@@ -64,7 +64,7 @@ function ChatBubble({
   return (
     <div className={`${bgClass} mb-3`}>
       <div
-        className="rounded-lg p-3 text-sm"
+        className="rounded p-3 text-sm"
         style={{
           backgroundColor: isOwnMessage ? 'var(--bg-tertiary, #1e293b)' : 'var(--bg-secondary, #0f172a)',
           border: '1px solid var(--border-primary, #334155)',
@@ -215,7 +215,7 @@ export function ChatPage() {
         {sending && (
           <div className="ml-8 mb-3">
             <div
-              className="rounded-lg p-3 text-sm animate-pulse"
+              className="rounded p-3 text-sm animate-pulse"
               style={{
                 backgroundColor: 'var(--bg-tertiary, #1e293b)',
                 border: '1px solid var(--border-primary, #334155)',
@@ -275,7 +275,7 @@ export function ChatPage() {
                 ? "How are you feeling today? What's on your mind?"
                 : "Clinical observation or question..."}
               rows={2}
-              className="w-full text-sm font-mono px-3 py-2 rounded-lg resize-none"
+              className="w-full text-sm font-mono px-3 py-2 rounded resize-none"
               style={{
                 backgroundColor: 'var(--bg-secondary, #0f172a)',
                 color: 'var(--text-primary)',
@@ -288,7 +288,7 @@ export function ChatPage() {
             <button
               type="submit"
               disabled={sending || !input.trim()}
-              className="px-4 py-2 rounded-lg text-xs font-mono font-bold transition-opacity disabled:opacity-30"
+              className="px-4 py-2 rounded text-xs font-mono font-bold transition-opacity disabled:opacity-30"
               style={{
                 backgroundColor: 'var(--accent-yellow)',
                 color: 'var(--bg-primary, #000)',

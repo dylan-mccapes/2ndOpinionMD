@@ -1,11 +1,12 @@
 import { useTheme } from '../context/ThemeContext';
+import { PatientNav } from '../lib/ui';
 
 export function SettingsPage() {
   const { theme, toggle } = useTheme();
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-1"
           style={{ color: 'var(--text-primary)' }}
@@ -20,8 +21,10 @@ export function SettingsPage() {
         </p>
       </div>
 
+      <PatientNav />
+
       <div
-        className="p-5 rounded-lg border"
+        className="p-5 rounded border"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',
@@ -44,7 +47,7 @@ export function SettingsPage() {
           </div>
           <button
             onClick={toggle}
-            className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
+            className="px-4 py-2 rounded text-xs font-mono cursor-pointer"
             style={{
               backgroundColor: 'var(--bg-tertiary)',
               color: 'var(--text-secondary)',

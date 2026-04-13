@@ -12,10 +12,12 @@ export function Layout() {
       className="flex flex-col min-h-screen bg-[var(--bg-primary)]"
     >
       <Header />
-      <main className="flex-1 px-6 py-8">
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
+      <main className="flex-1 py-10">
+        <div className="app-content">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </div>
       </main>
       <StatusBar status={status} message={message || undefined} />
     </div>

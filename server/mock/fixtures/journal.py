@@ -21,16 +21,23 @@ _SEED: list[dict] = [
         "stress_level": 6,
         "diet_notes": "Skipped breakfast, pizza for dinner",
         "sleep_quality": 3,
-        "notes": "Knees and wrists aching more than usual. Hard to open jars.",
-        "analysis": "Symptom cluster consistent with inflammatory flare precursor. Morning stiffness >1 hr warrants monitoring.",
+        "notes": "Knees and wrists aching more than usual. Hard to open jars this morning.",
+        "analysis": "Symptom cluster consistent with inflammatory flare precursor. Morning stiffness duration >45 min warrants close monitoring over the next 7 days.",
         "pattern_observations": [
-            "Morning stiffness correlating with poor sleep nights",
-            "Joint pain intensity tracking with dietary choices",
+            "Morning stiffness correlating with poor sleep nights (sleep 3/10 → stiffness 5/10)",
+            "Joint pain intensity tracking with dietary glycemic load",
         ],
         "ai_analysis": {
-            "eoh_band_estimate": 3,
-            "flare_risk": "moderate",
-            "recommended_action": "Log symptoms daily for 7 days",
+            "analysis": (
+                "Stack 2 | Band 3 deviation detected. Sleep disruption (3/10) is amplifying "
+                "inflammatory terrain — morning stiffness duration indicates M3 baseline breach. "
+                "Dietary pattern (high-glycemic, meal skipping) consistent with elevated cortisol "
+                "load and tissue utilization impairment. Recommend 7-day daily symptom logging and "
+                "sleep hygiene prioritization before next assessment."
+            ),
+            "band": "3 (Decompensation)",
+            "flare_risk": "Moderate — 48%",
+            "recommendation": "Sleep hygiene first. Log daily for 7 days.",
         },
         "created_at": "2025-12-01T08:30:00Z",
     },
@@ -43,20 +50,29 @@ _SEED: list[dict] = [
             {"symptom": "brain fog", "severity": 6},
         ],
         "environmental_factors": [
-            {"factor_type": "stress", "description": "High work pressure deadline"},
+            {"factor_type": "stress", "description": "High-pressure work deadline"},
         ],
         "stress_level": 8,
         "diet_notes": "Mostly normal, added anti-inflammatory smoothie",
         "sleep_quality": 4,
-        "notes": "Exhausted by midday. Hard to concentrate. Skipped afternoon walk.",
-        "analysis": "Fatigue spike likely stress-potentiated. Brain fog pattern consistent with M5 PSI elevation.",
+        "notes": "Exhausted by midday. Hard to concentrate on anything. Skipped my afternoon walk.",
+        "analysis": "Fatigue spike likely stress-potentiated. Fatigue–cognitive pairing consistent with M5 PSI elevation. Sleep partially recovered but insufficient.",
         "pattern_observations": [
-            "Fatigue spikes correlate with high-stress periods",
+            "Fatigue spikes correlating with high-stress periods (stress 8/10 → fatigue 8/10)",
+            "Brain fog emerging as secondary symptom when fatigue exceeds 7/10",
         ],
         "ai_analysis": {
-            "eoh_band_estimate": 3,
-            "flare_risk": "moderate-high",
-            "recommended_action": "Prioritize sleep hygiene and stress reduction",
+            "analysis": (
+                "Stack 2 | Band 3→4 trajectory. Fatigue–cognitive pairing at this severity "
+                "(fatigue 8/10, brain fog 6/10) indicates M5 neurological stress potentiation. "
+                "Current adaptive capacity is insufficient — stress load (8/10) is exceeding the "
+                "homeostatic buffer established in prior entries. Flare probability elevated to ~68% "
+                "if this pattern persists beyond 48 hours. Immediate priority: cognitive load "
+                "reduction and sleep extension."
+            ),
+            "band": "3→4 (Escalating)",
+            "flare_risk": "Moderate–High — 68%",
+            "recommendation": "Reduce cognitive load. Extend sleep. Reassess in 48h.",
         },
         "created_at": "2025-12-05T19:00:00Z",
     },
@@ -72,18 +88,27 @@ _SEED: list[dict] = [
             {"factor_type": "exercise", "description": "30-min walk, light yoga"},
         ],
         "stress_level": 3,
-        "diet_notes": "Salad, fish, turmeric tea",
+        "diet_notes": "Salad, grilled fish, turmeric tea",
         "sleep_quality": 7,
-        "notes": "Better day. Movement helped. Joints still stiff but manageable.",
-        "analysis": "Improvement correlates with sleep quality improvement and physical activity.",
+        "notes": "Better day overall. Movement helped. Joints still stiff in the morning but manageable by 10am.",
+        "analysis": "Measurable improvement correlates with sleep quality recovery and physical activity. Symptom severity across all axes reduced vs. prior two entries.",
         "pattern_observations": [
-            "Physical activity associated with symptom improvement",
-            "Diet quality positively correlated with energy",
+            "Physical activity (30-min walk + yoga) associated with same-day symptom reduction",
+            "Sleep quality improvement (4→7) directly correlating with fatigue and pain scores",
+            "Diet quality positively correlated with cognitive clarity and energy level",
         ],
         "ai_analysis": {
-            "eoh_band_estimate": 2,
-            "flare_risk": "low-moderate",
-            "recommended_action": "Maintain current activity and diet pattern",
+            "analysis": (
+                "Stack 2 | Band 2 — active stabilization phase. Sleep quality improvement (7/10) "
+                "is correlating with measurable terrain normalization across all tracked axes. "
+                "Exercise and anti-inflammatory diet are supporting M3 recovery pattern. "
+                "This entry represents a positive deviation from the Band 3 trajectory logged "
+                "12/01–12/05. Continue current pattern; 14-day positive streak required to "
+                "confirm stable baseline reclassification."
+            ),
+            "band": "2 (Stabilization)",
+            "flare_risk": "Low–Moderate — 22%",
+            "recommendation": "Maintain current activity and diet pattern. Reassess in 14 days.",
         },
         "created_at": "2025-12-10T20:15:00Z",
     },
@@ -108,9 +133,23 @@ def make_entry(body: dict, entry_id: str) -> dict:
         "diet_notes": body.get("diet_notes"),
         "sleep_quality": body.get("sleep_quality"),
         "notes": body.get("notes"),
-        "analysis": "Mock AI analysis: symptom pattern logged successfully. Monitoring recommended.",
-        "pattern_observations": ["New entry added — insufficient data for pattern detection yet."],
-        "ai_analysis": {"eoh_band_estimate": 2, "flare_risk": "unknown", "recommended_action": "Continue logging"},
+        "analysis": (
+            "Symptom pattern logged. Insufficient longitudinal data for deviation "
+            "classification — baseline requires a minimum of 5 entries."
+        ),
+        "pattern_observations": [
+            "New entry — continue logging daily to establish deviation baseline.",
+        ],
+        "ai_analysis": {
+            "analysis": (
+                "Stack 2 | Band undetermined — new entry, insufficient history for classification. "
+                "Continue daily logging to establish M3 baseline. "
+                "Next structured assessment available after 5 entries."
+            ),
+            "band": "Undetermined",
+            "flare_risk": "Insufficient data",
+            "recommendation": "Log daily for 5 days to establish baseline.",
+        },
         "created_at": now,
     }
 

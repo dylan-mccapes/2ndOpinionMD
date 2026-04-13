@@ -163,8 +163,8 @@ export function DoctorPortalPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-1 text-[var(--accent-blue)]"
         >
@@ -177,19 +177,19 @@ export function DoctorPortalPage() {
 
       {/* CONNECT PATIENT */}
       <div
-        className="p-4 rounded border mb-4 bg-[var(--bg-secondary)] border-[var(--border-color)]"
+        className="p-5 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
       >
         <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-blue)]">
           CONNECT PATIENT
         </span>
-        <form onSubmit={handleInvite} className="flex gap-2 mb-2">
+        <form onSubmit={handleInvite} className="flex gap-3 mb-2">
           <input
             type="email"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             placeholder="patient@example.com"
             required
-            className="flex-1 px-3 py-2 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
+            className="flex-1 px-4 py-3 rounded text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
           />
           <Button
             type="submit"
@@ -231,7 +231,7 @@ export function DoctorPortalPage() {
 
       {/* PATIENTS LIST */}
       <div
-        className="p-4 rounded border mb-4 bg-[var(--bg-secondary)] border-[var(--border-color)]"
+        className="p-5 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">

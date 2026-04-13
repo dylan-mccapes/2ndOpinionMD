@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DS, PatientNav, SectionLabel, Divider, LeftTrack, Badge } from '../lib/ui';
 import { useAuth } from '../context/AuthContext';
 import { useTimelineStatus } from '../hooks/useTimelineStatus';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
@@ -37,35 +38,52 @@ interface FlareReportResponse {
   safety_warnings?: string[];
 }
 
+function questionTypeColor(qt: string): string {
+  switch (qt) {
+    case 'A': return DS.color.red;
+    case 'B': return DS.color.yellow;
+    case 'C': return DS.color.blue;
+    case 'D': return DS.color.green;
+    default:  return DS.color.textSecondary;
+  }
+}
+
+const CARD: React.CSSProperties = {
+  backgroundColor: DS.color.bgSecondary,
+  border: DS.border,
+  borderRadius: DS.radius,
+  padding: DS.pad.card,
+};
+
 export function EohdPage() {
   const { token, isAuthenticated } = useAuth();
   const { status, loading: statusLoading } = useTimelineStatus();
   const navigate = useNavigate();
 
-  const [query, setQuery] = useState('');
-  const [plan, setPlan] = useState<RouterPlanResponse | null>(null);
+  const [query, setQuery]             = useState('');
+  const [plan, setPlan]               = useState<RouterPlanResponse | null>(null);
   const [flareReport, setFlareReport] = useState<FlareReportResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(false);
   const [flareLoading, setFlareLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [flareError, setFlareError] = useState('');
+  const [error, setError]             = useState('');
+  const [flareError, setFlareError]   = useState('');
 
   const hasTimeline = status?.has_timeline ?? false;
-  const timelineId = status?.timeline_id ?? null;
+  const timelineId  = status?.timeline_id  ?? null;
 
   if (statusLoading) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading...</p>
+      <div className="space-y-6">
+        <p className="text-xs font-sans" style={{ color: DS.color.textMuted }}>Loading…</p>
       </div>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
-          Please log in to access EoHD.
+      <div className="space-y-6">
+        <p className="text-sm font-sans" style={{ color: DS.color.textMuted }}>
+          Please log in to access Detective mode.
         </p>
       </div>
     );
@@ -73,30 +91,30 @@ export function EohdPage() {
 
   if (!hasTimeline) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-xl font-mono font-bold mb-2" style={{ color: 'var(--accent-yellow)' }}>
-            EoHD MODE
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-xl font-mono font-bold" style={{ color: DS.color.yellow, marginBottom: DS.mb.xs }}>
+            DETECTIVE
           </h1>
-          <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm font-sans" style={{ color: DS.color.textMuted }}>
             Timeline-aware EoH Detective reasoning.
           </p>
         </div>
-        <div
-          className="p-6 rounded-lg border text-center"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--accent-yellow)' }}
-        >
-          <p className="text-sm font-mono mb-2" style={{ color: 'var(--accent-yellow)' }}>
+
+        <PatientNav />
+
+        <div className="rounded border" style={{ ...CARD, borderColor: DS.color.yellow, textAlign: 'center' }}>
+          <p className="text-sm font-mono font-bold" style={{ color: DS.color.yellow, marginBottom: DS.mb.sm }}>
             TIMELINE REQUIRED
           </p>
-          <p className="text-sm font-sans mb-4" style={{ color: 'var(--text-secondary)' }}>
-            Upload your patient timeline PDF to unlock EoHD investigations.
+          <p className="text-sm font-sans" style={{ color: DS.color.textSecondary, marginBottom: DS.mb.lg }}>
+            Upload your patient timeline PDF to unlock Detective investigations.
           </p>
           <button
             type="button"
             onClick={() => navigate('/timeline/upload')}
-            className="px-6 py-2 rounded text-sm font-mono font-bold cursor-pointer"
-            style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
+            className="rounded text-sm font-mono font-bold cursor-pointer"
+            style={{ padding: '0.625rem 1.25rem', backgroundColor: DS.color.green, color: '#000' }}
           >
             UPLOAD TIMELINE
           </button>
@@ -111,7 +129,6 @@ export function EohdPage() {
     setError('');
     setLoading(true);
     setPlan(null);
-
     try {
       const data = await apiFetch<RouterPlanResponse>('/api/eoh/router_plan', {
         method: 'POST',
@@ -123,11 +140,7 @@ export function EohdPage() {
       });
       setPlan(data);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(`API ${err.status}: ${err.body}`);
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to generate plan');
-      }
+      setError(err instanceof ApiError ? `API ${err.status}: ${err.body}` : err instanceof Error ? err.message : 'Failed to generate plan');
     } finally {
       setLoading(false);
     }
@@ -138,206 +151,203 @@ export function EohdPage() {
     setFlareError('');
     setFlareLoading(true);
     setFlareReport(null);
-
     try {
       const data = await apiFetch<FlareReportResponse>(`/api/eoh/flarereport/${timelineId}`, {
         headers: authHeaders(token),
       });
       setFlareReport(data);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setFlareError(`API ${err.status}: ${err.body}`);
-      } else {
-        setFlareError(err instanceof Error ? err.message : 'Failed to load flare report');
-      }
+      setFlareError(err instanceof ApiError ? `API ${err.status}: ${err.body}` : err instanceof Error ? err.message : 'Failed to load flare report');
     } finally {
       setFlareLoading(false);
     }
   };
 
-  const questionTypeColor = (qt: string): string => {
-    switch (qt) {
-      case 'A': return 'var(--accent-red)';
-      case 'B': return 'var(--accent-yellow)';
-      case 'C': return 'var(--accent-blue)';
-      case 'D': return 'var(--accent-green)';
-      case 'E': return 'var(--text-muted)';
-      default: return 'var(--text-secondary)';
-    }
-  };
-
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-xl font-mono font-bold mb-2" style={{ color: 'var(--accent-green)' }}>
-          EoHD MODE
+    <div className="space-y-8">
+
+      {/* ── Page header ── */}
+      <div>
+        <h1 className="text-xl font-mono font-bold" style={{ color: DS.color.green, marginBottom: DS.mb.xs }}>
+          DETECTIVE
         </h1>
-        <p className="text-sm font-sans" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm font-sans" style={{ color: DS.color.textMuted }}>
           Timeline-aware EoH Detective reasoning. {status?.event_count} events loaded.
         </p>
       </div>
 
-      <div className="space-y-6">
-        <div
-          className="p-5 rounded-lg border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-        >
-          <span className="text-sm font-mono font-bold block mb-4" style={{ color: 'var(--accent-green)' }}>
-            EoH ROUTER QUERY
-          </span>
-          <form onSubmit={handlePlanQuery} className="space-y-3">
-            <div className="flex gap-2">
+      <PatientNav />
+
+      <div className="space-y-8">
+
+        {/* ── Router Query ── */}
+        <div style={CARD}>
+          <SectionLabel>EoH Router Query</SectionLabel>
+
+          <form onSubmit={handlePlanQuery}>
+            <div className="flex" style={{ gap: DS.gap.lg }}>
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="flex-1 p-2 rounded-lg border text-sm font-mono"
-                style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                placeholder="Ask a clinical question about the timeline..."
+                className="flex-1 rounded border text-sm font-sans"
+                style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: DS.color.bgTertiary,
+                  borderColor: DS.color.border,
+                  color: DS.color.textPrimary,
+                }}
+                placeholder="Ask a clinical question about the timeline…"
               />
               <button
                 type="submit"
                 disabled={!query.trim() || loading}
-                className="px-4 py-2 rounded text-xs font-mono font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent-green)', color: '#000' }}
+                className="rounded text-xs font-mono font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                style={{ padding: '0.75rem 1.25rem', backgroundColor: DS.color.green, color: '#000' }}
               >
-                {loading ? '...' : 'PLAN'}
+                {loading ? '…' : 'PLAN'}
               </button>
             </div>
           </form>
 
           {error && (
-            <div className="mt-3 p-3 rounded-lg text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div
+              className="rounded text-sm font-sans"
+              style={{ marginTop: DS.mb.md, padding: DS.pad.inner, backgroundColor: DS.color.bgTertiary, color: DS.color.red }}
+            >
               {error}
             </div>
           )}
 
           {plan && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>
-                  QUESTION TYPE:
+            <div style={{ marginTop: DS.mb.lg }}>
+              {/* Question type */}
+              <div className="flex items-center flex-wrap" style={{ gap: DS.gap.md, marginBottom: DS.mb.md }}>
+                <span className="text-xs font-sans font-medium" style={{ color: DS.color.textMuted }}>
+                  Question type
                 </span>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded" style={{ color: questionTypeColor(plan.question_type), backgroundColor: 'var(--bg-tertiary)' }}>
+                <Badge color={questionTypeColor(plan.question_type)} style={{ fontFamily: 'var(--font-mono)' }}>
                   {plan.question_type}
-                </span>
-                <span className="text-xs font-sans" style={{ color: 'var(--text-muted)' }}>
+                </Badge>
+                <span className="text-xs font-sans" style={{ color: DS.color.textMuted }}>
                   {plan.question_type_explanation}
                 </span>
               </div>
 
+              {/* Module plan */}
               {plan.module_plan.length > 0 && (
-                <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    EXECUTION PLAN:
-                  </span>
-                  <div className="space-y-2">
+                <div style={{ marginBottom: DS.mb.md }}>
+                  <SectionLabel>Execution Plan</SectionLabel>
+                  <div className="space-y-3">
                     {plan.module_plan.map((step) => (
-                      <div key={step.step} className="pl-3" style={{ borderLeft: '2px solid var(--accent-green)' }}>
-                        <span className="text-xs font-mono font-bold" style={{ color: 'var(--accent-green)' }}>
-                          STEP {step.step}:
-                        </span>
-                        <span className="text-xs font-mono ml-1" style={{ color: 'var(--text-primary)' }}>
-                          {step.goal}
-                        </span>
-                        <div className="flex flex-wrap gap-1 mt-1">
+                      <LeftTrack key={step.step} color="green">
+                        <div className="flex items-baseline" style={{ gap: DS.gap.md, marginBottom: DS.mb.xs }}>
+                          <span className="text-xs font-mono font-bold" style={{ color: DS.color.green }}>
+                            STEP {step.step}
+                          </span>
+                          <span className="text-xs font-sans" style={{ color: DS.color.textPrimary }}>
+                            {step.goal}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap" style={{ gap: DS.gap.sm, marginBottom: DS.mb.xs }}>
                           {step.modules.map((mod) => (
-                            <span key={mod} className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-blue)' }}>
-                              {mod}
-                            </span>
+                            <Badge key={mod} color={DS.color.blue}>{mod}</Badge>
                           ))}
                         </div>
-                        <p className="text-xs font-sans leading-relaxed mt-1" style={{ color: 'var(--text-muted)' }}>
+                        <p className="text-xs font-sans leading-relaxed" style={{ color: DS.color.textMuted }}>
                           {step.why}
                         </p>
-                      </div>
+                      </LeftTrack>
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Doc retrieval */}
               {plan.doc_retrieval_plan.length > 0 && (
                 <div>
-                  <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    DATA RETRIEVAL:
-                  </span>
-                  {plan.doc_retrieval_plan.map((item, i) => (
-                    <div key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--text-muted)' }}>
-                      <span style={{ color: 'var(--accent-blue)' }}>{item.module}</span>: {item.purpose}
-                    </div>
-                  ))}
+                  <SectionLabel>Data Retrieval</SectionLabel>
+                  <div className="space-y-2">
+                    {plan.doc_retrieval_plan.map((item, i) => (
+                      <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: DS.color.textMuted }}>
+                        <span style={{ color: DS.color.blue }}>{item.module}</span>: {item.purpose}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div
-          className="p-5 rounded-lg border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-red)' }}>
-              FLARE REPORT
-            </span>
+        {/* ── Flare Report ── */}
+        <div style={CARD}>
+          <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.lg }}>
+            <SectionLabel style={{ marginBottom: 0 }}>Flare Report</SectionLabel>
             <button
               type="button"
               onClick={handleFlareReport}
               disabled={flareLoading}
-              className="px-3 py-1 rounded text-xs font-mono font-bold cursor-pointer disabled:opacity-50"
-              style={{ backgroundColor: 'var(--accent-red)', color: '#000' }}
+              className="rounded text-xs font-mono font-bold cursor-pointer disabled:opacity-50"
+              style={{ padding: '0.5rem 1rem', backgroundColor: DS.color.red, color: '#fff' }}
             >
-              {flareLoading ? '...' : 'GENERATE'}
+              {flareLoading ? '…' : 'GENERATE'}
             </button>
           </div>
 
           {flareError && (
-            <div className="p-3 rounded-lg text-sm font-mono" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
+            <div
+              className="rounded text-sm font-sans"
+              style={{ padding: DS.pad.inner, backgroundColor: DS.color.bgTertiary, color: DS.color.red, marginBottom: DS.mb.md }}
+            >
               {flareError}
             </div>
           )}
 
           {flareReport && (
-            <div className="space-y-3">
-              <div
-                className="p-3 rounded-lg text-sm font-mono"
-                style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderLeft: '3px solid var(--accent-red)' }}
-              >
-                {flareReport.flare_forecast}
-              </div>
+            <div className="space-y-5">
 
-              <div className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                {flareReport.timeline_summary}
-              </div>
+              {/* Forecast */}
+              <LeftTrack color="cyan">
+                <p className="text-sm font-sans leading-relaxed" style={{ color: DS.color.textPrimary }}>
+                  {flareReport.flare_forecast}
+                </p>
+              </LeftTrack>
 
+              {/* Timeline summary */}
+              {flareReport.timeline_summary && (
+                <p className="text-xs font-sans leading-relaxed" style={{ color: DS.color.textMuted }}>
+                  {flareReport.timeline_summary}
+                </p>
+              )}
+
+              {/* Probabilistic differential */}
               {Object.keys(flareReport.probabilistic_differential).length > 0 && (
                 <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <Divider />
                   <div>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                      DIAGNOSTIC LANDSCAPE:
-                    </span>
-                    <div className="space-y-1">
+                    <SectionLabel>Diagnostic Landscape</SectionLabel>
+                    <div className="space-y-3">
                       {Object.entries(flareReport.probabilistic_differential)
                         .sort(([, a], [, b]) => b - a)
                         .map(([dx, prob]) => (
-                          <div key={dx} className="flex items-center gap-2">
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{dx}</span>
-                                <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>{(prob * 100).toFixed(1)}%</span>
-                              </div>
-                              <div className="w-full h-2 rounded mt-1" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                                <div
-                                  className="h-2 rounded transition-all duration-300"
-                                  style={{
-                                    width: `${prob * 100}%`,
-                                    backgroundColor: prob > 0.5 ? 'var(--accent-red)' :
-                                                     prob > 0.25 ? 'var(--accent-yellow)' :
-                                                     'var(--accent-blue)',
-                                  }}
-                                />
-                              </div>
+                          <div key={dx}>
+                            <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.xs }}>
+                              <span className="text-xs font-sans" style={{ color: DS.color.textPrimary }}>{dx}</span>
+                              <span className="text-xs font-mono" style={{ color: DS.color.yellow }}>{(prob * 100).toFixed(1)}%</span>
+                            </div>
+                            <div
+                              className="rounded-full"
+                              style={{ height: '4px', backgroundColor: DS.color.bgTertiary, position: 'relative', overflow: 'hidden' }}
+                            >
+                              <div
+                                style={{
+                                  position: 'absolute', left: 0, top: 0, bottom: 0,
+                                  width: `${prob * 100}%`,
+                                  borderRadius: '9999px',
+                                  backgroundColor: prob > 0.5 ? DS.color.red : prob > 0.25 ? DS.color.yellow : DS.color.blue,
+                                }}
+                              />
                             </div>
                           </div>
                         ))}
@@ -346,90 +356,102 @@ export function EohdPage() {
                 </>
               )}
 
+              {/* Precursor signals */}
               {flareReport.precursor_signals.length > 0 && (
                 <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <Divider />
                   <div>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                      PRECURSOR SIGNALS:
-                    </span>
-                    {flareReport.precursor_signals.map((sig, i) => (
-                      <div key={i} className="text-xs font-sans leading-relaxed mb-1 pl-2" style={{ borderLeft: '2px solid var(--accent-yellow)', color: 'var(--text-primary)' }}>
-                        {sig.signal} — {sig.description}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {flareReport.risk_drivers.length > 0 && (
-                <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-                  <div>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                      RISK DRIVERS:
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {flareReport.risk_drivers.map((d, i) => (
-                        <span key={i} className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-red)' }}>
-                          {d.driver} ({(d.weight * 100).toFixed(0)}%)
-                        </span>
+                    <SectionLabel>Precursor Signals</SectionLabel>
+                    <div className="space-y-2">
+                      {flareReport.precursor_signals.map((sig, i) => (
+                        <p
+                          key={i}
+                          className="text-xs font-sans leading-relaxed"
+                          style={{ color: DS.color.textPrimary, borderLeft: `2px solid ${DS.color.yellow}`, paddingLeft: '0.75rem' }}
+                        >
+                          <span style={{ color: DS.color.yellow }}>{sig.signal}</span> — {sig.description}
+                        </p>
                       ))}
                     </div>
                   </div>
                 </>
               )}
 
+              {/* Risk drivers */}
+              {flareReport.risk_drivers.length > 0 && (
+                <>
+                  <Divider />
+                  <div>
+                    <SectionLabel>Risk Drivers</SectionLabel>
+                    <div className="flex flex-wrap" style={{ gap: DS.gap.sm }}>
+                      {flareReport.risk_drivers.map((d, i) => (
+                        <Badge key={i} color={DS.color.red}>
+                          {d.driver} ({(d.weight * 100).toFixed(0)}%)
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Contradictions */}
               {flareReport.contradictions.length > 0 && (
                 <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <Divider />
                   <div>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-yellow)' }}>
-                      CONTRADICTIONS:
-                    </span>
-                    {flareReport.contradictions.map((c, i) => (
-                      <p key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--accent-yellow)' }}>
-                        {c}
-                      </p>
-                    ))}
+                    <SectionLabel style={{ color: DS.color.yellow }}>Contradictions</SectionLabel>
+                    <div className="space-y-2">
+                      {flareReport.contradictions.map((c, i) => (
+                        <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: DS.color.yellow }}>
+                          {c}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
 
+              {/* Clinician guidance */}
               {flareReport.guidance_for_clinician.length > 0 && (
                 <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                  <Divider />
                   <div>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--text-secondary)' }}>
-                      CLINICIAN GUIDANCE:
-                    </span>
-                    {flareReport.guidance_for_clinician.map((g, i) => (
-                      <p key={i} className="text-xs font-sans leading-relaxed mb-1" style={{ color: 'var(--text-muted)' }}>
-                        {g}
-                      </p>
-                    ))}
+                    <SectionLabel>Clinician Guidance</SectionLabel>
+                    <div className="space-y-2">
+                      {flareReport.guidance_for_clinician.map((g, i) => (
+                        <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: DS.color.textMuted }}>
+                          {g}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
 
+              {/* Safety warnings */}
               {flareReport.safety_warnings && flareReport.safety_warnings.length > 0 && (
                 <>
-                  <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                    <span className="text-xs font-mono font-bold block mb-1" style={{ color: 'var(--accent-red)' }}>
-                      SAFETY WARNINGS:
-                    </span>
-                    {flareReport.safety_warnings.map((w, i) => (
-                      <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: 'var(--accent-red)' }}>
-                        {w}
-                      </p>
-                    ))}
+                  <Divider />
+                  <div
+                    className="rounded"
+                    style={{ padding: DS.pad.inner, backgroundColor: DS.color.bgTertiary, borderLeft: `3px solid ${DS.color.red}` }}
+                  >
+                    <SectionLabel style={{ color: DS.color.red }}>Safety Warnings</SectionLabel>
+                    <div className="space-y-2">
+                      {flareReport.safety_warnings.map((w, i) => (
+                        <p key={i} className="text-xs font-sans leading-relaxed" style={{ color: DS.color.red }}>
+                          {w}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
+
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

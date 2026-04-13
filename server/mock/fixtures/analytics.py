@@ -3,38 +3,68 @@ from __future__ import annotations
 
 ANALYTICS_SUMMARY = {
     "patient_id": "norman-dev-timeline",
-    "window_days": 7,
-    "event_counts": {
-        "lab": 42,
-        "medication": 31,
-        "visit": 18,
-        "diagnosis": 9,
-        "procedure": 6,
-        "page": 0,
-    },
     "total_events": 106,
-    "recent_events": [
+    "span_days": 14236,
+    "windows": [
         {
-            "event_type": "lab",
-            "count": 8,
-            "latest_ts": "2025-12-05T00:00:00Z",
+            "window_start": "2025-11-01T00:00:00Z",
+            "window_end": "2025-11-08T00:00:00Z",
+            "stability_score": 0.52,
+            "event_count": 9,
         },
         {
-            "event_type": "visit",
-            "count": 2,
-            "latest_ts": "2025-11-28T00:00:00Z",
+            "window_start": "2025-11-08T00:00:00Z",
+            "window_end": "2025-11-15T00:00:00Z",
+            "stability_score": 0.48,
+            "event_count": 11,
+        },
+        {
+            "window_start": "2025-11-15T00:00:00Z",
+            "window_end": "2025-11-22T00:00:00Z",
+            "stability_score": 0.41,
+            "event_count": 14,
+        },
+        {
+            "window_start": "2025-11-22T00:00:00Z",
+            "window_end": "2025-11-29T00:00:00Z",
+            "stability_score": 0.38,
+            "event_count": 18,
+        },
+        {
+            "window_start": "2025-11-29T00:00:00Z",
+            "window_end": "2025-12-05T00:00:00Z",
+            "stability_score": 0.35,
+            "event_count": 21,
         },
     ],
-    "top_event_types": ["lab", "medication", "visit", "diagnosis"],
-    "date_range": {
-        "earliest": "1987-03-15T00:00:00Z",
-        "latest": "2025-12-05T00:00:00Z",
+    "phase_shifts": [
+        {
+            "timestamp": "2019-06-15T00:00:00Z",
+            "from_phase": "Stable",
+            "to_phase": "Flare",
+        },
+        {
+            "timestamp": "2022-11-10T00:00:00Z",
+            "from_phase": "Remission",
+            "to_phase": "Transitioning",
+        },
+        {
+            "timestamp": "2025-10-01T00:00:00Z",
+            "from_phase": "Transitioning",
+            "to_phase": "Decompensation",
+        },
+    ],
+    "flare_episodes": [
+        {"start": "2019-06-01", "end": "2019-09-30", "confidence": 0.88},
+        {"start": "2022-11-01", "end": "2023-03-31", "confidence": 0.74},
+        {"start": "2025-10-01", "end": "2025-12-10", "confidence": 0.81},
+    ],
+    "noise_floor": 0.12,
+    "charts": {
+        "stability_band": "",
+        "terrain_trajectory": "",
     },
-    "flare_windows": [
-        {"start": "2019-06-01", "end": "2019-09-30", "intensity": "high"},
-        {"start": "2022-11-01", "end": "2023-03-31", "intensity": "moderate"},
-        {"start": "2025-10-01", "end": "2025-12-10", "intensity": "moderate"},
-    ],
+    "disclaimer": "This analysis is generated from structured timeline data and is intended for informational purposes only. It does not constitute medical advice.",
 }
 
 ANALYTICS_PRECEDENCE = {

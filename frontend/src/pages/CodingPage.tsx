@@ -38,8 +38,8 @@ export function CodingPage() {
   const isLoading = codingStatus === 'loading';
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-2"
           style={{ color: 'var(--accent-blue)' }}
@@ -55,7 +55,7 @@ export function CodingPage() {
       </div>
 
       <div
-        className="p-5 rounded-lg border mb-6"
+        className="p-5 rounded border"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',
@@ -71,7 +71,7 @@ export function CodingPage() {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="e.g. 62F presenting with chest pain and dyspnea"
-          className="w-full p-3 rounded-lg border text-sm font-mono resize-y"
+          className="w-full px-4 py-3 rounded border text-sm font-mono resize-y"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -92,7 +92,7 @@ export function CodingPage() {
           value={context}
           onChange={(e) => setContext(e.target.value)}
           placeholder="e.g. Emergency department, initial encounter"
-          className="w-full p-2 rounded-lg border text-sm font-mono"
+          className="w-full px-4 py-3 rounded border text-sm font-mono"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -105,7 +105,7 @@ export function CodingPage() {
           <button
             onClick={handleSubmit}
             disabled={!note.trim() || isLoading}
-            className="px-4 py-2 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: 'var(--accent-blue)',
               color: '#fff',
@@ -116,12 +116,10 @@ export function CodingPage() {
         </div>
       </div>
 
-      <div className="mb-6">
-        <TransparencyPanel
-          externalCallMade={externalCallMade}
-          callTimestamp={callTimestamp}
-        />
-      </div>
+      <TransparencyPanel
+        externalCallMade={externalCallMade}
+        callTimestamp={callTimestamp}
+      />
 
       {submitted && (
         <CodingReview

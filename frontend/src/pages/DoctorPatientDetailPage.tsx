@@ -81,8 +81,8 @@ export function DoctorPatientDetailPage() {
   }, [token, patientId]);
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <Link
           to="/doctor"
           className="text-xs font-mono no-underline mb-2 inline-block text-[var(--accent-blue)]"

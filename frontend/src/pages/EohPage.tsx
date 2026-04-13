@@ -43,8 +43,8 @@ export function EohPage() {
     statusBarStatus === 'streaming';
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-2"
           style={{ color: 'var(--accent-green)' }}
@@ -61,7 +61,7 @@ export function EohPage() {
       </div>
 
       <div
-        className="p-5 rounded-lg border mb-6"
+        className="p-5 rounded border"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderColor: 'var(--border-color)',
@@ -77,7 +77,7 @@ export function EohPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="e.g. 34F, bilateral joint pain, morning stiffness >1hr, fatigue, ANA+, family hx SLE"
-          className="w-full p-3 rounded-lg border text-sm font-mono resize-y"
+          className="w-full px-4 py-3 rounded border text-sm font-mono resize-y"
           style={{
             backgroundColor: 'var(--bg-tertiary)',
             borderColor: 'var(--border-color)',
@@ -90,7 +90,7 @@ export function EohPage() {
           <button
             onClick={handleSubmit}
             disabled={!query.trim() || isRunning}
-            className="px-4 py-2 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 rounded text-sm font-mono font-bold tracking-wide cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: 'var(--accent-green)',
               color: '#000',
@@ -101,12 +101,10 @@ export function EohPage() {
         </div>
       </div>
 
-      <div className="mb-6">
-        <TransparencyPanel
-          externalCallMade={externalCallMade}
-          callTimestamp={callTimestamp}
-        />
-      </div>
+      <TransparencyPanel
+        externalCallMade={externalCallMade}
+        callTimestamp={callTimestamp}
+      />
 
       {submitted && (
         <StreamingDisplay

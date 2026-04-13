@@ -1,7 +1,7 @@
 export function PortalPage() {
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-xl font-mono font-bold mb-1"
           style={{ color: 'var(--accent-green)' }}

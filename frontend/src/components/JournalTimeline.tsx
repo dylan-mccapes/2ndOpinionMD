@@ -10,7 +10,6 @@ interface TimelineEntry {
   zone: number | null;
 }
 
-/** Backend returns { initialDiagnosis, journalEntries } - we map to this shape */
 interface BackendTimelineResponse {
   initialDiagnosis?: { date?: string; diagnoses?: unknown[] };
   journalEntries?: Array<{
@@ -31,10 +30,17 @@ function mapBackendToTimeline(raw: BackendTimelineResponse): { entries: Timeline
   const journalEntries = raw.journalEntries ?? [];
   const entries: TimelineEntry[] = journalEntries.map((e) => {
     const dateVal = e.date ?? e.created_at;
-    const dateStr = typeof dateVal === 'string' ? dateVal : dateVal != null ? new Date(dateVal as Date).toISOString() : new Date().toISOString();
+    const dateStr =
+      typeof dateVal === 'string'
+        ? dateVal
+        : dateVal != null
+        ? new Date(dateVal as Date).toISOString()
+        : new Date().toISOString();
     return {
       date: dateStr,
-      symptoms: Array.isArray(e.symptoms) ? e.symptoms.map((s) => ({ symptom: s.symptom ?? '', severity: s.severity ?? 5 })) : [],
+      symptoms: Array.isArray(e.symptoms)
+        ? e.symptoms.map((s) => ({ symptom: s.symptom ?? '', severity: s.severity ?? 5 }))
+        : [],
       stress_level: typeof e.stress_level === 'number' ? e.stress_level : null,
       sleep_quality: typeof e.sleep_quality === 'number' ? e.sleep_quality : null,
       zone: null,
@@ -42,6 +48,13 @@ function mapBackendToTimeline(raw: BackendTimelineResponse): { entries: Timeline
   });
   return { entries };
 }
+
+const CARD: React.CSSProperties = {
+  padding: '1.25rem 1.5rem',
+  borderRadius: 'var(--radius)',
+  border: '1px solid var(--border-color)',
+  backgroundColor: 'var(--bg-secondary)',
+};
 
 export function JournalTimeline({ reportId }: JournalTimelineProps) {
   const { token } = useAuth();
@@ -55,9 +68,10 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
     setError('');
 
     try {
-      const result = await apiFetch<BackendTimelineResponse>(`/api/journal/timeline/${reportId}`, {
-        headers: authHeaders(token),
-      });
+      const result = await apiFetch<BackendTimelineResponse>(
+        `/api/journal/timeline/${reportId}`,
+        { headers: authHeaders(token) },
+      );
       setData(mapBackendToTimeline(result));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -99,12 +113,9 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
 
   if (loading) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          Loading timeline...
+      <div style={CARD}>
+        <p className="text-xs font-sans" style={{ color: 'var(--text-muted)' }}>
+          Loading timeline…
         </p>
       </div>
     );
@@ -112,22 +123,16 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
 
   if (error) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <p className="text-sm font-mono" style={{ color: 'var(--accent-red)' }}>{error}</p>
+      <div style={CARD}>
+        <p className="text-sm font-sans" style={{ color: 'var(--accent-red)' }}>{error}</p>
       </div>
     );
   }
 
   if (!data || data.entries.length === 0) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+      <div style={CARD}>
+        <p className="text-xs font-sans" style={{ color: 'var(--text-muted)' }}>
           No timeline data available for this report.
         </p>
       </div>
@@ -135,35 +140,51 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
   }
 
   return (
-    <div
-      className="p-4 rounded border"
-      style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-    >
-      <div className="mb-3">
-        <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-green)' }}>
-          TIMELINE
+    <div style={CARD}>
+      {/* Header */}
+      <div style={{ marginBottom: '1rem' }}>
+        <span className="text-xs font-sans font-medium uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+          Timeline
         </span>
-        <span className="text-xs font-mono ml-2" style={{ color: 'var(--text-muted)' }}>
-          {data.entries.length} entries
+        <span className="text-xs font-mono" style={{ color: 'var(--accent-green)', marginLeft: '0.5rem' }}>
+          ({data.entries.length})
         </span>
       </div>
 
-
-      <div className="relative">
+      {/* Vertical track */}
+      <div style={{ position: 'relative' }}>
         <div
-          className="absolute left-2 top-0 bottom-0 w-px"
-          style={{ backgroundColor: 'var(--border-color)' }}
+          style={{
+            position: 'absolute',
+            left: '0.4rem',
+            top: 0,
+            bottom: 0,
+            width: '1px',
+            backgroundColor: 'var(--border-color)',
+          }}
         />
 
         <div className="space-y-3">
           {data.entries.map((entry, i) => (
-            <div key={i} className="relative pl-6">
+            <div key={i} style={{ position: 'relative', paddingLeft: '1.5rem' }}>
+              {/* Zone dot */}
               <div
-                className="absolute left-1 top-1 w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: zoneColor(entry.zone) }}
+                style={{
+                  position: 'absolute',
+                  left: '0.125rem',
+                  top: '0.25rem',
+                  width: '0.625rem',
+                  height: '0.625rem',
+                  borderRadius: '9999px',
+                  backgroundColor: zoneColor(entry.zone),
+                }}
               />
 
-              <div className="flex items-center gap-2 mb-1">
+              {/* Date + zone label */}
+              <div
+                className="flex items-center flex-wrap"
+                style={{ gap: '0.5rem', marginBottom: '0.25rem' }}
+              >
                 <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>
                   {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
@@ -174,29 +195,39 @@ export function JournalTimeline({ reportId }: JournalTimelineProps) {
                 )}
               </div>
 
+              {/* Symptom chips */}
               {entry.symptoms.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-1">
+                <div
+                  className="flex flex-wrap"
+                  style={{ gap: '0.25rem', marginBottom: '0.25rem' }}
+                >
                   {entry.symptoms.map((s, j) => (
                     <span
                       key={j}
-                      className="text-xs font-mono px-1 rounded"
-                      style={{ color: severityColor(s.severity) }}
+                      className="text-xs font-sans rounded"
+                      style={{
+                        padding: '0.1rem 0.4rem',
+                        color: severityColor(s.severity),
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                      }}
                     >
-                      {s.symptom}({s.severity})
+                      {s.symptom} · {s.severity}
                     </span>
                   ))}
                 </div>
               )}
 
-              <div className="flex gap-3">
+              {/* Score row */}
+              <div className="flex" style={{ gap: '0.75rem' }}>
                 {entry.stress_level !== null && (
                   <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                    stress:{entry.stress_level}
+                    stress {entry.stress_level}/10
                   </span>
                 )}
                 {entry.sleep_quality !== null && (
                   <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                    sleep:{entry.sleep_quality}
+                    sleep {entry.sleep_quality}/10
                   </span>
                 )}
               </div>

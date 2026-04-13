@@ -351,7 +351,7 @@ export function StreamingDisplay({
   return (
     <div className="space-y-4">
       <div
-        className="px-5 py-3 rounded-lg border text-sm font-mono bg-[var(--bg-secondary)] flex items-center gap-2"
+        className="px-5 py-3 rounded border text-sm font-mono bg-[var(--bg-secondary)] flex items-center gap-2"
         style={{
           borderColor: statusColor(status),
           color: statusColor(status),
@@ -368,7 +368,7 @@ export function StreamingDisplay({
 
       {retrieval && (
         <div
-          className="px-5 py-3 rounded-lg border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
+          className="px-5 py-3 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Sources: {retrieval.sources_used}/{retrieval.sources_considered} |
           Retrieval confidence: {retrieval.confidence}
@@ -377,7 +377,7 @@ export function StreamingDisplay({
 
       {error && (
         <div
-          className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--accent-red)] text-[var(--accent-red)]"
+          className="p-5 rounded border bg-[var(--bg-secondary)] border-[var(--accent-red)] text-[var(--accent-red)]"
         >
           <p className="text-sm font-mono font-bold mb-1">ERROR</p>
           <p className="text-sm">{error}</p>
@@ -387,7 +387,7 @@ export function StreamingDisplay({
       {answer && (
         <div className="animate-fade-in">
           <div
-            className="p-5 rounded-lg border prose prose-sm max-w-none bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-primary)]"
+            className="p-5 rounded border prose prose-sm max-w-none bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-primary)]"
           >
             <div className="relative">
               <Markdown>{answer}</Markdown>
@@ -406,7 +406,7 @@ export function StreamingDisplay({
 
       {limitations.length > 0 && (
         <div
-          className="p-4 rounded-lg border bg-[var(--bg-secondary)] border-[var(--accent-yellow)]"
+          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--accent-yellow)]"
         >
           <p className="text-xs font-mono font-bold mb-2 text-[var(--accent-yellow)]">
             LIMITATIONS
@@ -423,7 +423,7 @@ export function StreamingDisplay({
 
       {confidence !== null && status === 'complete' && (
         <div
-          className="px-5 py-3 rounded-lg border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
+          className="px-5 py-3 rounded border text-xs font-mono bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-secondary)]"
         >
           Confidence: {Math.round(confidence * 100)}%
           {completion &&
@@ -432,14 +432,14 @@ export function StreamingDisplay({
       )}
 
       {(status === 'complete' || status === 'error') && (
-        <div className="flex items-center gap-3">
-          <Button onClick={() => setShowReceipts(!showReceipts)} variant="secondary">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button onClick={() => setShowReceipts(!showReceipts)} variant="secondary" size="md">
             {showReceipts ? 'HIDE RECEIPTS' : 'SHOW RECEIPTS'}
           </Button>
-          <Button onClick={handleExportJSON} variant="secondary">
+          <Button onClick={handleExportJSON} variant="secondary" size="md">
             EXPORT JSON
           </Button>
-          <Button onClick={handleExportHTML} variant="secondary">
+          <Button onClick={handleExportHTML} variant="secondary" size="md">
             EXPORT HTML
           </Button>
         </div>
@@ -447,7 +447,7 @@ export function StreamingDisplay({
 
       {showReceipts && (
         <div
-          className="p-5 rounded-lg border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
+          className="p-5 rounded border overflow-auto bg-[var(--bg-tertiary)] border-[var(--border-color)] max-h-96"
         >
           <pre className="text-xs font-mono whitespace-pre-wrap text-[var(--text-secondary)]">
             {JSON.stringify(getReceipt(), null, 2)}

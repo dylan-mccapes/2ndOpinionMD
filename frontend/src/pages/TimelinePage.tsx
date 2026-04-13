@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { PatientNav } from '../lib/ui';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { TimelineChartCard } from '../components/TimelineChartCard';
@@ -53,7 +54,7 @@ function TimelineTrack({ events }: { events: TimelineEvent[] }) {
               }}
             />
             <div
-              className="p-3 rounded-lg"
+              className="p-3 rounded"
               style={{ backgroundColor: 'var(--bg-tertiary)' }}
             >
               <div className="flex items-start justify-between gap-2 mb-1">
@@ -214,7 +215,7 @@ export function TimelinePage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-xl font-mono font-bold mb-2 text-[var(--accent-green)]">
           TIMELINE
@@ -224,27 +225,33 @@ export function TimelinePage() {
         </p>
       </div>
 
+      <PatientNav />
+
       {!isDoctor && (
         <>
-          <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-mono font-bold text-[var(--accent-green)]">PATIENT TIMELINE</span>
-              <Link to="/timeline/upload" className="text-xs font-mono no-underline text-[var(--accent-green)]">
+          <div
+            className="rounded border"
+            style={{ padding: '1.25rem 1.5rem', backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+          >
+            <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+              <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-green)' }}>PATIENT TIMELINE</span>
+              <Link to="/timeline/upload" className="text-xs font-mono no-underline" style={{ color: 'var(--accent-green)' }}>
                 UPLOAD / REPLACE
               </Link>
             </div>
 
             {patientLoading && <LoadingState label="Loading timeline..." />}
-            {patientError && <p className="text-xs font-mono text-[var(--accent-red)]">{patientError}</p>}
+            {patientError && <p className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>{patientError}</p>}
 
             {!patientLoading && !patientError && (!patientTimelineStatus || !patientTimelineStatus.has_timeline) && (
-              <div className="p-3 rounded-lg bg-[var(--bg-tertiary)]">
-                <p className="text-xs font-sans leading-relaxed mb-2 text-[var(--text-muted)]">
+              <div className="rounded" style={{ padding: '1rem', backgroundColor: 'var(--bg-tertiary)' }}>
+                <p className="text-xs font-sans leading-relaxed" style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                   No timeline data yet. Upload a timeline PDF to enable charts and timeline browsing.
                 </p>
                 <Link
                   to="/timeline/upload"
-                  className="inline-block px-3 py-1.5 rounded text-xs font-mono font-bold no-underline bg-[var(--accent-green)] text-black"
+                  className="inline-block rounded text-xs font-mono font-bold no-underline"
+                  style={{ padding: '0.375rem 0.75rem', backgroundColor: 'var(--accent-green)', color: '#000' }}
                 >
                   GO TO UPLOAD
                 </Link>
@@ -252,7 +259,7 @@ export function TimelinePage() {
             )}
 
             {!patientLoading && patientTimeline && patientTimeline.events.length > 0 && (
-              <div className="max-h-[32rem] overflow-y-auto pr-2">
+              <div style={{ maxHeight: '32rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
                 <TimelineTrack events={patientTimeline.events} />
               </div>
             )}
@@ -266,8 +273,14 @@ export function TimelinePage() {
 
       {isDoctor && (
         <>
-          <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-            <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-blue)]">
+          <div
+            className="rounded border"
+            style={{ padding: '1.25rem 1.5rem', backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+          >
+            <span
+              className="text-sm font-mono font-bold block"
+              style={{ color: 'var(--accent-blue)', marginBottom: '0.75rem' }}
+            >
               DOCTOR TIMELINE VIEW
             </span>
             {doctorLoading ? (
@@ -276,7 +289,13 @@ export function TimelinePage() {
               <select
                 value={selectedPatientId}
                 onChange={(e) => setSelectedPatientId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm font-mono border bg-[var(--bg-primary)] border-[var(--border-color)] text-[var(--text-primary)]"
+                className="w-full rounded text-sm font-mono border"
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: 'var(--bg-primary)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)',
+                }}
               >
                 <option value="">— Select patient —</option>
                 {doctorPatients.map((p) => (
@@ -287,28 +306,34 @@ export function TimelinePage() {
               </select>
             )}
             {doctorError && (
-              <p className="text-xs font-mono mt-2 text-[var(--accent-red)]">{doctorError}</p>
+              <p className="text-xs font-mono" style={{ color: 'var(--accent-red)', marginTop: '0.5rem' }}>{doctorError}</p>
             )}
           </div>
 
           {selectedPatientId && !selectedTimelineId && !doctorError && (
-            <div className="p-3 rounded-lg border text-xs font-sans bg-[var(--bg-secondary)] border-[var(--border-color)] text-[var(--text-muted)]">
+            <div
+              className="rounded border text-xs font-sans"
+              style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+            >
               Selected patient has no ingested timeline yet.
             </div>
           )}
 
           {selectedTimelineId && doctorTimeline && (
             <>
-              <div className="p-5 rounded-lg border bg-[var(--bg-secondary)] border-[var(--border-color)]">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
+              <div
+                className="rounded border"
+                style={{ padding: '1.25rem 1.5rem', backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+                  <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
                     TIMELINE EVENTS {selectedPatient ? `— ${selectedPatient.full_name ?? selectedPatient.email}` : ''}
                   </span>
-                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                  <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
                     {doctorTimeline.total_events} events
                   </span>
                 </div>
-                <div className="max-h-[32rem] overflow-y-auto pr-2">
+                <div style={{ maxHeight: '32rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
                   <TimelineTrack events={doctorTimeline.events} />
                 </div>
               </div>
@@ -317,8 +342,6 @@ export function TimelinePage() {
           )}
         </>
       )}
-    </div>
-  );
     </div>
   );
 }

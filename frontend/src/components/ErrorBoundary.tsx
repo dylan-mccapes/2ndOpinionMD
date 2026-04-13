@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         style={{ color: 'var(--text-primary)' }}
       >
         <div
-          className="p-6 rounded-xl border"
+          className="p-6 rounded border"
           style={{
             backgroundColor: 'var(--bg-secondary)',
             borderColor: 'var(--accent-red)',
@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 CAUSE
               </p>
               <p
-                className="text-sm font-mono p-3 rounded-lg"
+                className="text-sm font-mono p-3 rounded"
                 style={{
                   backgroundColor: 'var(--bg-tertiary)',
                   color: 'var(--text-primary)',
@@ -114,7 +114,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   COMPONENT STACK
                 </p>
                 <pre
-                  className="text-xs font-mono p-3 rounded-lg overflow-auto"
+                  className="text-xs font-mono p-3 rounded overflow-auto"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     color: 'var(--text-muted)',
@@ -133,10 +133,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               >
                 RECOVERY PATHS
               </p>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={this.handleReset}
-                  className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
+                  className="px-5 py-2.5 rounded text-xs font-mono font-bold cursor-pointer"
                   style={{
                     backgroundColor: 'var(--accent-green)',
                     color: '#000',
@@ -146,7 +146,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 </button>
                 <button
                   onClick={this.handleGoHome}
-                  className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
+                  className="px-5 py-2.5 rounded text-xs font-mono font-bold cursor-pointer"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     color: 'var(--text-secondary)',
@@ -157,7 +157,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 </button>
                 <button
                   onClick={this.handleReload}
-                  className="px-3 py-1.5 rounded text-xs font-mono cursor-pointer"
+                  className="px-5 py-2.5 rounded text-xs font-mono font-bold cursor-pointer"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     color: 'var(--text-secondary)',

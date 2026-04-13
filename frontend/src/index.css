@@ -29,6 +29,18 @@
   --accent-cyan: #06b6d4;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', monospace;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Global shape — edit here to change all rounding app-wide */
+  --radius: 4px;
+  --radius-sm: 2px;
+
+  /* Global spacing tokens */
+  --input-px: 14px;
+  --input-py: 10px;
+  --btn-px: 20px;
+  --btn-py: 9px;
+  --btn-px-sm: 14px;
+  --btn-py-sm: 7px;
 }
 
 :root.light {
@@ -97,12 +109,43 @@ code, pre, .font-mono {
   animation: blink 1s step-end infinite;
 }
 
+/* ── Base form elements ─────────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  border-radius: var(--radius);
+  padding: var(--input-py) var(--input-px);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--accent-green) !important;
   box-shadow: 0 0 0 1px var(--accent-green);
+}
+
+/* ── Base button ────────────────────────────────────────────────────────── */
+button {
+  border-radius: var(--radius);
+  padding: var(--btn-py) var(--btn-px);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 body:not(.light) {
@@ -113,3 +156,26 @@ body:not(.light) {
   );
   background-size: 24px 24px;
 }
+
+/* ── Layout centering — pure CSS, bypasses Tailwind scale issues ────────── */
+.app-content {
+  width: 100%;
+  max-width: 56rem;       /* 896px — same as Tailwind's max-w-4xl */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+  box-sizing: border-box;
+}
+
+/* ── space-y overrides — Tailwind v4 CSS-variable chain is unreliable ────── *
+ *  Redefine with plain > * + * selectors so gap always renders.              */
+.space-y-1 > * + * { margin-top: 0.25rem; }
+.space-y-2 > * + * { margin-top: 0.5rem;  }
+.space-y-3 > * + * { margin-top: 0.75rem; }
+.space-y-4 > * + * { margin-top: 1rem;    }
+.space-y-5 > * + * { margin-top: 1.25rem; }
+.space-y-6 > * + * { margin-top: 1.5rem;  }
+.space-y-8 > * + * { margin-top: 2rem;    }
+.space-y-10 > * + * { margin-top: 2.5rem; }
+.space-y-12 > * + * { margin-top: 3rem;   }

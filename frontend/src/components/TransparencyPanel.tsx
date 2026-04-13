@@ -9,7 +9,7 @@ export function TransparencyPanel({
 }: TransparencyPanelProps) {
   return (
     <div
-      className="p-4 rounded-lg border text-xs font-mono"
+      className="p-4 rounded border text-xs font-mono"
       style={{
         backgroundColor: 'var(--bg-secondary)',
         borderColor: 'var(--border-color)',

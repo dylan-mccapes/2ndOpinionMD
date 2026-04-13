@@ -19,9 +19,6 @@ export function Header() {
         ]
       : [
           { to: '/patient', label: 'PORTAL' },
-          { to: '/journal', label: 'JOURNAL' },
-          { to: '/timeline', label: 'TIMELINE' },
-          { to: '/eohd', label: 'EoHD' },
         ]
     : [
         { to: '/', label: 'MODES' },

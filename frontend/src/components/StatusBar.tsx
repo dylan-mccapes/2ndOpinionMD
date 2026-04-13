@@ -3,18 +3,22 @@ interface StatusBarProps {
   message?: string;
 }
 
-const STATUS_STYLES: Record<
-  StatusBarProps['status'],
-  { color: string; label: string; pulse: boolean }
-> = {
-  idle:     { color: 'var(--text-muted)',   label: 'IDLE',     pulse: false },
-  running:  { color: 'var(--accent-cyan)',  label: 'RUNNING',  pulse: true  },
-  complete: { color: 'var(--accent-green)', label: 'COMPLETE', pulse: false },
-  error:    { color: 'var(--accent-red)',   label: 'ERROR',    pulse: false },
+type StatusConfig = {
+  color: string;
+  label: string;
+  /** 'dot' = filled circle, 'pulse' = pulsing circle, 'check' = ✓ glyph */
+  shape: 'dot' | 'pulse' | 'check';
+};
+
+const STATUS: Record<StatusBarProps['status'], StatusConfig> = {
+  idle:     { color: 'var(--text-muted)',   label: 'IDLE',     shape: 'dot'   },
+  running:  { color: 'var(--accent-cyan)',  label: 'RUNNING',  shape: 'pulse' },
+  complete: { color: 'var(--accent-green)', label: 'COMPLETE', shape: 'check' },
+  error:    { color: 'var(--accent-red)',   label: 'ERROR',    shape: 'dot'   },
 };
 
 export function StatusBar({ status, message }: StatusBarProps) {
-  const { color, label, pulse } = STATUS_STYLES[status];
+  const { color, label, shape } = STATUS[status];
 
   return (
     <footer
@@ -26,13 +30,30 @@ export function StatusBar({ status, message }: StatusBarProps) {
       }}
     >
       <div className="flex items-center gap-2">
-        <span
-          className={`inline-block w-2 h-2 rounded-full${pulse ? ' animate-pulse' : ''}`}
-          style={{ backgroundColor: color }}
-        />
+        {shape === 'pulse' && (
+          <span
+            className="inline-block w-2 h-2 rounded-full animate-pulse"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        {shape === 'dot' && (
+          <span
+            className="inline-block w-2 h-2 rounded-full"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        {shape === 'check' && (
+          <span
+            className="inline-block text-xs leading-none"
+            style={{ color }}
+            aria-hidden="true"
+          >
+            ✓
+          </span>
+        )}
         <span style={{ color }}>{label}</span>
       </div>
-      {message && <span>{message}</span>}
+      {message && <span className="text-[var(--text-muted)]">{message}</span>}
     </footer>
   );
 }

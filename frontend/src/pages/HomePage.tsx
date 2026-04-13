@@ -54,7 +54,7 @@ export function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto mt-12 text-center">
+      <div className="mt-12 text-center">
         <p className="text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>Loading...</p>
       </div>
     );
@@ -77,8 +77,8 @@ export function HomePage() {
     : BASE_MODES;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-10">
+    <div className="space-y-8">
+      <div>
         <h1
           className="text-2xl font-mono font-bold mb-2"
           style={{ color: 'var(--text-primary)' }}
@@ -95,7 +95,7 @@ export function HomePage() {
 
       {!isAuthenticated && (
         <div
-          className="flex items-center gap-3 mb-8 p-5 rounded-lg border"
+          className="flex items-center gap-4 p-5 rounded border"
           style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--accent-green)' }}
         >
           <p className="text-sm font-mono flex-1" style={{ color: 'var(--text-secondary)' }}>
@@ -118,7 +118,7 @@ export function HomePage() {
         </div>
       )}
 
-      <div className="mb-6">
+      <div>
         <h2
           className="text-lg font-mono font-bold mb-2"
           style={{ color: 'var(--text-primary)' }}
@@ -145,7 +145,7 @@ export function HomePage() {
               }
             }}
             disabled={isAuthenticated && !mode.enabled}
-            className="text-left p-6 rounded-xl border-y border-r border-l-[3px] transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-left p-6 rounded border-y border-r border-l-[3px] transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               backgroundColor: 'var(--bg-secondary)',
               borderColor: 'var(--border-color)',
