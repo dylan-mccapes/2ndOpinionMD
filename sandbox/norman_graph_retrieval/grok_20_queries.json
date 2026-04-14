@@ -1,0 +1,122 @@
+[
+  {
+    "id": "Q01",
+    "query": "What are the strongest temporal associations between elevated CRP/ESR and episodes of joint pain or morning stiffness over the entire timeline?",
+    "tool_hints": ["graph_reduce", "graph_biomarker_icm", "graph_hybrid_search", "graph_bfs_expand"],
+    "probe_type": "biomarker_symptom_correlation"
+  },
+  {
+    "id": "Q02",
+    "query": "Starting from the first documented abnormal ANA result, trace the full connected treatment and diagnosis chain forward.",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand", "graph_pe_lorenz_classify"],
+    "probe_type": "seed_trace_forward"
+  },
+  {
+    "id": "Q03",
+    "query": "Which medication changes (additions, dose increases, or switches) appear to have produced the clearest improvement in joint symptoms or CRP levels?",
+    "tool_hints": ["graph_reduce", "graph_hybrid_search", "graph_bfs_expand", "graph_biomarker_icm"],
+    "probe_type": "treatment_response"
+  },
+  {
+    "id": "Q04",
+    "query": "Identify the major flare periods in the last 15 years and what common precursors or triggers they share.",
+    "tool_hints": ["graph_reduce", "graph_hybrid_search", "graph_bfs_expand", "graph_pe_lorenz_classify"],
+    "probe_type": "flare_pattern"
+  },
+  {
+    "id": "Q05",
+    "query": "How strongly does poor sleep quality correlate with next-day fatigue, brain fog, and joint stiffness the following day?",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand"],
+    "probe_type": "symptom_correlation"
+  },
+  {
+    "id": "Q06",
+    "query": "What are the key bridge events or narrative pivot points that connect otherwise separate phases of his disease trajectory?",
+    "tool_hints": ["graph_reduce", "graph_bridges"],
+    "probe_type": "structural_bridges"
+  },
+  {
+    "id": "Q07",
+    "query": "Which clinical events act as the strongest hubs (highest degree centrality) in Norman's overall connascence graph?",
+    "tool_hints": ["graph_reduce", "graph_centrality"],
+    "probe_type": "structural_hubs"
+  },
+  {
+    "id": "Q08",
+    "query": "Run an ICM/allostatic load simulation \u2014 during which periods does his inflammatory capacity appear to be most exceeded?",
+    "tool_hints": ["graph_reduce", "graph_biomarker_icm", "graph_pe_lorenz_classify"],
+    "probe_type": "icm_simulation"
+  },
+  {
+    "id": "Q09",
+    "query": "Are there detectable changepoints in CRP or ESR levels that reliably precede worsening joint symptoms?",
+    "tool_hints": ["graph_biomarker_icm", "graph_hybrid_search", "graph_bfs_expand"],
+    "probe_type": "changepoint_detection"
+  },
+  {
+    "id": "Q10",
+    "query": "What relationship exists between dietary notes (high-carb meals, skipped meals, etc.) and subsequent symptom severity or CRP spikes?",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand"],
+    "probe_type": "lifestyle_correlation"
+  },
+  {
+    "id": "Q11",
+    "query": "Compare treatment response patterns before and after starting major RA medications (methotrexate, prednisone, etc.).",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand", "graph_biomarker_icm", "graph_pe_lorenz_classify"],
+    "probe_type": "treatment_comparison"
+  },
+  {
+    "id": "Q12",
+    "query": "Which time periods show the highest disease stability versus highest instability?",
+    "tool_hints": ["graph_reduce", "graph_pe_lorenz_classify", "graph_pe_sweep"],
+    "probe_type": "stability_analysis"
+  },
+  {
+    "id": "Q13",
+    "query": "What are the densest clinical communities or clusters in his connascence graph?",
+    "tool_hints": ["graph_reduce", "graph_kcore", "graph_centrality"],
+    "probe_type": "structural_clusters"
+  },
+  {
+    "id": "Q14",
+    "query": "Identify events with high betweenness centrality \u2014 the narrative pivots in his story.",
+    "tool_hints": ["graph_reduce", "graph_centrality", "graph_bridges"],
+    "probe_type": "narrative_pivots"
+  },
+  {
+    "id": "Q15",
+    "query": "Starting from known high-CRP events, simulate possible flare propagation through the graph.",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand", "graph_pe_lorenz_classify", "graph_pe_govern_adjust"],
+    "probe_type": "flare_propagation"
+  },
+  {
+    "id": "Q16",
+    "query": "What are the longest gaps in laboratory monitoring, and did joint symptoms or fatigue worsen during those gaps?",
+    "tool_hints": ["graph_snapshot", "graph_hybrid_search", "graph_biomarker_icm"],
+    "probe_type": "monitoring_gaps"
+  },
+  {
+    "id": "Q17",
+    "query": "Trace the full connascence chain originating from his earliest abnormal rheumatoid factor or ANA result.",
+    "tool_hints": ["graph_hybrid_search", "graph_bfs_expand"],
+    "probe_type": "seed_trace_forward"
+  },
+  {
+    "id": "Q18",
+    "query": "How has Norman's A1c trended in relationship to his RA disease activity and CRP levels over time?",
+    "tool_hints": ["graph_biomarker_icm", "graph_hybrid_search"],
+    "probe_type": "biomarker_trend"
+  },
+  {
+    "id": "Q19",
+    "query": "Which events or nodes appear to be load-bearing (critical to the clinical narrative) in the graph?",
+    "tool_hints": ["graph_reduce", "graph_pe_lorenz_classify", "graph_pe_govern_adjust"],
+    "probe_type": "load_bearing"
+  },
+  {
+    "id": "Q20",
+    "query": "Overall, what does the Lorenz classification (KEEP/EVICT/REVIEW) reveal about signal versus noise across his 39-year record?",
+    "tool_hints": ["graph_reduce", "graph_pe_lorenz_classify", "graph_pe_sweep", "graph_pe_govern_adjust"],
+    "probe_type": "signal_noise"
+  }
+]

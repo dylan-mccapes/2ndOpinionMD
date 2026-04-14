@@ -95,6 +95,42 @@ def ollama_chat(
         return json.loads(resp.read().decode("utf-8"))
 
 
+def ollama_chat_messages(
+    base_url: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    *,
+    system: Optional[str] = None,
+    temperature: float = 0.2,
+    timeout_s: int = 600,
+) -> Dict[str, Any]:
+    """POST /api/chat with a full message list (multi-turn). Each item: role + content."""
+    import urllib.request
+
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [],
+        "stream": False,
+        "options": {"temperature": temperature},
+    }
+    if system:
+        payload["messages"].append({"role": "system", "content": system})
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content")
+        if isinstance(role, str) and isinstance(content, str):
+            payload["messages"].append({"role": role, "content": content})
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def ollama_reply_text(resp: Dict[str, Any]) -> str:
     msg = (resp.get("message") or {}).get("content")
     if isinstance(msg, str) and msg.strip():

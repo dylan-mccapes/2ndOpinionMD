@@ -2,6 +2,8 @@
 
 Deterministic **core-12** graph tools (`server/graph_traversal/agent_tools.py`) against the **norman_eric_roberts** Patient Timeline Vision JSON, plus optional **Ollama** synthesis with **eoh-llama-lucifer** and optional **provenance-engine** classification.
 
+**Dev platforms:** On **Windows**, run these commands in **WSL** with a **venv** and `PYTHONPATH=.` (see repo root `README.md`). **macOS** (including an M2 Ultra Mac Studio as the main server) and **Linux** use the same pattern.
+
 ## Python environment (read this on Debian / WSL)
 
 System Python on Debian/Ubuntu is **externally managed** ([PEP 668](https://peps.python.org/pep-0668/)): `pip install -r requirements-dev.txt` will fail with `externally-managed-environment` unless you use a venv or `--break-system-packages` (do not use the latter).
@@ -153,6 +155,36 @@ Use it when you only need **tool outputs + PE cross-check** in JSON: faster, no 
 With **`--with-centrality`**, an extra `graph_centrality` step runs on the reduced set (exploratory, not required for Q&A).
 
 **Tool agent harness (`tool_agent_harness.py`) — flagship path:** two `graph_reduce` rounds (structural, then temporal window), then hybrid → BFS → Lorenz → govern → token budget → native PE, then optional extras and final synthesis — see the script docstring and session banner.
+
+## Agentic probe harness (question probe → gap → report)
+
+`agentic_probe_harness.py` is a fundamentally different architecture from the fixed-pipeline harness above. The **agent chooses** which tools to call.
+
+1. **Structural reduce** once (shared across all queries).
+2. For each query from `grok_20_queries.json` (20 clinically meaningful questions from Grok):
+   - **Semantic hybrid search** on the reduced corpus → 20 seed events with `context_nodes`.
+   - The agent receives the seeds, the **full tool registry** (all 12 tools), and the query.
+   - The agent responds with a `tool_call` JSON or a `final_answer` JSON — up to `--max-rounds` turns (default 6).
+   - The harness executes the chosen tool, returns the result, and loops.
+   - When the agent emits `final_answer`, it includes `response`, `suggested_nodes`, and `gaps`.
+3. After all queries, a **gap report** aggregates: queries with gaps, tools never used, suggested node counts.
+
+```bash
+PYTHONPATH=. python sandbox/norman_graph_retrieval/agentic_probe_harness.py --no-agent          # seeds only
+PYTHONPATH=. python sandbox/norman_graph_retrieval/agentic_probe_harness.py -n 3                # first 3 queries
+PYTHONPATH=. python sandbox/norman_graph_retrieval/agentic_probe_harness.py --query-ids Q01,Q12  # specific queries
+PYTHONPATH=. python sandbox/norman_graph_retrieval/agentic_probe_harness.py --max-rounds 8      # more tool calls per query
+```
+
+Flags: `--queries path.json` (custom query set), `-n N` (first N only), `--query-ids Q01,Q05` (select), `--max-rounds` (tool calls per query, default 6), `--seed-top-k` (seeds per query, default 20), plus the same `--no-semantic`, `--max-json-chars`, `--max-context-nodes`, `--context-preview-chars`, `--quiet`, `--skip-ollama-preflight` as the fixed harness.
+
+With the agent on and **without** `--quiet`, each probe ends with a **terminal block**: full **QUERY**, **CURATED CONTEXT** (confidence + explanation for the reasoning agent), full **FINAL ANSWER** text, and **GAPS**.
+
+Output: `sandbox/norman_graph_retrieval/out/agentic_probe_<utc>.json` and **`agentic_probe_<utc>.log`**. The JSON includes per-probe **`audit_trail`** (full system prompt, every user/assistant message, **`args_full`/`result_full`** for each tool, **`enriched_tool_document_full`** — the exact context curation sent to the model — and the chat transcript). The **`.log`** repeats the same in plain text (large files are normal).
+
+The model’s **`final_answer`** should include **`curated_context`**: `confidence` (0–1), **`what_this_context_is`**, and **`primary_event_ids`**. The harness normalizes that into **`curated_context_for_reasoning_agent`** with full **`ptv_full`** payloads for downstream reasoning.
+
+The harness **normalizes** common model mistakes: `tool` / `name`+`parameters` instead of `tool_call`+`args`, `connascence_type`→`edge_types` for BFS, and temporal fields mistakenly sent to `graph_pe_lorenz_classify`→`graph_reduce`. After updating `server/ollama/eoh-llama3.1-8b-lucifer.Modelfile`, recreate the Ollama model: `ollama create eoh-llama-lucifer -f server/ollama/eoh-llama3.1-8b-lucifer.Modelfile`.
 
 ## See also
 

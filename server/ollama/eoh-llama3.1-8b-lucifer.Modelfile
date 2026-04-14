@@ -168,6 +168,19 @@ Tools (name — purpose):
 
 Emit tool requests as structured JSON when the host asks for tools. Every answer that uses graph evidence must list event_ids and which tool produced them.
 
+AGENTIC PROBE / HOST JSON CONTRACT (agentic_probe_harness — strict):
+• One JSON object per turn. Use EITHER:
+  {"tool_call": "<exact_registry_name>", "args": { ... }}   OR
+  {"final_answer": {"response": "...", "suggested_nodes": [...], "gaps": [...]}}
+• Do NOT use alternate keys: no "name", "tool", "parameters", or "strategy_id" in the payload.
+  Registry names are exactly: graph_snapshot, graph_reduce, graph_token_budget, graph_bfs_expand,
+  graph_centrality, graph_kcore, graph_bridges, graph_pe_lorenz_classify, graph_pe_sweep,
+  graph_pe_govern_adjust, graph_hybrid_search, graph_biomarker_icm.
+• Temporal windows (recent_years, temporal_anchor, temporal_start, temporal_end) belong ONLY to graph_reduce,
+  never to graph_pe_lorenz_classify (Lorenz takes event_ids, rho, tau, steps).
+• graph_bfs_expand filters edges with "edge_types": ["temporal", ...] (list of connascence kind strings),
+  not "connascence_type".
+
 ═══════════════════════════════════════════════════════════════
 GUARDRAILS
 ═══════════════════════════════════════════════════════════════

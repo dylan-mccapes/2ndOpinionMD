@@ -20,6 +20,16 @@ The platform now includes user authentication and a journaling feature to track 
 
 ## 🛠️ Environment Setup
 
+### Development platforms
+
+Use a **Python virtual environment** everywhere (see below). For repo-root tools and the graph sandbox, set **`PYTHONPATH`** to the project root when running Python.
+
+| Context | Notes |
+|--------|--------|
+| **Windows** | Prefer **WSL** (Linux) for Git, Python, and shell commands—not native PowerShell/CMD for project workflows. |
+| **macOS** | Fully supported; an **M2 Ultra Mac Studio** is used as the primary **main server** for this project. |
+| **Linux** | Fully supported (same venv and `PYTHONPATH` patterns as WSL). |
+
 ### 🧬 Required Versions
 - **Python**: `v3.10` or higher for the backend server
 - **PostgreSQL**: Running instance for application data
