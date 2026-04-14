@@ -36,7 +36,35 @@ async def invite_patient(body: dict = None):
 
 @router.get("/patients/{patient_id}/journal")
 async def patient_journal(patient_id: str):
-    return seed_entries()
+    entries = seed_entries()
+    out = []
+    for e in entries:
+        symptoms = e.get("symptoms") or []
+        sev_vals = []
+        for s in symptoms:
+            if isinstance(s, dict):
+                try:
+                    sev_vals.append(int(s.get("severity")))
+                except Exception:
+                    pass
+        max_sev = max(sev_vals) if sev_vals else None
+        symptom_list = ", ".join(str(s.get("symptom")) for s in symptoms if isinstance(s, dict) and s.get("symptom"))
+        title = f"{e.get('date', '')} — {symptom_list}" if symptom_list else f"Journal entry {e.get('date', '')}"
+        content_parts = [
+            str(e.get("notes") or "").strip(),
+            str(e.get("analysis") or "").strip(),
+        ]
+        content = "\n\n".join([p for p in content_parts if p]) or "No note content."
+        out.append(
+            {
+                "id": e.get("id"),
+                "title": title,
+                "content": content,
+                "severity": max_sev,
+                "created_at": e.get("created_at") or f"{e.get('date', '2025-12-01')}T12:00:00Z",
+            }
+        )
+    return out
 
 
 @router.get("/patients/{patient_id}/timeline-status")

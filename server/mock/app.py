@@ -1,8 +1,9 @@
 """
 2ndOpinionMD Mock Server
 ========================
-Covers all 41 frontend API endpoints with static/seeded responses.
-Zero external dependencies — no Postgres, Redis, Ollama, or OpenAI required.
+Covers all frontend API endpoints with static/seeded responses.
+Zero mandatory external dependencies — no Postgres/Redis/OpenAI required.
+Optional: local Ollama for graph-backed mock chat replies.
 
 Start: python -m server.mock.run
 Docs:  http://localhost:8100/docs
@@ -20,7 +21,8 @@ app = FastAPI(
     description=(
         "Full mock API for frontend UX development. "
         "All endpoints return deterministic, schema-valid responses. "
-        "SSE streaming endpoints simulate real token generation timing."
+        "SSE streaming endpoints simulate real token generation timing. "
+        "Chat endpoint can optionally call local Ollama after graph traversal."
     ),
     version="0.1.0-mock",
     docs_url="/docs",

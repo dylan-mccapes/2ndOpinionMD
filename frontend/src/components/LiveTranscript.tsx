@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { DS } from '../lib/ui';
 
 export interface TranscriptSegment {
   text: string;
@@ -40,34 +41,39 @@ export function LiveTranscript({ segments, isRecording }: LiveTranscriptProps) {
 
       <div
         ref={scrollRef}
-        className="p-4 overflow-auto"
-        style={{ maxHeight: '300px' }}
+        className="overflow-auto"
+        style={{ maxHeight: '300px', padding: '1.5rem' }}
       >
-        {segments.length === 0 && isRecording && (
-          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-            Listening... transcript will appear here.
-          </p>
-        )}
+        <div style={{ ...DS.track.cyan, paddingLeft: '0.9rem' }}>
+          {segments.length === 0 && isRecording && (
+            <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+              Listening... transcript will appear here.
+            </p>
+          )}
 
-        {segments.map((seg, i) => (
-          <div key={`seg-${seg.chunkIndex}-${i}`} className="mb-2">
-            <span className="text-xs font-mono mr-2" style={{ color: 'var(--text-muted)' }}>
-              [{String(seg.chunkIndex).padStart(2, '0')}]
-            </span>
-            <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
-              {seg.text}
-            </span>
-          </div>
-        ))}
+          {segments.map((seg, i) => (
+            <div key={`seg-${seg.chunkIndex}-${i}`} style={{ marginBottom: '0.65rem' }}>
+              <span className="text-xs font-mono mr-2" style={{ color: 'var(--text-muted)' }}>
+                [{String(seg.chunkIndex).padStart(2, '0')}]
+              </span>
+              <span
+                className="text-sm font-mono"
+                style={{ color: 'var(--text-primary)', lineHeight: 1.65 }}
+              >
+                {seg.text}
+              </span>
+            </div>
+          ))}
 
-        {isRecording && segments.length > 0 && (
-          <div className="mt-1">
-            <span
-              className="inline-block w-2 h-4 align-middle"
-              style={{ backgroundColor: 'var(--accent-green)' }}
-            />
-          </div>
-        )}
+          {isRecording && segments.length > 0 && (
+            <div className="mt-1">
+              <span
+                className="inline-block w-2 h-4 align-middle"
+                style={{ backgroundColor: 'var(--accent-green)' }}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

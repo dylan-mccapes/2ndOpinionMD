@@ -30,6 +30,22 @@ _ARTIFACTS_DIR = _PROJECT_ROOT / "artifacts" / "timeline_ollama_20260329_1805"
 _PTV_VISION_FILE = _ARTIFACTS_DIR / "patient_timeline_vision_norman_eric_roberts_20260329_195915.json"
 _PTV_SNAPSHOT_FILE = _ARTIFACTS_DIR / "patient_timeline_snapshot_norman_eric_roberts_20260329_195915.json"
 
+
+def _resolve_ptv_candidate_files() -> List[Path]:
+    """
+    Allow UX dev to point at a specific Norman timeline export (for example one
+    derived from NormanEricRoberts_decrypted).
+    """
+    out: List[Path] = []
+    env_snapshot = (os.getenv("DEV_TIMELINE_SNAPSHOT_FILE") or "").strip()
+    env_vision = (os.getenv("DEV_TIMELINE_VISION_FILE") or "").strip()
+    if env_snapshot:
+        out.append(Path(env_snapshot))
+    if env_vision:
+        out.append(Path(env_vision))
+    out.extend([_PTV_SNAPSHOT_FILE, _PTV_VISION_FILE])
+    return out
+
 # ---------------------------------------------------------------------------
 # Active flag
 # ---------------------------------------------------------------------------
@@ -92,8 +108,8 @@ def _ptv_event_to_api(event_id: str, ev: Dict[str, Any], fallback_dt: datetime) 
 def _load_events_cached() -> List[Dict[str, Any]]:
     """Load and transform events from the PTV JSON. Result is cached in memory."""
 
-    # Try snapshot first (may be smaller), then full vision file.
-    for path in (_PTV_SNAPSHOT_FILE, _PTV_VISION_FILE):
+    # Try override paths first, then defaults.
+    for path in _resolve_ptv_candidate_files():
         if path.exists():
             logger.info("DEV_FIXTURES: loading Norman timeline from %s", path.name)
             try:

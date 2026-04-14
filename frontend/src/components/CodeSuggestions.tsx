@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
+import { DS } from '../lib/ui';
 
 export interface SuggestedCode {
   code: string;
@@ -165,7 +166,7 @@ export function CodeSuggestions({ transcript, token, enabled, onCodesChange }: C
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: DS.gap.xl }}>
         {error && (
           <div
             className="p-3 rounded border"
@@ -177,22 +178,33 @@ export function CodeSuggestions({ transcript, token, enabled, onCodesChange }: C
           </div>
         )}
 
-        {groupedCodes.map((group) => (
-          <div key={group.key}>
+        {groupedCodes.map((group, idx) => (
+          <div
+            key={group.key}
+            style={{
+              ...DS.track.cyan,
+              paddingLeft: '0.9rem',
+              paddingTop: idx === 0 ? '0.35rem' : '1.5rem',
+              paddingBottom: '1rem',
+              borderTop: idx === 0 ? undefined : '1px solid var(--border-color)',
+            }}
+          >
             <h4
-              className="text-xs font-mono font-bold tracking-wide mb-2"
-              style={{ color: 'var(--text-secondary)' }}
+              className="text-xs font-mono font-bold tracking-wide"
+              style={{ color: 'var(--text-secondary)', marginBottom: '0.85rem' }}
             >
               {group.label}
             </h4>
-            <div className="space-y-1">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.md }}>
               {group.items.map((item) => (
                 <div
                   key={`${item.system}-${item.code}-${item.globalIndex}`}
-                  className="flex items-center gap-3 p-2 rounded border cursor-pointer"
+                  className="flex items-center rounded border cursor-pointer"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     borderColor: item.accepted ? 'var(--accent-green)' : 'var(--border-color)',
+                    padding: '0.75rem 0.8rem',
+                    gap: '0.8rem',
                   }}
                   onClick={() => toggleCode(item.globalIndex)}
                 >
@@ -227,6 +239,10 @@ export function CodeSuggestions({ transcript, token, enabled, onCodesChange }: C
                   <span
                     className="text-xs font-mono flex-shrink-0"
                     style={{
+                      textAlign: 'right',
+                      minWidth: '3.2rem',
+                      marginLeft: '0.5rem',
+                      paddingRight: '0.2rem',
                       color:
                         item.confidence >= 0.8
                           ? 'var(--accent-green)'

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Card, DS, InlineMessage } from '../lib/ui';
 
 export type AudioState = 'idle' | 'recording' | 'paused' | 'stopped';
 
@@ -128,11 +129,8 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
 
   if (!consented) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <p className="text-sm font-mono mb-3" style={{ color: 'var(--text-primary)' }}>
+      <Card style={{ padding: DS.pad.inner }}>
+        <p className="text-sm font-mono" style={{ color: 'var(--text-primary)', marginBottom: DS.mb.md }}>
           Patient consent is required before recording. By proceeding, you confirm that the patient
           has been informed and has consented to audio recording of this encounter.
         </p>
@@ -149,16 +147,13 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
         >
           PATIENT HAS CONSENTED — ENABLE RECORDING
         </button>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
-      className="p-4 rounded border"
-      style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-    >
-      <div className="flex items-center gap-3 mb-3">
+    <Card style={{ padding: DS.pad.inner }}>
+      <div className="flex items-center" style={{ gap: DS.gap.lg, marginBottom: DS.mb.md }}>
         {state === 'recording' && (
           <span
             className="inline-block w-3 h-3 rounded-full"
@@ -183,7 +178,7 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center" style={{ gap: DS.gap.md }}>
         {state === 'idle' && (
           <button
             type="button"
@@ -251,10 +246,8 @@ export function AudioCapture({ onChunk, onStateChange, disabled }: AudioCaptureP
       </div>
 
       {micError && (
-        <p className="text-xs font-mono mt-2" style={{ color: 'var(--accent-red)' }}>
-          {micError}
-        </p>
+        <InlineMessage variant="error" style={{ marginTop: DS.mb.sm }}>{micError}</InlineMessage>
       )}
-    </div>
+    </Card>
   );
 }

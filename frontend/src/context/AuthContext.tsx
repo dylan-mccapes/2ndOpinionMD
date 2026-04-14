@@ -24,14 +24,17 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const DEV_BYPASS = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+const DEV_USER_TYPE = (import.meta.env.VITE_DEV_USER_TYPE ?? 'patient').toLowerCase() === 'doctor'
+  ? 'doctor'
+  : 'patient';
 
 const DEV_USER: UserProfile = {
-  id: 'dev-user-id',
-  email: 'dev@local',
-  full_name: 'Dev User',
+  id: DEV_USER_TYPE === 'doctor' ? 'dr-house-mock' : 'user-norman-dev',
+  email: DEV_USER_TYPE === 'doctor' ? 'house@ppth.dev' : 'dev@local',
+  full_name: DEV_USER_TYPE === 'doctor' ? 'Gregory House' : 'Norman Eric Roberts',
   birthdate: null,
   subscription_tier: 'pro',
-  user_type: 'patient',
+  user_type: DEV_USER_TYPE,
   created_at: new Date().toISOString(),
 };
 

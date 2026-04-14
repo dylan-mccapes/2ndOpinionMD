@@ -47,7 +47,7 @@ This four-step spine handles the vast majority of clinical questions against a l
 
 At least 7 of 20 queries (35%) have an explicit temporal dimension. Several more (Q01, Q03, Q05, Q15) implicitly benefit from temporal focus even though they don't name a window. An agent that can call `graph_reduce` with `recent_years` has a massive advantage over one that searches the full 3,705-node corpus blind.
 
-**On the 40909 fleet:** With faster inference, the agent can afford to call temporal reduce more than once — e.g., a 5-year window for context, then a 1-year window for recent events, comparing the two. This two-pass temporal strategy is infeasible on the 4050 at ~60s per LLM round but becomes practical at 40909 speeds.
+**On the 4090 fleet:** With faster inference, the agent can afford to call temporal reduce more than once — e.g., a 5-year window for context, then a 1-year window for recent events, comparing the two. This two-pass temporal strategy is infeasible on the 4050 at ~60s per LLM round but becomes practical at 4090 speeds.
 
 ### 1.3 Semantic Hybrid Search (S11)
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch, authHeaders } from '../lib/api';
+import { Card, SectionLabel, DS, InlineMessage } from '../lib/ui';
 
 interface WindowMetric {
   window_start: string;
@@ -77,6 +78,15 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
+  const asNum = (value: unknown, fallback = 0): number => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const asLabel = (value: unknown, fallback = 'UNKNOWN'): string => {
+    const s = String(value ?? '').trim();
+    return s ? s.toUpperCase() : fallback;
+  };
+
   useEffect(() => {
     if (!patientId || !token) return;
 
@@ -134,41 +144,37 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
 
   if (loading) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-blue)' }}>
+      <Card style={{ padding: DS.pad.card }}>
+        <SectionLabel style={{ color: 'var(--accent-blue)', marginBottom: DS.mb.sm }}>
           TIMELINE ANALYTICS
-        </span>
+        </SectionLabel>
         <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>Loading analytics...</p>
-      </div>
+      </Card>
     );
   }
 
   if (error || !summary) {
     return (
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-blue)' }}>
+      <Card style={{ padding: DS.pad.card }}>
+        <SectionLabel style={{ color: 'var(--accent-blue)', marginBottom: DS.mb.sm }}>
           TIMELINE ANALYTICS
-        </span>
-        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+        </SectionLabel>
+        <InlineMessage>
           {error || 'No timeline data available for this patient.'}
-        </p>
-      </div>
+        </InlineMessage>
+      </Card>
     );
   }
 
+  const safePhaseShifts = Array.isArray(summary.phase_shifts) ? summary.phase_shifts : [];
+  const safeFlareEpisodes = Array.isArray(summary.flare_episodes) ? summary.flare_episodes : [];
+  const safeCharts = summary.charts && typeof summary.charts === 'object' ? summary.charts : {};
+  const safePrecedenceEdges = precedence && Array.isArray(precedence.edges) ? precedence.edges : [];
+
   return (
-    <div className="space-y-4">
-      <div
-        className="p-4 rounded border"
-        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <div className="flex items-center justify-between mb-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.xl }}>
+      <Card style={{ padding: DS.pad.card }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.md }}>
           <span className="text-sm font-mono font-bold" style={{ color: 'var(--accent-blue)' }}>
             TIMELINE ANALYTICS
           </span>
@@ -187,10 +193,10 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
         </div>
 
         {exportError && (
-          <p className="text-xs font-mono mb-2" style={{ color: 'var(--accent-red)' }}>{exportError}</p>
+          <InlineMessage variant="error" style={{ marginBottom: DS.mb.sm }}>{exportError}</InlineMessage>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-5" style={{ gap: DS.gap.md, marginBottom: DS.mb.lg }}>
           <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <span className="text-xs font-mono block" style={{ color: 'var(--text-muted)' }}>Events</span>
             <span className="text-lg font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -206,27 +212,24 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
           <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <span className="text-xs font-mono block" style={{ color: 'var(--text-muted)' }}>Phase Shifts</span>
             <span className="text-lg font-mono font-bold" style={{ color: 'var(--accent-yellow)' }}>
-              {summary.phase_shifts.length}
+              {safePhaseShifts.length}
             </span>
           </div>
           <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <span className="text-xs font-mono block" style={{ color: 'var(--text-muted)' }}>Flare Ep.</span>
             <span className="text-lg font-mono font-bold" style={{ color: 'var(--accent-red)' }}>
-              {summary.flare_episodes.length}
+              {safeFlareEpisodes.length}
             </span>
           </div>
           <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <span className="text-xs font-mono block" style={{ color: 'var(--text-muted)' }}>Noise Floor</span>
             <span className="text-lg font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-              {summary.noise_floor}
+              {asNum(summary.noise_floor, 0)}
             </span>
           </div>
         </div>
 
-        <div
-          className="flex gap-1 mb-3 border-b overflow-x-auto"
-          style={{ borderColor: 'var(--border-color)' }}
-        >
+        <div className="flex border-b overflow-x-auto" style={{ borderColor: 'var(--border-color)', gap: DS.gap.xs, marginBottom: DS.mb.md }}>
           {(Object.keys(CHART_LABELS) as ActiveChart[]).map((key) => (
             <button
               key={key}
@@ -248,25 +251,23 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
           ))}
         </div>
 
-        {summary.charts[activeChart] && (
+        {safeCharts[activeChart] && (
           <img
-            src={`data:image/png;base64,${summary.charts[activeChart]}`}
+            src={`data:image/png;base64,${safeCharts[activeChart]}`}
             alt={CHART_LABELS[activeChart]}
-            className="w-full rounded mb-3"
+            className="w-full rounded"
+            style={{ marginBottom: DS.mb.sm }}
           />
         )}
-      </div>
+      </Card>
 
-      {summary.phase_shifts.length > 0 && (
-        <div
-          className="p-4 rounded border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-        >
-          <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-yellow)' }}>
+      {safePhaseShifts.length > 0 && (
+        <Card style={{ padding: DS.pad.card }}>
+          <SectionLabel style={{ color: 'var(--accent-yellow)', marginBottom: DS.mb.sm }}>
             PHASE SHIFTS
-          </span>
-          <div className="space-y-2">
-            {summary.phase_shifts.map((ps, idx) => (
+          </SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.md }}>
+            {safePhaseShifts.map((ps, idx) => (
               <div
                 key={idx}
                 className="flex items-center justify-between p-2 rounded"
@@ -274,31 +275,28 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
               >
                 <div>
                   <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {ps.from_phase.toUpperCase()} → {ps.to_phase.toUpperCase()}
+                    {asLabel(ps.from_phase)} → {asLabel(ps.to_phase)}
                   </span>
                   <span className="text-xs font-mono ml-2" style={{ color: 'var(--text-muted)' }}>
                     {new Date(ps.timestamp).toLocaleDateString()}
                   </span>
                 </div>
-                <div className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-                  S: {ps.stability_before.toFixed(2)} → {ps.stability_after.toFixed(2)}
+                <div className="text-xs font-mono" style={{ color: 'var(--text-secondary)', marginLeft: DS.mb.sm }}>
+                  S: {asNum(ps.stability_before).toFixed(2)} → {asNum(ps.stability_after).toFixed(2)}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      {summary.flare_episodes.length > 0 && (
-        <div
-          className="p-4 rounded border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-        >
-          <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-red)' }}>
+      {safeFlareEpisodes.length > 0 && (
+        <Card style={{ padding: DS.pad.card }}>
+          <SectionLabel style={{ color: 'var(--accent-red)', marginBottom: DS.mb.sm }}>
             FLARE EPISODES
-          </span>
-          <div className="space-y-2">
-            {summary.flare_episodes.map((fe, idx) => (
+          </SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.md }}>
+            {safeFlareEpisodes.map((fe, idx) => (
               <div
                 key={idx}
                 className="flex items-center justify-between p-2 rounded"
@@ -309,56 +307,53 @@ export function AnalyticsPanel({ patientId, token }: AnalyticsPanelProps) {
                     {new Date(fe.start).toLocaleDateString()} — {new Date(fe.end).toLocaleDateString()}
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center" style={{ gap: DS.gap.lg }}>
                   <span className="text-xs font-mono" style={{ color: 'var(--accent-red)' }}>
-                    {(fe.confidence * 100).toFixed(0)}% confidence
+                    {(asNum(fe.confidence) * 100).toFixed(0)}% confidence
                   </span>
                   <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                    peak: {fe.peak_intensity.toFixed(1)}x
+                    peak: {asNum(fe.peak_intensity).toFixed(1)}x
                   </span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      {precedence && precedence.edges.length > 0 && (
-        <div
-          className="p-4 rounded border"
-          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-        >
-          <span className="text-sm font-mono font-bold block mb-2" style={{ color: 'var(--accent-blue)' }}>
+      {safePrecedenceEdges.length > 0 && (
+        <Card style={{ padding: DS.pad.card }}>
+          <SectionLabel style={{ color: 'var(--accent-blue)', marginBottom: DS.mb.sm }}>
             LAGGED ASSOCIATIONS
-          </span>
-          <p className="text-xs font-mono mb-2" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          </SectionLabel>
+          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: DS.mb.sm }}>
             Predictive associations only — not causal claims.
           </p>
-          <div className="space-y-1">
-            {precedence.edges.slice(0, 10).map((edge, idx) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.sm }}>
+            {safePrecedenceEdges.slice(0, 10).map((edge, idx) => (
               <div
                 key={idx}
                 className="flex items-center justify-between p-2 rounded"
                 style={{ backgroundColor: 'var(--bg-tertiary)' }}
               >
                 <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
-                  {edge.from_type.toUpperCase()} → {edge.to_type.toUpperCase()}
+                  {asLabel(edge.from_type)} → {asLabel(edge.to_type)}
                 </span>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center" style={{ gap: DS.gap.lg }}>
                   <span className="text-xs font-mono" style={{ color: 'var(--accent-yellow)' }}>
-                    ~{edge.median_lag_days}d lag
+                    ~{asNum(edge.median_lag_days)}d lag
                   </span>
                   <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                    n={edge.support_count}
+                    n={asNum(edge.support_count)}
                   </span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      <p className="text-xs font-mono" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+      <p className="text-xs font-mono" style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '0 0.25rem' }}>
         {summary.disclaimer}
       </p>
     </div>

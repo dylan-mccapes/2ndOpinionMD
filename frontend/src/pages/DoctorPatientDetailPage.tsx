@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch, authHeaders, ApiError } from '../lib/api';
 import { AnalyticsPanel } from '../components/AnalyticsPanel';
 import { LoadingState } from '../components/ui/LoadingState';
+import { Card, DS, SectionLabel, InlineMessage } from '../lib/ui';
 
 interface JournalEntry {
   id: string;
@@ -31,6 +32,12 @@ export function DoctorPatientDetailPage() {
   const [journalError, setJournalError] = useState('');
   const [timelineError, setTimelineError] = useState('');
 
+  const safeJournal = Array.isArray(journal) ? journal : [];
+  const asSeverity = (v: unknown): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
   useEffect(() => {
     if (!token || !patientId) return;
 
@@ -41,7 +48,7 @@ export function DoctorPatientDetailPage() {
         const data = await apiFetch<JournalEntry[]>(`/api/doctor/patients/${patientId}/journal`, {
           headers: authHeaders(token),
         });
-        setJournal(data);
+        setJournal(Array.isArray(data) ? data : []);
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           setJournal([]);
@@ -81,16 +88,18 @@ export function DoctorPatientDetailPage() {
   }, [token, patientId]);
 
   return (
-    <div className="space-y-8">
-      <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap['2xl'] }}>
+      <div style={{ marginBottom: DS.mb.sm }}>
         <Link
           to="/doctor"
-          className="text-xs font-mono no-underline mb-2 inline-block text-[var(--accent-blue)]"
+          className="text-xs font-mono no-underline inline-block text-[var(--accent-blue)]"
+          style={{ marginBottom: DS.mb.sm }}
         >
           BACK TO PATIENTS
         </Link>
         <h1
-          className="text-xl font-mono font-bold mb-1 text-[var(--accent-blue)]"
+          className="text-xl font-mono font-bold text-[var(--accent-blue)]"
+          style={{ marginBottom: DS.mb.xs }}
         >
           PATIENT DETAIL
         </h1>
@@ -99,26 +108,22 @@ export function DoctorPatientDetailPage() {
         </p>
       </div>
 
-      <div className="space-y-4">
-        <div
-          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
-        >
-          <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-green)]">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.xl }}>
+        <Card style={{ padding: DS.pad.card }}>
+          <SectionLabel style={{ color: 'var(--accent-green)', marginBottom: DS.mb.md }}>
             TIMELINE STATUS
-          </span>
+          </SectionLabel>
 
           {timelineLoading && (
             <LoadingState />
           )}
 
           {timelineError && (
-            <div className="p-3 rounded text-sm font-mono bg-[var(--bg-tertiary)] text-[var(--accent-red)]">
-              {timelineError}
-            </div>
+            <InlineMessage variant="error">{timelineError}</InlineMessage>
           )}
 
           {!timelineLoading && !timelineError && timeline && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center" style={{ gap: DS.gap.lg }}>
               <span
                 className="text-xs font-mono px-2 py-0.5 rounded"
                 style={{
@@ -135,17 +140,15 @@ export function DoctorPatientDetailPage() {
               )}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div
-          className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
-        >
-          <div className="flex items-center justify-between mb-3">
+        <Card style={{ padding: DS.pad.card }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.md }}>
             <span className="text-sm font-mono font-bold text-[var(--accent-green)]">
               JOURNAL ENTRIES
             </span>
             <span className="text-xs font-mono text-[var(--text-muted)]">
-              {journal.length} entries
+              {safeJournal.length} entries
             </span>
           </div>
 
@@ -154,32 +157,31 @@ export function DoctorPatientDetailPage() {
           )}
 
           {journalError && (
-            <div className="p-3 rounded text-sm font-mono bg-[var(--bg-tertiary)] text-[var(--accent-red)]">
-              {journalError}
-            </div>
+            <InlineMessage variant="error">{journalError}</InlineMessage>
           )}
 
-          {!journalLoading && !journalError && journal.length === 0 && (
+          {!journalLoading && !journalError && safeJournal.length === 0 && (
             <p className="text-xs font-mono text-[var(--text-muted)]">
               No journal entries found for this patient.
             </p>
           )}
 
-          {!journalLoading && journal.length > 0 && (
-            <div className="space-y-2">
-              {journal.map((entry) => (
+          {!journalLoading && safeJournal.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.md }}>
+              {safeJournal.map((entry) => (
                 <div
                   key={entry.id}
-                  className="p-3 rounded bg-[var(--bg-tertiary)]"
+                  className="rounded bg-[var(--bg-tertiary)]"
+                  style={{ padding: DS.pad.inner }}
                 >
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.xs }}>
                     <span className="text-sm font-mono font-bold text-[var(--text-primary)]">
                       {entry.title}
                     </span>
-                    <div className="flex items-center gap-2">
-                      {entry.severity !== null && (
+                    <div className="flex items-center" style={{ gap: DS.gap.md }}>
+                      {asSeverity(entry.severity) !== null && (
                         <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--accent-yellow)' }}>
-                          SEV {entry.severity}/10
+                          SEV {asSeverity(entry.severity)}/10
                         </span>
                       )}
                       <span className="text-xs font-mono text-[var(--text-muted)]">
@@ -188,19 +190,22 @@ export function DoctorPatientDetailPage() {
                     </div>
                   </div>
                   <p
-                    className="text-xs font-mono mt-1 text-[var(--text-secondary)] whitespace-pre-wrap"
+                    className="text-xs font-mono text-[var(--text-secondary)] whitespace-pre-wrap"
+                    style={{ marginTop: DS.mb.xs, lineHeight: 1.55 }}
                   >
-                    {entry.content.length > 300 ? `${entry.content.slice(0, 300)}...` : entry.content}
+                    {String(entry.content || '').length > 300
+                      ? `${String(entry.content || '').slice(0, 300)}...`
+                      : String(entry.content || '')}
                   </p>
                 </div>
               ))}
             </div>
           )}
 
-          <p className="text-xs font-mono mt-3 text-[var(--text-muted)]">
+          <p className="text-xs font-mono text-[var(--text-muted)]" style={{ marginTop: DS.mb.md }}>
             Read-only. Journal entries cannot be edited from the doctor portal.
           </p>
-        </div>
+        </Card>
 
         {timeline?.has_timeline && token && patientId && (
           <AnalyticsPanel patientId={patientId} token={token} />

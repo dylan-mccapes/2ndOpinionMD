@@ -6,6 +6,8 @@ from server.mock.fixtures.chat import (
     make_message,
     next_agent_reply,
 )
+from server.mock.config import mock_chat_use_llm
+from server.mock.services.graph_chat_demo import graph_answer_for_message
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -71,9 +73,17 @@ async def send_message(body: dict = None):
     )
     history.append(user_msg)
 
-    # Add agent reply
-    agent_reply = next_agent_reply()
-    agent_msg = make_message(patient_id, "agent", agent_reply, [], {}, author_id=None)
+    # Add agent reply (graph-backed local LLM demo if enabled)
+    if mock_chat_use_llm():
+        demo = graph_answer_for_message(content)
+        agent_reply = str(demo.get("response_text") or "").strip() or next_agent_reply()
+        anchored = [x for x in (demo.get("anchor_event_ids") or []) if isinstance(x, str)]
+        edge_map = {eid: ["temporal"] for eid in anchored}
+    else:
+        agent_reply = next_agent_reply()
+        anchored = []
+        edge_map = {}
+    agent_msg = make_message(patient_id, "agent", agent_reply, anchored, edge_map, author_id=None)
     history.append(agent_msg)
 
     return {

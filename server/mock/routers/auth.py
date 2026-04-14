@@ -1,13 +1,13 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from server.mock.fixtures.users import DEV_USER, MOCK_TOKEN
+from server.mock.fixtures.users import get_dev_user, MOCK_TOKEN
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register")
 async def register(body: dict = None):
-    return {**DEV_USER, "access_token": MOCK_TOKEN, "token_type": "bearer"}
+    return {**get_dev_user(), "access_token": MOCK_TOKEN, "token_type": "bearer"}
 
 
 @router.post("/token")
@@ -18,7 +18,7 @@ async def token(body: dict = None):
 @router.get("/me")
 @router.get("/users/me")
 async def me():
-    return DEV_USER
+    return get_dev_user()
 
 
 @router.get("/verify-email")

@@ -10,6 +10,38 @@ Zero external services — no Postgres, Redis, Ollama, or OpenAI needed.
 python -m server.mock.run
 ```
 
+### Start in a specific UX mode
+
+```bash
+# Patient mode (default)
+python -m server.mock.run --role patient
+
+# Doctor portal mode
+python -m server.mock.run --role doctor
+
+# Use a specific Norman timeline export (decrypted-PDF derived PTV JSON)
+python -m server.mock.run \
+  --role doctor \
+  --timeline-json "artifacts/timeline_ollama_20260329_1805/patient_timeline_vision_norman_eric_roberts_20260329_195915.json"
+```
+
+### Graph-backed mock chat (LLM demo path)
+
+By default, `POST /api/chat/send` runs a lightweight graph demo pipeline:
+
+1. `graph_reduce`
+2. `graph_hybrid_search` (`semantic=true`)
+3. `graph_bfs_expand`
+4. Ask local Ollama model (`eoh-llama-lucifer`) to summarize findings
+
+This demonstrates the agentic graph workflow in UX sandbox mode.
+
+You can disable this and use static replies:
+
+```bash
+python -m server.mock.run --no-llm
+```
+
 - Mock server: http://localhost:8100
 - Swagger UI: http://localhost:8100/docs
 - ReDoc: http://localhost:8100/redoc
@@ -21,6 +53,7 @@ python -m server.mock.run
 # frontend/.env.local
 VITE_API_BASE=http://localhost:8100
 VITE_DEV_BYPASS_AUTH=true
+VITE_DEV_USER_TYPE=doctor   # or patient
 ```
 
 Then:
@@ -46,9 +79,9 @@ cd frontend && npm run dev
 
 ## Data
 
-- **Timeline**: loaded from `artifacts/timeline_ollama_20260329_1805/` via `server/dev_fixtures.py`
+- **Timeline**: loaded from Norman PTV JSON via `server/dev_fixtures.py` (override with `--timeline-json` / `DEV_TIMELINE_VISION_FILE`)
 - **Journal**: in-memory, resets on server restart, seeded with 3 realistic entries
-- **Chat**: in-memory, seeded with 5 messages showing EoH reasoning
+- **Chat**: in-memory, seeded with 5 messages; new messages can use local graph+LLM demo pipeline (`reduce -> semantic seeds -> BFS -> answer`)
 - **Everything else**: static JSON matching frontend TypeScript schemas exactly
 
 ## Ports

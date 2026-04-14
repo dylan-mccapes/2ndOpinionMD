@@ -8,6 +8,7 @@ import { CodeSuggestions } from '../components/CodeSuggestions';
 import { EncounterSummary } from '../components/EncounterSummary';
 import { Button } from '../components/ui/Button';
 import { LoadingState } from '../components/ui/LoadingState';
+import { Card, SectionLabel, DS, InlineMessage } from '../lib/ui';
 import type { AudioState } from '../components/AudioCapture';
 import type { TranscriptSegment } from '../components/LiveTranscript';
 import type { SuggestedCode } from '../components/CodeSuggestions';
@@ -176,13 +177,11 @@ export function DoctorPortalPage() {
       </div>
 
       {/* CONNECT PATIENT */}
-      <div
-        className="p-5 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
-      >
-        <span className="text-sm font-mono font-bold block mb-3 text-[var(--accent-blue)]">
+      <Card style={{ padding: DS.pad.card }}>
+        <SectionLabel style={{ color: 'var(--accent-blue)', marginBottom: DS.mb.md }}>
           CONNECT PATIENT
-        </span>
-        <form onSubmit={handleInvite} className="flex gap-3 mb-2">
+        </SectionLabel>
+        <form onSubmit={handleInvite} className="flex" style={{ gap: DS.gap.lg, marginBottom: DS.mb.sm }}>
           <input
             type="email"
             value={inviteEmail}
@@ -201,21 +200,22 @@ export function DoctorPortalPage() {
           </Button>
         </form>
         {inviteError && (
-          <p className="text-xs font-mono mt-1 text-[var(--accent-red)]">{inviteError}</p>
+          <InlineMessage variant="error" style={{ marginTop: DS.mb.xs }}>{inviteError}</InlineMessage>
         )}
         {inviteSuccess && (
-          <p className="text-xs font-mono mt-1 text-[var(--accent-green)]">{inviteSuccess}</p>
+          <InlineMessage variant="success" style={{ marginTop: DS.mb.xs }}>{inviteSuccess}</InlineMessage>
         )}
 
         {pendingInvites.length > 0 && (
-          <div className="mt-3">
-            <span className="text-xs font-mono font-bold block mb-1 text-[var(--text-secondary)]">
+          <div style={{ marginTop: DS.mb.md }}>
+            <span className="text-xs font-mono font-bold block" style={{ marginBottom: DS.mb.xs, color: 'var(--text-secondary)' }}>
               PENDING INVITES
             </span>
             {pendingInvites.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between py-1.5 px-2 rounded mb-1 bg-[var(--bg-tertiary)]"
+                className="flex items-center justify-between rounded"
+                style={{ padding: DS.pad.xs, marginBottom: DS.mb.xs, backgroundColor: 'var(--bg-tertiary)' }}
               >
                 <span className="text-xs font-mono text-[var(--text-primary)]">
                   {inv.to_email}
@@ -227,13 +227,11 @@ export function DoctorPortalPage() {
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* PATIENTS LIST */}
-      <div
-        className="p-5 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
-      >
-        <div className="flex items-center justify-between mb-3">
+      <Card style={{ padding: DS.pad.card }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.md }}>
           <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
             TIMELINE + CHARTS
           </span>
@@ -245,7 +243,7 @@ export function DoctorPortalPage() {
           </Link>
         </div>
 
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.md }}>
           <span className="text-sm font-mono font-bold text-[var(--accent-blue)]">
             PATIENTS
           </span>
@@ -268,9 +266,10 @@ export function DoctorPortalPage() {
 
         {!loading && !error && patients.length === 0 && (
           <div
-            className="p-4 rounded text-center bg-[var(--bg-tertiary)]"
+            className="rounded text-center bg-[var(--bg-tertiary)]"
+            style={{ padding: DS.pad.inner }}
           >
-            <p className="text-sm font-mono mb-2 text-[var(--text-muted)]">
+            <p className="text-sm font-mono text-[var(--text-muted)]" style={{ marginBottom: DS.mb.sm }}>
               No patients linked to your account.
             </p>
             <p className="text-xs font-mono text-[var(--text-muted)]">
@@ -280,12 +279,13 @@ export function DoctorPortalPage() {
         )}
 
         {!loading && patients.length > 0 && (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.md }}>
             {patients.map((patient) => (
               <Link
                 key={patient.id}
                 to={`/doctor/patients/${patient.id}`}
-                className="flex items-center justify-between p-3 rounded no-underline bg-[var(--bg-tertiary)]"
+                className="flex items-center justify-between rounded no-underline bg-[var(--bg-tertiary)]"
+                style={{ padding: DS.pad.inner }}
               >
                 <div>
                   <span className="text-sm font-mono font-bold block text-[var(--text-primary)]">
@@ -316,13 +316,11 @@ export function DoctorPortalPage() {
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* AMBIENT CODING */}
-      <div
-        className="p-4 rounded border bg-[var(--bg-secondary)] border-[var(--border-color)]"
-      >
-        <div className="flex items-center justify-between mb-3">
+      <Card style={{ padding: DS.pad.inner }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: DS.mb.md }}>
           <span className="text-sm font-mono font-bold text-[var(--accent-red)]">
             AMBIENT CODING
           </span>
@@ -346,8 +344,8 @@ export function DoctorPortalPage() {
         </div>
 
         {patients.length > 0 && (
-          <div className="mb-3">
-            <label className="text-xs font-mono block mb-1" style={{ color: 'var(--text-secondary)' }}>
+          <div style={{ marginBottom: DS.mb.md }}>
+            <label className="text-xs font-mono block" style={{ marginBottom: DS.mb.xs, color: 'var(--text-secondary)' }}>
               PATIENT CONTEXT
             </label>
             <select
@@ -365,7 +363,7 @@ export function DoctorPortalPage() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: DS.gap.xl }}>
           <AudioCapture
             onChunk={handleAudioChunk}
             onStateChange={setAudioState}
@@ -392,7 +390,7 @@ export function DoctorPortalPage() {
             enabled={audioState === 'stopped' && fullTranscript.length > 0}
           />
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
