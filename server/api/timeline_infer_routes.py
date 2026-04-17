@@ -396,8 +396,8 @@ async def _store_extracted_events(
     """
     Persist extracted events to ehr.patient_timeline.
 
-    Uses ON CONFLICT DO NOTHING on the (patient_id, ts::date, event_type,
-    content_sha) unique index (migration 007) so re-importing a document
+    Uses ON CONFLICT DO NOTHING on the (patient_id, event_type, content_sha)
+    partial unique index (migration 007) so re-importing a document
     never duplicates rows. ``content_sha`` is a sha256 of the canonical
     event coordinate so it is stable across runs.
     """
@@ -438,14 +438,15 @@ async def _store_extracted_events(
         if artifact_id:
             meta_dict["artifact_id"] = artifact_id
 
-        await db.execute(
+        result = await db.execute(
             sa_text(
                 """
                 INSERT INTO ehr.patient_timeline
                     (patient_id, ts, event_type, source, structured, text, meta, content_sha)
                 VALUES
                     (:patient_id, :ts, :event_type, :source, :structured, :text, :meta, :content_sha)
-                ON CONFLICT ON CONSTRAINT ux_patient_timeline_dedup
+                ON CONFLICT (patient_id, event_type, content_sha)
+                    WHERE content_sha IS NOT NULL
                 DO NOTHING
                 """
             ),
@@ -460,7 +461,8 @@ async def _store_extracted_events(
                 "content_sha": content_sha,
             },
         )
-        stored += 1
+        if getattr(result, "rowcount", None) == 1:
+            stored += 1
     await db.commit()
     return stored
 

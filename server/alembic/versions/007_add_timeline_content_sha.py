@@ -7,11 +7,17 @@ Create Date: 2026-04-17
 Adds:
   ehr.patient_timeline.content_sha  VARCHAR(64)  NULLABLE (back-filled by app)
   UNIQUE INDEX ux_patient_timeline_dedup ON ehr.patient_timeline
-      (patient_id, ts::date, event_type, content_sha)
+      (patient_id, event_type, content_sha)
       WHERE content_sha IS NOT NULL
 
-Once the index is in place, _store_extracted_events can use:
-    INSERT ... ON CONFLICT ON CONSTRAINT ux_patient_timeline_dedup DO NOTHING
+We intentionally omit ``ts::date`` from the index: casting ``timestamptz`` to
+``date`` is not IMMUTABLE in PostgreSQL (depends on session timezone), so the
+index creation fails. The ``content_sha`` already encodes the canonical
+coordinate from ``event_dedup.canonical_event_id`` (including calendar day).
+
+Once the index is in place, _store_extracted_events uses:
+    INSERT ... ON CONFLICT (patient_id, event_type, content_sha)
+      WHERE content_sha IS NOT NULL DO NOTHING
 so re-importing the same document never duplicates rows.
 """
 from typing import Sequence, Union
@@ -53,7 +59,7 @@ def upgrade() -> None:
         op.execute(
             """
             CREATE UNIQUE INDEX ux_patient_timeline_dedup
-                ON ehr.patient_timeline (patient_id, (ts::date), event_type, content_sha)
+                ON ehr.patient_timeline (patient_id, event_type, content_sha)
                 WHERE content_sha IS NOT NULL
             """
         )

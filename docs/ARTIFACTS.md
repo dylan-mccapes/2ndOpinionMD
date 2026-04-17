@@ -276,10 +276,10 @@ Policy — **merge, never overwrite**:
   temporal context weaves in.
 - The PTV `metadata.artifacts` list grows by exactly one entry (the big PDF).
 - `ehr.patient_timeline` gets **new rows only for genuinely new events** —
-  the `INSERT` in `_store_extracted_events` should be changed to an
-  `INSERT ... ON CONFLICT (patient_id, ts, event_type, content_sha) DO NOTHING`
-  (**TODO** — schema currently has no unique index; add one in a follow-up
-  alembic revision together with a `content_sha` column).
+  `_store_extracted_events` uses
+  `INSERT ... ON CONFLICT (patient_id, event_type, content_sha) WHERE content_sha IS NOT NULL DO NOTHING`
+  against the partial unique index from migration **007** (no `ts::date` in the
+  index: `timestamptz::date` is not IMMUTABLE under PostgreSQL index rules).
 
 Explicit non-goal: we do **not** try to "diff" an old and a new version of the
 same document. If a MyChart export is re-downloaded, the sha changes (timestamps
@@ -301,7 +301,7 @@ events_duplicated=N`.
 | Pre-scan regex | `server/eoh/heuristic_page_extract.py` |
 | PII scrub | `server/utils/pii_scrub.py` |
 | Alembic 006 (PRO) | `server/alembic/versions/006_add_journal_patient_reported_outcomes.py` |
-| Alembic next (**TODO**) | add `content_sha` column + unique index on `ehr.patient_timeline` |
+| Alembic 007 | `content_sha` + partial unique index `(patient_id, event_type, content_sha)` |
 | Vault UI — uploads list | `index.html` (`doc-uploaded-section`, `appendUploadedArtifactRow`) |
 
 ## 8. Operational notes
