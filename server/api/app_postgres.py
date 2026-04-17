@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
@@ -509,11 +509,9 @@ async def serve_epistemic_vault_index_named():
 
 
 @app.get("/patient_portal.html", include_in_schema=False)
-async def serve_patient_portal_html():
-    path = project_root / "patient_portal.html"
-    if path.is_file():
-        return FileResponse(path, media_type="text/html; charset=utf-8")
-    raise HTTPException(status_code=404, detail="patient_portal.html not found")
+async def patient_portal_redirect_to_vault():
+    """Legacy URL: patient UX now lives on ``/`` (Epistemic Vault ``index.html``)."""
+    return RedirectResponse(url="/", status_code=302)
 
 
 @app.get("/api/health")

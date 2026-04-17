@@ -759,6 +759,39 @@
             border-left-color: var(--color-error);
         }
 
+        .modal-msg.success {
+            background: var(--color-success-soft);
+            color: #065f46;
+            border-left-color: var(--color-success);
+        }
+
+        .doc-uploaded-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .doc-uploaded-item {
+            padding: 10px 12px;
+            background: var(--color-bg);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            border: 1px solid var(--color-border);
+        }
+
+        .doc-uploaded-item-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--color-text);
+        }
+
+        .doc-uploaded-item-meta {
+            font-size: 12px;
+            color: var(--color-text-dim);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
         .modal-actions {
             display: flex;
             gap: 10px;
@@ -1192,6 +1225,13 @@
                             </div>
                             <button class="btn btn-primary" id="doc-submit-btn" disabled>Submit Documents</button>
                             <div id="doc-submit-msg" style="display: none;" class="modal-msg"></div>
+                            <div id="doc-uploaded-section" style="margin-top: 20px; display: none;">
+                                <label class="form-label">Uploaded to your vault</label>
+                                <p style="font-size: 12px; color: var(--color-text-dim); margin: 0 0 10px;">
+                                    Stored as lightweight <code>patient_artifact</code> nodes on your timeline (newest first).
+                                </p>
+                                <ul id="doc-uploaded-titles" class="doc-uploaded-list" aria-live="polite"></ul>
+                            </div>
                         </div>
                     </div>
 
@@ -1740,12 +1780,14 @@ Are there any patterns in my symptoms?"></textarea>
             }
         }
 
-        function showMsg(id, text, isError) {
+        function showMsg(id, text, isError, asSuccess) {
             const el = document.getElementById(id);
             if (!el) return;
             el.textContent = text;
             el.style.display = 'block';
-            el.classList.toggle('error', !!isError);
+            el.classList.remove('error', 'success');
+            if (isError) el.classList.add('error');
+            else if (asSuccess) el.classList.add('success');
         }
 
         function clearMsg(id) {
@@ -1753,7 +1795,7 @@ Are there any patterns in my symptoms?"></textarea>
             if (!el) return;
             el.textContent = '';
             el.style.display = 'none';
-            el.classList.remove('error');
+            el.classList.remove('error', 'success');
         }
 
         function showModal(id) {
@@ -1796,8 +1838,39 @@ Are there any patterns in my symptoms?"></textarea>
             if (label) el.parentElement.lastChild.textContent = label;
         }
 
+        function docTypeLabel(code) {
+            const m = { lab: 'Lab results', imaging: 'Imaging report', note: 'Clinical note', prescription: 'Prescription', other: 'Other' };
+            return m[code] || code || 'Document';
+        }
+
+        function resetUploadedArtifactsUI() {
+            const ul = document.getElementById('doc-uploaded-titles');
+            const wrap = document.getElementById('doc-uploaded-section');
+            if (ul) ul.innerHTML = '';
+            if (wrap) wrap.style.display = 'none';
+            clearMsg('doc-submit-msg');
+        }
+
+        function appendUploadedArtifactRow({ title, filename, documentType, documentDate, eventId }) {
+            const ul = document.getElementById('doc-uploaded-titles');
+            const wrap = document.getElementById('doc-uploaded-section');
+            if (!ul || !wrap) return;
+            const meta = [];
+            if (filename && filename !== title) meta.push(filename);
+            meta.push(docTypeLabel(documentType));
+            if (documentDate) meta.push(documentDate);
+            if (eventId) meta.push('Graph id: ' + String(eventId).slice(0, 18) + (String(eventId).length > 18 ? '…' : ''));
+            const li = document.createElement('li');
+            li.className = 'doc-uploaded-item';
+            li.innerHTML = '<div class="doc-uploaded-item-title">' + escapeHtml(title) + '</div>'
+                + '<div class="doc-uploaded-item-meta">' + escapeHtml(meta.join(' · ')) + '</div>';
+            ul.prepend(li);
+            wrap.style.display = 'block';
+        }
+
         // === SESSION MANAGEMENT ===
         function setSession(token, email) {
+            resetUploadedArtifactsUI();
             sessionToken = token;
             sessionEmail = email || '';
             if (token) {
@@ -1926,7 +1999,7 @@ Are there any patterns in my symptoms?"></textarea>
                         updateUI();
                         switchView('dashboard');
                     } else {
-                        window.location.href = 'patient_portal.html';
+                        window.location.href = '/';
                     }
                 } else {
                     const detail = data.detail;
@@ -2404,8 +2477,12 @@ Are there any patterns in my symptoms?"></textarea>
             btn.classList.add('loading');
             btn.disabled = true;
 
+            const batch = selectedFiles.slice();
+            let okCount = 0;
+            const failures = [];
+
             try {
-                for (const file of selectedFiles) {
+                for (const file of batch) {
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('document_type', docType);
@@ -2420,17 +2497,38 @@ Are there any patterns in my symptoms?"></textarea>
 
                     if (r.ok) {
                         const info = await r.json().catch(() => ({}));
-                        addReceipt('Vault artifact → PTV: ' + file.name + (info.event_id ? ' (' + info.event_id + ')' : ''));
+                        const fn = info.filename || file.name;
+                        const title = docNotes ? docNotes.slice(0, 200) : fn;
+                        appendUploadedArtifactRow({
+                            title,
+                            filename: fn,
+                            documentType: docType,
+                            documentDate: docDate,
+                            eventId: info.event_id
+                        });
+                        addReceipt('Vault artifact → PTV: ' + fn + (info.event_id ? ' (' + info.event_id + ')' : ''));
+                        okCount++;
                     } else {
                         const err = await r.json().catch(() => ({}));
                         const d = err.detail;
                         const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || err);
-                        showMsg('doc-submit-msg', 'Upload failed for: ' + file.name + ' — ' + msg, true);
+                        failures.push(file.name + ': ' + msg);
                     }
                 }
-                showMsg('doc-submit-msg', selectedFiles.length + ' document(s) submitted.', false);
-                updateTransparency('t-mutation', true, 'Timeline mutated');
-                updateTransparency('t-persist', true, 'Documents persisted');
+
+                if (okCount > 0) {
+                    updateTransparency('t-mutation', true, 'Timeline mutated');
+                    updateTransparency('t-persist', true, 'Documents persisted');
+                }
+
+                if (failures.length === 0 && okCount === batch.length) {
+                    showMsg('doc-submit-msg', 'Upload complete: ' + okCount + ' file(s) added to your vault. See titles below.', false, true);
+                } else if (okCount > 0 && failures.length > 0) {
+                    showMsg('doc-submit-msg', 'Partial upload: ' + okCount + ' succeeded, ' + failures.length + ' failed. ' + failures.join(' '), true);
+                } else if (failures.length > 0) {
+                    showMsg('doc-submit-msg', failures.join(' '), true);
+                }
+
                 selectedFiles = [];
                 document.getElementById('doc-upload-list').innerHTML = '';
                 document.getElementById('doc-file-input').value = '';
