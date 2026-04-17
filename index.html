@@ -1158,8 +1158,9 @@
                             <div class="card-badge badge-blue">Upload</div>
                         </div>
                         <div class="notice notice-info">
-                            Upload medical records to your timeline. Supported: PDF, images, text files.<br>
-                            Documents are processed, embedded, and stored securely.
+                            <strong>Vault upload (lightweight):</strong> files attach as <code>patient_artifact</code> nodes on your
+                            PatientTimelineVision — no full timeline PDF / RAG pipeline. Max 8&nbsp;MB per file. Supported: PDF, images, text.<br>
+                            Use <strong>Initialize Timeline</strong> in the Timeline tab only when you need the full <code>patient_timelines</code> row + heavy ingest.
                         </div>
                         <div class="drop-zone" id="doc-drop-zone">
                             <div class="drop-zone-icon">&#128196;</div>
@@ -1192,6 +1193,18 @@
                             <button class="btn btn-primary" id="doc-submit-btn" disabled>Submit Documents</button>
                             <div id="doc-submit-msg" style="display: none;" class="modal-msg"></div>
                         </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 16px;">
+                        <div class="card-header">
+                            <div class="card-title">Dev — mock PTV timeline</div>
+                            <div class="card-badge badge-blue">No files</div>
+                        </div>
+                        <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px;">
+                            Inserts sample <code>mock_timeline_event</code> nodes into your graph for quick testing (same PTV as journal mirrors).
+                        </p>
+                        <button type="button" class="btn btn-sm" id="mock-ptv-events-btn">Insert sample events</button>
+                        <div id="mock-ptv-msg" style="display: none;" class="modal-msg"></div>
                     </div>
 
                     <div class="card">
@@ -1402,6 +1415,10 @@ Are there any patterns in my symptoms?"></textarea>
                                 <label class="form-label">Journal Text <span class="required">*</span></label>
                                 <textarea class="form-textarea" id="journal-text-input" rows="10" placeholder="How are you feeling today? What's on your mind? Write freely."></textarea>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">FORWARD PRO JSON (optional)</label>
+                                <textarea class="form-textarea" id="journal-pro-json" rows="3" placeholder='e.g. [{"instrument":"PROMIS","domain":"Pain","value":42}]'></textarea>
+                            </div>
                             <button class="btn btn-primary" id="journal-save-btn">Save Entry</button>
                             <div id="journal-save-msg" style="display: none;" class="modal-msg"></div>
                         </div>
@@ -1610,6 +1627,12 @@ Are there any patterns in my symptoms?"></textarea>
             <div class="form-group">
                 <label class="form-label">Password <span class="required">*</span></label>
                 <input type="password" class="form-input" id="session-password" placeholder="Your password">
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer;">
+                    <input type="checkbox" id="session-stay-vault" checked>
+                    Stay in Epistemic Vault (this page) after session
+                </label>
             </div>
             <div id="session-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
@@ -1863,10 +1886,11 @@ Are there any patterns in my symptoms?"></textarea>
             clearMsg('onboarding-msg');
 
             try {
+                const user_type = operator === 'clinician' ? 'doctor' : 'patient';
                 const r = await fetch(`${API_BASE}/api/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, operator_type: operator })
+                    body: JSON.stringify({ email, password, user_type, full_name: email.split('@')[0] || 'Vault user' })
                 });
                 const data = await r.json().catch(() => ({}));
                 if (r.ok) {
@@ -1897,8 +1921,13 @@ Are there any patterns in my symptoms?"></textarea>
                     if (data.timeline_id) localStorage.setItem('2opmd_timeline_id', data.timeline_id);
                     hideModal('modal-session');
                     addReceipt('Session instantiated: ' + email);
-                    // Navigate to Patient Portal
-                    window.location.href = 'patient_portal.html';
+                    const stay = document.getElementById('session-stay-vault') && document.getElementById('session-stay-vault').checked;
+                    if (stay) {
+                        updateUI();
+                        switchView('dashboard');
+                    } else {
+                        window.location.href = 'patient_portal.html';
+                    }
                 } else {
                     const detail = data.detail;
                     showMsg('session-msg', (detail && detail.message) || (typeof detail === 'string' ? detail : 'Session failed.'), true);
@@ -1978,14 +2007,24 @@ Are there any patterns in my symptoms?"></textarea>
             clearMsg('journal-save-msg');
 
             try {
+                let pro = null;
+                const proRaw = (document.getElementById('journal-pro-json') && document.getElementById('journal-pro-json').value || '').trim();
+                if (proRaw) {
+                    try { pro = JSON.parse(proRaw); } catch (_) {
+                        showMsg('journal-save-msg', 'FORWARD PRO JSON must be valid JSON.', true);
+                        return;
+                    }
+                }
                 const r = await fetch(`${API_BASE}/api/journal/entry`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify(pro != null ? { text, patient_reported_outcomes: Array.isArray(pro) ? pro : [pro] } : { text })
                 });
                 if (r.ok) {
                     showMsg('journal-save-msg', 'Saved.', false);
                     document.getElementById('journal-text-input').value = '';
+                    const pj = document.getElementById('journal-pro-json');
+                    if (pj) pj.value = '';
                     addReceipt('Journal entry saved');
                     updateTransparency('t-mutation', true, 'State mutated');
                     updateTransparency('t-persist', true, 'Data persisted');
@@ -2373,18 +2412,20 @@ Are there any patterns in my symptoms?"></textarea>
                     if (docDate) formData.append('document_date', docDate);
                     if (docNotes) formData.append('notes', docNotes);
 
-                    const base = uploadBaseFor(file);
-                    const r = await fetch(`${base}/api/rag/upload_timeline_pdf`, {
+                    const r = await fetch(`${API_BASE}/api/timeline/artifact`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${sessionToken}` },
                         body: formData
                     });
 
                     if (r.ok) {
-                        const via = base !== API_BASE ? ' (via direct upload)' : '';
-                        addReceipt('Document uploaded: ' + file.name + via);
+                        const info = await r.json().catch(() => ({}));
+                        addReceipt('Vault artifact → PTV: ' + file.name + (info.event_id ? ' (' + info.event_id + ')' : ''));
                     } else {
-                        showMsg('doc-submit-msg', 'Upload failed for: ' + file.name, true);
+                        const err = await r.json().catch(() => ({}));
+                        const d = err.detail;
+                        const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || err);
+                        showMsg('doc-submit-msg', 'Upload failed for: ' + file.name + ' — ' + msg, true);
                     }
                 }
                 showMsg('doc-submit-msg', selectedFiles.length + ' document(s) submitted.', false);
@@ -2450,6 +2491,39 @@ Are there any patterns in my symptoms?"></textarea>
                 updateTransparency('t-external', true, 'External API call');
             } catch (e) {
                 container.innerHTML = '<div class="results-error">' + e.message + '</div>';
+            }
+        }
+
+        async function handleMockPtvEvents() {
+            if (!sessionToken) {
+                showMsg('mock-ptv-msg', 'Start a session first.', true);
+                return;
+            }
+            clearMsg('mock-ptv-msg');
+            const sample = {
+                events: [
+                    { title: 'Outpatient visit — fatigue workup', timestamp: new Date().toISOString(), event_type: 'visit' },
+                    { title: 'Lab: CBC within reference range', event_type: 'lab' },
+                    { title: 'Patient notes: morning stiffness 45m', event_type: 'note' }
+                ]
+            };
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/mock-events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify(sample)
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    showMsg('mock-ptv-msg', 'Added ' + (data.added || 0) + ' mock event(s) to PTV.', false);
+                    addReceipt('Mock PTV events inserted (' + (data.added || 0) + ')');
+                } else {
+                    const d = data.detail;
+                    const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || data);
+                    showMsg('mock-ptv-msg', msg, true);
+                }
+            } catch (e) {
+                showMsg('mock-ptv-msg', e.message || 'Network error', true);
             }
         }
 
@@ -2593,6 +2667,8 @@ Are there any patterns in my symptoms?"></textarea>
             setupDocDropZone();
             setupEohdDropZone();
             document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmit);
+            const mockPtvBtn = document.getElementById('mock-ptv-events-btn');
+            if (mockPtvBtn) mockPtvBtn.addEventListener('click', handleMockPtvEvents);
             document.getElementById('doc-search-btn').addEventListener('click', handleDocSearch);
             document.getElementById('doc-search-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
 

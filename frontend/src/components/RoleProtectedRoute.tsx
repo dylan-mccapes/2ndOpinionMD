@@ -24,6 +24,16 @@ export function RoleProtectedRoute({ children, role }: RoleProtectedRouteProps) 
     return <Navigate to="/auth/login" state={{ from: location.pathname }} replace />;
   }
 
+  if (user && (!user.is_verified || !user.ptv_ready)) {
+    return (
+      <Navigate
+        to="/auth/login"
+        state={{ from: location.pathname, accountIncomplete: true }}
+        replace
+      />
+    );
+  }
+
   const userType = user?.user_type ?? 'patient';
 
   if (userType !== role) {

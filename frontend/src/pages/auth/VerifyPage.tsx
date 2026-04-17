@@ -10,6 +10,7 @@ export function VerifyPage() {
   const token = searchParams.get('token');
   const [state, setState] = useState<VerifyState>(token ? 'loading' : 'no-token');
   const [errorMessage, setErrorMessage] = useState('');
+  const [ptvWarning, setPtvWarning] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -23,6 +24,14 @@ export function VerifyPage() {
           setErrorMessage(typeof detail === 'string' ? detail : 'Verification failed');
           setState('error');
           return;
+        }
+        const ok = await res.json().catch(() => ({}));
+        if (ok && ok.ptv_initialized === false) {
+          setPtvWarning(
+            'Email verified, but the clinical graph record could not be created yet. Try logging in — the system will retry automatically.',
+          );
+        } else {
+          setPtvWarning('');
         }
         setState('success');
       } catch (err) {
@@ -72,6 +81,11 @@ export function VerifyPage() {
             <p className="text-sm font-mono mb-3" style={{ color: 'var(--accent-green)' }}>
               Email verified successfully.
             </p>
+            {ptvWarning ? (
+              <p className="text-xs font-mono mb-3" style={{ color: 'var(--text-secondary)' }}>
+                {ptvWarning}
+              </p>
+            ) : null}
             <Link
               to="/auth/login"
               className="px-3 py-1.5 rounded text-xs font-mono no-underline"

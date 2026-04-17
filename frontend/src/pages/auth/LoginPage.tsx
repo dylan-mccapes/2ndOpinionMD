@@ -69,6 +69,11 @@ export function LoginPage() {
         if (code === 'email_not_verified') {
           setNeedsVerification(true);
           setError(parseDetail(data.detail));
+        } else if (code === 'ptv_not_initialized' || res.status === 503) {
+          setError(
+            parseDetail(data.detail) ||
+              'Account setup could not finish (clinical graph). Please try again in a moment.',
+          );
         } else {
           setError(parseDetail(data.detail));
         }

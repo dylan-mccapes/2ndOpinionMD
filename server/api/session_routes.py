@@ -7,19 +7,22 @@ POST /api/session/close -> close current session
 POST /api/timeline/initialize -> create patient timeline (requires patient session)
 GET /api/timeline/status -> { has_timeline, timeline_id, event_count, last_updated } (JWT auth)
 POST /api/timeline/import-pdf -> multipart PDF upload (JWT auth)
+POST /api/timeline/artifact -> lightweight file metadata into PTV (session Bearer)
+POST /api/timeline/mock-events -> append mock PTV events (session Bearer)
 """
 import logging
 import secrets
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, status, UploadFile
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import text
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.models.postgresql.models import User
 from server.db.session import get_session
 from server.api.auth_postgres import authenticate_user, get_current_user_postgres
 
@@ -168,6 +171,63 @@ async def close_session_by_token(db: AsyncSession, session_token: str) -> bool:
     return r.rowcount > 0
 
 
+async def get_vault_user_from_session(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """Session Bearer user with email verified + PTV row (Epistemic Vault HTML)."""
+    from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+    token = await _get_bearer_token(request)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization: Bearer session_token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_uuid = await get_user_id_for_session(db, token)
+    if not user_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or closed session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    r = await db.execute(select(User).where(User.id == user_uuid))
+    user = r.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found for session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not getattr(user, "is_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"},
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        await ensure_user_ptv_row(pool, str(user.id))
+        if not await vision_row_exists(pool, str(user.id)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ptv_not_initialized",
+                    "message": "Your clinical graph could not be loaded. Please retry or contact support.",
+                },
+            )
+    return user
+
+
+class MockTimelineEventsRequest(BaseModel):
+    events: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 # --- Dependency: current session from Bearer token -----------------------------
 
 async def get_session_token_from_header(
@@ -209,6 +269,7 @@ async def _get_bearer_token(request: Request) -> Optional[str]:
 
 @router.post("/instantiate", response_model=SessionInstantiateResponse)
 async def session_instantiate(
+    request: Request,
     body: SessionInstantiateRequest,
     db: AsyncSession = Depends(get_session),
 ):
@@ -238,6 +299,14 @@ async def session_instantiate(
         )
     operator_id = await get_or_create_operator(db, user.id, operator_type="patient", sovereignty_level="full")
     session_token, _ = await create_session_for_operator(db, operator_id)
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        from server.eoh.ptv_journal_bridge import ensure_user_ptv_row
+
+        try:
+            await ensure_user_ptv_row(pool, str(user.id))
+        except Exception:
+            logger.exception("PTV bootstrap on session instantiate failed for user %s", user.id)
     timeline_id = await get_timeline_id_for_operator(db, operator_id)
     return SessionInstantiateResponse(
         session_token=session_token,
@@ -460,3 +529,93 @@ async def timeline_import_pdf(
         "status": "ready",
         "message": "Timeline ingested successfully",
     }
+
+
+# --- Lightweight vault upload + mock PTV (session Bearer, Epistemic index.html) ---
+
+_MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+
+
+@timeline_router.post("/artifact")
+async def timeline_vault_artifact(
+    request: Request,
+    file: UploadFile = File(...),
+    document_type: str = Form("other"),
+    document_date: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    user: User = Depends(get_vault_user_from_session),
+):
+    """
+    Store a small file as a ``patient_artifact`` node on the user's PTV graph.
+    Does **not** run the full timeline PDF / RAG pipeline — metadata + optional text snippet only.
+    """
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database pool unavailable",
+        )
+    try:
+        data = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
+    if len(data) > _MAX_ARTIFACT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large (max {_MAX_ARTIFACT_BYTES // (1024 * 1024)} MB for vault artifact)",
+        )
+    fn = file.filename or "upload"
+    ct = file.content_type
+    text_snippet: Optional[str] = None
+    if ct and "text" in ct.lower():
+        text_snippet = data.decode("utf-8", errors="replace")[:8000]
+    from server.eoh.ptv_journal_bridge import add_patient_artifact_event
+
+    try:
+        eid = await add_patient_artifact_event(
+            pool,
+            str(user.id),
+            filename=fn,
+            content_type=ct,
+            size_bytes=len(data),
+            document_type=document_type,
+            document_date=document_date,
+            notes=notes,
+            text_snippet=text_snippet,
+        )
+    except Exception as e:
+        logger.exception("timeline_vault_artifact failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    return {
+        "event_id": eid,
+        "patient_id": str(user.id),
+        "status": "artifact_stored_in_ptv",
+        "filename": fn,
+    }
+
+
+@timeline_router.post("/mock-events")
+async def timeline_mock_ptv_events(
+    request: Request,
+    body: MockTimelineEventsRequest,
+    user: User = Depends(get_vault_user_from_session),
+):
+    """Append mock clinical events to PTV for manual / HTML vault testing."""
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database pool unavailable",
+        )
+    if len(body.events) > 20:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 20 mock events per request")
+    from server.eoh.ptv_journal_bridge import add_mock_timeline_events
+
+    try:
+        n = await add_mock_timeline_events(pool, str(user.id), body.events)
+    except Exception as e:
+        logger.exception("timeline_mock_ptv_events failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    return {"added": n, "patient_id": str(user.id)}

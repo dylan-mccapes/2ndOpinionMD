@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -8,11 +9,18 @@ import asyncio
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from fastapi import Request
 from database.models.postgresql.models import JournalEntry, User
-from server.api.auth_postgres import get_current_user_postgres as get_current_user
+from server.api.auth_postgres import (
+    get_current_user_postgres as get_current_user,
+    SECRET_KEY,
+    ALGORITHM,
+)
 from server.api.session_routes import get_user_id_for_session
+from jose import JWTError, jwt
 from server.db.session import get_session
+
+logger = logging.getLogger(__name__)
+
 
 class SymptomEntry(BaseModel):
     symptom: str
@@ -30,6 +38,7 @@ class JournalEntryCreate(BaseModel):
     diet_notes: Optional[str] = None
     sleep_quality: Optional[int] = None
     notes: Optional[str] = None
+    patient_reported_outcomes: Optional[List[Any]] = None
 
 class JournalEntryResponse(BaseModel):
     id: UUID
@@ -44,6 +53,7 @@ class JournalEntryResponse(BaseModel):
     analysis: Optional[str] = None
     pattern_observations: Optional[str] = Field(default=None, alias="patternObservations")
     ai_analysis: Optional[dict] = Field(default=None, alias="aiAnalysis")
+    patient_reported_outcomes: Optional[list] = Field(default=None, alias="patientReportedOutcomes")
     created_at: datetime = Field(alias="createdAt")
     updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
     
@@ -105,6 +115,73 @@ Using the 2OPMD Diagnostic Terrain System:
 router = APIRouter(tags=["journal"])
 
 
+async def get_journal_user_jwt_or_session(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    """Bearer can be session_token (opaque) or JWT — used where HTML vault sends session auth."""
+    from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header (Bearer token)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = auth[7:].strip()
+    user_uuid = await get_user_id_for_session(session, token)
+    if user_uuid:
+        result = await session.execute(select(User).where(User.id == user_uuid))
+        user = result.scalar_one_or_none()
+    else:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            email = payload.get("sub")
+            if not email:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Could not validate credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        except JWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not getattr(user, "is_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"},
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        await ensure_user_ptv_row(pool, str(user.id))
+        if not await vision_row_exists(pool, str(user.id)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ptv_not_initialized",
+                    "message": "Your clinical graph could not be loaded. Please retry or contact support.",
+                },
+            )
+    return user
+
+
 async def get_current_user_from_session_token(
     request: Request, session: AsyncSession = Depends(get_session)
 ) -> User:
@@ -132,6 +209,29 @@ async def get_current_user_from_session_token(
             detail="User not found for session",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not getattr(user, "is_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"},
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+        await ensure_user_ptv_row(pool, str(user.id))
+        if not await vision_row_exists(pool, str(user.id)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ptv_not_initialized",
+                    "message": "Your clinical graph could not be loaded. Please retry or contact support.",
+                },
+            )
     return user
 
 
@@ -140,26 +240,36 @@ async def get_current_user_from_session_token(
 class JournalTextCreate(BaseModel):
     """POC: single text field for journal entry."""
     text: str
+    patient_reported_outcomes: Optional[List[Any]] = None
 
 
 @router.post("/entry", status_code=status.HTTP_201_CREATED)
 async def create_journal_entry_text(
+    request: Request,
     body: JournalTextCreate,
     current_user: User = Depends(get_current_user_from_session_token),
     session: AsyncSession = Depends(get_session),
 ):
     """POC: Store a plain text journal entry. No AI analysis. Requires Bearer session_token."""
     from datetime import datetime
+    from server.eoh.ptv_journal_bridge import mirror_journal_entry_to_ptv
+
     entry = JournalEntry(
         user_id=current_user.id,
         date=datetime.utcnow(),
         notes=(body.text or "").strip() or None,
         symptoms=None,
         environmental_factors=None,
+        patient_reported_outcomes=body.patient_reported_outcomes,
     )
     session.add(entry)
     await session.commit()
     await session.refresh(entry)
+    pool = getattr(request.app.state, "pool", None)
+    try:
+        await mirror_journal_entry_to_ptv(pool, str(current_user.id), entry)
+    except Exception:
+        logger.exception("PTV mirror failed after text journal create")
     return {"id": str(entry.id), "created_at": entry.created_at.isoformat()}
 
 
@@ -212,7 +322,7 @@ class JournalQueryAIRequest(BaseModel):
 @router.post("/query-ai")
 async def query_journal_ai(
     body: JournalQueryAIRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_journal_user_jwt_or_session),
     session: AsyncSession = Depends(get_session),
 ):
     """AI-powered query over user's journal entries. Requires Bearer JWT."""
@@ -255,6 +365,7 @@ async def query_journal_ai(
 @router.post("/", response_model=JournalEntryResponse, response_model_by_alias=False, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=JournalEntryResponse, response_model_by_alias=False, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_journal_entry(
+    request: Request,
     entry: JournalEntryCreate,
     current_user: User = Depends(get_current_user),
     report_id: Optional[str] = None,
@@ -326,12 +437,21 @@ async def create_journal_entry(
         notes=entry.notes,
         analysis=None,
         pattern_observations=None,
-        ai_analysis=ai_analysis
+        ai_analysis=ai_analysis,
+        patient_reported_outcomes=entry.patient_reported_outcomes,
     )
     
     session.add(db_entry)
     await session.commit()
     await session.refresh(db_entry)
+
+    from server.eoh.ptv_journal_bridge import mirror_journal_entry_to_ptv
+
+    pool = getattr(request.app.state, "pool", None)
+    try:
+        await mirror_journal_entry_to_ptv(pool, str(current_user.id), db_entry)
+    except Exception:
+        logger.exception("PTV mirror failed after journal create")
 
     return db_entry
 
@@ -423,11 +543,14 @@ async def get_timeline_data(
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_journal_entry(
+    request: Request,
     entry_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
     """Delete a journal entry"""
+    from server.eoh.ptv_journal_bridge import remove_journal_mirror_from_ptv
+
     query = select(JournalEntry).where(
         and_(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id)
     )
@@ -435,6 +558,11 @@ async def delete_journal_entry(
     db_entry = result.scalar_one_or_none()
     
     if db_entry:
+        pool = getattr(request.app.state, "pool", None)
+        try:
+            await remove_journal_mirror_from_ptv(pool, str(current_user.id), str(db_entry.id))
+        except Exception:
+            logger.exception("PTV mirror remove failed before journal delete")
         await session.delete(db_entry)
         await session.commit()
         return

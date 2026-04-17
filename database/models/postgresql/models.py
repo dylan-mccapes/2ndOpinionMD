@@ -44,6 +44,7 @@ class JournalEntry(Base):
     analysis = Column(Text, nullable=True)
     pattern_observations = Column(Text, nullable=True)
     ai_analysis = Column(JSON, nullable=True)
+    patient_reported_outcomes = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=True)
     

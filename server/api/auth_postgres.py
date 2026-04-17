@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 import bcrypt
@@ -34,6 +34,7 @@ class UserInDB(BaseModel):
     locked_until: Optional[datetime] = None
     password_reset_token: Optional[str] = None
     password_reset_token_expires: Optional[datetime] = None
+    ptv_ready: bool = False
 
     class Config:
         from_attributes = True
@@ -122,8 +123,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 async def get_current_user_postgres(
-    token: str = Depends(oauth2_scheme), 
-    session: AsyncSession = Depends(get_session)
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_session),
 ):
     # Dev bypass: accept synthetic token without DB lookup.
     if (
@@ -144,6 +146,7 @@ async def get_current_user_postgres(
             last_login=None,
             is_verified=True,
             locked_until=None,
+            ptv_ready=True,
         )
 
     credentials_exception = HTTPException(
@@ -181,5 +184,20 @@ async def get_current_user_postgres(
             },
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    return user
+
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+        await ensure_user_ptv_row(pool, str(user.id))
+        if not await vision_row_exists(pool, str(user.id)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ptv_not_initialized",
+                    "message": "Your clinical graph could not be loaded. Please retry or contact support.",
+                },
+            )
+        return user.model_copy(update={"ptv_ready": True})
+
+    return user.model_copy(update={"ptv_ready": True})

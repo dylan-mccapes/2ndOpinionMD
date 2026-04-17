@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
@@ -491,6 +491,31 @@ async def diagnose_alias(
 
 
 # --- Health & OpenAPI compatibility -------------------------------------------
+@app.get("/", include_in_schema=False)
+async def serve_epistemic_vault_root():
+    """Serve the Epistemic Vault single-page HTML (not the React SPA)."""
+    path = project_root / "index.html"
+    if path.is_file():
+        return FileResponse(path, media_type="text/html; charset=utf-8")
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/index.html", include_in_schema=False)
+async def serve_epistemic_vault_index_named():
+    path = project_root / "index.html"
+    if path.is_file():
+        return FileResponse(path, media_type="text/html; charset=utf-8")
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/patient_portal.html", include_in_schema=False)
+async def serve_patient_portal_html():
+    path = project_root / "patient_portal.html"
+    if path.is_file():
+        return FileResponse(path, media_type="text/html; charset=utf-8")
+    raise HTTPException(status_code=404, detail="patient_portal.html not found")
+
+
 @app.get("/api/health")
 async def health_check(session: AsyncSession = Depends(get_session)):
     """
