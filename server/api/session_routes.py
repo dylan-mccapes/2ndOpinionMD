@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, status, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -548,6 +549,7 @@ async def timeline_vault_artifact(
     """
     Store a small file as a ``patient_artifact`` node on the user's PTV graph.
     Does **not** run the full timeline PDF / RAG pipeline — metadata + optional text snippet only.
+    Returns is_duplicate=true if the same bytes were already uploaded.
     """
     pool = getattr(request.app.state, "pool", None)
     if pool is None:
@@ -569,10 +571,13 @@ async def timeline_vault_artifact(
     text_snippet: Optional[str] = None
     if ct and "text" in ct.lower():
         text_snippet = data.decode("utf-8", errors="replace")[:8000]
+
+    from server.eoh.event_dedup import artifact_sha256 as _sha256
     from server.eoh.ptv_journal_bridge import add_patient_artifact_event
 
+    sha = _sha256(data)
     try:
-        eid = await add_patient_artifact_event(
+        result = await add_patient_artifact_event(
             pool,
             str(user.id),
             filename=fn,
@@ -582,16 +587,19 @@ async def timeline_vault_artifact(
             document_date=document_date,
             notes=notes,
             text_snippet=text_snippet,
+            content_sha256=sha,
         )
     except Exception as e:
         logger.exception("timeline_vault_artifact failed")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return {
-        "event_id": eid,
-        "patient_id": str(user.id),
-        "status": "artifact_stored_in_ptv",
-        "filename": fn,
+        "event_id":    result["event_id"],
+        "artifact_id": result["artifact_id"],
+        "patient_id":  str(user.id),
+        "status":      "artifact_stored_in_ptv",
+        "filename":    fn,
+        "is_duplicate": result["is_duplicate"],
     }
 
 
@@ -619,3 +627,385 @@ async def timeline_mock_ptv_events(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return {"added": n, "patient_id": str(user.id)}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/timeline/artifacts/ingest  — multi-file eoh-llama 8B ingest
+# Session Bearer auth; SSE stream; up to 20 files per call.
+# ---------------------------------------------------------------------------
+
+_INGEST_MAX_FILES = 20
+_INGEST_MAX_BYTES_PER_FILE = 500 * 1024 * 1024  # 500 MB (matches /infer limit)
+
+# Supported MIME types for 8B extraction (everything else → Tier A only)
+_8B_EXTRACTABLE_MIMES = {
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "text/html",
+    "application/json",
+    "application/hl7-v2",
+}
+_8B_EXTRACTABLE_EXTS = {".pdf", ".txt", ".csv", ".json", ".hl7"}
+
+
+def _mime_supports_8b(filename: str, content_type: Optional[str]) -> bool:
+    import os
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext in _8B_EXTRACTABLE_EXTS:
+        return True
+    if content_type:
+        base = content_type.split(";")[0].strip().lower()
+        return base in _8B_EXTRACTABLE_MIMES or "text" in base
+    return False
+
+
+def _sse_bytes(event: str, data: dict) -> bytes:
+    import json as _json
+    return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n".encode()
+
+
+@timeline_router.post("/artifacts/ingest")
+async def timeline_artifacts_ingest(
+    request: Request,
+    files: List[UploadFile] = File(...),
+    document_type: str = Form("other"),
+    document_date: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    model: str = Form("eoh-llama3.1:8b"),
+    store_results: bool = Form(True),
+    build_graph: bool = Form(True),
+    user: User = Depends(get_vault_user_from_session),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Multi-file Tier B ingest (session Bearer).
+
+    Accepts up to 20 files in one call. Each file is:
+    1. Sha256-checked against ``vision.metadata.artifacts`` — duplicate → skip.
+    2. Stored as a Tier A ``patient_artifact`` node immediately so the vault
+       list is always up to date.
+    3. If the mime/extension is PDF/text/JSON: run through eoh-llama 8B
+       (via the existing ``_infer_lock`` GPU single-flight).
+       Other formats stay as Tier A only.
+
+    Returns an SSE stream with per-file progress events:
+      artifact_accepted, (pdf_read | text_extracted), pre_scan_done,
+      batch_start, batch_done, graph_update, artifact_done, complete.
+    """
+    from server.api.timeline_infer_routes import (
+        _infer_lock,
+        _infer_active,
+        _extract_pdf_pages,
+        _chunk_pages,
+        _call_ollama_8b,
+        _parse_extraction_response,
+        _INFER_SYSTEM_PROMPT,
+        _DEFAULT_NUM_CTX,
+        _BATCH_MAX_INPUT_CHARS,
+        _OLLAMA_POOL_LIMITS,
+        _OLLAMA_TIMEOUT,
+    )
+    from server.eoh.event_dedup import (
+        artifact_sha256 as _sha256,
+        artifact_id_from_bytes,
+        canonical_event_id,
+        artifact_catalog_entry,
+    )
+    from server.eoh.ptv_journal_bridge import add_patient_artifact_event
+    from server.eoh.patient_timeline_vision import (
+        load_timeline_vision_pg,
+        save_timeline_vision_pg,
+        add_events_from_pdf_page,
+        _infer_temporal_connascence,
+        PatientTimelineVision,
+    )
+    from server.utils.pii_scrub import scrub_pages, extract_patient_names_from_header, scrub_pii
+
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database pool unavailable")
+
+    if len(files) > _INGEST_MAX_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum {_INGEST_MAX_FILES} files per call",
+        )
+
+    # Read all file bytes eagerly before acquiring the GPU lock
+    file_items: List[dict] = []
+    for upload in files:
+        try:
+            data = await upload.read()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Could not read {upload.filename}: {exc}")
+        if len(data) > _INGEST_MAX_BYTES_PER_FILE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"{upload.filename} exceeds {_INGEST_MAX_BYTES_PER_FILE // (1024 * 1024)} MB limit",
+            )
+        file_items.append({
+            "filename": upload.filename or "upload",
+            "content_type": upload.content_type,
+            "data": data,
+            "sha": _sha256(data),
+        })
+
+    patient_id = str(user.id)
+
+    async def _generate():
+        import asyncio
+        import hashlib
+
+        totals = {"extracted": 0, "merged": 0, "duplicates": 0}
+
+        # Hold GPU lock across ALL files so no other inference can interleave
+        if _infer_lock.locked():
+            yield _sse_bytes("error", {
+                "message": "Inference already in progress. Try again shortly.",
+                "active_job": _infer_active.copy(),
+            })
+            return
+
+        async with _infer_lock:
+            _infer_active.update({
+                "patient_id": patient_id,
+                "model": model,
+                "files": len(file_items),
+                "source": "artifacts_ingest",
+            })
+            try:
+                for fi in file_items:
+                    fn = fi["filename"]
+                    data = fi["data"]
+                    sha = fi["sha"]
+                    ct = fi["content_type"]
+                    art_id = f"art_{sha[:16]}"
+
+                    # ── Artifact-level dedup check ──────────────────────────
+                    vision = await load_timeline_vision_pg(pool, patient_id)
+                    if vision is None:
+                        from server.eoh.ptv_journal_bridge import empty_user_vision
+                        vision = empty_user_vision(patient_id)
+                    artifacts_catalog = vision.metadata.setdefault("artifacts", [])
+                    is_dup = any(a.get("artifact_id") == art_id for a in artifacts_catalog)
+
+                    yield _sse_bytes("artifact_accepted", {
+                        "artifact_id": art_id,
+                        "filename": fn,
+                        "size_bytes": len(data),
+                        "sha256": sha,
+                        "is_duplicate": is_dup,
+                    })
+
+                    if is_dup:
+                        # Touch last_seen_at and move on
+                        for a in artifacts_catalog:
+                            if a.get("artifact_id") == art_id:
+                                from datetime import datetime, timezone
+                                a["last_seen_at"] = datetime.now(timezone.utc).isoformat()
+                        await save_timeline_vision_pg(pool, vision)
+                        totals["duplicates"] += 1
+                        yield _sse_bytes("artifact_done", {
+                            "artifact_id": art_id,
+                            "filename": fn,
+                            "events_extracted": 0,
+                            "events_merged": 0,
+                            "reason": "duplicate",
+                        })
+                        continue
+
+                    # ── Tier A registration (always) ─────────────────────
+                    text_snippet: Optional[str] = None
+                    if ct and "text" in ct.lower():
+                        text_snippet = data.decode("utf-8", errors="replace")[:8000]
+
+                    tier_a_result = await add_patient_artifact_event(
+                        pool,
+                        patient_id,
+                        filename=fn,
+                        content_type=ct,
+                        size_bytes=len(data),
+                        document_type=document_type,
+                        document_date=document_date,
+                        notes=notes,
+                        text_snippet=text_snippet,
+                        content_sha256=sha,
+                    )
+
+                    # ── Decide if 8B extraction is possible ──────────────
+                    if not _mime_supports_8b(fn, ct):
+                        yield _sse_bytes("artifact_done", {
+                            "artifact_id": art_id,
+                            "filename": fn,
+                            "events_extracted": 0,
+                            "events_merged": 0,
+                            "reason": "unsupported_for_8b",
+                        })
+                        continue
+
+                    # ── Extract text ─────────────────────────────────────
+                    loop = asyncio.get_running_loop()
+                    pages = None
+                    raw_text = None
+                    is_pdf = (ct == "application/pdf" or fn.lower().endswith(".pdf"))
+
+                    if is_pdf:
+                        yield _sse_bytes("status", {"phase": "pdf_extracting", "filename": fn})
+                        try:
+                            pages = await loop.run_in_executor(None, _extract_pdf_pages, data, None)
+                        except Exception as exc:
+                            yield _sse_bytes("batch_error", {"filename": fn, "message": f"PDF extraction failed: {exc}"})
+                            continue
+                        if not pages:
+                            yield _sse_bytes("batch_error", {"filename": fn, "message": "No text extracted from PDF"})
+                            continue
+                        total_chars = sum(len(t) for _, t in pages)
+                        yield _sse_bytes("pdf_read", {
+                            "filename": fn,
+                            "pages": max(p for p, _ in pages),
+                            "chars": total_chars,
+                        })
+                        # PII scrub
+                        known_names = await loop.run_in_executor(None, extract_patient_names_from_header, pages)
+                        pages = await loop.run_in_executor(None, scrub_pages, pages, known_names)
+                    else:
+                        raw_text = data.decode("utf-8", errors="replace")
+                        raw_text = scrub_pii(raw_text)
+                        yield _sse_bytes("text_extracted", {"filename": fn, "chars": len(raw_text)})
+
+                    # ── Heuristic pre-scan (PDF only) ─────────────────────
+                    prescan_events_total = 0
+                    prescan_by_page: dict = {}
+                    if pages is not None:
+                        from server.eoh.heuristic_page_extract import heuristic_extract_batch
+                        prescan_results = await loop.run_in_executor(None, heuristic_extract_batch, pages)
+                        prescan_by_page = prescan_results
+                        for pr in prescan_results.values():
+                            prescan_events_total += len(pr.events)
+                        yield _sse_bytes("pre_scan_done", {
+                            "filename": fn,
+                            "events": prescan_events_total,
+                        })
+
+                    # ── Batch text for 8B ─────────────────────────────────
+                    if pages is not None:
+                        from server.api.timeline_infer_routes import _chunk_pages
+                        batches = _chunk_pages(pages)
+                    else:
+                        # Text: one flat batch
+                        batches = [[(1, raw_text)]]
+
+                    total_batches = len(batches)
+                    events_this_file: List[dict] = []
+                    total_elapsed = 0.0
+
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(limits=_OLLAMA_POOL_LIMITS, timeout=_OLLAMA_TIMEOUT) as http:
+                        for bidx, batch in enumerate(batches, 1):
+                            if pages is not None:
+                                sections = []
+                                for pn, txt in batch:
+                                    sec = f"=== Page {pn} ===\n{txt}"
+                                    pr = prescan_by_page.get(pn)
+                                    if pr is not None:
+                                        from server.eoh.heuristic_page_extract import skeleton_for_llm
+                                        skel = skeleton_for_llm(pn, txt, pr)
+                                        if skel:
+                                            sec += f"\n\n--- PRE-SCAN SKELETON ---\n{skel}"
+                                    sections.append(sec)
+                                batch_text = "\n\n".join(sections)
+                            else:
+                                batch_text = raw_text[:_BATCH_MAX_INPUT_CHARS]
+
+                            yield _sse_bytes("batch_start", {"filename": fn, "batch": bidx, "total": total_batches, "chars": len(batch_text)})
+
+                            try:
+                                raw_resp, elapsed = await _call_ollama_8b(
+                                    http=http,
+                                    batch_text=batch_text,
+                                    question="Extract all clinically significant events as a JSON array.",
+                                    model=model,
+                                    num_ctx=_DEFAULT_NUM_CTX,
+                                )
+                                total_elapsed += elapsed
+                                extracted = _parse_extraction_response(raw_resp)
+
+                                for ev in extracted:
+                                    if ev.get("text"):
+                                        ev["text"] = scrub_pii(ev["text"])
+                                    ev["_batch"] = bidx
+                                    ev["_model"] = model
+                                    ev["_artifact_id"] = art_id
+                                    ev["_filename"] = fn
+
+                                # Persist to ehr.patient_timeline (dedup-safe)
+                                if store_results:
+                                    from server.api.timeline_infer_routes import _store_extracted_events
+                                    await _store_extracted_events(db, patient_id, extracted, bidx, model, artifact_id=art_id)
+
+                                # Merge into PTV graph
+                                if build_graph:
+                                    vision_now = await load_timeline_vision_pg(pool, patient_id)
+                                    if vision_now is None:
+                                        from server.eoh.ptv_journal_bridge import empty_user_vision
+                                        vision_now = empty_user_vision(patient_id)
+                                    pn = batch[0][0] if pages is not None else bidx
+                                    add_events_from_pdf_page(vision_now, pn, extracted)
+                                    await save_timeline_vision_pg(pool, vision_now)
+                                    yield _sse_bytes("graph_update", {
+                                        "filename": fn,
+                                        "total_events": len(vision_now.events),
+                                        "total_edges": vision_now.count_edges(),
+                                    })
+
+                                events_this_file.extend(extracted)
+                                yield _sse_bytes("batch_done", {
+                                    "filename": fn,
+                                    "batch": bidx,
+                                    "extracted": len(extracted),
+                                    "elapsed_ms": int(elapsed * 1000),
+                                })
+                            except Exception as exc:
+                                logger.exception("artifacts/ingest batch %d failed for %s", bidx, fn)
+                                yield _sse_bytes("batch_error", {"filename": fn, "batch": bidx, "message": str(exc)})
+
+                    # ── Final temporal connascence + update catalog ────────
+                    if build_graph:
+                        vision_final = await load_timeline_vision_pg(pool, patient_id)
+                        if vision_final:
+                            _infer_temporal_connascence(vision_final, window_days=7)
+                            # Update the artifact catalog entry with extraction counts
+                            for a in vision_final.metadata.get("artifacts", []):
+                                if a.get("artifact_id") == art_id:
+                                    a["ingest_tier"] = "B"
+                                    a["events_extracted"] = len(events_this_file)
+                                    if pages:
+                                        a["pages"] = max(p for p, _ in pages)
+                            await save_timeline_vision_pg(pool, vision_final)
+
+                    n_extracted = len(events_this_file)
+                    totals["extracted"] += n_extracted
+                    yield _sse_bytes("artifact_done", {
+                        "artifact_id": art_id,
+                        "filename": fn,
+                        "events_extracted": n_extracted,
+                        "events_merged": n_extracted,
+                        "elapsed_ms": int(total_elapsed * 1000),
+                    })
+
+            finally:
+                _infer_active.clear()
+
+        yield _sse_bytes("complete", {
+            "patient_id": patient_id,
+            "artifacts": len(file_items),
+            "events_extracted_total": totals["extracted"],
+            "events_duplicated_total": totals["duplicates"],
+        })
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

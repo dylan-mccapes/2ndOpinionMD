@@ -372,6 +372,9 @@
 
         .badge-blue { background: var(--color-accent-soft); color: var(--color-accent); }
         .badge-green { background: var(--color-success-soft); color: var(--color-success); }
+        .badge-gray { background: #f1f5f9; color: #64748b; }
+        .badge-yellow { background: #fef9c3; color: #92400e; }
+        .badge-red { background: var(--color-error-soft); color: #991b1b; }
         .badge-yellow { background: var(--color-warning-soft); color: var(--color-warning); }
         .badge-red { background: var(--color-error-soft); color: var(--color-error); }
         .badge-purple { background: var(--color-purple-soft); color: var(--color-purple); }
@@ -1191,14 +1194,14 @@
                             <div class="card-badge badge-blue">Upload</div>
                         </div>
                         <div class="notice notice-info">
-                            <strong>Vault upload (lightweight):</strong> files attach as <code>patient_artifact</code> nodes on your
-                            PatientTimelineVision — no full timeline PDF / RAG pipeline. Max 8&nbsp;MB per file. Supported: PDF, images, text.<br>
-                            Use <strong>Initialize Timeline</strong> in the Timeline tab only when you need the full <code>patient_timelines</code> row + heavy ingest.
+                            <strong>Vault upload with eoh-llama 8B extraction:</strong> PDF, TXT, CSV, JSON files are
+                            ingested by the local eoh-llama 8B model — events are extracted and added to your timeline graph.
+                            Other formats (images, DOCX) are stored as lightweight artifact nodes. Max 500&nbsp;MB per file.
                         </div>
                         <div class="drop-zone" id="doc-drop-zone">
                             <div class="drop-zone-icon">&#128196;</div>
                             <div class="drop-zone-text">Drop files here or click to browse</div>
-                            <div class="drop-zone-hint">PDF, JPEG, PNG, TXT — Files over 100 MB upload via direct link</div>
+                            <div class="drop-zone-hint">PDF, TXT, CSV, JSON — Up to 20 files per upload</div>
                         </div>
                         <input type="file" id="doc-file-input" style="display: none;" multiple accept=".pdf,.jpg,.jpeg,.png,.txt,.csv,.hl7">
 
@@ -1851,21 +1854,52 @@ Are there any patterns in my symptoms?"></textarea>
             clearMsg('doc-submit-msg');
         }
 
-        function appendUploadedArtifactRow({ title, filename, documentType, documentDate, eventId }) {
+        function appendUploadedArtifactRow({ title, filename, documentType, documentDate, eventId, badge }) {
             const ul = document.getElementById('doc-uploaded-titles');
             const wrap = document.getElementById('doc-uploaded-section');
-            if (!ul || !wrap) return;
+            if (!ul || !wrap) return null;
             const meta = [];
             if (filename && filename !== title) meta.push(filename);
             meta.push(docTypeLabel(documentType));
             if (documentDate) meta.push(documentDate);
-            if (eventId) meta.push('Graph id: ' + String(eventId).slice(0, 18) + (String(eventId).length > 18 ? '…' : ''));
+            if (eventId) meta.push('id: ' + String(eventId).slice(0, 18) + (String(eventId).length > 18 ? '…' : ''));
+            const rowId = 'vault-row-' + Math.random().toString(36).slice(2, 10);
+            const badgeClass = badge === 'processing' ? 'badge-blue'
+                             : badge === 'extracted'   ? 'badge-green'
+                             : badge === 'stored'      ? 'badge-gray'
+                             : badge === 'duplicate'   ? 'badge-yellow'
+                             : badge === 'error'       ? 'badge-red'
+                             : 'badge-blue';
+            const badgeText = badge === 'processing' ? 'Processing…'
+                            : badge === 'extracted'   ? 'Extracted'
+                            : badge === 'stored'      ? 'Stored'
+                            : badge === 'duplicate'   ? 'Duplicate'
+                            : badge === 'error'       ? 'Error'
+                            : 'Pending';
             const li = document.createElement('li');
             li.className = 'doc-uploaded-item';
-            li.innerHTML = '<div class="doc-uploaded-item-title">' + escapeHtml(title) + '</div>'
+            li.id = rowId;
+            li.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                + '<div class="doc-uploaded-item-title">' + escapeHtml(title) + '</div>'
+                + '<span id="' + rowId + '-badge" class="card-badge ' + badgeClass + '" style="white-space:nowrap;flex-shrink:0;margin-left:8px;">' + escapeHtml(badgeText) + '</span>'
+                + '</div>'
                 + '<div class="doc-uploaded-item-meta">' + escapeHtml(meta.join(' · ')) + '</div>';
             ul.prepend(li);
             wrap.style.display = 'block';
+            return rowId;
+        }
+
+        function setArtifactRowBadge(rowId, badge, label) {
+            const el = document.getElementById(rowId + '-badge');
+            if (!el) return;
+            el.className = 'card-badge ' + (
+                badge === 'extracted'  ? 'badge-green'
+              : badge === 'stored'     ? 'badge-gray'
+              : badge === 'duplicate'  ? 'badge-yellow'
+              : badge === 'error'      ? 'badge-red'
+              : 'badge-blue'
+            );
+            el.textContent = label || badge;
         }
 
         // === SESSION MANAGEMENT ===
@@ -2464,7 +2498,7 @@ Are there any patterns in my symptoms?"></textarea>
         }
 
         // === DOCUMENT SUBMIT ===
-        async function handleDocSubmit() {
+        async function handleDocSubmitSSE() {
             if (selectedFiles.length === 0) return;
             if (!sessionToken) { showMsg('doc-submit-msg', 'Start a session first.', true); return; }
             clearMsg('doc-submit-msg');
@@ -2478,65 +2512,107 @@ Are there any patterns in my symptoms?"></textarea>
             btn.disabled = true;
 
             const batch = selectedFiles.slice();
-            let okCount = 0;
-            const failures = [];
+
+            // Build per-filename row id map so we can update badges
+            const rowIds = {};
+            for (const file of batch) {
+                const rid = appendUploadedArtifactRow({
+                    title: docNotes ? docNotes.slice(0, 200) : file.name,
+                    filename: file.name,
+                    documentType: docType,
+                    documentDate: docDate,
+                    eventId: null,
+                    badge: 'processing',
+                });
+                rowIds[file.name] = rid;
+            }
+
+            const formData = new FormData();
+            for (const file of batch) formData.append('files', file);
+            formData.append('document_type', docType);
+            if (docDate) formData.append('document_date', docDate);
+            if (docNotes) formData.append('notes', docNotes);
 
             try {
-                for (const file of batch) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('document_type', docType);
-                    if (docDate) formData.append('document_date', docDate);
-                    if (docNotes) formData.append('notes', docNotes);
+                const resp = await fetch(`${API_BASE}/api/timeline/artifacts/ingest`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${sessionToken}` },
+                    body: formData,
+                });
 
-                    const r = await fetch(`${API_BASE}/api/timeline/artifact`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${sessionToken}` },
-                        body: formData
-                    });
+                if (!resp.ok || !resp.body) {
+                    const errJson = await resp.json().catch(() => ({}));
+                    const msg = errJson.detail?.message || (typeof errJson.detail === 'string' ? errJson.detail : null) || `Upload failed (${resp.status})`;
+                    // Mark all rows as failed
+                    for (const fn of Object.keys(rowIds)) setArtifactRowBadge(rowIds[fn], 'error', 'Failed');
+                    showMsg('doc-submit-msg', msg, true);
+                    return;
+                }
 
-                    if (r.ok) {
-                        const info = await r.json().catch(() => ({}));
-                        const fn = info.filename || file.name;
-                        const title = docNotes ? docNotes.slice(0, 200) : fn;
-                        appendUploadedArtifactRow({
-                            title,
-                            filename: fn,
-                            documentType: docType,
-                            documentDate: docDate,
-                            eventId: info.event_id
-                        });
-                        addReceipt('Vault artifact → PTV: ' + fn + (info.event_id ? ' (' + info.event_id + ')' : ''));
-                        okCount++;
-                    } else {
-                        const err = await r.json().catch(() => ({}));
-                        const d = err.detail;
-                        const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || err);
-                        failures.push(file.name + ': ' + msg);
+                // Parse SSE stream
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                let lastEventType = '';
+
+                const handleEvent = (evType, data) => {
+                    if (evType === 'artifact_accepted') {
+                        const fn = data.filename;
+                        const label = data.is_duplicate ? 'Duplicate' : 'Processing…';
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], data.is_duplicate ? 'duplicate' : 'processing', label);
+                        addReceipt(`Vault: ${fn} ${data.is_duplicate ? '(duplicate, skipped)' : '(accepted)'}`);
+                    } else if (evType === 'batch_done') {
+                        const fn = data.filename;
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], 'processing', `Batch ${data.batch}/${data.total || '?'} done`);
+                    } else if (evType === 'artifact_done') {
+                        const fn = data.filename;
+                        const n = data.events_extracted || 0;
+                        const badge = data.reason === 'duplicate' ? 'duplicate'
+                                    : data.reason === 'unsupported_for_8b' ? 'stored'
+                                    : 'extracted';
+                        const label = data.reason === 'duplicate' ? 'Duplicate'
+                                    : data.reason === 'unsupported_for_8b' ? 'Stored'
+                                    : `${n} event${n !== 1 ? 's' : ''} extracted`;
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], badge, label);
+                        addReceipt(`Vault: ${fn} → ${label}`);
+                        updateTransparency('t-mutation', true, 'Timeline mutated');
+                        updateTransparency('t-persist', true, 'Documents persisted');
+                    } else if (evType === 'complete') {
+                        const n = data.events_extracted_total || 0;
+                        showMsg('doc-submit-msg', `Upload complete: ${data.artifacts} file(s), ${n} events extracted.`, false, true);
+                    } else if (evType === 'error') {
+                        showMsg('doc-submit-msg', data.message || 'Server error', true);
+                    } else if (evType === 'batch_error') {
+                        const fn = data.filename || '';
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], 'error', 'Batch error');
+                        addReceipt(`Vault error: ${fn} — ${data.message}`);
+                    }
+                };
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            lastEventType = line.substring(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            let d;
+                            try { d = JSON.parse(line.substring(5).trim()); } catch (_) { continue; }
+                            handleEvent(lastEventType, d);
+                        }
                     }
                 }
-
-                if (okCount > 0) {
-                    updateTransparency('t-mutation', true, 'Timeline mutated');
-                    updateTransparency('t-persist', true, 'Documents persisted');
-                }
-
-                if (failures.length === 0 && okCount === batch.length) {
-                    showMsg('doc-submit-msg', 'Upload complete: ' + okCount + ' file(s) added to your vault. See titles below.', false, true);
-                } else if (okCount > 0 && failures.length > 0) {
-                    showMsg('doc-submit-msg', 'Partial upload: ' + okCount + ' succeeded, ' + failures.length + ' failed. ' + failures.join(' '), true);
-                } else if (failures.length > 0) {
-                    showMsg('doc-submit-msg', failures.join(' '), true);
-                }
-
-                selectedFiles = [];
-                document.getElementById('doc-upload-list').innerHTML = '';
-                document.getElementById('doc-file-input').value = '';
             } catch (e) {
                 showMsg('doc-submit-msg', e.message, true);
             } finally {
                 btn.classList.remove('loading');
                 btn.disabled = true;
+                selectedFiles = [];
+                document.getElementById('doc-upload-list').innerHTML = '';
+                document.getElementById('doc-file-input').value = '';
             }
         }
 
@@ -2764,7 +2840,7 @@ Are there any patterns in my symptoms?"></textarea>
             // Documents
             setupDocDropZone();
             setupEohdDropZone();
-            document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmit);
+            document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmitSSE);
             const mockPtvBtn = document.getElementById('mock-ptv-events-btn');
             if (mockPtvBtn) mockPtvBtn.addEventListener('click', handleMockPtvEvents);
             document.getElementById('doc-search-btn').addEventListener('click', handleDocSearch);

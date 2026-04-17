@@ -256,29 +256,63 @@ async def add_patient_artifact_event(
     document_date: Optional[str],
     notes: Optional[str],
     text_snippet: Optional[str],
-) -> str:
-    """Append a lightweight vault document node to PTV (no full timeline PDF pipeline)."""
+    # sha256 of raw file bytes — provided by callers that have the bytes
+    content_sha256: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Append a lightweight vault document node to PTV (no full timeline PDF pipeline).
+
+    Returns a dict with ``event_id``, ``artifact_id``, ``sha256``, and
+    ``is_duplicate`` so callers can reflect dedup state back to the UI.
+    """
     if pool is None:
         raise RuntimeError("Database pool unavailable")
     patient_id = str(user_id)
     await ensure_user_ptv_row(pool, patient_id)
     from server.eoh.patient_timeline_vision import load_timeline_vision_pg, save_timeline_vision_pg
+    from server.eoh.event_dedup import artifact_id_from_bytes, artifact_catalog_entry
 
     vision = await load_timeline_vision_pg(pool, patient_id)
     if vision is None:
         vision = empty_user_vision(patient_id)
-    eid = f"artifact_{uuid.uuid4().hex[:16]}"
+
+    # ── Artifact-level dedup ──────────────────────────────────────────────
+    sha = content_sha256 or ""
+    if sha:
+        artifact_id = f"art_{sha[:16]}"
+    else:
+        artifact_id = f"art_{uuid.uuid4().hex[:16]}"
+
+    artifacts: List[Dict[str, Any]] = vision.metadata.setdefault("artifacts", [])
+    existing = next((a for a in artifacts if a.get("artifact_id") == artifact_id), None)
+    if existing:
+        # Same file uploaded again — touch last_seen_at, return is_duplicate=True
+        existing["last_seen_at"] = datetime.now(timezone.utc).isoformat()
+        await save_timeline_vision_pg(pool, vision)
+        return {
+            "event_id": existing.get("event_id", artifact_id),
+            "artifact_id": artifact_id,
+            "sha256": sha,
+            "is_duplicate": True,
+        }
+
+    # ── Build event node ──────────────────────────────────────────────────
+    eid = f"artifact_{artifact_id}"
     preview = (text_snippet or "").strip()[:800]
     if not preview:
         preview = f"{filename} ({size_bytes} bytes)"
     ts = datetime.now(timezone.utc).isoformat()
     ann: Dict[str, Any] = {
+        "artifact_id": artifact_id,
+        "artifact_sha256": sha,
+        "artifact_filename": filename,
         "filename": filename,
         "mime": content_type or "",
         "size_bytes": size_bytes,
         "document_type": document_type,
         "document_date": document_date or "",
         "notes": notes or "",
+        "source_artifacts": [{"artifact_id": artifact_id, "sha256": sha}],
     }
     vision.add_event(
         eid,
@@ -288,9 +322,31 @@ async def add_patient_artifact_event(
         DISCOVERED_ARTIFACT,
         ann,
     )
+
+    # ── Update artifact catalog in PTV metadata ───────────────────────────
+    catalog_entry = artifact_catalog_entry(
+        artifact_id=artifact_id,
+        sha256=sha,
+        filename=filename,
+        mime=content_type or "",
+        size_bytes=size_bytes,
+        document_type=document_type,
+        document_date=document_date,
+        user_notes=notes,
+        ingest_tier="A",
+        events_extracted=0,
+    )
+    catalog_entry["event_id"] = eid
+    artifacts.append(catalog_entry)
+
     await save_timeline_vision_pg(pool, vision)
     await upsert_status_after_vision_write(pool, patient_id, vision)
-    return eid
+    return {
+        "event_id": eid,
+        "artifact_id": artifact_id,
+        "sha256": sha,
+        "is_duplicate": False,
+    }
 
 
 async def add_mock_timeline_events(
