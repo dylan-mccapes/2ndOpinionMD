@@ -121,12 +121,12 @@ function BudgetBar({ stats }: { stats: { total_chars: number; max_chars: number;
 }
 
 export function ChatPage() {
-  const { token, isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { status } = useTimelineStatus();
   const patientId = status?.timeline_id ?? user?.id ?? null;
   const role = user?.user_type === 'doctor' ? 'doctor' : 'patient';
 
-  const { messages, stats, loading, sending, error, sendMessage, anchorToEvent, refresh } = useChatGraph(patientId);
+  const { messages, stats, loading, sending, error, sendMessage, anchorToEvent } = useChatGraph(patientId);
 
   const [input, setInput] = useState('');
   const [anchorEventId, setAnchorEventId] = useState('');

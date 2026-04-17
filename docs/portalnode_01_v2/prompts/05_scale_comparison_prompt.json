@@ -1,0 +1,12 @@
+{
+  "key": "scale_comparison",
+  "stage_index": 5,
+  "title": "Scale Comparison \u2014 One Server vs. Cloud Cost",
+  "caption": "Single server vs. massive data center scale",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, clean, and professional split composition with a 50/50 left-right layout. On the LEFT HALF: render a single PortalNode-01 chassis, a matte black 4U rackmount server, compact and solid, about the size of a large briefcase. It sits alone on a pristine, dark, navy-gradient surface, under soft studio lighting reminiscent of high-end product photography. The chassis features brushed aluminum accents, a single black power cable connected at the rear, and subtle emerald (#00b894) LED status lights glowing on the front panel. A warm amber (#fdcb6e) indicator glows gently, suggesting active power and thermal status. The surface is clean, with no text, labels, or extraneous elements\u2014just the server, power cable, and faint reflections. On the RIGHT HALF: depict a vast, photorealistic aerial view of a hyperscale cloud data center interior. Show endless rows of matte black and brushed aluminum server racks stretching into the distance under bright, even fluorescent lighting. The racks are densely packed, with visible cooling units atop the facility and subtle reflections on the polished floor. The scale is overwhelming\u2014hundreds of racks, thousands of servers\u2014conveying industrial magnitude. Both halves are visually balanced, with matching lighting quality and color palette. There is no dividing line; the two scenes transition smoothly, emphasizing the dramatic contrast in scale. No people, no text, no UI overlays, and no sci-fi effects. The image should evoke confidence, seriousness, and technical precision, suitable for a Series A pitch deck or regulatory filing.",
+  "tool_call_id": "call_L1KP9mkcSxUmFEScAxLtBbSE",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "05_scale_comparison.png"
+}

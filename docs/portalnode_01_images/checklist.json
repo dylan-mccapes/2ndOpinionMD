@@ -1,0 +1,12 @@
+{
+  "chassis_overview": "done",
+  "gpu_array": "done",
+  "cpu_memory": "done",
+  "storage_array": "done",
+  "power_thermal": "done",
+  "network_topology": "done",
+  "software_stack": "done",
+  "model_tiering": "done",
+  "rise_data_flow": "done",
+  "full_system_assembled": "done"
+}

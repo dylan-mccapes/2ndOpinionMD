@@ -1,0 +1,12 @@
+{
+  "key": "rise_data_flow",
+  "stage_index": 8,
+  "title": "RISE Data Integration \u2014 3.9M Patients, 42.6M Encounters",
+  "caption": "RISE data flow through PortalNode-01 server",
+  "view": "diagram",
+  "prompt": "Create a photorealistic, technically detailed 3D engineering illustration of the RISE data integration pipeline as it flows through PortalNode-01. Begin at the left with a stylized representation of FHIR-enabled EHR data streams entering from 179 active practices, depicted as semi-transparent, deep navy (#1a1a2e) data cables converging into the server\u2019s front panel. The server is an enterprise-grade, standard ATX chassis with visible RTX 4090 Founders Edition cards and an 8TB NVMe drive, all rendered in matte silver (#c0c0c0) with accent emerald (#00b894) highlights on active components. Inside, show a modular tokenization and de-identification unit (Datavant) as a distinct, glowing emerald module, followed by a knowledge graph node array on the NVMe, visualized as interconnected silver and emerald nodes. Illustrate the heuristic pre-extraction stage as a fast-moving data stream (1ms/page), with regex icons for ICD-10 codes, medications, and labs, before data reaches the LLM enrichment module, represented by a powerful, illuminated eoh-llama 8B processor. Next, show the patient timeline vision graph as a dynamic, branching structure, with a focus node labeled for 416,720 RA patients (ICD-10 M05/M06) using color-coded connections. The flare signal detection pipeline is depicted as a warm amber (#fdcb6e) path, highlighting power and thermal flows. End with a scored, structured, auditable patient timeline output\u2014visualized as a clean, organized data array. Ensure all cable routing and airflow directions are visible, with subtle arrows and airflow guides. The background is a neutral dark gray gradient, evoking a high-end data center. No people or text overlays. Emphasize the scale: 3.9M patients, 42.6M encounters, and local-only processing.",
+  "tool_call_id": "call_31MvEfwbdoY9d3Dgc1Ocpezm",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "08_rise_data_flow.png"
+}

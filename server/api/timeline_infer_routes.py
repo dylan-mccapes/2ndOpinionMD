@@ -928,7 +928,7 @@ async def infer_status():
 
 
 # ---------------------------------------------------------------------------
-# FORWARD bearer token auth
+# FORWARD bearer token auth — separate router (no B2B deps; own auth)
 # ---------------------------------------------------------------------------
 
 import os as _os
@@ -954,11 +954,14 @@ def _hmac_compare(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode(), b.encode())
 
 
-# ---------------------------------------------------------------------------
-# FORWARD registry convenience endpoint — fixed patient ID for Dr. Michaud
-# ---------------------------------------------------------------------------
+forward_router = APIRouter(
+    prefix="/api/timeline",
+    tags=["timeline", "forward"],
+    dependencies=[Depends(_verify_forward_token)],
+)
 
-@router.post("/forward/upload", dependencies=[Depends(_verify_forward_token)])
+
+@forward_router.post("/forward/upload")
 async def forward_upload(
     file: UploadFile = File(...),
     format: str = Form("pdf"),

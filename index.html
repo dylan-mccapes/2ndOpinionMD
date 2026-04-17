@@ -6,10 +6,10 @@
   │  Built for patients who couldn't navigate a broken system.      │
   │  The field was not navigable. So we built a better one.         │
   │                                                                 │
-  │  ∂ψ/∂t = F·(1−ψ) − γ·ψ + η                                    │
+  │  ∂ψ/∂t = F·(1−ψ) − γ·ψ + η                                      │
   │                                                                 │
   │  F  =  honest signal from a second opinion                      │
-  │  γ  =  fear, confusion, jargon, and waiting rooms              │
+  │  γ  =  fear, confusion, jargon, and waiting rooms               │
   │  ψ  =  how navigable your health is right now                   │
   │                                                                 │
   │  This file is a receipt. Timestamped. Witnessed.                │
@@ -1164,7 +1164,7 @@
                         <div class="drop-zone" id="doc-drop-zone">
                             <div class="drop-zone-icon">&#128196;</div>
                             <div class="drop-zone-text">Drop files here or click to browse</div>
-                            <div class="drop-zone-hint">PDF, JPEG, PNG, TXT — Max 50MB per file</div>
+                            <div class="drop-zone-hint">PDF, JPEG, PNG, TXT — Files over 100 MB upload via direct link</div>
                         </div>
                         <input type="file" id="doc-file-input" style="display: none;" multiple accept=".pdf,.jpg,.jpeg,.png,.txt,.csv,.hl7">
 
@@ -1675,6 +1675,16 @@ Are there any patterns in my symptoms?"></textarea>
         const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
             ? 'http://localhost:8000'
             : (window.location.hostname === '2ndopinionmd.ai' ? '' : 'http://localhost:8000');
+
+        const UPLOAD_BASE = 'http://upload.2ndopinionmd.ai:8000';
+        const CLOUDFLARE_MAX_BYTES = 100 * 1024 * 1024;
+
+        function uploadBaseFor(file) {
+            if (file && file.size > CLOUDFLARE_MAX_BYTES && window.location.hostname === '2ndopinionmd.ai') {
+                return UPLOAD_BASE;
+            }
+            return API_BASE;
+        }
 
         const SESSION_KEY = '2opmd_session_token';
         const SESSION_EMAIL_KEY = '2opmd_session_email';
@@ -2193,7 +2203,7 @@ Are there any patterns in my symptoms?"></textarea>
                 formData.append('patient_id', patient);
 
                 area.innerHTML = '<div class="results-loading">Processing PDF (may take a minute)...</div>';
-                const uploadR = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, { method: 'POST', body: formData });
+                const uploadR = await fetch(`${uploadBaseFor(selectedEohdPdf)}/api/rag/upload_timeline_pdf`, { method: 'POST', body: formData });
                 if (!uploadR.ok) throw new Error('PDF upload failed');
                 const uploadResult = await uploadR.json();
                 addReceipt('PDF uploaded: ' + selectedEohdPdf.name);
@@ -2363,14 +2373,16 @@ Are there any patterns in my symptoms?"></textarea>
                     if (docDate) formData.append('document_date', docDate);
                     if (docNotes) formData.append('notes', docNotes);
 
-                    const r = await fetch(`${API_BASE}/api/rag/upload_timeline_pdf`, {
+                    const base = uploadBaseFor(file);
+                    const r = await fetch(`${base}/api/rag/upload_timeline_pdf`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${sessionToken}` },
                         body: formData
                     });
 
                     if (r.ok) {
-                        addReceipt('Document uploaded: ' + file.name);
+                        const via = base !== API_BASE ? ' (via direct upload)' : '';
+                        addReceipt('Document uploaded: ' + file.name + via);
                     } else {
                         showMsg('doc-submit-msg', 'Upload failed for: ' + file.name, true);
                     }

@@ -1,0 +1,144 @@
+{
+  "decisions": [
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "chassis",
+      "stage_index": 0,
+      "title": "Rosewill RSV-L4500U 4U Rack-Mount Chassis",
+      "outcome": "done",
+      "elapsed_s": 59.6,
+      "image_file": "00_chassis.png",
+      "ts": "2026-04-09T19:31:09.583689+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "motherboard",
+      "stage_index": 1,
+      "title": "ASRock Rack W790 WS Workstation Motherboard",
+      "outcome": "done",
+      "elapsed_s": 76.8,
+      "image_file": "01_motherboard.png",
+      "ts": "2026-04-09T19:32:26.348938+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "cpu",
+      "stage_index": 2,
+      "title": "Intel Xeon w5-2465X Processor",
+      "outcome": "done",
+      "elapsed_s": 49.6,
+      "image_file": "02_cpu.png",
+      "ts": "2026-04-09T19:33:15.945690+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "cpu_cooler",
+      "stage_index": 3,
+      "title": "Noctua NH-U14S Tower CPU Cooler",
+      "outcome": "done",
+      "elapsed_s": 64.3,
+      "image_file": "03_cpu_cooler.png",
+      "ts": "2026-04-09T19:34:20.295764+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "ram",
+      "stage_index": 4,
+      "title": "Samsung DDR5-4800 ECC RDIMM \u2014 4\u00d7 32 GB",
+      "outcome": "done",
+      "elapsed_s": 57.7,
+      "image_file": "04_ram.png",
+      "ts": "2026-04-09T19:35:18.046504+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "gpu_single",
+      "stage_index": 5,
+      "title": "NVIDIA RTX 4090 Founders Edition \u2014 Single Card",
+      "outcome": "done",
+      "elapsed_s": 57.6,
+      "image_file": "05_gpu_single.png",
+      "ts": "2026-04-09T19:36:15.600864+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "gpu_array_four",
+      "stage_index": 6,
+      "title": "4\u00d7 RTX 4090 Founders Edition \u2014 Quad Array",
+      "outcome": "done",
+      "elapsed_s": 59.8,
+      "image_file": "06_gpu_array_four.png",
+      "ts": "2026-04-09T19:37:15.411403+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "nvme_drives",
+      "stage_index": 7,
+      "title": "NVMe SSD Drives \u2014 Samsung 990 PRO + Sabrent Rocket 4 Plus",
+      "outcome": "done",
+      "elapsed_s": 62.5,
+      "image_file": "07_nvme_drives.png",
+      "ts": "2026-04-09T19:38:17.957135+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "psu",
+      "stage_index": 8,
+      "title": "Corsair AX1600i Power Supply + 12VHPWR Adapters",
+      "outcome": "done",
+      "elapsed_s": 75.9,
+      "image_file": "08_psu.png",
+      "ts": "2026-04-09T19:39:33.863978+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "fans_array",
+      "stage_index": 9,
+      "title": "Noctua NF-F12 Industrial 3000 RPM Fans (\u00d75)",
+      "outcome": "done",
+      "elapsed_s": 65.9,
+      "image_file": "09_fans_array.png",
+      "ts": "2026-04-09T19:40:39.770743+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "assembly_motherboard_populated",
+      "stage_index": 10,
+      "title": "Assembly: Motherboard with CPU, Cooler, RAM, NVMe Installed",
+      "outcome": "done",
+      "elapsed_s": 65.5,
+      "image_file": "10_assembly_motherboard_populated.png",
+      "ts": "2026-04-09T19:41:45.297300+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "assembly_chassis_loaded",
+      "stage_index": 11,
+      "title": "Assembly: Chassis with Motherboard + PSU Installed",
+      "outcome": "done",
+      "elapsed_s": 56.7,
+      "image_file": "11_assembly_chassis_loaded.png",
+      "ts": "2026-04-09T19:42:41.978634+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "full_system",
+      "stage_index": 12,
+      "title": "Full Assembly: PortalNode-01 Complete \u2014 Interior View",
+      "outcome": "done",
+      "elapsed_s": 62.0,
+      "image_file": "12_full_system.png",
+      "ts": "2026-04-09T19:43:43.977037+00:00"
+    },
+    {
+      "run_id": "20260409_193009",
+      "stage_key": "final_closed_rack",
+      "stage_index": 13,
+      "title": "PortalNode-01: Lid On, Rack-Mounted, Cables Connected",
+      "outcome": "done",
+      "elapsed_s": 54.2,
+      "image_file": "13_final_closed_rack.png",
+      "ts": "2026-04-09T19:44:38.179639+00:00"
+    }
+  ]
+}

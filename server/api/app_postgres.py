@@ -96,7 +96,7 @@ from .eoh_router_routes import router as eoh_router_router
 from server.api import eoh_demo_routes
 from server.api.timeline_routes import router as timeline_router
 from server.api.timeline_analytics_routes import router as timeline_analytics_router
-from server.api.timeline_infer_routes import router as timeline_infer_router
+from server.api.timeline_infer_routes import router as timeline_infer_router, forward_router as forward_infer_router
 from server.api.graph_query_routes import router as graph_query_router
 
 from server.api.kg import router as kg_router
@@ -245,7 +245,7 @@ _default_origins = ",".join([
 
 _allowed_origins = os.getenv(
     "CORS_ALLOW_ORIGINS",
-    "https://2ndopinionmd.ai,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8010,http://localhost:8010"
+    "https://2ndopinionmd.ai,http://upload.2ndopinionmd.ai:8000,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8010,http://localhost:8010"
 )
 allow_origins = [o.strip() for o in _allowed_origins.split(",") if o.strip()]
 
@@ -294,24 +294,29 @@ app.include_router(cdc_opioid_router,
 app.include_router(va_router, dependencies=_MKG_READ_AUTH)
 app.include_router(kg_router, dependencies=_MKG_READ_AUTH)
 
-# --- MKG evidence/RAG routers (API-key gated: mkg:evidence) -----------------
-app.include_router(rag_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(coding_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(ask_eoh_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(rag_ask_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(ask_compat_v2_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(coding_v2_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(rag_stream_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(llm_stream_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(rag_stream_custom_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(eoh_router_router, dependencies=_MKG_EVIDENCE_AUTH)
-app.include_router(eoh_demo_routes.router, dependencies=_MKG_EVIDENCE_AUTH)
+# --- Frontend-facing RAG/evidence/EoH routers (open — session auth where needed) ---
+# These serve the web app at 2ndopinionmd.ai.  External programmatic access
+# goes through /v1/mkg/evidence/ (B2B-gated via b2b_mkg_router above).
+app.include_router(rag_router)
+app.include_router(coding_router)
+app.include_router(ask_eoh_router)
+app.include_router(rag_ask_router)
+app.include_router(ask_compat_v2_router)
+app.include_router(coding_v2_router)
+app.include_router(rag_stream_router)
+app.include_router(llm_stream_router)
+app.include_router(rag_stream_custom_router)
+app.include_router(eoh_router_router)
+app.include_router(eoh_demo_routes.router)
 
-# --- PTV routers (API-key gated: ptv:read / ptv:extract) --------------------
-app.include_router(timeline_router, dependencies=_PTV_READ_AUTH)
-app.include_router(timeline_analytics_router, dependencies=_PTV_READ_AUTH)
-app.include_router(timeline_infer_router, dependencies=_PTV_EXTRACT_AUTH)
-app.include_router(graph_query_router, dependencies=_PTV_READ_AUTH)
+# --- Frontend-facing PTV/timeline routers (open — session auth where needed) ---
+app.include_router(timeline_router)
+app.include_router(timeline_analytics_router)
+app.include_router(timeline_infer_router)
+app.include_router(graph_query_router)
+
+# --- FORWARD (own bearer token auth, no B2B key) ----------------------------
+app.include_router(forward_infer_router)
 
 # --- Internal / utility (no API key) ----------------------------------------
 app.include_router(printer_router)

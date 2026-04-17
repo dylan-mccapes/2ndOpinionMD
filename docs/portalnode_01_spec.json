@@ -1,0 +1,286 @@
+{
+  "schema": "PORTALNODE_01_SPEC_v1",
+  "spec_id": "PORTALNODE_01_RISE_ONPREM",
+  "description": "PortalNode-01: 4U rack-mount on-premise inference server for 2ndOpinionMD + RISE. Tiered eoh-llama deployment (3.2/8B/70B). HIPAA-ready, air-gapped after initial model load. $12–15k prototype.",
+  "output_dir": "portalnode_01_build",
+  "loop_pattern": "image_pipeline",
+  "spellbook": "../../distributions/tartaurus_loop_package/tartaurus_spellbook.json",
+  "budget": {
+    "target_usd": 14500,
+    "contingency_usd": 1500,
+    "note": "Consumer-grade parts, enterprise rack packaging. Priced at retail; volume discount possible."
+  },
+  "global_constraints": [
+    "All images are technical product photography — the component as you would see it on a vendor product page or datasheet.",
+    "Style: photorealistic 3D render, soft studio lighting, neutral dark gray background, clean technical aesthetic.",
+    "Show actual physical components with correct form factors, dimensions, and visual features.",
+    "Labels and annotations are minimal — physical accuracy over text. Do NOT render text on components unless it is an actual product marking.",
+    "No people. No conceptual diagrams. Components only.",
+    "Image aspect ratio: landscape (3:2)."
+  ],
+  "parts": {
+    "chassis": {
+      "part_id": "chassis",
+      "name": "4U Rack-Mount Server Chassis",
+      "type": "mechanical",
+      "description": "Standard 4U rack-mount chassis with front-to-back airflow. Must fit 4x full-length triple-slot GPUs, E-ATX motherboard, and redundant PSU.",
+      "cots_parts": [
+        { "role": "Chassis", "vendor": "Rosewill", "part_number": "RSV-L4500U", "description": "4U rackmount, 15x drive bays, 7x full-height expansion slots, front-to-back airflow, steel construction, 25.6\" deep", "unit_price_usd": 90 },
+        { "role": "Rack rails", "vendor": "Rosewill", "part_number": "RSV-R28LX", "description": "26–36\" adjustable sliding rack rails, tool-less, 4-post", "unit_price_usd": 45 }
+      ],
+      "subtotal_usd": 135,
+      "assembly_notes": "Remove all 5.25\" bay covers for GPU clearance. Install 3x 120mm intake fans in front, 2x 120mm exhaust in rear."
+    },
+    "motherboard": {
+      "part_id": "motherboard",
+      "name": "Workstation Motherboard — 4-GPU Support",
+      "type": "electronic",
+      "description": "Workstation-class motherboard with 4x PCIe x16 physical slots, DDR5 ECC support, dual M.2 NVMe, IPMI/BMC for remote management.",
+      "cots_parts": [
+        { "role": "Motherboard", "vendor": "ASRock Rack", "part_number": "W790 WS", "description": "Intel W790 chipset, LGA 4677, 7x PCIe 5.0 x16, 8x DDR5 ECC DIMM, 2x M.2, dual 10GbE, IPMI/BMC, E-ATX", "unit_price_usd": 850 }
+      ],
+      "subtotal_usd": 850,
+      "assembly_notes": "IPMI/BMC provides out-of-band management (dedicated RJ45 port). Dual Intel X710 10GbE onboard."
+    },
+    "cpu": {
+      "part_id": "cpu",
+      "name": "Intel Xeon w5-2465X Processor",
+      "type": "electronic",
+      "description": "16-core workstation CPU with 112 PCIe 5.0 lanes for full-bandwidth 4-GPU operation. Coordinates FastAPI router and Ollama instances.",
+      "cots_parts": [
+        { "role": "CPU", "vendor": "Intel", "part_number": "Xeon w5-2465X", "description": "16 cores / 32 threads, 3.1 GHz base / 4.7 GHz turbo, 33.75 MB cache, 112 PCIe 5.0 lanes, LGA 4677, 200W TDP", "unit_price_usd": 1100 }
+      ],
+      "subtotal_usd": 1100,
+      "assembly_notes": "LGA 4677 socket. Apply thermal paste (pre-applied on cooler). Secure ILM latch."
+    },
+    "cpu_cooler": {
+      "part_id": "cpu_cooler",
+      "name": "Tower CPU Cooler",
+      "type": "mechanical",
+      "description": "Large tower air cooler for 200W TDP Xeon. Air cooling preferred over liquid for server reliability and zero maintenance.",
+      "cots_parts": [
+        { "role": "CPU cooler", "vendor": "Noctua", "part_number": "NH-U14S", "description": "Single-tower, 150mm height, 1x 140mm NF-A15 PWM fan, 6 heatpipes, 200W TDP rating", "unit_price_usd": 80 }
+      ],
+      "subtotal_usd": 80,
+      "assembly_notes": "Verify LGA 4677 mounting kit compatibility (Noctua NM-i4677 SecuFirm2 kit may be separate purchase). 150mm height clears 4U chassis."
+    },
+    "ram": {
+      "part_id": "ram",
+      "name": "128 GB DDR5-4800 ECC RDIMM",
+      "type": "electronic",
+      "description": "128 GB total in 4x 32 GB registered ECC DIMMs. ECC required for server workload reliability. DDR5-4800 is native Xeon w5 speed.",
+      "cots_parts": [
+        { "role": "DDR5 RDIMM (×4)", "vendor": "Samsung", "part_number": "M321R4GA3BB6-CQK", "description": "32 GB DDR5-4800 ECC RDIMM, 1Rx4, 1.1V", "unit_price_usd": 115, "quantity": 4 }
+      ],
+      "subtotal_usd": 460,
+      "assembly_notes": "Install in matching DIMM slots per motherboard manual (typically A1/B1/C1/D1 for 4-channel). Verify RDIMM (not UDIMM) compatibility."
+    },
+    "gpu_array": {
+      "part_id": "gpu_array",
+      "name": "4× NVIDIA RTX 4090 Founders Edition",
+      "type": "electronic",
+      "description": "Four RTX 4090 GPUs providing 96 GB total VRAM. GPU 0–1 dedicated to eoh-llama 8B + 3.2 (always-on). GPU 2–3 dedicated to eoh-llama 70B (on-demand). Founders Edition uses flow-through cooler design suited for dense multi-GPU configuration.",
+      "cots_parts": [
+        { "role": "GPU (×4)", "vendor": "NVIDIA", "part_number": "RTX 4090 Founders Edition", "description": "AD102 GPU, 24 GB GDDR6X, 16384 CUDA cores, 450W TDP, 12VHPWR power connector, flow-through dual-fan cooler, 3-slot width", "unit_price_usd": 1599, "quantity": 4 }
+      ],
+      "subtotal_usd": 6396,
+      "assembly_notes": "Install in PCIe x16 slots 1/3/5/7 (every other slot for airflow). Each card requires one 12VHPWR (16-pin) power cable from PSU. Total GPU power: 4 × 450W = 1800W peak. Verify 12VHPWR cable seating — firm click required."
+    },
+    "nvme_os": {
+      "part_id": "nvme_os",
+      "name": "OS + Logs NVMe — 2 TB",
+      "type": "storage",
+      "description": "Boot drive. Ubuntu 24.04 LTS, Docker images, ProvenanceEngine provenance logs, JSONL session records.",
+      "cots_parts": [
+        { "role": "OS NVMe", "vendor": "Samsung", "part_number": "990 PRO 2TB", "description": "2 TB, M.2 2280, PCIe 4.0 x4, 7450/6900 MB/s read/write, 1200 TBW endurance", "unit_price_usd": 160 }
+      ],
+      "subtotal_usd": 160,
+      "assembly_notes": "Install in M.2 slot 1 (CPU-direct lanes). Boot partition + Docker + /var/log."
+    },
+    "nvme_models": {
+      "part_id": "nvme_models",
+      "name": "Models + Graph NVMe — 8 TB",
+      "type": "storage",
+      "description": "Model weight storage: eoh-llama 3.2 (~2 GB), eoh-llama 8B (~5 GB), eoh-llama 70B (~40 GB). Plus RISE knowledge graph. 8 TB provides room for multiple model versions and full graph history.",
+      "cots_parts": [
+        { "role": "Model NVMe (×2)", "vendor": "Sabrent", "part_number": "Rocket 4 Plus 4TB", "description": "4 TB, M.2 2280, PCIe 4.0 x4, 7100/6600 MB/s read/write", "unit_price_usd": 300, "quantity": 2 }
+      ],
+      "subtotal_usd": 600,
+      "assembly_notes": "Install in M.2 slots 2–3. Software RAID 0 via mdadm for 8 TB volume, or JBOD with symlinks. Model weights load into VRAM at Ollama startup — NVMe speed matters for cold start only (~6 seconds for 70B)."
+    },
+    "psu": {
+      "part_id": "psu",
+      "name": "2000W Redundant Power Supply",
+      "type": "electronic",
+      "description": "2000W 80+ Platinum for 4× RTX 4090 (1800W) + CPU (200W) + overhead. Redundant/hot-swap preferred for server uptime. Must provide 4x 12VHPWR connectors (native or via adapters).",
+      "cots_parts": [
+        { "role": "PSU", "vendor": "Corsair", "part_number": "AX1600i", "description": "1600W, 80+ Titanium, fully modular, digital monitoring, 12x 8-pin PCIe — NOTE: need 12VHPWR adapters", "unit_price_usd": 500 },
+        { "role": "12VHPWR adapters (×4)", "vendor": "CableMod", "part_number": "12VHPWR-to-2x8pin", "description": "12VHPWR 16-pin to 2x 8-pin PCIe adapter, 300W rated", "unit_price_usd": 30, "quantity": 4 }
+      ],
+      "subtotal_usd": 620,
+      "assembly_notes": "AX1600i provides 1600W sustained — sufficient for inference workload (GPUs rarely hit 450W TDP during inference, typical 250–300W each). For full 450W×4 stress, consider dual PSU configuration with add2psu adapter. Route 12VHPWR cables first before seating GPUs."
+    },
+    "fans": {
+      "part_id": "fans",
+      "name": "Chassis Cooling Fans",
+      "type": "mechanical",
+      "description": "High-static-pressure 120mm fans for front intake and rear exhaust. Front-to-back airflow across GPU array.",
+      "cots_parts": [
+        { "role": "120mm intake fans (×3)", "vendor": "Noctua", "part_number": "NF-F12 industrialPPC-3000", "description": "120mm, 3000 RPM, 110.26 m³/h, 43.5 dBA, IP67 dust/water rated, 4-pin PWM", "unit_price_usd": 26, "quantity": 3 },
+        { "role": "120mm exhaust fans (×2)", "vendor": "Noctua", "part_number": "NF-F12 industrialPPC-3000", "description": "Same — rear exhaust", "unit_price_usd": 26, "quantity": 2 }
+      ],
+      "subtotal_usd": 130,
+      "assembly_notes": "Front fans: intake (arrow toward rear). Rear fans: exhaust (arrow out of chassis). PWM fan headers on motherboard — set curve to ramp at 70°C GPU temp via IPMI."
+    },
+    "network": {
+      "part_id": "network",
+      "name": "10GbE Network (Onboard)",
+      "type": "electronic",
+      "description": "Dual Intel 10GbE onboard (included with ASRock Rack W790 WS motherboard). No add-in card needed. Plus IPMI dedicated port.",
+      "cots_parts": [],
+      "subtotal_usd": 0,
+      "assembly_notes": "Dual 10GbE + IPMI included on motherboard. Port 1: inference API traffic (FastAPI :8000). Port 2: RISE EHR data ingestion. IPMI: remote management for IT staff. RJ45 connectors — use Cat6a cabling."
+    }
+  },
+  "edges": [
+    { "from": "cpu", "to": "motherboard", "type": "socket", "detail": "LGA 4677 — 112 PCIe 5.0 lanes from CPU through socket to motherboard traces" },
+    { "from": "cpu_cooler", "to": "cpu", "type": "thermal", "detail": "Mounts on CPU IHS via LGA 4677 ILM bracket. Thermal paste interface." },
+    { "from": "ram", "to": "motherboard", "type": "dimm_slot", "detail": "4x DDR5 RDIMM in slots A1/B1/C1/D1 — 4-channel memory to CPU" },
+    { "from": "gpu_array", "to": "motherboard", "type": "pcie_x16", "detail": "4x PCIe 5.0 x16 slots. GPU 0–3 in slots 1/3/5/7." },
+    { "from": "nvme_os", "to": "motherboard", "type": "m2_slot", "detail": "M.2 slot 1, CPU-direct PCIe 4.0 x4 lanes" },
+    { "from": "nvme_models", "to": "motherboard", "type": "m2_slot", "detail": "M.2 slots 2–3, chipset PCIe 4.0 x4 lanes" },
+    { "from": "psu", "to": "gpu_array", "type": "power_12vhpwr", "detail": "4x 12VHPWR (16-pin) cables, one per GPU, 450W each" },
+    { "from": "psu", "to": "motherboard", "type": "power_24pin", "detail": "24-pin ATX main power + 2x 8-pin EPS12V CPU power" },
+    { "from": "psu", "to": "fans", "type": "power", "detail": "Fan headers on motherboard, powered via 24-pin rail" },
+    { "from": "motherboard", "to": "chassis", "type": "mounted", "detail": "E-ATX standoff pattern, 9 mounting points" },
+    { "from": "psu", "to": "chassis", "type": "mounted", "detail": "PSU bay at rear-bottom of 4U chassis" },
+    { "from": "fans", "to": "chassis", "type": "mounted", "detail": "3x front intake, 2x rear exhaust, 120mm fan mounts" },
+    { "from": "gpu_array", "to": "chassis", "type": "pcie_bracket", "detail": "Expansion slot brackets, secured with thumbscrews" },
+    { "from": "network", "to": "motherboard", "type": "onboard", "detail": "Integrated — dual Intel X710 10GbE + Aspeed AST2600 BMC/IPMI" }
+  ],
+  "bom_summary": {
+    "chassis_and_mechanical": 345,
+    "motherboard": 850,
+    "cpu": 1100,
+    "ram": 460,
+    "gpu_array": 6396,
+    "storage": 760,
+    "psu_and_power": 620,
+    "total_usd": 10531,
+    "note": "Does not include Cat6a cables (~$20), rack screws, thermal paste (included with cooler), or OS license (Ubuntu is free). RISE may require additional cabling for 10GbE infrastructure."
+  },
+  "stages": [
+    {
+      "key": "chassis",
+      "stage_index": 0,
+      "title": "Rosewill RSV-L4500U 4U Rack-Mount Chassis",
+      "description": "A Rosewill RSV-L4500U 4U rack-mount server chassis. Matte black steel construction, 19-inch rack width. Front panel shows 15 drive bay slot covers (3x 5.25-inch and 12x 3.5-inch bays) arranged in rows behind a ventilated mesh grille. Two brushed aluminum rack-mount handles on left and right. Power button and LED cluster on top-right of front panel. Side panel is a flat steel sheet with no window. Rear shows 7 full-height expansion card slots with ventilated slot covers, a PSU cutout at the bottom, and two 120mm fan mount positions. The chassis is empty — no components installed. Shot from a 3/4 front-right angle showing the front panel and right side. Clean product photography.",
+      "tools": ["generate_image"],
+      "constraints": ["Empty chassis — no components inside", "Matte black steel, industrial server aesthetic", "Front ventilation mesh grille visible", "Rack-mount handles on both sides", "Rear expansion slots and fan mounts visible", "Product photography: soft studio lighting, dark background"]
+    },
+    {
+      "key": "motherboard",
+      "stage_index": 1,
+      "title": "ASRock Rack W790 WS Workstation Motherboard",
+      "description": "An ASRock Rack W790 WS E-ATX workstation motherboard, photographed from directly above (top-down view). The PCB is dark green/black. The large LGA 4677 CPU socket is in the upper-center, covered with a protective plastic cap. Eight DDR5 DIMM slots in two groups of four flanking the socket on the right side. Seven PCIe x16 slots run horizontally across the lower half of the board, spaced for multi-GPU operation. Two M.2 NVMe slots visible between the PCIe slots with small heatsink covers. The rear I/O cluster at the top-left shows: two RJ45 10GbE ports, one dedicated IPMI RJ45 port, USB ports, and a VGA port (IPMI video). VRM heatsinks are prominent aluminum blocks along the top edge above the CPU socket. The board is clean and new — no components installed.",
+      "tools": ["generate_image"],
+      "constraints": ["Top-down photograph, PCB flat on surface", "LGA 4677 socket prominent center-top with protective cap", "8 DIMM slots clearly visible on right side", "7 PCIe x16 slots across lower half", "2 M.2 NVMe slots visible", "Rear I/O: 2x 10GbE + IPMI port + USB + VGA", "VRM heatsinks along top edge", "No components installed — bare board"]
+    },
+    {
+      "key": "cpu",
+      "stage_index": 2,
+      "title": "Intel Xeon w5-2465X Processor",
+      "description": "An Intel Xeon w5-2465X processor chip, photographed from above on a dark surface. The CPU is a large rectangular integrated heat spreader (IHS) made of nickel-plated copper, approximately 78mm × 56mm. The IHS has the Intel Xeon branding and model number laser-etched on top. The underside edge shows the gold LGA 4677 contact pads visible at a slight angle. The chip is photographed alone on a clean dark surface with dramatic lighting that catches the polished metal IHS surface. This is a product shot — the CPU as it comes out of the box.",
+      "tools": ["generate_image"],
+      "constraints": ["Single CPU chip on dark surface", "Large rectangular IHS — Xeon workstation size, not consumer", "Nickel-plated copper IHS with subtle reflections", "LGA contact pads barely visible at edge", "Dramatic product lighting — hero shot of the processor", "No socket, no motherboard — CPU alone"]
+    },
+    {
+      "key": "cpu_cooler",
+      "stage_index": 3,
+      "title": "Noctua NH-U14S Tower CPU Cooler",
+      "description": "A Noctua NH-U14S single-tower CPU cooler. The cooler is a tall aluminum fin stack (approximately 165mm tall) with six nickel-plated copper heatpipes running vertically through the fins from a flat copper base plate at the bottom. A single 140mm Noctua NF-A15 fan is clipped to the front face of the fin tower — the fan has the distinctive Noctua brown/beige two-tone color scheme with rounded blade tips. The mounting bracket hardware (crossbar and screws) is visible at the base. The cooler is photographed from a 3/4 front view showing the fan, fin stack, and heatpipe routing. Clean product photography on dark background.",
+      "tools": ["generate_image"],
+      "constraints": ["Single-tower design with 6 heatpipes visible at top", "One 140mm Noctua fan — brown/beige color scheme is distinctive and must be accurate", "Copper base plate visible at bottom", "Fin stack is aluminum with tight spacing", "Product photography angle showing fan + fins + heatpipes"]
+    },
+    {
+      "key": "ram",
+      "stage_index": 4,
+      "title": "Samsung DDR5-4800 ECC RDIMM — 4× 32 GB",
+      "description": "Four Samsung DDR5 ECC RDIMM modules laid out in a row on a dark surface. Each module is a standard server DIMM form factor — a long narrow green PCB (approximately 133mm × 30mm) with black DRAM chips on both sides and a Samsung label sticker in the center. The gold edge connector pins are visible along the bottom edge. The modules have no heatspreader — bare green PCB with visible chip packages, typical of server/workstation RAM. All four modules are identical. They are laid out parallel to each other with slight spacing between them, like cards in a hand. Clean product photography.",
+      "tools": ["generate_image"],
+      "constraints": ["Four identical DIMM modules in a row", "Green PCB with black DRAM chips — server RAM aesthetic, no heatspreader", "Gold edge connector pins visible", "Samsung label sticker on each module", "Standard DIMM form factor — long and narrow", "Modules laid parallel on dark surface"]
+    },
+    {
+      "key": "gpu_single",
+      "stage_index": 5,
+      "title": "NVIDIA RTX 4090 Founders Edition — Single Card",
+      "description": "A single NVIDIA GeForce RTX 4090 Founders Edition graphics card. The card has NVIDIA's distinctive Founders Edition design: a dark gunmetal/titanium colored metal shroud with two large axial fans visible on the front face. The shroud has a clean geometric design with angular lines. The card is large — approximately 336mm long, occupying 3 expansion slots in width. The 12VHPWR (16-pin) power connector is visible on the top edge of the card. The PCIe x16 gold edge connector is visible at the bottom. The rear bracket shows DisplayPort and HDMI outputs. The flow-through cooler design means the rear of the card has visible exhaust venting rather than a solid backplate. Photographed from a 3/4 top-front angle showing the fan side, power connector, and card length.",
+      "tools": ["generate_image"],
+      "constraints": ["NVIDIA Founders Edition design — dark gunmetal/titanium shroud", "Two large axial fans on front face", "12VHPWR 16-pin power connector on top edge", "PCIe x16 gold finger connector visible", "Flow-through cooler — exhaust vents on rear", "Large card — 336mm long, 3-slot width", "Product photography: single card, hero shot"]
+    },
+    {
+      "key": "gpu_array_four",
+      "stage_index": 6,
+      "title": "4× RTX 4090 Founders Edition — Quad Array",
+      "description": "Four NVIDIA RTX 4090 Founders Edition graphics cards standing upright in a row, side by side, as they would be oriented in PCIe slots (PCIe connectors at bottom, fans facing viewer). The four cards are evenly spaced with approximately one expansion slot gap between each pair for airflow. All four cards are identical. The first two cards (left) have a subtle green LED strip or green ambient light along their edges. The second two cards (right) have a subtle amber/warm LED strip or amber ambient light along their edges. This color differentiation indicates the GPU tier assignment: green = always-on inference (8B + 3.2), amber = on-demand heavy inference (70B). Photographed from a front-facing view with slight top-down angle.",
+      "tools": ["generate_image"],
+      "constraints": ["Four identical RTX 4090 FE cards standing upright side by side", "Cards oriented as in PCIe slots — connectors at bottom, fans facing camera", "Even spacing between cards — one-slot gap for airflow", "Left two cards: subtle green ambient light / edge glow", "Right two cards: subtle amber ambient light / edge glow", "Color coding is subtle — accent, not overwhelming"]
+    },
+    {
+      "key": "nvme_drives",
+      "stage_index": 7,
+      "title": "NVMe SSD Drives — Samsung 990 PRO + Sabrent Rocket 4 Plus",
+      "description": "Three M.2 2280 NVMe SSD drives laid out on a dark surface. One Samsung 990 PRO 2TB (black PCB with Samsung label and red/black styling accents on the sticker) positioned on the left. Two Sabrent Rocket 4 Plus 4TB drives (black PCB with Sabrent's green/black label design) positioned on the right. All three are M.2 2280 form factor — small rectangular sticks approximately 80mm × 22mm. The gold M.2 edge connectors are visible at one end of each drive. The drives are laid out at slight angles to each other, showing their compact size. A common coin or penny placed nearby for scale reference. Clean product photography.",
+      "tools": ["generate_image"],
+      "constraints": ["Three M.2 2280 NVMe sticks on dark surface", "One Samsung 990 PRO (left) — Samsung label styling", "Two Sabrent Rocket 4 Plus (right) — Sabrent label styling", "Gold M.2 connectors visible at one end", "Drives are small — 80mm × 22mm, show scale", "Product photography style"]
+    },
+    {
+      "key": "psu",
+      "stage_index": 8,
+      "title": "Corsair AX1600i Power Supply + 12VHPWR Adapters",
+      "description": "A Corsair AX1600i power supply unit (PSU) photographed from a 3/4 angle. The PSU is a large, rectangular, all-black unit with a 140mm fan grille on one face (intake side) and a modular cable connector panel on the opposite face showing rows of cable sockets. The unit is approximately 200mm × 150mm × 86mm — full ATX form factor but slightly longer than standard due to high wattage. The Corsair logo and AX1600i branding are on the side. Next to the PSU, four 12VHPWR adapter cables are coiled neatly — each cable has a 16-pin 12VHPWR connector on one end (black, rectangular, with the distinctive angled latch) and splits into two 8-pin PCIe connectors on the other end. The cables are black with clean braided sleeving.",
+      "tools": ["generate_image"],
+      "constraints": ["Corsair AX1600i — all-black, 140mm fan grille, modular connector panel", "Four 12VHPWR adapter cables laid beside the PSU", "12VHPWR 16-pin connector clearly visible — rectangular with angled latch", "Each adapter splits into two 8-pin PCIe connectors", "Cables neatly coiled with braided sleeving", "Product photography, dark background"]
+    },
+    {
+      "key": "fans_array",
+      "stage_index": 9,
+      "title": "Noctua NF-F12 Industrial 3000 RPM Fans (×5)",
+      "description": "Five Noctua NF-F12 industrialPPC-3000 PWM 120mm fans arranged in a group. The fans have Noctua's industrial variant appearance: black frame with black impeller blades (NOT the standard brown/beige — the industrial line is all-black). Each fan is square 120mm × 120mm × 25mm with corner screw holes and a 4-pin PWM cable trailing from one corner. Three fans are positioned in a row (front intake group) and two fans are positioned in a second row (rear exhaust group). The fans are laid flat on a dark surface showing the blade side. Clean product photography showing all five fans clearly.",
+      "tools": ["generate_image"],
+      "constraints": ["Five 120mm fans — Noctua industrial all-black variant (NOT brown/beige)", "Square 120mm form factor with corner mounting holes", "4-pin PWM cables visible", "Three fans in one row, two in another — grouped by function", "All-black frame and impeller blades", "Product photography, laid flat showing blade side"]
+    },
+    {
+      "key": "assembly_motherboard_populated",
+      "stage_index": 10,
+      "title": "Assembly: Motherboard with CPU, Cooler, RAM, NVMe Installed",
+      "description": "The ASRock Rack W790 WS motherboard from Stage 1, now populated with components. Top-down photograph showing: the Intel Xeon CPU installed in the LGA 4677 socket (hidden under the Noctua NH-U14S cooler tower which sits prominently in the upper-center). Four Samsung DDR5 DIMMs installed in the right-side DIMM slots — the green PCBs with black chips visible, seated flush. Three M.2 NVMe drives installed in the M.2 slots between the PCIe slot area (small sticks visible, secured by M.2 screws). The PCIe slots are still empty — no GPUs yet. The board is resting on the anti-static bag it shipped in. This is a build-in-progress shot showing the populated motherboard before it goes into the chassis.",
+      "tools": ["generate_image"],
+      "constraints": ["Same board as Stage 1, now with components installed", "Noctua cooler tower visible in CPU area (brown/beige fan)", "Four DDR5 DIMMs seated in right-side slots", "Three M.2 NVMe sticks installed in M.2 slots", "PCIe slots still empty — no GPUs yet", "Board resting on anti-static bag", "Top-down view, build-in-progress aesthetic"]
+    },
+    {
+      "key": "assembly_chassis_loaded",
+      "stage_index": 11,
+      "title": "Assembly: Chassis with Motherboard + PSU Installed",
+      "description": "The Rosewill 4U chassis from Stage 0, now with the populated motherboard and Corsair PSU installed. Photographed from a 3/4 top-right angle with the chassis lid removed, looking into the interior. The motherboard is mounted on standoffs in the main chamber — the Noctua cooler tower, four DDR5 DIMMs, and M.2 drives all visible from Stage 10. The Corsair AX1600i PSU is installed in the rear-bottom PSU bay, fan facing down. ATX 24-pin and EPS 8-pin power cables run from the PSU to the motherboard. The three front 120mm intake fans are installed in the front fan mounts. The PCIe slot area of the motherboard is still empty — GPUs not yet installed. Cables are routed but this is mid-build — some cable slack is visible. Interior lit by overhead studio lighting.",
+      "tools": ["generate_image"],
+      "constraints": ["4U chassis with lid removed — interior visible", "Motherboard mounted with cooler, RAM, NVMe from Stage 10", "PSU installed in rear-bottom bay", "24-pin and EPS power cables connected", "Front intake fans installed", "PCIe area empty — awaiting GPUs", "Mid-build aesthetic — clean but cables not yet fully managed", "3/4 top-right angle looking into open chassis"]
+    },
+    {
+      "key": "full_system",
+      "stage_index": 12,
+      "title": "Full Assembly: PortalNode-01 Complete — Interior View",
+      "description": "The fully assembled PortalNode-01 server with all components installed and all cables routed. Same 3/4 top-right angle as Stage 11, chassis lid still removed. Now the four RTX 4090 Founders Edition GPUs are installed in the PCIe slots, occupying most of the lower half of the chassis interior. The four large GPUs stand upright in a row, their dark gunmetal shrouds and dual fans visible from above. The 12VHPWR power cables connect from the PSU area to the top edge of each GPU. Behind the GPUs (toward the rear of the chassis), the two rear exhaust fans are now installed. The Noctua CPU cooler and RAM are visible in the upper area, above the GPU array. All cables are neatly routed and bundled — this is the completed build. The chassis is full but organized. The impression: a dense, purposeful, well-built machine ready for its lid and rack deployment.",
+      "tools": ["generate_image"],
+      "constraints": ["Fully assembled — all components from prior stages installed", "Four RTX 4090 FE cards installed in PCIe slots — dominant visual element", "12VHPWR cables connected to each GPU", "Rear exhaust fans installed", "CPU cooler and RAM visible above GPU array", "All cables neatly routed and bundled", "Complete build — clean, dense, purposeful", "Same angle as Stage 11 for visual continuity"]
+    },
+    {
+      "key": "final_closed_rack",
+      "stage_index": 13,
+      "title": "PortalNode-01: Lid On, Rack-Mounted, Cables Connected",
+      "description": "The final product shot. The PortalNode-01 chassis is now closed (lid on) and installed in a standard 19-inch open-frame server rack. The 4U server sits at eye level in the middle of the rack, secured by rack-mount rails. The front panel faces the camera: ventilated mesh grille, rack-mount handles, and the three small LED indicators glowing green (power), blue (GPU activity), and amber (network). Power cable runs from the rear of the chassis down the left side of the rack through a vertical cable manager. Two green ethernet cables and one blue management cable run down the right side. Below the server, a 1U rack-mounted UPS unit. Above the server, blank 2U filler panels. The rack is in a clean, well-lit server room with white walls and raised floor tiles. The impression: this is a production deployment. Professional, real, ready.",
+      "tools": ["generate_image"],
+      "constraints": ["Chassis closed with lid, mounted in 19-inch rack", "Front panel visible: mesh grille, handles, LED indicators (green/blue/amber)", "Power cable routed left, network cables routed right", "1U UPS below, blank panels above", "Clean server room environment — white walls, raised floor", "Product/deployment photography — professional, not prototype", "This is the final image in the build sequence"]
+    }
+  ]
+}

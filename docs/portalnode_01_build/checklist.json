@@ -1,0 +1,16 @@
+{
+  "chassis": "done",
+  "motherboard": "done",
+  "cpu": "done",
+  "cpu_cooler": "done",
+  "ram": "done",
+  "gpu_single": "done",
+  "gpu_array_four": "done",
+  "nvme_drives": "done",
+  "psu": "done",
+  "fans_array": "done",
+  "assembly_motherboard_populated": "done",
+  "assembly_chassis_loaded": "done",
+  "full_system": "done",
+  "final_closed_rack": "done"
+}

@@ -1,0 +1,12 @@
+{
+  "key": "psu",
+  "stage_index": 8,
+  "title": "Corsair AX1600i Power Supply + 12VHPWR Adapters",
+  "caption": "Corsair AX1600i PSU with 12VHPWR adapters",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of a Corsair AX1600i power supply unit (PSU) positioned at a 3/4 angle, as seen in high-end technical product photography. The PSU is a large, rectangular, all-black unit measuring approximately 200mm x 150mm x 86mm, reflecting its full ATX form factor with a slightly extended length. The intake face features a prominent 140mm circular fan grille with a fine mesh pattern and visible mounting screws. The opposite face displays the modular cable connector panel, showing multiple rows of black cable sockets with metallic contacts visible inside. The side of the PSU facing the viewer includes the Corsair logo and AX1600i branding as actual product markings, subtly embossed or printed in white and red. The PSU surface has a matte black powder-coated finish, with crisp edges and subtle reflections from soft, diffuse studio lighting. \n\nNext to the PSU, arrange four 12VHPWR adapter cables, each neatly coiled. Each cable features a 16-pin 12VHPWR connector on one end\u2014rectangular, black, with the distinctive angled latch clearly visible\u2014and splits into two 8-pin PCIe connectors on the other end. The connectors are accurately shaped, with the 8-pin PCIe connectors showing the correct pin arrangement and locking tabs. All cables are black, covered in clean, tight braided sleeving with a subtle texture. The cables are arranged in parallel, with the 12VHPWR connectors facing the viewer and the PCIe ends fanned out for clarity.\n\nThe entire composition is set against a neutral, dark gray background with soft shadows, emphasizing the technical and premium nature of the components. The image is in landscape (3:2) aspect ratio, with no people or extraneous objects\u2014just the PSU and the four adapter cables, rendered with meticulous attention to real-world materials and form factors.",
+  "tool_call_id": "call_OrI6crtOGpKCqTRcN4vGlhHT",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "08_psu.png"
+}

@@ -1,0 +1,12 @@
+{
+  "key": "cpu",
+  "stage_index": 2,
+  "title": "Intel Xeon w5-2465X Processor",
+  "caption": "Intel Xeon w5-2465X CPU hero product shot",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of an Intel Xeon w5-2465X processor chip as a technical product photograph. The CPU is depicted alone, centered on a clean, neutral dark gray background with a landscape (3:2) aspect ratio. The chip features a large, rectangular integrated heat spreader (IHS) made of nickel-plated copper, measuring approximately 78mm by 56mm, with subtle polished reflections and a slightly brushed metallic texture. The top of the IHS displays authentic Intel Xeon branding and the model number laser-etched into the metal, as would be seen on the actual product. The chip is oriented so the top surface dominates the view, but the lower edge is angled just enough to reveal a row of gold LGA 4677 contact pads along the underside, hinting at the chip\u2019s connectivity without showing the entire bottom. No socket, motherboard, or other components are present\u2014only the CPU. The lighting is dramatic and soft, with highlights accentuating the contours and reflective qualities of the IHS, creating a hero-shot effect suitable for a datasheet or vendor product page. The overall composition is clean and technical, with no extraneous elements, people, or conceptual graphics\u2014just the processor as it appears out of the box.",
+  "tool_call_id": "call_sMwfYVnh0T806rYGZQYS1a7g",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "02_cpu.png"
+}

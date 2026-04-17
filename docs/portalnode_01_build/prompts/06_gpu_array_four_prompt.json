@@ -1,0 +1,12 @@
+{
+  "key": "gpu_array_four",
+  "stage_index": 6,
+  "title": "4\u00d7 RTX 4090 Founders Edition \u2014 Quad Array",
+  "caption": "Quad RTX 4090 FE array with tiered edge lighting",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of four NVIDIA RTX 4090 Founders Edition graphics cards arranged upright in a row, as if installed in PCIe slots. The cards are oriented with their PCIe connectors at the bottom and the prominent dual axial fans facing the viewer. Each card should have the authentic RTX 4090 FE form factor: sleek, matte black and silver housing, signature angular design, and visible cooling fins. Space the cards evenly, with approximately one expansion slot width between each, ensuring clear airflow gaps. The first two cards on the left feature a subtle green LED strip or a soft green ambient edge glow along their outermost edges, indicating always-on inference GPUs. The two cards on the right display a subtle amber or warm LED strip or edge glow, signifying on-demand heavy inference GPUs. The colored lighting should be understated, serving as an accent rather than dominating the image. Use soft, diffused studio lighting to highlight the metallic textures and contours of the cards, with gentle reflections and shadows. The background is a neutral, dark gray gradient, clean and unobtrusive, emphasizing the technical and premium aesthetic. Compose the image in a landscape (3:2) aspect ratio, with a slight top-down angle to reveal the fans, edge lighting, and spacing between the cards. No text overlays, no people, and no conceptual elements\u2014focus solely on the physical accuracy and product detail, as seen in high-end vendor product photography.",
+  "tool_call_id": "call_H97bQDsbGpfpC0hkeJ6YsUmZ",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "06_gpu_array_four.png"
+}

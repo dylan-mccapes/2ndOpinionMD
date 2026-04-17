@@ -1,0 +1,12 @@
+{
+  "key": "gpu_single",
+  "stage_index": 5,
+  "title": "NVIDIA RTX 4090 Founders Edition \u2014 Single Card",
+  "caption": "NVIDIA RTX 4090 Founders Edition single card hero shot",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of a single NVIDIA GeForce RTX 4090 Founders Edition graphics card, presented as technical product photography suitable for a vendor product page. The card is shown from a 3/4 top-front angle, emphasizing the fan side, the top edge, and the full card length. The shroud is finished in dark gunmetal and titanium colors, with a clean, geometric, angular design characteristic of NVIDIA's Founders Edition. Two large axial fans dominate the front face, with finely detailed fan blades and metallic accents. The card is large\u2014approximately 336mm in length and 3 expansion slots in width\u2014so ensure the proportions reflect this substantial size. On the top edge, accurately depict the 12VHPWR (16-pin) power connector, with its distinctive rectangular shape and pin arrangement. The bottom edge reveals the PCIe x16 gold finger connector, clearly visible and accurately rendered. The rear bracket is shown with DisplayPort and HDMI outputs, and the flow-through cooler design means the rear end of the card features open exhaust venting rather than a solid backplate. Use soft, diffuse studio lighting to highlight the metallic textures and subtle surface details, with a neutral dark gray background for a clean, technical aesthetic. The image should be in landscape (3:2) aspect ratio, with no people or extraneous objects\u2014just the single GPU card as a hero shot. Avoid any text overlays or artificial labels, focusing on physical accuracy and product realism.",
+  "tool_call_id": "call_QI6TPRAle4laIAlqy10LjkgU",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "05_gpu_single.png"
+}

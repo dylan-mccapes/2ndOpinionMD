@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200">
+<title>EHR Data Pipeline — Datavant → PortalNode-01 → Knowledge Graph</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08080f;color:#e4e4f0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:48px}
+.canvas{width:1200px;background:linear-gradient(160deg,#0d0d1a 0%,#111125 100%);border-radius:28px;padding:52px 56px;border:1px solid rgba(255,255,255,0.05);box-shadow:0 40px 120px rgba(0,0,0,0.6)}
+.hdr{text-align:center;margin-bottom:48px}
+.hdr h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;background:linear-gradient(90deg,#e4e4f0,#a0a0c0);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr .sub{font-size:13px;color:#6c6c8a;font-family:'JetBrains Mono',monospace;margin-top:6px}
+
+/* pipeline flow */
+.pipeline{display:flex;align-items:stretch;gap:0;margin-bottom:36px}
+.stage{border-radius:16px;padding:24px;position:relative;display:flex;flex-direction:column}
+.stage .num{font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;opacity:0.5}
+.stage .sname{font-size:18px;font-weight:700;margin-bottom:4px}
+.stage .sdesc{font-size:12px;line-height:1.6;color:#9999bb;flex:1}
+.stage .sstat{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.stage .sstat .row{display:flex;justify-content:space-between;align-items:baseline}
+.stage .sstat .lbl{font-size:10px;color:#6c6c8a;text-transform:uppercase;letter-spacing:1px}
+.stage .sstat .val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500}
+
+.arrow-col{display:flex;align-items:center;justify-content:center;width:56px;flex-shrink:0}
+.arrow-col svg{width:32px;height:32px}
+
+/* colors */
+.s-datavant{flex:1;background:linear-gradient(180deg,rgba(116,185,255,0.1) 0%,rgba(116,185,255,0.03) 100%);border:1px solid rgba(116,185,255,0.2)}
+.s-datavant .num,.s-datavant .val{color:#74b9ff}
+.s-datavant::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0;background:linear-gradient(90deg,#74b9ff,#a29bfe)}
+
+.s-ingest{flex:1.1;background:linear-gradient(180deg,rgba(253,203,110,0.1) 0%,rgba(253,203,110,0.03) 100%);border:1px solid rgba(253,203,110,0.2)}
+.s-ingest .num,.s-ingest .val{color:#fdcb6e}
+.s-ingest::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0;background:linear-gradient(90deg,#fdcb6e,#ffeaa7)}
+
+.s-proc{flex:1.4;background:linear-gradient(180deg,rgba(255,118,117,0.1) 0%,rgba(255,118,117,0.03) 100%);border:1px solid rgba(255,118,117,0.2)}
+.s-proc .num,.s-proc .val{color:#ff7675}
+.s-proc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0;background:linear-gradient(90deg,#ff7675,#fab1a0)}
+
+.s-graph{flex:1.2;background:linear-gradient(180deg,rgba(0,184,148,0.1) 0%,rgba(0,184,148,0.03) 100%);border:1px solid rgba(0,184,148,0.2)}
+.s-graph .num,.s-graph .val{color:#00b894}
+.s-graph::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0;background:linear-gradient(90deg,#00b894,#55efc4)}
+
+/* timeline bar */
+.timeline{margin-top:16px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);padding:20px 24px}
+.tl-title{font-size:11px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:2px;color:#6c6c8a;margin-bottom:14px}
+.tl-bar{display:flex;border-radius:6px;overflow:hidden;height:28px}
+.tl-bar .seg{display:flex;align-items:center;justify-content:center;font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:500}
+.tl-bar .t1{background:rgba(116,185,255,0.25);width:5%;color:#74b9ff}
+.tl-bar .t2{background:rgba(253,203,110,0.25);width:10%;color:#fdcb6e}
+.tl-bar .t3{background:rgba(255,118,117,0.25);width:70%;color:#ff7675}
+.tl-bar .t4{background:rgba(0,184,148,0.25);width:15%;color:#00b894}
+.tl-labels{display:flex;margin-top:6px}
+.tl-labels .seg{font-size:10px;color:#555570;font-family:'JetBrains Mono',monospace;text-align:center}
+.tl-labels .t1{width:5%}.tl-labels .t2{width:10%}.tl-labels .t3{width:70%}.tl-labels .t4{width:15%}
+.tl-total{text-align:right;margin-top:10px;font-size:12px;color:#8888aa}
+.tl-total strong{color:#e4e4f0;font-family:'JetBrains Mono',monospace}
+
+/* model badge */
+.mbadge{display:inline-block;margin-top:12px;padding:4px 10px;border-radius:6px;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:500}
+.mbadge.b70{background:rgba(255,118,117,0.15);border:1px solid rgba(255,118,117,0.25);color:#ff7675}
+.mbadge.bpe{background:rgba(0,184,148,0.15);border:1px solid rgba(0,184,148,0.25);color:#00b894}
+
+code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,0.05);padding:2px 7px;border-radius:4px;font-size:11px;color:#8888aa}
+.fnote{text-align:center;margin-top:24px;font-size:12px;color:#44445a;line-height:1.7}
+.hipaa-badge{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:5px 12px;border-radius:6px;background:rgba(0,184,148,0.08);border:1px solid rgba(0,184,148,0.15);font-size:11px;font-family:'JetBrains Mono',monospace;color:#55efc4}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="hdr">
+    <h1>EHR Data Pipeline — Datavant → PortalNode-01 → Knowledge Graph</h1>
+    <div class="sub">Batch ingestion · eoh-llama 70B synthesis · ProvenanceEngine receipts</div>
+  </div>
+
+  <div class="pipeline">
+    <!-- Stage 1: Datavant -->
+    <div class="stage s-datavant">
+      <div class="num">Stage 1</div>
+      <div class="sname">Datavant</div>
+      <div class="sdesc">De-identified EHR records delivered via secure token-linked transfer. FHIR bundles, CDA documents, and flat lab/Rx tables.</div>
+      <div class="sstat">
+        <div class="row"><span class="lbl">Format</span><span class="val">FHIR R4 + CSV</span></div>
+        <div class="row"><span class="lbl">Volume</span><span class="val">~50 K records</span></div>
+        <div class="row"><span class="lbl">Network</span><span class="val">10 GbE → NVMe</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <svg viewBox="0 0 32 32" fill="none"><path d="M6 16h20M20 10l6 6-6 6" stroke="#74b9ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <!-- Stage 2: Ingest -->
+    <div class="stage s-ingest">
+      <div class="num">Stage 2</div>
+      <div class="sname">EHR Ingest</div>
+      <div class="sdesc">Heuristic pre-extraction (regex + page-date recovery) builds a skeleton. Validates schema, deduplicates, and queues artifacts for 70B synthesis.</div>
+      <div class="sstat">
+        <div class="row"><span class="lbl">Pre-extract</span><span class="val">Regex + heuristic</span></div>
+        <div class="row"><span class="lbl">Queue depth</span><span class="val">~12 K artifacts</span></div>
+        <div class="row"><span class="lbl">Time</span><span class="val">~15 min</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <svg viewBox="0 0 32 32" fill="none"><path d="M6 16h20M20 10l6 6-6 6" stroke="#fdcb6e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <!-- Stage 3: 70B Processing -->
+    <div class="stage s-proc">
+      <div class="num">Stage 3 — Primary</div>
+      <div class="sname">70B Deep Synthesis</div>
+      <div class="sdesc">eoh-llama 70B processes every artifact: entity extraction, temporal alignment, flare-signal scoring, differential reasoning, and provenance-receipted node/edge emission.</div>
+      <div class="sstat">
+        <div class="row"><span class="lbl">Model</span><span class="val">eoh-llama 70B</span></div>
+        <div class="row"><span class="lbl">GPUs</span><span class="val">2× RTX 4090 (TP)</span></div>
+        <div class="row"><span class="lbl">Throughput</span><span class="val">~20 tok/s</span></div>
+        <div class="row"><span class="lbl">Est. runtime</span><span class="val">4 – 8 hours</span></div>
+      </div>
+      <div class="mbadge b70">eoh-llama 70B · tensor-parallel</div>
+    </div>
+
+    <div class="arrow-col">
+      <svg viewBox="0 0 32 32" fill="none"><path d="M6 16h20M20 10l6 6-6 6" stroke="#ff7675" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <!-- Stage 4: Graph -->
+    <div class="stage s-graph">
+      <div class="num">Stage 4</div>
+      <div class="sname">Knowledge Graph</div>
+      <div class="sdesc">Fully structured, receipted graph ready for downstream query: patient timelines, flare trajectories, medication interactions, and Portal GC lifecycle scoring.</div>
+      <div class="sstat">
+        <div class="row"><span class="lbl">Nodes</span><span class="val">~200 K</span></div>
+        <div class="row"><span class="lbl">Edges</span><span class="val">~600 K</span></div>
+        <div class="row"><span class="lbl">Format</span><span class="val">JSON-LD + JSONL</span></div>
+      </div>
+      <div class="mbadge bpe">ProvenanceEngine receipted</div>
+    </div>
+  </div>
+
+  <!-- Timeline bar -->
+  <div class="timeline">
+    <div class="tl-title">Typical batch run timeline (50 K records)</div>
+    <div class="tl-bar">
+      <div class="seg t1"></div>
+      <div class="seg t2">Ingest</div>
+      <div class="seg t3">eoh-llama 70B — deep synthesis (4–8 hrs)</div>
+      <div class="seg t4">Graph</div>
+    </div>
+    <div class="tl-labels">
+      <div class="seg t1">Xfer</div>
+      <div class="seg t2">~15m</div>
+      <div class="seg t3"></div>
+      <div class="seg t4">~45m</div>
+    </div>
+    <div class="tl-total">End-to-end: <strong>~5 – 9 hours</strong> for a full cohort rebuild</div>
+  </div>
+
+  <div class="fnote">
+    All processing is on-premise. No data leaves PortalNode-01 after initial EHR transfer.<br>
+    <span class="hipaa-badge">🔒 HIPAA air-gapped · zero cloud dependency</span>
+  </div>
+</div>
+</body>
+</html>

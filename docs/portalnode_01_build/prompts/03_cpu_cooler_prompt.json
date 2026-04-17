@@ -1,0 +1,12 @@
+{
+  "key": "cpu_cooler",
+  "stage_index": 3,
+  "title": "Noctua NH-U14S Tower CPU Cooler",
+  "caption": "Noctua NH-U14S CPU cooler, 3/4 front view",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of the Noctua NH-U14S single-tower CPU cooler, shown in a clean technical product photography style. The cooler should be depicted from a 3/4 front angle, landscape (3:2) aspect ratio, against a neutral dark gray background with soft studio lighting to highlight metallic textures and contours. The main feature is a tall, densely packed aluminum fin stack approximately 165mm in height, with six evenly spaced, nickel-plated copper heatpipes running vertically through the fins. The heatpipes should be clearly visible at the top of the fin stack, with their shiny, rounded ends protruding slightly above the fins. At the base, show a flat, polished copper base plate, accurately reflecting light, with the mounting bracket hardware (crossbar and screws) visible and correctly positioned. Clipped to the front face of the fin stack is a single 140mm Noctua NF-A15 fan, rendered in Noctua\u2019s distinctive brown and beige two-tone color scheme, with rounded blade tips and the fan frame\u2019s unique contours. The fan\u2019s mounting clips should be visible, securing it to the fin stack. Emphasize the tight spacing and layered structure of the aluminum fins, the precise routing of the heatpipes, and the overall robust, high-quality construction. No text overlays or people; focus on technical accuracy and realistic materials. The composition should clearly display the fan, fin stack, heatpipes, and base plate, suitable for a vendor product page or datasheet.",
+  "tool_call_id": "call_8fqmnTjKXcQitlhmanRwPmsJ",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "03_cpu_cooler.png"
+}

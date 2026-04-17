@@ -1,0 +1,12 @@
+{
+  "key": "full_system",
+  "stage_index": 12,
+  "title": "Full Assembly: PortalNode-01 Complete \u2014 Interior View",
+  "caption": "Fully assembled PortalNode-01 server interior",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of the fully assembled PortalNode-01 server interior, viewed from a 3/4 top-right angle (matching Stage 11), with the chassis lid removed. The composition should be in landscape (3:2), with a neutral dark gray background and soft, diffused studio lighting for a clean technical product photography look. The lower half of the chassis is dominated by four NVIDIA RTX 4090 Founders Edition GPUs, each installed upright in PCIe slots in a row. The GPUs feature dark gunmetal shrouds and dual axial fans visible from above, with authentic product markings only. Each GPU has a 12VHPWR power cable connected to its top edge, with the cables routed cleanly and bundled as they run from the PSU area. Behind the GPUs, at the rear of the chassis, two large rear exhaust fans are installed, their black frames and blades visible. Above the GPU array, the Noctua CPU cooler (with its signature beige and brown fan) and RAM sticks are clearly visible on the motherboard. All cables, including motherboard power, GPU power, and fan wires, are neatly routed and bundled, emphasizing a dense but highly organized build. The chassis interior is full but uncluttered, showcasing a purposeful, professional assembly ready for rack deployment. No people, no conceptual elements, and no extraneous text overlays\u2014focus on physical accuracy and component detail.",
+  "tool_call_id": "call_84CaGNug1zTHxWkaAYlv0RvR",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "12_full_system.png"
+}

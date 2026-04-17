@@ -1,0 +1,12 @@
+{
+  "key": "assembly_chassis_loaded",
+  "stage_index": 11,
+  "title": "Assembly: Chassis with Motherboard + PSU Installed",
+  "caption": "4U chassis with motherboard and PSU installed",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of a Rosewill 4U rackmount chassis with its lid removed, shown from a 3/4 top-right angle in landscape (3:2) aspect ratio. The chassis sits on a neutral dark gray background, illuminated by soft, diffuse studio lighting for a clean technical product photography look. Inside, a full ATX motherboard is mounted horizontally on standoffs in the main chamber. The motherboard features a prominent Noctua tower CPU cooler with its signature brown and beige fan, four DDR5 DIMMs with metallic heat spreaders, and two visible M.2 NVMe SSDs installed. The PCIe slots on the motherboard are empty, clearly showing the slot area awaiting GPU installation. At the rear-bottom PSU bay, a Corsair AX1600i power supply is installed with its fan facing downward. Black, braided ATX 24-pin and EPS 8-pin power cables run from the PSU to the motherboard, with some visible slack and gentle curves, reflecting a mid-build state where cables are routed but not yet fully managed. Three 120mm black intake fans are installed in the front panel\u2019s fan mounts, visible through the open chassis. The interior is clean but realistic, with a few loose cables and no dust or fingerprints. No people or conceptual elements are present\u2014only the physical components, all accurately proportioned and detailed. No extraneous text overlays; only authentic product markings are visible where they would appear on the real hardware.",
+  "tool_call_id": "call_ZIDVu22l8gafHqcfvv2DpMQV",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "11_assembly_chassis_loaded.png"
+}

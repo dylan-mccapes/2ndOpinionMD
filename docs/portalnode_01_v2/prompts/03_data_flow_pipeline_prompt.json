@@ -1,0 +1,12 @@
+{
+  "key": "data_flow_pipeline",
+  "stage_index": 3,
+  "title": "The Data Pipeline \u2014 From Patient Record to Scored Timeline",
+  "caption": "Data pipeline: documents to server to knowledge graph",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, left-to-right product flow visualization on a clean, dark navy (#1a1a2e) gradient background. On the far left, depict a stack of medical documents: several slightly fanned-out sheets of white paper with visible but illegible lines and table structures, resting on a matte black surface. The papers should look like real EHR printouts or scanned records, with a tactile, slightly curled edge, but absolutely no readable text or numbers. From this stack, a thin, clean emerald green (#00b894) arrow with a subtle glow extends rightward, pointing directly into the left side of a PortalNode-01 chassis. The chassis is centered, shown in a precise side-profile silhouette: a 4U rackmount server with a matte black finish and brushed aluminum accents, minimalistic and sharply rendered, with subtle emerald glow at vent lines to indicate active processing. No logos or text. From the right side of the chassis, a second arrow\u2014this time a thin, glowing amber (#fdcb6e) line\u2014extends rightward, leading to a glowing, translucent network graph. The graph floats in space: a constellation of small, softly glowing circles (nodes) connected by thin lines (edges), forming an organized web. The nodes and edges glow in a mix of emerald and amber, with a gentle, diffuse aura. The overall composition is balanced and uncluttered, with soft studio lighting and realistic reflections. No people, no UI overlays, no sci-fi effects. The image must instantly communicate: messy documents in, black box processing, structured knowledge graph out. No text or labels anywhere in the image.",
+  "tool_call_id": "call_ZlaLCn4A0yeKklQDnDovRVDv",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "03_data_flow_pipeline.png"
+}

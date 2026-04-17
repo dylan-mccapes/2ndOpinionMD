@@ -1,0 +1,12 @@
+{
+  "key": "power_thermal",
+  "stage_index": 4,
+  "title": "Power + Thermal Architecture \u2014 2.2 kW Budget",
+  "caption": "Server power and thermal schematic, 2.2 kW budget",
+  "view": "schematic",
+  "prompt": "Create a photorealistic, technical 3D schematic of a high-performance server's power and thermal architecture, set against a neutral dark gray gradient background that evokes a data center environment. The main chassis is standard ATX form factor, rendered in deep navy (#1a1a2e) with matte silver (#c0c0c0) highlights. At the base, feature a 2000W 80+ Platinum redundant PSU, its metallic housing detailed and enterprise-grade, with dual hot-swap modules. From the PSU, show thick, neatly bundled power rails (accented in warm amber #fdcb6e) fanning out to all key subsystems: a central CPU (with a visible 125W TDP label on the block), four RTX 4090 Founders Edition GPUs (each clearly depicted, arranged in parallel, with power cables routed precisely), storage drives, high-performance fans, and networking card. Use emerald (#00b894) accents to highlight active components like the CPU, GPUs, and fans. Illustrate the liquid cooling loop: metallic CPU and GPU water blocks connected by matte black tubing, with coolant flow paths highlighted in warm amber. The loop passes through a large 360mm or 420mm radiator mounted at the rear, with airflow arrows indicating front-to-back movement. Alternatively, show a high-CFM rack fan array in push-pull configuration as an option, with airflow paths clearly marked. Visually differentiate thermal zones: the GPU area glows subtly to indicate the hottest zone, while cooler zones are shaded accordingly. In a corner, include a photorealistic icon of a single 30A circuit breaker, subtly integrated. Lighting is clean, studio-style, emphasizing material finishes and cable routing. No people or text overlays.",
+  "tool_call_id": "call_PxjhsyWpeM76cq7C4rFXzf2l",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "04_power_thermal.png"
+}

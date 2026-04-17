@@ -1,0 +1,12 @@
+{
+  "key": "the_interior",
+  "stage_index": 1,
+  "title": "The Interior \u2014 Four GPUs, One Brain",
+  "caption": "Top-down isometric of 4U chassis interior with four GPUs",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, top-down isometric view of a 4U server chassis with the top panel removed, revealing a meticulously organized interior. The left half of the chassis features four large, modern GPUs installed vertically in parallel PCIe slots on a matte black motherboard. Each GPU is distinct and robust, with the first two cards outlined by a subtle emerald green edge glow (#00b894), and the next two cards outlined by a warm amber edge glow (#fdcb6e), both glows soft and understated. The GPUs have brushed aluminum and matte black finishes, with visible heatsinks and power connectors. Between the GPU section and the right wall, a large tower-style CPU air cooler is visible, featuring a single quiet fan with a brushed aluminum heatsink and a black fan shroud. Adjacent to the cooler, four RAM modules are installed vertically in a neat row, each with a matte black heat spreader. At the far right edge of the motherboard, two small, rectangular M.2 NVMe SSD sticks are mounted flat, their metallic surfaces subtly reflecting the soft studio lighting. Power cables are routed in a bundled loom along the bottom of the chassis, perfectly organized and tucked, with no loose or messy wires. The interior is immaculately clean, free of dust or debris. The background is a smooth navy (#1a1a2e) gradient, enhancing the professional, product-photography aesthetic. The lighting is soft and even, highlighting the textures of metal and plastic, with no harsh shadows or distracting reflections. No people, no text, no labels, and no sci-fi or UI overlays\u2014just the hardware, precise and trustworthy, as if for a high-end product page or regulatory filing.",
+  "tool_call_id": "call_P2Xw2DAHTZEsHq5XJrCMAtBk",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "01_the_interior.png"
+}

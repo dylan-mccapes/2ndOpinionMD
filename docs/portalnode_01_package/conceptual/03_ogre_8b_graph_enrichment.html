@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200">
+<title>OGrE — Opportunistic Graph Enrichment via eoh-llama 8B</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08080f;color:#e4e4f0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:48px}
+.canvas{width:1200px;background:linear-gradient(160deg,#0d0d1a 0%,#111125 100%);border-radius:28px;padding:52px 56px;border:1px solid rgba(255,255,255,0.05);box-shadow:0 40px 120px rgba(0,0,0,0.6)}
+.hdr{text-align:center;margin-bottom:40px}
+.hdr h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;background:linear-gradient(90deg,#55efc4,#00b894);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr .sub{font-size:13px;color:#6c6c8a;font-family:'JetBrains Mono',monospace;margin-top:6px}
+
+.main-row{display:flex;gap:28px;margin-bottom:32px}
+
+/* Left panel: How OGrE works */
+.how-panel{flex:1;display:flex;flex-direction:column;gap:12px}
+.step-card{border-radius:14px;padding:18px 20px;display:flex;gap:16px;align-items:flex-start}
+.step-num{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;flex-shrink:0}
+.step-body{flex:1}
+.step-title{font-size:15px;font-weight:700;margin-bottom:3px}
+.step-desc{font-size:12px;color:#9999bb;line-height:1.6}
+
+.sc1{background:rgba(0,184,148,0.06);border:1px solid rgba(0,184,148,0.15)}
+.sc1 .step-num{background:rgba(0,184,148,0.2);color:#55efc4}
+.sc2{background:rgba(116,185,255,0.06);border:1px solid rgba(116,185,255,0.15)}
+.sc2 .step-num{background:rgba(116,185,255,0.2);color:#74b9ff}
+.sc3{background:rgba(253,203,110,0.06);border:1px solid rgba(253,203,110,0.15)}
+.sc3 .step-num{background:rgba(253,203,110,0.2);color:#fdcb6e}
+.sc4{background:rgba(162,155,254,0.06);border:1px solid rgba(162,155,254,0.15)}
+.sc4 .step-num{background:rgba(162,155,254,0.2);color:#a29bfe}
+.sc5{background:rgba(255,118,117,0.06);border:1px solid rgba(255,118,117,0.15)}
+.sc5 .step-num{background:rgba(255,118,117,0.2);color:#ff7675}
+
+/* Right panel: Graph viz */
+.graph-panel{flex:1.1;position:relative}
+.graph-viz{width:100%;height:100%;min-height:440px;position:relative;border-radius:18px;background:rgba(0,184,148,0.03);border:1px solid rgba(0,184,148,0.1);overflow:hidden}
+
+/* SVG graph */
+.graph-svg{width:100%;height:100%;position:absolute;top:0;left:0}
+
+/* Stats bar */
+.stats-bar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.sbox{flex:1;min-width:120px;border-radius:12px;padding:14px 16px;text-align:center}
+.sbox .sv{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}
+.sbox .sl{font-size:10px;color:#6c6c8a;text-transform:uppercase;letter-spacing:1.2px;margin-top:3px}
+.sb-green{background:rgba(0,184,148,0.08);border:1px solid rgba(0,184,148,0.15)}.sb-green .sv{color:#55efc4}
+.sb-blue{background:rgba(116,185,255,0.08);border:1px solid rgba(116,185,255,0.15)}.sb-blue .sv{color:#74b9ff}
+.sb-amber{background:rgba(253,203,110,0.08);border:1px solid rgba(253,203,110,0.15)}.sb-amber .sv{color:#fdcb6e}
+.sb-purple{background:rgba(162,155,254,0.08);border:1px solid rgba(162,155,254,0.15)}.sb-purple .sv{color:#a29bfe}
+
+code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,0.05);padding:2px 7px;border-radius:4px;font-size:11px;color:#8888aa}
+.fnote{text-align:center;margin-top:20px;font-size:12px;color:#44445a;line-height:1.7}
+.model-tag{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;background:rgba(0,184,148,0.12);border:1px solid rgba(0,184,148,0.2);font-size:11px;font-family:'JetBrains Mono',monospace;color:#55efc4;margin-top:4px}
+
+/* node styles in SVG */
+.n-patient{fill:#55efc4}
+.n-med{fill:#74b9ff}
+.n-lab{fill:#fdcb6e}
+.n-flare{fill:#ff7675}
+.n-enriched{fill:#a29bfe}
+.edge-line{stroke:rgba(255,255,255,0.08);stroke-width:1}
+.edge-active{stroke:rgba(0,184,148,0.4);stroke-width:2;stroke-dasharray:6,4}
+.edge-new{stroke:rgba(162,155,254,0.5);stroke-width:2}
+.pulse{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+.traverse{animation:traverse 3s linear infinite}
+@keyframes traverse{0%{stroke-dashoffset:0}100%{stroke-dashoffset:-40}}
+.glow{filter:drop-shadow(0 0 6px rgba(0,184,148,0.5))}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="hdr">
+    <h1>OGrE — Opportunistic Graph Enrichment</h1>
+    <div class="sub">eoh-llama 8B · always-on · GPU 0 · continuous graph quality improvement</div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="sbox sb-green"><div class="sv">&lt; 1.2 s</div><div class="sl">Per-node latency</div></div>
+    <div class="sbox sb-blue"><div class="sv">~60 tok/s</div><div class="sl">Throughput</div></div>
+    <div class="sbox sb-amber"><div class="sv">24 / 7</div><div class="sl">Always running</div></div>
+    <div class="sbox sb-purple"><div class="sv">+15 – 30 %</div><div class="sl">Edge density gain</div></div>
+  </div>
+
+  <div class="main-row">
+    <!-- Left: How it works -->
+    <div class="how-panel">
+      <div class="step-card sc1">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Idle-cycle trigger</div>
+          <div class="step-desc">When no active user query is running, the 8B model picks up background work. It selects the node with the lowest <code>confidence</code> or highest <code>decay_score</code> from the graph.</div>
+        </div>
+      </div>
+      <div class="step-card sc2">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Neighborhood scan</div>
+          <div class="step-desc">The 8B reads the target node + its 2-hop neighborhood (medications, labs, encounters). It looks for implicit connections the 70B may have missed or that arrived after initial build.</div>
+        </div>
+      </div>
+      <div class="step-card sc3">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Edge proposal</div>
+          <div class="step-desc">The model proposes new edges (e.g., <code>medication → lab_result</code>) with a confidence score. Only proposals above the <code>0.7</code> threshold are accepted.</div>
+        </div>
+      </div>
+      <div class="step-card sc4">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Graph mutation + receipt</div>
+          <div class="step-desc">Accepted edges are written to the graph with full provenance: <code>model=8b, reason=ogre_enrichment, confidence=0.82</code>. The node's confidence score is updated.</div>
+        </div>
+      </div>
+      <div class="step-card sc5">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Escalation gate</div>
+          <div class="step-desc">If the 8B finds a pattern it can't resolve (confidence < 0.5 after scan), it flags the node for <code>70B REVIEW</code> — never guesses on high-stakes synthesis.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Graph visualization -->
+    <div class="graph-panel">
+      <div class="graph-viz">
+        <svg class="graph-svg" viewBox="0 0 520 440">
+          <!-- Static edges (existing) -->
+          <line class="edge-line" x1="180" y1="120" x2="300" y2="80"/>
+          <line class="edge-line" x1="180" y1="120" x2="140" y2="220"/>
+          <line class="edge-line" x1="180" y1="120" x2="260" y2="200"/>
+          <line class="edge-line" x1="300" y1="80" x2="400" y2="120"/>
+          <line class="edge-line" x1="140" y1="220" x2="80" y2="300"/>
+          <line class="edge-line" x1="140" y1="220" x2="220" y2="310"/>
+          <line class="edge-line" x1="260" y1="200" x2="350" y2="240"/>
+          <line class="edge-line" x1="350" y1="240" x2="420" y2="200"/>
+          <line class="edge-line" x1="350" y1="240" x2="400" y2="340"/>
+          <line class="edge-line" x1="80" y1="300" x2="160" y2="380"/>
+          <line class="edge-line" x1="220" y1="310" x2="300" y2="370"/>
+          <line class="edge-line" x1="420" y1="200" x2="460" y2="300"/>
+
+          <!-- Active traversal edges (8B scanning) -->
+          <line class="edge-active traverse" x1="260" y1="200" x2="140" y2="220"/>
+          <line class="edge-active traverse" x1="260" y1="200" x2="350" y2="240"/>
+          <line class="edge-active traverse" x1="260" y1="200" x2="180" y2="120"/>
+
+          <!-- New edges proposed by 8B (purple, dashed) -->
+          <line class="edge-new" x1="140" y1="220" x2="350" y2="240" stroke-dasharray="4,4"/>
+          <line class="edge-new" x1="300" y1="80" x2="260" y2="200" stroke-dasharray="4,4"/>
+
+          <!-- Nodes -->
+          <!-- Patient nodes -->
+          <circle class="n-patient" cx="180" cy="120" r="10"/>
+          <circle class="n-patient" cx="80" cy="300" r="8"/>
+
+          <!-- Med nodes -->
+          <circle class="n-med" cx="300" cy="80" r="9"/>
+          <circle class="n-med" cx="400" cy="120" r="7"/>
+          <circle class="n-med" cx="220" cy="310" r="8"/>
+
+          <!-- Lab nodes -->
+          <circle class="n-lab" cx="140" cy="220" r="9"/>
+          <circle class="n-lab" cx="350" cy="240" r="9"/>
+          <circle class="n-lab" cx="460" cy="300" r="7"/>
+
+          <!-- Flare nodes -->
+          <circle class="n-flare" cx="160" cy="380" r="8"/>
+          <circle class="n-flare" cx="300" cy="370" r="9"/>
+          <circle class="n-flare" cx="400" cy="340" r="8"/>
+
+          <!-- Currently-being-enriched node (larger, glowing) -->
+          <circle class="n-enriched glow pulse" cx="260" cy="200" r="14"/>
+          <circle cx="260" cy="200" r="14" fill="none" stroke="#a29bfe" stroke-width="2" stroke-dasharray="3,3">
+            <animateTransform attributeName="transform" type="rotate" from="0 260 200" to="360 260 200" dur="8s" repeatCount="indefinite"/>
+          </circle>
+
+          <!-- Enrichment target node (connected by new edges) -->
+          <circle class="n-enriched" cx="420" cy="200" r="8" opacity="0.7"/>
+
+          <!-- Legend -->
+          <g transform="translate(20, 20)">
+            <rect x="0" y="0" width="160" height="130" rx="8" fill="rgba(0,0,0,0.4)" stroke="rgba(255,255,255,0.06)"/>
+            <circle cx="18" cy="20" r="5" class="n-patient"/><text x="30" y="24" fill="#9999bb" font-size="10" font-family="DM Sans">Patient</text>
+            <circle cx="18" cy="40" r="5" class="n-med"/><text x="30" y="44" fill="#9999bb" font-size="10" font-family="DM Sans">Medication</text>
+            <circle cx="18" cy="60" r="5" class="n-lab"/><text x="30" y="64" fill="#9999bb" font-size="10" font-family="DM Sans">Lab result</text>
+            <circle cx="18" cy="80" r="5" class="n-flare"/><text x="30" y="84" fill="#9999bb" font-size="10" font-family="DM Sans">Flare event</text>
+            <circle cx="18" cy="100" r="5" class="n-enriched"/><text x="30" y="104" fill="#9999bb" font-size="10" font-family="DM Sans">8B enriching</text>
+            <line x1="10" y1="118" x2="40" y2="118" stroke="#a29bfe" stroke-width="2" stroke-dasharray="4,3"/><text x="48" y="122" fill="#9999bb" font-size="10" font-family="DM Sans">New edge</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="fnote">
+    OGrE runs continuously on GPU 0 alongside 3.2 routing. It never interrupts active queries.<br>
+    Every graph mutation is receipted: <code>agent=ogre model=8b confidence=0.82 reason=lab_med_temporal_link</code><br>
+    <span class="model-tag">eoh-llama 8B · always-on · GPU 0 · 5 GB VRAM</span>
+  </div>
+</div>
+</body>
+</html>

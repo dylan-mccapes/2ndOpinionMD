@@ -1,0 +1,112 @@
+[
+  {
+    "key": "chassis_overview",
+    "stage_index": 0,
+    "title": "4U Rack-Mount Chassis \u2014 External View",
+    "caption": "4U rack-mount server chassis external view",
+    "view": "isometric",
+    "image_file": "00_chassis_overview.png",
+    "image_path": "portalnode_01_images/images/00_chassis_overview.png",
+    "integration_note": "The illustration depicts a 4U rack-mount server chassis, modeled after the Rosewill RSV-L4500U, from a 3/4 front-right isometric perspective. This stage is crucial as it provides an external overview of the chassis, highlighting its design and connectivity features, which are essential for understanding how the server fits into a rack and interfaces with network infrastructure. Reviewers should specifically note the positioning and clarity of the status LEDs, as these are critical for monitoring server status during operation.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "gpu_array",
+    "stage_index": 1,
+    "title": "4\u00d7 RTX 4090 GPU Array \u2014 PCIe Layout",
+    "caption": "Four RTX 4090 GPUs in PCIe server layout",
+    "view": "isometric",
+    "image_file": "01_gpu_array.png",
+    "image_path": "portalnode_01_images/images/01_gpu_array.png",
+    "integration_note": "The illustration depicts an isometric view of a server motherboard with four NVIDIA RTX 4090 Founders Edition graphics cards installed in PCIe x16 slots. The cards are spaced with a 2-slot gap to ensure optimal airflow, and the PCIe power cables are neatly routed from the PSU. This stage is crucial for ensuring proper thermal management and power distribution in high-performance computing setups. Builders should notice the color-coding overlay, which highlights GPUs 0 and 1 in emerald green, indicating their dedicated role or priority in the system.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "cpu_memory",
+    "stage_index": 2,
+    "title": "CPU + 128 GB DDR5 Memory \u2014 Processing Core",
+    "caption": "CPU and 128GB DDR5 memory on server board",
+    "view": "isometric",
+    "image_file": "02_cpu_memory.png",
+    "image_path": "portalnode_01_images/images/02_cpu_memory.png",
+    "integration_note": "The illustration depicts an isometric view of a server-grade ATX motherboard, focusing on the Intel Core i5-14600K (or i7-14700K) CPU installed in an LGA 1700 socket, with either a server-grade air cooler or an AIO liquid cooling block mounted. It highlights the installation of four DDR5-6000 ECC DIMM modules, totaling 128 GB, in a dual-channel configuration, crucial for ensuring optimal memory performance and stability in server environments. Builders should pay attention to the correct placement of the DIMM modules in alternating slots to maintain the dual-channel setup, which is essential for maximizing data throughput.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "storage_array",
+    "stage_index": 3,
+    "title": "NVMe Storage \u2014 10 TB Total Capacity",
+    "caption": "NVMe storage array with data flow paths",
+    "view": "isometric",
+    "image_file": "03_storage_array.png",
+    "image_path": "portalnode_01_images/images/03_storage_array.png",
+    "integration_note": "The illustration depicts an enterprise-grade storage subsystem featuring two M.2 NVMe Gen4 SSDs within a standard ATX form factor system, set against a dark gray gradient background. This stage is crucial as it outlines the storage configuration, highlighting the separation of system and application data on the 2 TB and 8 TB drives, respectively, ensuring optimized performance and data management. Builders and reviewers should notice the clear labeling of each drive, which indicates their specific roles and contents, aiding in proper installation and configuration.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "power_thermal",
+    "stage_index": 4,
+    "title": "Power + Thermal Architecture \u2014 2.2 kW Budget",
+    "caption": "Server power and thermal schematic, 2.2 kW budget",
+    "view": "schematic",
+    "image_file": "04_power_thermal.png",
+    "image_path": "portalnode_01_images/images/04_power_thermal.png",
+    "integration_note": "The illustration depicts a detailed 3D schematic of a high-performance server's power and thermal architecture, highlighting a 2000W 80+ Platinum redundant PSU at the base with power rails extending to the CPU, four GPUs, storage, fans, and networking components. This stage is crucial in the build sequence as it ensures that all components receive adequate power and cooling, preventing overheating and maintaining system stability under peak load conditions. Reviewers should notice the server-grade liquid cooling loop, which efficiently manages heat dissipation from the CPU and GPUs, crucial for maintaining optimal performance.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "network_topology",
+    "stage_index": 5,
+    "title": "Network Topology \u2014 Dual 10GbE + IPMI",
+    "caption": "Dual 10GbE air-gapped server network topology",
+    "view": "system",
+    "image_file": "05_network_topology.png",
+    "image_path": "portalnode_01_images/images/05_network_topology.png",
+    "integration_note": "The illustration depicts a network topology for PortalNode-01 within the RISE data center, highlighting dual 10GbE NICs for separate data paths: one for inference API traffic and another for EHR data ingestion. This stage is crucial as it ensures redundant and secure data handling, maintaining operational integrity and data protection within an air-gapped environment. Reviewers should notice the color-coded, emerald-accented network cables that clearly differentiate the data paths, ensuring correct physical connections during installation.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "software_stack",
+    "stage_index": 6,
+    "title": "Software Stack \u2014 Ubuntu + Docker + Ollama + FastAPI",
+    "caption": "Layered software stack on PortalNode-01 server",
+    "view": "isometric",
+    "image_file": "06_software_stack.png",
+    "image_path": "portalnode_01_images/images/06_software_stack.png",
+    "integration_note": "The illustration depicts a 3D render of a layered software stack on the PortalNode-01 server, showcasing a vertical architecture from the hardware layer with an ATX motherboard and four RTX 4090 GPUs, up through software layers including Ubuntu, Docker, Ollama instances, and FastAPI. This stage is crucial as it demonstrates the integration of hardware and software components necessary for efficient model deployment and routing in a data center. Builders and reviewers should pay attention to the placement and configuration of the NVIDIA Container Toolkit and CUDA drivers, ensuring compatibility and performance optimization for the GPUs.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "model_tiering",
+    "stage_index": 7,
+    "title": "eoh-llama Model Tiering \u2014 Three Tools for Three Jobs",
+    "caption": "Three-tier model routing with tool metaphor",
+    "view": "isometric",
+    "image_file": "07_model_tiering.png",
+    "image_path": "portalnode_01_images/images/07_model_tiering.png",
+    "integration_note": "The illustration depicts a model tiering system using a construction-yard tool metaphor, featuring three tool stations on a neutral dark gray gradient background. Each station is equipped with enterprise-grade tools like a cordless drill, circular saw, and another unspecified tool, symbolizing different eoh-llama model tiers. This stage highlights the importance of tiered processing in optimizing tasks by matching the right tool to the right job, ensuring efficiency and speed. A specific detail to notice is the emerald LED accents on the cordless drill at Station 1, indicating its readiness and speed for tasks requiring less than 300ms latency.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "rise_data_flow",
+    "stage_index": 8,
+    "title": "RISE Data Integration \u2014 3.9M Patients, 42.6M Encounters",
+    "caption": "RISE data flow through PortalNode-01 server",
+    "view": "diagram",
+    "image_file": "08_rise_data_flow.png",
+    "image_path": "portalnode_01_images/images/08_rise_data_flow.png",
+    "integration_note": "The illustration depicts the RISE data integration pipeline within the PortalNode-01 server, showcasing the flow of FHIR-enabled EHR data from 179 active practices into the server. Key visual elements include deep navy data cables converging into the server's front panel, with visible RTX 4090 graphics cards and an 8TB NVMe drive, all accented with emerald highlights. This stage is crucial as it ensures the secure and efficient processing of large volumes of patient data, which is foundational for subsequent data analysis and insights. Reviewers should notice the detailed representation of the tokenization and de-identification process, which is vital for maintaining data privacy and compliance.",
+    "run_id": "20260409_183104"
+  },
+  {
+    "key": "full_system_assembled",
+    "stage_index": 9,
+    "title": "PortalNode-01 \u2014 Fully Assembled System in Rack",
+    "caption": "PortalNode-01 fully assembled in data rack",
+    "view": "isometric",
+    "image_file": "09_full_system_assembled.png",
+    "image_path": "portalnode_01_images/images/09_full_system_assembled.png",
+    "integration_note": "The illustration depicts the PortalNode-01 system fully assembled and installed in a standard 19-inch data center rack, with the 4U server positioned at eye level. Key visual elements include the clean cable management with power cables on the left and network cables on the right, and the status LEDs glowing green for power and blue for GPU activity. This stage is crucial as it represents the final integration of the system into its operational environment, ensuring proper fit and functionality. A specific detail to notice is the room for expansion indicated by the blank rack panels above and below the server, which allows for future scalability.",
+    "run_id": "20260409_183104"
+  }
+]

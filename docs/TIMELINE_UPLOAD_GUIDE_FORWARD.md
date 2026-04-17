@@ -130,6 +130,23 @@ Divide the page count by 10, multiply by 30 seconds.
   (~2 seconds for 4,000 pages) and immediately populates the graph.
 - Only one inference can run at a time (GPU constraint).  A second request
   returns HTTP 409 with details about the active job.
+- **Files over 100 MB**: The main domain (`https://2ndopinionmd.ai`) routes
+  through Cloudflare, which enforces a 100 MB upload limit.  Most patient
+  records are well under this.  For exceptionally large files (e.g. decades
+  of records from a single institution), a direct upload endpoint is
+  available as a fallback:
+
+  ```
+  http://upload.2ndopinionmd.ai:8000/api/timeline/forward/upload
+  ```
+
+  This bypasses Cloudflare and connects directly to the server.  It uses
+  HTTP (not HTTPS), but the bearer token is still required and all data
+  is processed identically to the main pipeline.  The 100 MB limit is a
+  constraint of our current Cloudflare tier; an enterprise-grade CDN
+  configuration with 500 MB upload size is part of our production
+  deployment plan.  In the meantime, this fallback ensures no file is
+  too large to ingest.
 
 ---
 

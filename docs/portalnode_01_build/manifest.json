@@ -1,0 +1,156 @@
+[
+  {
+    "key": "chassis",
+    "stage_index": 0,
+    "title": "Rosewill RSV-L4500U 4U Rack-Mount Chassis",
+    "caption": "Rosewill RSV-L4500U 4U rackmount chassis, empty",
+    "view": "isometric",
+    "image_file": "00_chassis.png",
+    "image_path": "portalnode_01_build/images/00_chassis.png",
+    "integration_note": "The illustration depicts a Rosewill RSV-L4500U 4U rack-mount server chassis with a matte black steel finish, shown from a 3/4 front-right angle, highlighting its industrial design. This stage is crucial in the build sequence as it provides the foundational structure for housing and organizing server components, ensuring proper airflow and accessibility. Reviewers should pay attention to the alignment and spacing of the drive bay slot covers, as they are essential for accommodating various drive sizes and maintaining the chassis's ventilation efficiency.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "motherboard",
+    "stage_index": 1,
+    "title": "ASRock Rack W790 WS Workstation Motherboard",
+    "caption": "ASRock Rack W790 WS motherboard, top-down view",
+    "view": "orthographic",
+    "image_file": "01_motherboard.png",
+    "image_path": "portalnode_01_build/images/01_motherboard.png",
+    "integration_note": "The illustration depicts a top-down view of the ASRock Rack W790 WS E-ATX workstation motherboard, showcasing its dark green/black PCB. Key features include the centrally located LGA 4677 CPU socket with a protective cap, eight DDR5 DIMM slots on the right, and seven PCIe x16 slots across the lower half. This stage is crucial for understanding the layout and component placement, which is essential for ensuring compatibility with other hardware components. Reviewers should verify the accurate spacing and alignment of the PCIe slots to accommodate multi-GPU configurations.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "cpu",
+    "stage_index": 2,
+    "title": "Intel Xeon w5-2465X Processor",
+    "caption": "Intel Xeon w5-2465X CPU hero product shot",
+    "view": "isometric",
+    "image_file": "02_cpu.png",
+    "image_path": "portalnode_01_build/images/02_cpu.png",
+    "integration_note": "The illustration presents a photorealistic 3D render of an Intel Xeon w5-2465X processor, showcasing its large, rectangular integrated heat spreader with a polished and slightly brushed metallic texture. This stage is crucial as it provides a clear, detailed view of the CPU's physical characteristics, essential for ensuring compatibility and proper handling during installation. Reviewers should pay attention to the laser-etched Intel Xeon branding and model number on the IHS, confirming the correct component is being used.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "cpu_cooler",
+    "stage_index": 3,
+    "title": "Noctua NH-U14S Tower CPU Cooler",
+    "caption": "Noctua NH-U14S CPU cooler, 3/4 front view",
+    "view": "isometric",
+    "image_file": "03_cpu_cooler.png",
+    "image_path": "portalnode_01_build/images/03_cpu_cooler.png",
+    "integration_note": "The illustration depicts the Noctua NH-U14S single-tower CPU cooler, showcasing its tall aluminum fin stack, six nickel-plated copper heatpipes, and the distinctive Noctua NF-A15 fan with its brown/beige color scheme. This stage is crucial in the build sequence as it highlights the cooler's design and functionality, ensuring proper understanding of its installation and thermal management capabilities. Builders should pay attention to the alignment and spacing of the heatpipes, as they are critical for efficient heat dissipation.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "ram",
+    "stage_index": 4,
+    "title": "Samsung DDR5-4800 ECC RDIMM \u2014 4\u00d7 32 GB",
+    "caption": "Four Samsung DDR5 ECC RDIMMs on dark surface",
+    "view": "isometric",
+    "image_file": "04_ram.png",
+    "image_path": "portalnode_01_build/images/04_ram.png",
+    "integration_note": "The illustration depicts four Samsung DDR5-4800 ECC RDIMM modules arranged in a row on a dark surface, highlighting their green PCBs, black DRAM chips, and central Samsung label stickers. This stage is crucial in the build sequence as it ensures the correct identification and orientation of memory modules before installation into a server or workstation. Reviewers should notice the absence of heatspreaders, which confirms the modules' design for server environments where airflow and cooling are managed differently.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "gpu_single",
+    "stage_index": 5,
+    "title": "NVIDIA RTX 4090 Founders Edition \u2014 Single Card",
+    "caption": "NVIDIA RTX 4090 Founders Edition single card hero shot",
+    "view": "isometric",
+    "image_file": "05_gpu_single.png",
+    "image_path": "portalnode_01_build/images/05_gpu_single.png",
+    "integration_note": "The illustration depicts a single NVIDIA GeForce RTX 4090 Founders Edition graphics card, highlighting its sleek, angular design with a dark gunmetal and titanium finish. This stage is crucial in the build sequence as it showcases the card's physical dimensions and design features, which are essential for ensuring compatibility with the build's case and cooling solutions. Reviewers should specifically notice the 12VHPWR (16-pin) power connector, as it is a critical component for power delivery and installation planning.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "gpu_array_four",
+    "stage_index": 6,
+    "title": "4\u00d7 RTX 4090 Founders Edition \u2014 Quad Array",
+    "caption": "Quad RTX 4090 FE array with tiered edge lighting",
+    "view": "isometric",
+    "image_file": "06_gpu_array_four.png",
+    "image_path": "portalnode_01_build/images/06_gpu_array_four.png",
+    "integration_note": "The illustration depicts four NVIDIA RTX 4090 Founders Edition graphics cards arranged upright in a row, simulating their installation in PCIe slots with fans facing the viewer. This stage is crucial in the build sequence as it demonstrates the proper spacing required for optimal airflow and cooling efficiency in a multi-GPU setup. Notably, the subtle green LED lighting on the first two cards adds a visual cue for orientation and alignment during installation.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "nvme_drives",
+    "stage_index": 7,
+    "title": "NVMe SSD Drives \u2014 Samsung 990 PRO + Sabrent Rocket 4 Plus",
+    "caption": "Three NVMe SSDs with coin for scale",
+    "view": "isometric",
+    "image_file": "07_nvme_drives.png",
+    "image_path": "portalnode_01_build/images/07_nvme_drives.png",
+    "integration_note": "The illustration depicts three M.2 2280 NVMe SSD drives arranged on a dark surface, showcasing one Samsung 990 PRO 2TB on the left and two Sabrent Rocket 4 Plus 4TB drives on the right, all featuring their respective branding and color schemes. This stage is crucial as it highlights the specific storage components to be used, ensuring compatibility and performance expectations are met in the build. Reviewers should verify the correct labeling and positioning of the drives, especially noting the distinct color accents and branding on each SSD for accurate identification.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "psu",
+    "stage_index": 8,
+    "title": "Corsair AX1600i Power Supply + 12VHPWR Adapters",
+    "caption": "Corsair AX1600i PSU with 12VHPWR adapters",
+    "view": "isometric",
+    "image_file": "08_psu.png",
+    "image_path": "portalnode_01_build/images/08_psu.png",
+    "integration_note": "The illustration presents a Corsair AX1600i power supply unit (PSU) from an isometric view, highlighting its large, all-black rectangular form with a 140mm fan grille on one side and a modular cable connector panel on the other. This stage is crucial in the build sequence as it ensures the correct power supply is identified and positioned, which is vital for powering high-performance components. Reviewers should note the precise alignment of the modular cable sockets, ensuring compatibility with 12VHPWR adapters for modern GPU connections.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "fans_array",
+    "stage_index": 9,
+    "title": "Noctua NF-F12 Industrial 3000 RPM Fans (\u00d75)",
+    "caption": "Five Noctua NF-F12 industrial fans arrayed",
+    "view": "isometric",
+    "image_file": "09_fans_array.png",
+    "image_path": "portalnode_01_build/images/09_fans_array.png",
+    "integration_note": "The illustration depicts five Noctua NF-F12 industrialPPC-3000 PWM 120mm fans, all in a matte black finish, arranged in two rows on a neutral dark gray background. This stage is crucial as it shows the specific configuration of intake and exhaust fans, which is vital for optimizing airflow and cooling efficiency in the build. Builders should note the orientation and positioning of the fans, ensuring the 4-pin PWM cables are accessible for proper connection and control.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "assembly_motherboard_populated",
+    "stage_index": 10,
+    "title": "Assembly: Motherboard with CPU, Cooler, RAM, NVMe Installed",
+    "caption": "Populated ASRock W790 WS motherboard, top-down view",
+    "view": "isometric",
+    "image_file": "10_assembly_motherboard_populated.png",
+    "image_path": "portalnode_01_build/images/10_assembly_motherboard_populated.png",
+    "integration_note": "The illustration shows a top-down view of the ASRock Rack W790 WS motherboard, now fully equipped with an Intel Xeon CPU under a Noctua NH-U14S cooler, four Samsung DDR5 DIMMs, and three M.2 NVMe SSDs. This stage is crucial as it confirms the correct installation of critical components, ensuring the motherboard is ready for integration into the system. Reviewers should verify that the Noctua cooler is securely mounted, as its stability is vital for proper CPU cooling.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "assembly_chassis_loaded",
+    "stage_index": 11,
+    "title": "Assembly: Chassis with Motherboard + PSU Installed",
+    "caption": "4U chassis with motherboard and PSU installed",
+    "view": "isometric",
+    "image_file": "11_assembly_chassis_loaded.png",
+    "image_path": "portalnode_01_build/images/11_assembly_chassis_loaded.png",
+    "integration_note": "The illustration shows a Rosewill 4U chassis with the motherboard and Corsair AX1600i PSU installed, viewed from a 3/4 top-right angle with the lid removed. This stage is crucial as it confirms the proper installation and fit of key components like the motherboard, CPU cooler, RAM, and PSU, which are foundational for the system's operation. Reviewers should ensure the Noctua cooler is correctly oriented and securely mounted, as it is essential for effective CPU cooling.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "full_system",
+    "stage_index": 12,
+    "title": "Full Assembly: PortalNode-01 Complete \u2014 Interior View",
+    "caption": "Fully assembled PortalNode-01 server interior",
+    "view": "isometric",
+    "image_file": "12_full_system.png",
+    "image_path": "portalnode_01_build/images/12_full_system.png",
+    "integration_note": "The illustration depicts the fully assembled interior of the PortalNode-01 server, showcasing four NVIDIA RTX 4090 Founders Edition GPUs installed upright in the PCIe slots, which dominate the lower half of the chassis. This stage is crucial as it confirms the successful integration of all critical components, ensuring the server is ready for operational testing and deployment. Builders and reviewers should specifically check the alignment and secure seating of the GPUs in their slots to prevent connectivity issues.",
+    "run_id": "20260409_193009"
+  },
+  {
+    "key": "final_closed_rack",
+    "stage_index": 13,
+    "title": "PortalNode-01: Lid On, Rack-Mounted, Cables Connected",
+    "caption": "PortalNode-01 closed, rack-mounted, cables connected",
+    "view": "isometric",
+    "image_file": "13_final_closed_rack.png",
+    "image_path": "portalnode_01_build/images/13_final_closed_rack.png",
+    "integration_note": "The illustration depicts the PortalNode-01 server fully assembled and installed in a 19-inch open-frame server rack, showcasing its closed chassis with a ventilated mesh grille, rack-mount handles, and three illuminated LED indicators for power, GPU activity, and network status. This stage is crucial as it represents the final installation step, ensuring the server is securely mounted and operational within the rack setup. Reviewers should notice the correct positioning and visibility of the LED indicators, confirming the server's active status and proper functionality.",
+    "run_id": "20260409_193009"
+  }
+]

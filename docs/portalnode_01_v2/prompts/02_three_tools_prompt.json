@@ -1,0 +1,12 @@
+{
+  "key": "three_tools",
+  "stage_index": 2,
+  "title": "Three Tools for Three Jobs \u2014 The Model Tiering Concept",
+  "caption": "Three power tools arranged by size on workbench",
+  "view": "isometric",
+  "prompt": "A photorealistic, professional-grade product photography scene of three real power tools arranged left to right on a pristine wooden workbench, with nothing else present. On the left, a compact cordless drill driver stands upright on its battery pack, matte black and brushed aluminum finish, with subtle emerald glow at the power button to indicate readiness. It is small, lightweight, and looks fast and easy to grab. In the center, a standard circular saw sits flat on the workbench, larger and heavier, with a prominent brushed aluminum blade guard and visible blade, matte black body, and a subtle emerald glow at the trigger area. This saw is the dominant tool in the frame, occupying the most visual space and drawing the eye. On the right, a large miter saw is mounted on its integrated stand, imposing and precise, with a robust matte black and brushed aluminum construction, a warm amber indicator light near the power switch, and a substantial cutting arm. The miter saw is clearly the largest and heaviest, reserved for specialized cuts. The tools are arranged in unmistakably increasing size from left to right. The workbench is clean, smooth, and uncluttered, with no background tools, wall hangings, or any other objects. The background is a subtle navy (#1a1a2e) gradient, with bright, even workshop lighting from above creating soft, natural shadows and highlighting the metallic and matte finishes. The overall style is clean, confident, and understated, reminiscent of high-end product photography for an Apple product page. No people, no text, no labels, no floating UI, and no sci-fi effects. The scene instantly communicates the progression from small to medium to large tool.",
+  "tool_call_id": "call_dAEjHcAWySKNBR676cw1n8mR",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "02_three_tools.png"
+}

@@ -1,0 +1,12 @@
+{
+  "key": "gpu_array",
+  "stage_index": 1,
+  "title": "4\u00d7 RTX 4090 GPU Array \u2014 PCIe Layout",
+  "caption": "Four RTX 4090 GPUs in PCIe server layout",
+  "view": "isometric",
+  "prompt": "Produce a photorealistic, technical 3D engineering illustration of a server motherboard installed with four NVIDIA RTX 4090 Founders Edition graphics cards. The motherboard is standard ATX form factor, shown from a slightly elevated isometric angle to clearly display the PCIe x16 slot arrangement. Each RTX 4090 card features its accurate triple-fan cooler design, matte silver and black finish, and is spaced with at least a 2-slot gap between each card for optimal airflow. The cards are mounted horizontally, with the PCIe slots and retention brackets visible. GPUs 0 and 1 (the two leftmost cards) are subtly highlighted with an emerald green tint, indicating their role as always-on workhorses (eoh-llama 8B + 3.2), while GPUs 2 and 3 (the two rightmost cards) are highlighted with a warm amber tint, denoting their on-demand heavy inference role (eoh-llama 70B). The PCIe power cables (12VHPWR connectors) are routed cleanly from the right side, emerging from a matte silver PSU, with careful cable management and gentle curves, using amber accent sheathing for power/thermal paths. The motherboard and cards rest on a deep navy (#1a1a2e) PCB, with subtle reflections and a neutral dark gray gradient background to evoke a data center environment. Airflow direction is suggested with faint, semi-transparent arrows beneath the cards. The combined 96 GB VRAM (4 x 24 GB) is visually represented as a glowing stat callout near the GPU array, but without any text overlays. Lighting is clean, even, and studio-style, emphasizing the metallic and matte textures of the components. No people or extraneous elements are present.",
+  "tool_call_id": "call_kqkxImliNLpwZXsyqNSo0LaY",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "01_gpu_array.png"
+}

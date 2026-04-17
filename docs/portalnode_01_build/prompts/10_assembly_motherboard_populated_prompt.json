@@ -1,0 +1,12 @@
+{
+  "key": "assembly_motherboard_populated",
+  "stage_index": 10,
+  "title": "Assembly: Motherboard with CPU, Cooler, RAM, NVMe Installed",
+  "caption": "Populated ASRock W790 WS motherboard, top-down view",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of the ASRock Rack W790 WS motherboard in a top-down view, as seen in a technical product photo. The motherboard is resting on a slightly crinkled, semi-reflective anti-static bag, providing a subtle metallic sheen beneath the board. The CPU socket area (LGA 4677) is covered by a large Noctua NH-U14S air cooler, featuring a prominent beige and brown fan and silver aluminum fin tower, mounted in the upper-center of the board. Four Samsung DDR5 DIMMs with green PCBs and black memory chips are installed flush in the right-side DIMM slots. Three M.2 NVMe SSDs, each with a slim, dark PCB and visible mounting screws, are installed in the M.2 slots between the PCIe slots. All PCIe slots remain empty\u2014no GPUs or expansion cards are present. The motherboard\u2019s black PCB, silver heatsinks, and visible connectors are rendered with accurate textures and proportions. The lighting is soft, diffuse studio style, with a neutral dark gray background and no harsh reflections. The image is landscape (3:2 aspect ratio), clean, and focused on the technical details of the populated motherboard, with no people or extraneous objects in view.",
+  "tool_call_id": "call_WtLzMNX5UJCBU11sAEvyMtDl",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "10_assembly_motherboard_populated.png"
+}

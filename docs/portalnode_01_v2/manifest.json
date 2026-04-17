@@ -1,0 +1,79 @@
+[
+  {
+    "key": "the_appliance",
+    "stage_index": 0,
+    "title": "The Appliance \u2014 PortalNode-01 External Product Shot",
+    "caption": "4U rack-mount server chassis hero shot",
+    "view": "isometric",
+    "image_file": "00_the_appliance.png",
+    "image_path": "portalnode_01_v2/images/00_the_appliance.png",
+    "integration_note": "The illustration depicts a 4U rack-mount server chassis in an isometric view, showcasing its matte black steel body with brushed aluminum accents. The front panel features a ventilated mesh grille for airflow and horizontal drive bay slots, with robust rack-mount handles on each side. This stage is crucial as it provides a clear visual reference for the external design and accessibility features of the server, ensuring proper installation and integration into a rack system. A specific detail to notice is the placement and design of the rack-mount handles, which are essential for secure mounting and handling.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "the_interior",
+    "stage_index": 1,
+    "title": "The Interior \u2014 Four GPUs, One Brain",
+    "caption": "Top-down isometric of 4U chassis interior with four GPUs",
+    "view": "isometric",
+    "image_file": "01_the_interior.png",
+    "image_path": "portalnode_01_v2/images/01_the_interior.png",
+    "integration_note": "The illustration depicts a 4U server chassis with its top panel removed, showing a top-down isometric view of the interior where four large GPUs are installed vertically in parallel PCIe slots on a matte black motherboard. This stage is critical as it highlights the precise configuration and placement of the GPUs, essential for ensuring optimal performance and cooling within the server. Reviewers should pay attention to the subtle emerald green and warm amber edge glows on the GPUs, which help differentiate the cards and indicate their power status or role within the system.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "three_tools",
+    "stage_index": 2,
+    "title": "Three Tools for Three Jobs \u2014 The Model Tiering Concept",
+    "caption": "Three power tools arranged by size on workbench",
+    "view": "isometric",
+    "image_file": "02_three_tools.png",
+    "image_path": "portalnode_01_v2/images/02_three_tools.png",
+    "integration_note": "The illustration depicts three power tools arranged by size on a pristine wooden workbench, showcasing a compact cordless drill driver, a standard circular saw, and a larger tool not fully described. This stage highlights the model tiering concept, emphasizing the progression of tool size and function, which is crucial for understanding the right tool selection for different tasks in the build sequence. Reviewers should notice the subtle emerald glow on the power button of the drill driver, indicating its readiness for use.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "data_flow_pipeline",
+    "stage_index": 3,
+    "title": "The Data Pipeline \u2014 From Patient Record to Scored Timeline",
+    "caption": "Data pipeline: documents to server to knowledge graph",
+    "view": "isometric",
+    "image_file": "03_data_flow_pipeline.png",
+    "image_path": "portalnode_01_v2/images/03_data_flow_pipeline.png",
+    "integration_note": "The illustration depicts a left-to-right flow of medical data, starting with a stack of slightly fanned-out medical documents on the far left, transitioning through an emerald green arrow into the left side of the PortalNode-01 chassis. This stage is crucial as it visually represents the initial step in the data pipeline, where physical medical records are digitized and input into the system for further processing. Reviewers should notice the clarity and directionality of the green arrow, ensuring it effectively guides the viewer's eye from the documents to the server, symbolizing the transfer of information.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "air_gap",
+    "stage_index": 4,
+    "title": "The Air Gap \u2014 Nothing Leaves the Building",
+    "caption": "Powered server with no network cables attached",
+    "view": "isometric",
+    "image_file": "04_air_gap.png",
+    "image_path": "portalnode_01_v2/images/04_air_gap.png",
+    "integration_note": "The illustration depicts a PortalNode-01 chassis, a matte black 4U server, centrally positioned within a data center rack, highlighted by its glowing green, blue, and amber LEDs. This stage is crucial as it emphasizes the concept of data isolation, showcasing the server powered on but without any network cables attached, reinforcing the \"air gap\" principle. Reviewers should notice the absence of network connections, which is essential for maintaining the server's secure, isolated state.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "scale_comparison",
+    "stage_index": 5,
+    "title": "Scale Comparison \u2014 One Server vs. Cloud Cost",
+    "caption": "Single server vs. massive data center scale",
+    "view": "isometric",
+    "image_file": "05_scale_comparison.png",
+    "image_path": "portalnode_01_v2/images/05_scale_comparison.png",
+    "integration_note": "The illustration presents a split composition with the left half showcasing a single PortalNode-01 chassis, a compact matte black 4U server, and the right half depicting an expansive aerial view of a hyperscale cloud data center. This stage is crucial for visualizing the stark contrast in physical scale and infrastructure between maintaining a single server and utilizing a large-scale cloud service. Builders or reviewers should notice the subtle emerald LED status lights on the server, indicating its operational status, which contrasts with the vastness of the cloud data center.",
+    "run_id": "20260409_185315"
+  },
+  {
+    "key": "rack_deployed",
+    "stage_index": 6,
+    "title": "Deployed \u2014 PortalNode-01 in a Hospital Data Center Rack",
+    "caption": "PortalNode-01 deployed in hospital server rack",
+    "view": "isometric",
+    "image_file": "06_rack_deployed.png",
+    "image_path": "portalnode_01_v2/images/06_rack_deployed.png",
+    "integration_note": "The illustration depicts the PortalNode-01 server installed in a 19-inch data center rack within a hospital server room, showcasing a clean and organized setup with excellent cable management. This stage is crucial as it represents the final deployment of the server, ensuring it is correctly integrated and operational within the medical facility's IT infrastructure. Reviewers should notice the subtle emerald green and blue status LEDs on the PortalNode-01, indicating active operation and proper functionality.",
+    "run_id": "20260409_185315"
+  }
+]

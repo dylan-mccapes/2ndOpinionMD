@@ -1,0 +1,12 @@
+{
+  "key": "network_topology",
+  "stage_index": 5,
+  "title": "Network Topology \u2014 Dual 10GbE + IPMI",
+  "caption": "Dual 10GbE air-gapped server network topology",
+  "view": "system",
+  "prompt": "Create a photorealistic 3D engineering illustration of a network topology for an air-gapped inference appliance named PortalNode-01, set within a RISE data center rack. The server is an enterprise-grade, standard ATX form factor chassis, finished in matte silver (#c0c0c0), with visible RTX 4090 Founders Edition GPUs inside. The server is mounted in a rack with other enterprise hardware, all set against a neutral dark gray gradient background to evoke a data center environment. \n\nShow two clearly labeled, color-coded 10GbE network cables (accent emerald #00b894) emerging from dual NICs on the server's rear panel: one cable connects to a switch for inference API traffic (FastAPI on port 8000), the other to a separate switch for RISE EHR data ingestion (FHIR endpoint). Emphasize redundant data paths by showing both cables routed cleanly and distinctly. A third cable, in a slightly different shade (matte silver or subtle blue), connects the server\u2019s IPMI/BMC port to a dedicated management switch, representing out-of-band remote management for IT staff.\n\nDepict a firewall appliance (matte silver, with warm amber #fdcb6e accents on power/thermal paths) between the server and the rest of the internal network, visually reinforcing that the server has no outbound internet access after initial provisioning. Use a subtle glowing boundary or semi-transparent barrier (accent emerald) to indicate the HIPAA isolation boundary around the server and its direct network connections, highlighting the air-gapped nature of the appliance.\n\nInternally, represent the FastAPI router distributing requests to Ollama instances on localhost using a faint, stylized flow of emerald light inside the server chassis. Show airflow direction with soft amber arrows, indicating cooling paths. All cable routing should be enterprise-neat and realistic. No people or text overlays in the image.",
+  "tool_call_id": "call_cEnJL6gcURziBsnKzrcLIew0",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "05_network_topology.png"
+}

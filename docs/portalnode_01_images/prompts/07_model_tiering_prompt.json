@@ -1,0 +1,12 @@
+{
+  "key": "model_tiering",
+  "stage_index": 7,
+  "title": "eoh-llama Model Tiering \u2014 Three Tools for Three Jobs",
+  "caption": "Three-tier model routing with tool metaphor",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D engineering illustration of a model tiering system using a construction-yard tool metaphor, set in a neutral dark gray gradient background evoking a data center. The scene features three distinct, enterprise-grade tool stations arranged left to right, each on a matte silver (#c0c0c0) ATX-sized platform with visible RTX 4090 Founders Edition cards and clean cable routing. \n\nStation 1 (left): Cordless drill, compact and sleek, with emerald (#00b894) LED accents indicating activity. This station is labeled for eoh-llama 3.2, with a digital display showing \"<300ms\" latency. Nearby, icons or subtle design cues suggest tasks like keyword extraction, routing, and quick formatting. Airflow arrows (amber #fdcb6e) show efficient cooling.\n\nStation 2 (center): Circular saw, robust and modern, with the same enterprise finish and emerald highlights. This is the workhorse (eoh-llama 8B), handling 80-90% of traffic. Its digital display reads \"<1.2s\". The platform is slightly larger, with more RTX 4090 cards visible. Amber arrows indicate power and thermal paths. The majority of data flow arrows (emerald) route here from a decision node above, representing intent-tag routing logic.\n\nStation 3 (right): 10-inch beam saw, heavy-duty, with reinforced matte silver chassis, multiple RTX 4090s, and emerald activity lighting. This is eoh-llama 70B, with a display showing \"<4s\". Fewer, thicker emerald arrows route here from the top, representing complex requests. A fallback amber arrow loops from this station back to Station 2, indicating degrade-to-8B logic when overloaded (with a subtle REVIEW indicator, no text). \n\nAt the top, a stylized routing node (matte silver and emerald) splits incoming requests, with most arrows flowing to Station 2, some to Station 1, and the fewest to Station 3. The entire composition is photorealistic, with clean studio lighting, no people, and no text overlays. All stations and cables are meticulously rendered, emphasizing enterprise quality and airflow management.",
+  "tool_call_id": "call_yrG6Q5n617UA8TlBS6UxjsZA",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "07_model_tiering.png"
+}

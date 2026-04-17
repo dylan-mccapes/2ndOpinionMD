@@ -1,0 +1,12 @@
+{
+  "key": "chassis_overview",
+  "stage_index": 0,
+  "title": "4U Rack-Mount Chassis \u2014 External View",
+  "caption": "4U rack-mount server chassis external view",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, technical 3D render of a 4U rack-mount server chassis, modeled after the Rosewill RSV-L4500U, shown from a 3/4 front-right isometric perspective. The chassis is constructed from matte black steel, with a subtle deep navy (#1a1a2e) undertone, and features a ventilated front panel with precise perforations for airflow. The front panel includes multiple drive bay slots, each outlined in matte silver (#c0c0c0), and a minimal set of status LEDs: a green LED for power, an amber LED for network, and a blue LED for GPU activity, all rendered as small, crisp points of light. The chassis sits securely on standard 19-inch rack rails, occupying exactly 4U (7 inches / 177mm) of rack space, with rack ears and mounting screws visible. The engraved label 'PortalNode-01' is subtly etched into the lower right corner of the front panel, blending with the matte finish. The rear of the chassis is partially visible, showing dual 10GbE Ethernet ports, an IPMI management port, four DisplayPort outputs from RTX 4090 Founders Edition GPUs (with their distinctive angular shrouds partially visible inside), and a standard power inlet. Cable routing is neat and enterprise-grade, with bundled cables in matte black and accent emerald (#00b894) for active data paths. Airflow direction is indicated by faint, semi-transparent arrows or subtle shading, clearly showing front-to-back cooling. The overall impression is serious and purpose-built, with no ostentation. The background is a neutral dark gray gradient, evoking a professional data center environment. Lighting is clean, diffuse studio style, highlighting the chassis contours and textures without harsh reflections. No people or text overlays are present in the image.",
+  "tool_call_id": "call_mEGGD6E9VpMK5hQHepE70ezH",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "00_chassis_overview.png"
+}

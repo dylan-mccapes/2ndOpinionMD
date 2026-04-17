@@ -1,0 +1,12 @@
+{
+  "key": "cpu_memory",
+  "stage_index": 2,
+  "title": "CPU + 128 GB DDR5 Memory \u2014 Processing Core",
+  "caption": "CPU and 128GB DDR5 memory on server board",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, technical isometric 3D render of a server-grade ATX motherboard focused on the CPU and memory subsystem. Center the Intel Core i5-14600K (or i7-14700K) CPU, installed in an LGA 1700 socket, with a robust server-grade air cooler or an AIO liquid cooling block mounted on top. The cooler should have matte silver (#c0c0c0) fins and subtle emerald (#00b894) accent lighting to highlight active cooling. Surrounding the CPU socket, show four DDR5-6000 ECC DIMM modules (32 GB each, total 128 GB), installed in alternating slots for proper dual-channel configuration. The DIMMs should have matte silver heat spreaders with emerald accent stripes. VRM heatsinks, finished in deep navy (#1a1a2e) with warm amber (#fdcb6e) highlights on power/thermal paths, are clearly visible around the CPU socket, emphasizing enterprise-grade power delivery. The PCH is visible with a stylized heatsink, also in deep navy. Indicate proper cable routing for power and data, with neatly bundled cables and airflow arrows (as subtle 3D elements, not overlays) showing intake and exhaust paths around the CPU cooler. In the background, hint at the presence of four RTX 4090 Founders Edition cards in adjacent PCIe slots, reinforcing the board's GPU coordination role. The overall color palette is deep navy, matte silver, emerald accents, and warm amber for thermal/power elements. Lighting is clean, diffuse studio style, with a neutral dark gray gradient background evoking a data center environment. No people or text overlays. The composition should clearly illustrate the CPU as the coordination brain, memory configuration, and the relationship to the GPU compute tier.",
+  "tool_call_id": "call_6IKHkpQdKoRcfsoZ5ONpg7CH",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "02_cpu_memory.png"
+}

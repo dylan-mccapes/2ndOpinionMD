@@ -1,0 +1,12 @@
+{
+  "key": "the_appliance",
+  "stage_index": 0,
+  "title": "The Appliance \u2014 PortalNode-01 External Product Shot",
+  "caption": "4U rack-mount server chassis hero shot",
+  "view": "isometric",
+  "prompt": "Create a photorealistic product hero shot of a 4U rack-mount server chassis, approximately 19 inches wide, 7 inches tall, and over 20 inches deep. The chassis is constructed from matte black steel with brushed aluminum accents, exuding a professional, purpose-built aesthetic. The front panel features a ventilated mesh grille for airflow, with several horizontal drive bay slots visible, all crafted in matte black. On the left and right sides of the front panel, two robust brushed aluminum rack-mount handles are prominently displayed. Near the center of the front panel, a small cluster of indicator LEDs is visible: one glowing emerald green, one blue, and one warm amber, each with a subtle, realistic glow\u2014no text or labels anywhere. The right side of the chassis reveals a large, circular exhaust fan with a precision-cut grille, emphasizing cooling capability. The chassis is positioned at a slight 3/4 angle, front-right facing, and viewed from just above eye level, resting on a clean, dark surface. The background is a navy (#1a1a2e) gradient, softly illuminated with studio lighting to highlight the contours and finishes. The overall composition is clean, confident, and could appear in a high-end product catalog or datasheet. No people, no floating UI, no sci-fi effects, and absolutely no text or branding visible anywhere in the image. The style is crisp and understated, evoking the polish of Apple product photography or a Supermicro datasheet.",
+  "tool_call_id": "call_jI56CmeqlIFfpR9BL1x2vLmS",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "00_the_appliance.png"
+}

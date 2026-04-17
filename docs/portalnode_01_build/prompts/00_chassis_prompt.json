@@ -1,0 +1,12 @@
+{
+  "key": "chassis",
+  "stage_index": 0,
+  "title": "Rosewill RSV-L4500U 4U Rack-Mount Chassis",
+  "caption": "Rosewill RSV-L4500U 4U rackmount chassis, empty",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of a Rosewill RSV-L4500U 4U rack-mount server chassis, as seen in high-quality technical product photography. The chassis is constructed from matte black steel with a robust, industrial server aesthetic. The image is shot from a 3/4 front-right angle, showing both the front panel and the right side panel. The chassis is empty inside\u2014no internal components are installed. The front panel features a ventilated mesh grille covering 15 drive bay slot covers: three 5.25-inch bays at the top and twelve 3.5-inch bays below, arranged in neat rows. On the left and right edges of the front panel, there are two brushed aluminum rack-mount handles with a subtle metallic sheen. The power button and a small LED cluster are located on the top-right of the front panel. The right side panel is a flat, unadorned steel sheet with no window or perforations. The rear of the chassis, partially visible, displays seven full-height expansion card slots with ventilated covers, a PSU cutout at the bottom, and two 120mm fan mount positions. The chassis sits on a neutral, dark gray background with soft, diffuse studio lighting that highlights the matte textures and subtle contours, minimizing harsh reflections. The overall composition is landscape (3:2 aspect ratio), clean, and focused solely on the chassis, with no people, text overlays, or extraneous elements. Emphasize physical accuracy, correct proportions, and the technical details of the chassis.",
+  "tool_call_id": "call_KMbuzsuPS58M9q8OyHzZhQG8",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "00_chassis.png"
+}

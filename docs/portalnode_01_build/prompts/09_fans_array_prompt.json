@@ -1,0 +1,12 @@
+{
+  "key": "fans_array",
+  "stage_index": 9,
+  "title": "Noctua NF-F12 Industrial 3000 RPM Fans (\u00d75)",
+  "caption": "Five Noctua NF-F12 industrial fans arrayed",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render of five Noctua NF-F12 industrialPPC-3000 PWM 120mm fans arranged on a neutral dark gray background in a landscape (3:2) aspect ratio. The fans are the industrial all-black variant, featuring matte black square frames (120mm x 120mm x 25mm) with chamfered edges and four corner mounting holes on each fan. The impeller blades are also matte black, with the signature angular, nine-blade design of the NF-F12 series. Three fans are positioned in a straight row at the front (intake group), and two fans are placed in a second row behind them (exhaust group), all laid flat with the blade side facing up toward the camera. Each fan has a 4-pin PWM cable trailing neatly from one corner, with visible black sleeving. The composition is clean and technical, with soft, diffuse studio lighting that highlights the subtle textures and contours of the plastic frames and blades, while minimizing harsh reflections. The background is a smooth, neutral dark gray, providing a professional datasheet or vendor product page aesthetic. No text overlays or annotations are present; only the physical fans and their cables are visible, with accurate proportions and details.",
+  "tool_call_id": "call_exRpbcTECHfrGumncMNV2pGI",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "09_fans_array.png"
+}

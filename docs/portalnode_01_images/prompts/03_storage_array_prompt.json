@@ -1,0 +1,12 @@
+{
+  "key": "storage_array",
+  "stage_index": 3,
+  "title": "NVMe Storage \u2014 10 TB Total Capacity",
+  "caption": "NVMe storage array with data flow paths",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D engineering illustration of an enterprise-grade storage subsystem within a standard ATX form factor system, set against a neutral dark gray gradient background evoking a data center. The focus is on two M.2 NVMe Gen4 SSDs installed on a high-end motherboard: one 2 TB drive (for OS + logs) and one 8 TB drive (for model weights and the RISE knowledge graph). Both drives should be clearly visible, either mounted directly on the motherboard or in a front-facing U.2 hot-swap carrier, with the 8 TB drive visually emphasized as the critical asset. The drives are rendered in matte silver with deep navy PCB accents, and active components (such as the SSD controllers and visible status LEDs) highlighted in emerald green. Show an RTX 4090 Founders Edition GPU installed in the PCIe slot, with clean, enterprise-style cable routing and airflow direction indicated by subtle translucent arrows. Data flow is depicted: amber arrows trace log writes from the GPU through the CPU to the 2 TB drive, while emerald arrows show model weights and knowledge graph data loading from the 8 TB drive directly into the GPU VRAM. The motherboard, SSDs, and GPU are rendered with crisp detail and realistic reflections under clean studio lighting. The overall composition is isometric, providing a clear view of component layout, airflow, and data flows, with no people or text overlays. The illustration should convey a robust, self-contained system that operates fully offline after initial model load.",
+  "tool_call_id": "call_uEi3IZrNNd8enP8weapVkEcZ",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "03_storage_array.png"
+}

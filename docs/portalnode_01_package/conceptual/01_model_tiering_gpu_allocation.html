@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200">
+<title>eoh-llama Model Tiering — GPU Allocation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08080f;color:#e4e4f0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:48px}
+.canvas{width:1200px;background:linear-gradient(160deg,#0d0d1a 0%,#111125 100%);border-radius:28px;padding:52px 56px;border:1px solid rgba(255,255,255,0.05);box-shadow:0 40px 120px rgba(0,0,0,0.6)}
+.hdr{text-align:center;margin-bottom:44px}
+.hdr h1{font-size:30px;font-weight:700;letter-spacing:-0.6px;background:linear-gradient(90deg,#e4e4f0,#a0a0c0);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr .sub{font-size:13px;color:#6c6c8a;font-family:'JetBrains Mono',monospace;margin-top:6px}
+.gpu-row{display:flex;gap:20px;margin-bottom:28px}
+.gpu{border-radius:18px;padding:22px 24px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.gpu::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:18px 18px 0 0}
+.gpu.teal{flex:1;background:linear-gradient(180deg,rgba(0,184,148,0.08) 0%,rgba(0,184,148,0.02) 100%);border:1px solid rgba(0,184,148,0.2)}
+.gpu.teal::before{background:linear-gradient(90deg,#00b894,#55efc4)}
+.gpu.gold{flex:1.7;background:linear-gradient(180deg,rgba(253,203,110,0.08) 0%,rgba(253,203,110,0.02) 100%);border:1px solid rgba(253,203,110,0.2)}
+.gpu.gold::before{background:linear-gradient(90deg,#fdcb6e,#ffeaa7)}
+.gpu.spare{flex:0.5;background:linear-gradient(180deg,rgba(108,108,138,0.08) 0%,rgba(108,108,138,0.02) 100%);border:1px solid rgba(108,108,138,0.15)}
+.gpu.spare::before{background:linear-gradient(90deg,#6c6c8a,#9c9cb8)}
+.glbl{font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;padding-top:6px}
+.gpu.teal .glbl{color:#00b894}
+.gpu.gold .glbl{color:#fdcb6e}
+.gpu.spare .glbl{color:#6c6c8a}
+.gname{font-size:17px;font-weight:700;margin-bottom:2px}
+.gspec{font-size:12px;color:#6c6c8a;margin-bottom:18px}
+.mstack{display:flex;flex-direction:column;gap:10px;flex:1}
+.mcard{border-radius:12px;padding:16px 18px}
+.m32{background:rgba(0,184,148,0.1);border:1px solid rgba(0,184,148,0.22)}
+.m8b{background:rgba(0,184,148,0.18);border:1px solid rgba(0,184,148,0.32)}
+.m70b{background:rgba(253,203,110,0.12);border:1px solid rgba(253,203,110,0.25);min-height:160px}
+.mn{font-size:16px;font-weight:700;margin-bottom:2px}
+.mrole{font-size:11px;color:#9999bb;margin-bottom:12px;line-height:1.5}
+.stats{display:flex;gap:18px;flex-wrap:wrap}
+.st{display:flex;flex-direction:column}
+.sv{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:500}
+.sl{font-size:9px;color:#6c6c8a;text-transform:uppercase;letter-spacing:1.2px;margin-top:2px}
+.m32 .sv{color:#00b894}
+.m8b .sv{color:#55efc4}
+.m70b .sv{color:#fdcb6e}
+.dvd{display:flex;align-items:center;gap:10px;margin:4px 0}
+.dvd span{flex:1;height:1px;background:rgba(255,255,255,0.06)}
+.dvd em{font-style:normal;font-size:9px;color:#555570;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:1.5px}
+.tbar{display:flex;border-radius:8px;overflow:hidden;height:30px;margin-top:24px}
+.tbar .seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:500}
+.tbar .s32{background:rgba(0,184,148,0.25);width:10%;color:#00b894}
+.tbar .s8b{background:rgba(0,184,148,0.45);width:82%;color:#d4fff4}
+.tbar .s70b{background:rgba(253,203,110,0.3);width:8%;color:#fdcb6e}
+.tlab{text-align:center;margin-top:8px;font-size:11px;color:#555570;font-family:'JetBrains Mono',monospace}
+.fnote{text-align:center;margin-top:20px;font-size:12px;color:#44445a;line-height:1.7}
+code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,0.05);padding:2px 7px;border-radius:4px;font-size:11px;color:#8888aa}
+.fallback{margin-top:14px;padding-top:12px;border-top:1px solid rgba(253,203,110,0.12);font-size:12px;color:#8888aa}
+.spare-inner{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;flex:1;opacity:0.55;text-align:center;padding:16px 0}
+.spare-inner .icon{font-size:32px;margin-bottom:4px}
+.spare-inner .stxt{font-size:11px;color:#6c6c8a;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="hdr">
+    <h1>eoh-llama Model Tiering — GPU Allocation</h1>
+    <div class="sub">PortalNode-01 · 4× RTX 4090 · 96 GB VRAM total · HIPAA air-gapped</div>
+  </div>
+
+  <div class="gpu-row">
+    <!-- GPU 0: shared 3.2 + 8B -->
+    <div class="gpu teal">
+      <div class="glbl">GPU 0 — Always On</div>
+      <div class="gname">RTX 4090 #1</div>
+      <div class="gspec">24 GB GDDR6X · PCIe ×16 Slot 1</div>
+      <div class="mstack">
+        <div class="mcard m32">
+          <div class="mn">eoh-llama 3.2</div>
+          <div class="mrole">Router · Triage · Keyword extraction · Quick replies</div>
+          <div class="stats">
+            <div class="st"><div class="sv">2 GB</div><div class="sl">VRAM</div></div>
+            <div class="st"><div class="sv">&lt; 300 ms</div><div class="sl">Latency</div></div>
+            <div class="st"><div class="sv">~120 tok/s</div><div class="sl">Throughput</div></div>
+            <div class="st"><div class="sv">~10 %</div><div class="sl">Traffic</div></div>
+          </div>
+        </div>
+        <div class="dvd"><span></span><em>shared vram</em><span></span></div>
+        <div class="mcard m8b">
+          <div class="mn">eoh-llama 8B</div>
+          <div class="mrole">Primary workhorse · OGrE traversal · Flare scoring · Medical coding</div>
+          <div class="stats">
+            <div class="st"><div class="sv">5 GB</div><div class="sl">VRAM</div></div>
+            <div class="st"><div class="sv">&lt; 1.2 s</div><div class="sl">Latency</div></div>
+            <div class="st"><div class="sv">~60 tok/s</div><div class="sl">Throughput</div></div>
+            <div class="st"><div class="sv">~82 %</div><div class="sl">Traffic</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GPU 1+2: 70B tensor-parallel -->
+    <div class="gpu gold">
+      <div class="glbl">GPU 1 + GPU 2 — On Demand</div>
+      <div class="gname">RTX 4090 #2 &amp; #3</div>
+      <div class="gspec">48 GB GDDR6X combined · PCIe Slots 3 &amp; 5 · Tensor-parallel</div>
+      <div class="mstack">
+        <div class="mcard m70b">
+          <div class="mn">eoh-llama 70B</div>
+          <div class="mrole">Deep synthesis · Final flare prediction · Complex differentials<br>Gap + Probe agents · RISE validation runs · Full provenance exports</div>
+          <div class="stats" style="margin-top:8px">
+            <div class="st"><div class="sv">40 GB</div><div class="sl">VRAM</div></div>
+            <div class="st"><div class="sv">&lt; 4 s</div><div class="sl">Latency</div></div>
+            <div class="st"><div class="sv">~20 tok/s</div><div class="sl">Throughput</div></div>
+            <div class="st"><div class="sv">~8 %</div><div class="sl">Traffic</div></div>
+            <div class="st"><div class="sv">2 GPUs</div><div class="sl">Tensor Split</div></div>
+          </div>
+          <div class="fallback">Fallback: if 70B busy → degrade to 8B + flag <code>REVIEW</code></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GPU 3: spare -->
+    <div class="gpu spare">
+      <div class="glbl">GPU 3 — Standby</div>
+      <div class="gname">RTX 4090 #4</div>
+      <div class="gspec">24 GB · PCIe Slot 7</div>
+      <div class="spare-inner">
+        <div class="icon">⏸</div>
+        <div class="stxt">Hot spare<br>or burst 70B<br>capacity</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Traffic bar -->
+  <div class="tbar">
+    <div class="seg s32">3.2</div>
+    <div class="seg s8b">eoh-llama 8B — 82 % of all inference</div>
+    <div class="seg s70b">70B</div>
+  </div>
+  <div class="tlab">Inference request distribution by model tier</div>
+
+  <div class="fnote">
+    FastAPI router on CPU checks intent tag → routes to lightest sufficient model.<br>
+    Every decision logged via ProvenanceEngine: <code>model=8b reason=complexity_score&gt;0.4</code>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "key": "motherboard",
+  "stage_index": 1,
+  "title": "ASRock Rack W790 WS Workstation Motherboard",
+  "caption": "ASRock Rack W790 WS motherboard, top-down view",
+  "view": "orthographic",
+  "prompt": "Create a photorealistic 3D render of the ASRock Rack W790 WS E-ATX workstation motherboard, viewed directly from above in a landscape (3:2) aspect ratio. The motherboard is flat on a neutral dark gray background, illuminated with soft studio lighting for a clean, technical aesthetic. The PCB is a dark green-black color, with all physical features and dimensions accurate to the real product. The large LGA 4677 CPU socket sits in the upper-center of the board, covered by a protective plastic cap. Flanking the socket on the right are eight DDR5 DIMM slots, arranged in two groups of four, with their latches and slot details visible. Along the lower half of the board, seven PCIe x16 slots are spaced evenly for multi-GPU operation, each with correct connector form factors. Between some PCIe slots, two M.2 NVMe slots are visible, each covered by a small metallic heatsink. The rear I/O cluster at the top-left includes two RJ45 10GbE Ethernet ports, a dedicated IPMI RJ45 port, several USB ports, and a blue VGA port, all with accurate port housings and placements. Prominent aluminum VRM heatsinks line the top edge above the CPU socket, with realistic metallic textures and fin details. The board is bare, with no CPU, RAM, or cards installed\u2014only the motherboard and its soldered components. No people, no conceptual diagrams, and no text overlays except for authentic product markings. The overall look is precise, modern, and suitable for a vendor product page or datasheet.",
+  "tool_call_id": "call_2GKghQ1akwSEvsmlObp7kOw3",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "01_motherboard.png"
+}

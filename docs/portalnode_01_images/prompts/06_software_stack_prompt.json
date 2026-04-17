@@ -1,0 +1,12 @@
+{
+  "key": "software_stack",
+  "stage_index": 6,
+  "title": "Software Stack \u2014 Ubuntu + Docker + Ollama + FastAPI",
+  "caption": "Layered software stack on PortalNode-01 server",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, technical 3D render of a layered software stack running on an enterprise-grade, consumer-origin server (PortalNode-01) in a data center environment. The illustration should depict a vertical \"layer cake\" architecture, from bottom to top: 1) Hardware layer: Show a standard ATX motherboard with four RTX 4090 Founders Edition GPUs (matte silver with emerald green LED accents for active status), visible PCIe slots, and proper cable routing. Use warm amber highlights to indicate power and airflow paths, with arrows showing intake and exhaust directions. 2) Operating System layer: Represent Ubuntu 24.04 LTS as a translucent deep navy platform enveloping the hardware. 3) NVIDIA Container Toolkit and CUDA drivers: Visualize as a semi-transparent layer above Ubuntu, with subtle circuit patterns and emerald accents. 4) Docker containers: Three semi-opaque, silver-edged containers stacked above, each labeled by GPU affinity (3.2 on GPU 0, 8B on GPU 0-1, 70B on GPU 2-3) using visual cues like GPU icons and emerald highlights. 5) Ollama instances: Each container houses a glowing emerald core, representing the model instance, with GPU affinity visually linked to the correct GPUs below. 6) FastAPI router: Above the Ollama layer, show a matte silver, neural-hub-like node with branching emerald pathways, symbolizing routing logic. 7) ProvenanceEngine: Render as a transparent, layered module with internal amber circuits, suggesting audit trails and governance. 8) 2ndOpinionMD application layer: At the top, depict a sleek, semi-transparent interface with interconnected modules (EoH detective, timeline builder, chat graph) glowing in emerald. Overlay the entire stack with a stylized, luminous routing path: an incoming request enters at the top, passes through intent classification (branching logic), model selection (directed to the correct Ollama instance), inference, and finally receipt logging in the ProvenanceEngine. Use clean studio lighting, a neutral dark gray gradient background, and ensure all elements are sharply detailed, enterprise-grade, and free of text overlays or people.",
+  "tool_call_id": "call_SE8j6SdHLbqA00rwydVMkhuG",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_183104",
+  "image_file": "06_software_stack.png"
+}

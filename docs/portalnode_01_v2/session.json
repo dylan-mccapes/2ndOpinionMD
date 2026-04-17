@@ -1,0 +1,74 @@
+{
+  "decisions": [
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "the_appliance",
+      "stage_index": 0,
+      "title": "The Appliance \u2014 PortalNode-01 External Product Shot",
+      "outcome": "done",
+      "elapsed_s": 67.1,
+      "image_file": "00_the_appliance.png",
+      "ts": "2026-04-09T18:54:22.180405+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "the_interior",
+      "stage_index": 1,
+      "title": "The Interior \u2014 Four GPUs, One Brain",
+      "outcome": "done",
+      "elapsed_s": 62.2,
+      "image_file": "01_the_interior.png",
+      "ts": "2026-04-09T18:55:24.370610+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "three_tools",
+      "stage_index": 2,
+      "title": "Three Tools for Three Jobs \u2014 The Model Tiering Concept",
+      "outcome": "done",
+      "elapsed_s": 75.5,
+      "image_file": "02_three_tools.png",
+      "ts": "2026-04-09T18:56:39.892883+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "data_flow_pipeline",
+      "stage_index": 3,
+      "title": "The Data Pipeline \u2014 From Patient Record to Scored Timeline",
+      "outcome": "done",
+      "elapsed_s": 57.7,
+      "image_file": "03_data_flow_pipeline.png",
+      "ts": "2026-04-09T18:57:37.587967+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "air_gap",
+      "stage_index": 4,
+      "title": "The Air Gap \u2014 Nothing Leaves the Building",
+      "outcome": "done",
+      "elapsed_s": 69.8,
+      "image_file": "04_air_gap.png",
+      "ts": "2026-04-09T18:58:47.429497+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "scale_comparison",
+      "stage_index": 5,
+      "title": "Scale Comparison \u2014 One Server vs. Cloud Cost",
+      "outcome": "done",
+      "elapsed_s": 66.9,
+      "image_file": "05_scale_comparison.png",
+      "ts": "2026-04-09T18:59:54.349297+00:00"
+    },
+    {
+      "run_id": "20260409_185315",
+      "stage_key": "rack_deployed",
+      "stage_index": 6,
+      "title": "Deployed \u2014 PortalNode-01 in a Hospital Data Center Rack",
+      "outcome": "done",
+      "elapsed_s": 76.6,
+      "image_file": "06_rack_deployed.png",
+      "ts": "2026-04-09T19:01:10.957456+00:00"
+    }
+  ]
+}

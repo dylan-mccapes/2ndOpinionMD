@@ -1,0 +1,12 @@
+{
+  "key": "nvme_drives",
+  "stage_index": 7,
+  "title": "NVMe SSD Drives \u2014 Samsung 990 PRO + Sabrent Rocket 4 Plus",
+  "caption": "Three NVMe SSDs with coin for scale",
+  "view": "isometric",
+  "prompt": "Create a photorealistic 3D render in landscape (3:2) aspect ratio of three M.2 2280 NVMe SSD drives arranged on a clean, neutral dark gray surface. On the left, depict a Samsung 990 PRO 2TB NVMe SSD: a slim, rectangular stick measuring approximately 80mm x 22mm, with a black PCB and a Samsung-branded label featuring black, red, and subtle white styling accents. On the right, place two Sabrent Rocket 4 Plus 4TB NVMe SSDs, both also in the M.2 2280 form factor (80mm x 22mm), with black PCBs and Sabrent\u2019s green and black label design, including their distinctive branding and color scheme. Position the three drives at slight, natural angles to each other, ensuring the gold M.2 edge connectors are clearly visible at one end of each drive. For scale, include a standard US penny or similar coin placed nearby on the surface. Use soft, diffused studio lighting to highlight the textures and finishes of the PCBs, labels, and connectors, while minimizing harsh reflections. The composition should evoke high-end product photography, focusing on physical accuracy, material realism, and a clean technical aesthetic. No people, no conceptual diagrams, and no extraneous objects\u2014just the SSDs and the coin on a dark, neutral background.",
+  "tool_call_id": "call_GIgSoiQCrqscbrBzDjv1DDhm",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_193009",
+  "image_file": "07_nvme_drives.png"
+}

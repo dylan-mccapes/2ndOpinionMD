@@ -1,0 +1,12 @@
+{
+  "key": "air_gap",
+  "stage_index": 4,
+  "title": "The Air Gap \u2014 Nothing Leaves the Building",
+  "caption": "Powered server with no network cables attached",
+  "view": "isometric",
+  "prompt": "Create a photorealistic, high-resolution product photography image of a PortalNode-01 chassis, a matte black 4U server, centrally positioned inside a standard data center rack. The server has a sleek, modern design with a matte black finish and subtle brushed aluminum accents. The rack rails are visible on both the left and right sides, framing the server. The environment is a clean, professional data center: the background is softly blurred, showing a navy gradient with hints of a data center aisle and other rack cabinets, but no discernible details or text. The lighting is soft and diffused, similar to an Apple product page or a Supermicro datasheet, highlighting the contours and finish of the hardware without harsh reflections. The rear of the server is in clear view, showing all I/O ports. Critically, all ethernet/network ports are EMPTY\u2014no cables plugged in. The only cable connected is a single thick black power cord, plugged into the bottom of the chassis and running down to the floor. The server\u2019s small LEDs are glowing: emerald green for power, with a touch of blue and warm amber for status indicators, signaling that the unit is active and powered. All other ports are empty and dark. There are no people, no floating UI, no overlays, and absolutely no text or labels anywhere in the image. The overall effect is stark and confident: a powered, active server with total network isolation, communicating data security and HIPAA-level isolation through the visible absence of network connections.",
+  "tool_call_id": "call_AIYHYWJaZGsH0OVRcLLTmAVN",
+  "saved_pre_dalle": true,
+  "run_id": "20260409_185315",
+  "image_file": "04_air_gap.png"
+}
