@@ -77,6 +77,8 @@
            VAULT LANDING PAGE (logged out)
            ===================================================== */
         #vault-landing {
+            position: relative;
+            z-index: 50;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -174,9 +176,13 @@
             height: 100vh;
             grid-template-columns: 240px 1fr;
             grid-template-rows: 1fr;
+            pointer-events: none;
         }
 
-        #portal-app.active { display: grid; }
+        #portal-app.active {
+            display: grid;
+            pointer-events: auto;
+        }
         #vault-landing.hidden { display: none; }
 
         /* === SIDEBAR === */
@@ -967,10 +973,10 @@
                 Epistemic vault for patient-owned medical records.
             </div>
             <div class="vault-actions">
-                <button type="button" class="vault-btn vault-btn-primary" id="vault-initiate">
+                <button type="button" class="vault-btn vault-btn-primary" id="vault-initiate" onclick="if(window.__2opmdOpenVaultModal)window.__2opmdOpenVaultModal('modal-session')">
                     Start Session
                 </button>
-                <button type="button" class="vault-btn vault-btn-secondary" id="vault-onboard">
+                <button type="button" class="vault-btn vault-btn-secondary" id="vault-onboard" onclick="if(window.__2opmdOpenVaultModal)window.__2opmdOpenVaultModal('modal-onboarding')">
                     System Onboarding
                 </button>
             </div>
@@ -1799,9 +1805,17 @@ Are there any patterns in my symptoms?"></textarea>
         'use strict';
 
         // === CONFIG ===
-        const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
-            ? 'http://localhost:8000'
-            : (window.location.hostname === '2ndopinionmd.ai' ? '' : 'http://localhost:8000');
+        // Same-origin '' when nginx (or any proxy) serves /api to FastAPI. Do not default to
+        // localhost:8000 for www.* or other prod hostnames — that breaks validation fetches
+        // (mixed content, wrong host) and can leave the vault UI wedged.
+        const API_BASE = (function () {
+            const h = (window.location.hostname || '').toLowerCase();
+            const p = window.location.port || '';
+            if (h === 'localhost' && p === '8080') return 'http://localhost:8000';
+            if (h === '2ndopinionmd.ai' || h.endsWith('.2ndopinionmd.ai')) return '';
+            if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8000';
+            return '';
+        })();
 
         const UPLOAD_BASE = 'http://upload.2ndopinionmd.ai:8000';
         const CLOUDFLARE_MAX_BYTES = 100 * 1024 * 1024;
@@ -1871,6 +1885,16 @@ Are there any patterns in my symptoms?"></textarea>
             const el = document.getElementById(id);
             if (el) el.classList.remove('visible');
         }
+
+        /** Inline onclick on vault buttons uses this so modals open even if async boot() stalls. */
+        window.__2opmdOpenVaultModal = function (id) {
+            try {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('visible');
+            } catch (e) {
+                console.error('[2OPMD] __2opmdOpenVaultModal', id, e);
+            }
+        };
 
         function escapeHtml(s) {
             const d = document.createElement('div');
@@ -1992,15 +2016,22 @@ Are there any patterns in my symptoms?"></textarea>
         async function validateStoredVaultSession() {
             const tok = sessionToken;
             if (!tok) return false;
+            const ctl = new AbortController();
+            const t = setTimeout(function () { try { ctl.abort(); } catch (_) {} }, 6000);
             try {
                 const r = await fetch(`${API_BASE}/api/timeline/artifacts/list`, {
-                    headers: { 'Authorization': `Bearer ${tok}` }
+                    headers: { 'Authorization': 'Bearer ' + tok },
+                    signal: ctl.signal,
                 });
                 if (r.status === 401) {
                     setSession(null, '');
                     return true;
                 }
-            } catch (_) {}
+            } catch (_) {
+                /* network / timeout / mixed content — do not clear token */
+            } finally {
+                clearTimeout(t);
+            }
             return false;
         }
 
@@ -3099,9 +3130,6 @@ Are there any patterns in my symptoms?"></textarea>
             _bind('verification-dismiss', 'click', () => hideModal('modal-verification'));
             _bind('portal-close-session', 'click', handleCloseSession);
 
-            // Drop stale session tokens after DB resets (e.g. clear-users) before first paint
-            await validateStoredVaultSession();
-
             updateUI();
             checkVerificationToken();
 
@@ -3177,6 +3205,12 @@ Are there any patterns in my symptoms?"></textarea>
             } catch (err) {
                 console.error('[2OPMD] Portal wiring failed:', err);
             }
+
+            // After wiring: drop stale tokens (DB reset). Never block vault buttons on this.
+            try {
+                const cleared = await validateStoredVaultSession();
+                if (cleared) updateUI();
+            } catch (_) {}
         })();
     })();
     </script>
