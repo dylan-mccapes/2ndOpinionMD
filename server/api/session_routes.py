@@ -5,7 +5,7 @@ Language: "Start Session" (not Login), "Close Session" (not Logout).
 POST /api/session/instantiate -> { session_token, operator_type, timeline_id }
 POST /api/session/close -> close current session
 POST /api/timeline/initialize -> create patient timeline (requires patient session)
-GET /api/timeline/status -> { has_timeline, timeline_id, event_count, last_updated } (JWT auth)
+GET /api/timeline/status -> { has_timeline, timeline_id, event_count, last_updated } (JWT or vault session Bearer)
 POST /api/timeline/import-pdf -> multipart PDF upload (JWT auth)
 POST /api/timeline/artifact -> lightweight file metadata into PTV (session Bearer)
 POST /api/timeline/mock-events -> append mock PTV events (session Bearer)
@@ -30,6 +30,19 @@ from server.api.auth_postgres import authenticate_user, get_current_user_postgre
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _ollama_native_base_url() -> str:
+    """
+    Host root for Ollama's native POST /api/chat.
+    OLLAMA_BASE_URL is often set to .../11434/v1 for OpenAI-compatible clients; strip a trailing /v1.
+    """
+    import os as _os
+
+    raw = (_os.getenv("OLLAMA_BASE_URL") or "http://192.168.0.245:11434").strip().rstrip("/")
+    if raw.lower().endswith("/v1"):
+        raw = raw[:-3].rstrip("/")
+    return raw or "http://127.0.0.1:11434"
 
 
 # --- Request/Response models (game plan) ---------------------------------------
@@ -266,6 +279,109 @@ async def _get_bearer_token(request: Request) -> Optional[str]:
     return await get_session_token_from_header(request.headers.get("Authorization"))
 
 
+async def get_user_for_timeline_status(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Any:
+    """
+    Accept vault session Bearer or JWT. No PTV row gate — status is a read-only summary.
+    Session is tried first so vault HTML does not mis-decode DB tokens as JWT.
+    """
+    import os as _os
+    from jose import JWTError, jwt
+
+    from server.api.auth_postgres import ALGORITHM, SECRET_KEY, get_user_by_email
+
+    token = await _get_bearer_token(request)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization: Bearer",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if (
+        token == "dev-bypass"
+        and _os.getenv("DEV_AUTH_BYPASS", "").lower() == "true"
+        and _os.getenv("APP_ENV", "local") != "production"
+    ):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id="dev-user-id",
+            email="dev@local",
+            full_name="Dev User",
+            hashed_password="",
+            birthdate=None,
+            subscription_tier="pro",
+            user_type=_os.getenv("VITE_DEV_USER_TYPE", "patient"),
+            created_at=datetime.utcnow(),
+            last_login=None,
+            is_verified=True,
+            locked_until=None,
+            ptv_ready=True,
+        )
+
+    user_uuid = await get_user_id_for_session(db, token)
+    if user_uuid is not None:
+        r = await db.execute(select(User).where(User.id == user_uuid))
+        user = r.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found for session",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not getattr(user, "is_verified", False):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "email_not_verified",
+                    "message": "Please verify your email to continue.",
+                    "actions": {"resend_endpoint": "/api/auth/resend-verification"},
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: Optional[str] = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    auth_user = await get_user_by_email(email=email, db=db)
+    if auth_user is None:
+        raise credentials_exception
+
+    if auth_user.locked_until and auth_user.locked_until > datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Account locked until {auth_user.locked_until}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not auth_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "email_not_verified",
+                "message": "Please verify your email to continue.",
+                "actions": {"resend_endpoint": "/api/auth/resend-verification"},
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return auth_user
+
+
 # --- Routes ---------------------------------------------------------------------
 
 @router.post("/instantiate", response_model=SessionInstantiateResponse)
@@ -401,22 +517,23 @@ async def timeline_initialize(
     )
 
 
-# --- GET /api/timeline/status (JWT auth) ----------------------------------------
+# --- GET /api/timeline/status (JWT or session Bearer) ---------------------------
 
 @timeline_router.get("/status")
 async def timeline_status(
-    current_user: Any = Depends(get_current_user_postgres),
+    current_user: Any = Depends(get_user_for_timeline_status),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """
-    Return whether the current user (JWT) has a timeline and event count.
-    Frontend uses this to show "Upload timeline" vs "Timeline ready".
+    Return whether the current user has a timeline and event count.
+    Auth: JWT Bearer (React app) or vault session Bearer (Epistemic Vault HTML).
     """
     from server.dev_fixtures import get_timeline_status as _dev_status, is_active as _dev_active
     if _dev_active():
         return _dev_status()
 
-    user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
+    _uid = getattr(current_user, "id", None)
+    user_id = str(_uid) if _uid is not None else None
     if not user_id:
         return {"has_timeline": False, "timeline_id": None, "event_count": 0, "last_updated": None}
 
@@ -1148,11 +1265,11 @@ async def timeline_artifacts_recall(
         "keywords": [...]    # extracted by eoh-llama
     }
     """
-    import os as _os, re as _re, json as _json
+    import re as _re, json as _json
     body = await request.json()
     query: str = (body.get("query") or "").strip()
     model: str = body.get("model") or "eoh-llama3.1:8b"
-    _ollama_base = _os.getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
+    ollama_base = _ollama_native_base_url()
 
     if not query:
         raise HTTPException(status_code=400, detail="query is required")
@@ -1173,7 +1290,7 @@ async def timeline_artifacts_recall(
         )
         async with _httpx.AsyncClient(timeout=15) as http:
             resp = await http.post(
-                f"{_ollama_base}/api/chat",
+                f"{ollama_base}/api/chat",
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": kw_prompt}],
@@ -1322,7 +1439,7 @@ async def timeline_artifacts_recall(
             import httpx as _httpx
             async with _httpx.AsyncClient(timeout=45) as http:
                 resp = await http.post(
-                    f"{_ollama_base}/api/chat",
+                    f"{ollama_base}/api/chat",
                     json={
                         "model": model,
                         "messages": [{"role": "user", "content": answer_prompt}],
@@ -1424,10 +1541,10 @@ async def timeline_query(
 
     try:
         import httpx as _httpx
-        _ollama_base = __import__("os").getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
+        ollama_base = _ollama_native_base_url()
         async with _httpx.AsyncClient(timeout=90) as http:
             resp = await http.post(
-                f"{_ollama_base}/api/chat",
+                f"{ollama_base}/api/chat",
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
