@@ -588,6 +588,7 @@ async def timeline_vault_artifact(
             notes=notes,
             text_snippet=text_snippet,
             content_sha256=sha,
+            raw_bytes=data,
         )
     except Exception as e:
         logger.exception("timeline_vault_artifact failed")
@@ -831,6 +832,7 @@ async def timeline_artifacts_ingest(
                         notes=notes,
                         text_snippet=text_snippet,
                         content_sha256=sha,
+                        raw_bytes=data,
                     )
 
                     # ── Decide if 8B extraction is possible ──────────────
@@ -873,6 +875,28 @@ async def timeline_artifacts_ingest(
                         raw_text = data.decode("utf-8", errors="replace")
                         raw_text = scrub_pii(raw_text)
                         yield _sse_bytes("text_extracted", {"filename": fn, "chars": len(raw_text)})
+
+                    # ── Update patient_artifacts with extracted text ───────
+                    full_text: Optional[str] = None
+                    if pages is not None:
+                        full_text = "\n\n".join(t for _, t in pages)
+                    elif raw_text:
+                        full_text = raw_text
+                    if full_text and tier_a_result and not tier_a_result.get("is_duplicate"):
+                        try:
+                            async with pool.acquire() as _conn:
+                                await _conn.execute(
+                                    """
+                                    UPDATE ehr.patient_artifacts
+                                    SET text_content = $1
+                                    WHERE patient_id = $2 AND artifact_id = $3
+                                    """,
+                                    full_text[:500_000],
+                                    patient_id,
+                                    tier_a_result["artifact_id"],
+                                )
+                        except Exception as _upd_err:
+                            logger.warning("patient_artifacts text update failed (non-fatal): %s", _upd_err)
 
                     # ── Heuristic pre-scan (PDF only) ─────────────────────
                     prescan_events_total = 0
@@ -1009,3 +1033,277 @@ async def timeline_artifacts_ingest(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/timeline/artifacts/list — list stored artifacts for the patient
+# ---------------------------------------------------------------------------
+
+@timeline_router.get("/artifacts/list")
+async def timeline_artifacts_list(
+    request: Request,
+    user: User = Depends(get_vault_user_from_session),
+):
+    """Return metadata for all artifacts stored in ehr.patient_artifacts."""
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool unavailable")
+    patient_id = str(user.id)
+    rows = await pool.fetch(
+        """
+        SELECT artifact_id, filename, mime_type, size_bytes, document_type,
+               document_date, user_notes, content_sha, uploaded_at,
+               LEFT(text_content, 400) AS snippet
+        FROM ehr.patient_artifacts
+        WHERE patient_id = $1
+        ORDER BY uploaded_at DESC
+        """,
+        patient_id,
+    )
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/timeline/artifacts/{artifact_id}/content — full text for modal
+# ---------------------------------------------------------------------------
+
+@timeline_router.get("/artifacts/{artifact_id}/content")
+async def timeline_artifact_content(
+    artifact_id: str,
+    request: Request,
+    user: User = Depends(get_vault_user_from_session),
+):
+    """Return the full extracted text_content for a single artifact."""
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool unavailable")
+    row = await pool.fetchrow(
+        """
+        SELECT artifact_id, filename, mime_type, document_type,
+               document_date, user_notes, uploaded_at, text_content
+        FROM ehr.patient_artifacts
+        WHERE patient_id = $1 AND artifact_id = $2
+        """,
+        str(user.id), artifact_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/timeline/artifacts/recall — sentence-BFS recall + eoh-llama answer
+# ---------------------------------------------------------------------------
+
+@timeline_router.post("/artifacts/recall")
+async def timeline_artifacts_recall(
+    request: Request,
+    user: User = Depends(get_vault_user_from_session),
+):
+    """
+    Full-text recall across patient's stored artifacts.
+
+    Body JSON: { "query": "...", "top_k": 5, "with_answer": true, "model": "eoh-llama3.1:8b" }
+
+    Returns: { "hits": [...], "answer": "..." }
+    Each hit: { artifact_id, filename, document_type, snippet, rank, uploaded_at }
+    """
+    import json as _json
+    body = await request.json()
+    query: str = (body.get("query") or "").strip()
+    top_k: int = min(int(body.get("top_k", 5)), 20)
+    with_answer: bool = bool(body.get("with_answer", True))
+    model: str = body.get("model") or "eoh-llama3.1:8b"
+
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool unavailable")
+    patient_id = str(user.id)
+
+    # Full-text search using PostgreSQL ts_vector
+    rows = await pool.fetch(
+        """
+        SELECT artifact_id, filename, mime_type, document_type,
+               document_date, uploaded_at,
+               ts_headline('english', text_content, plainto_tsquery('english', $2),
+                   'MaxFragments=3, MaxWords=40, MinWords=10') AS snippet,
+               ts_rank_cd(
+                   to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,'')),
+                   plainto_tsquery('english', $2)
+               ) AS rank
+        FROM ehr.patient_artifacts
+        WHERE patient_id = $1
+          AND to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,''))
+              @@ plainto_tsquery('english', $2)
+        ORDER BY rank DESC
+        LIMIT $3
+        """,
+        patient_id, query, top_k,
+    )
+
+    # Fall back to ILIKE if FTS returns nothing
+    if not rows:
+        rows = await pool.fetch(
+            """
+            SELECT artifact_id, filename, mime_type, document_type,
+                   document_date, uploaded_at,
+                   LEFT(text_content, 300) AS snippet,
+                   0.1::float AS rank
+            FROM ehr.patient_artifacts
+            WHERE patient_id = $1
+              AND (text_content ILIKE $2 OR filename ILIKE $2)
+            ORDER BY uploaded_at DESC
+            LIMIT $3
+            """,
+            patient_id, f"%{query}%", top_k,
+        )
+
+    hits = [dict(r) for r in rows]
+
+    answer: Optional[str] = None
+    if with_answer and hits:
+        context_parts = []
+        for h in hits:
+            context_parts.append(
+                f"[{h['filename']} | {h.get('document_type','') or ''} | {str(h.get('document_date','') or '')}]\n"
+                f"{h.get('snippet','')}"
+            )
+        context_text = "\n\n---\n\n".join(context_parts)
+        prompt = (
+            f"You are a medical assistant reviewing a patient's documents.\n"
+            f"Answer the question using ONLY the context below.\n\n"
+            f"QUESTION: {query}\n\n"
+            f"CONTEXT:\n{context_text}\n\n"
+            f"Answer concisely (2-4 sentences):"
+        )
+        try:
+            import httpx as _httpx
+            _ollama_base = __import__("os").getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
+            async with _httpx.AsyncClient(timeout=60) as http:
+                resp = await http.post(
+                    f"{_ollama_base}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "options": {"num_ctx": 4096, "temperature": 0.1},
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                answer = (data.get("message") or {}).get("content", "").strip()
+        except Exception as exc:
+            logger.warning("recall answer generation failed: %s", exc)
+            answer = None
+
+    return {"hits": hits, "answer": answer}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/timeline/query — BFS graph query via eoh-llama 8B
+# ---------------------------------------------------------------------------
+
+@timeline_router.post("/query")
+async def timeline_query(
+    request: Request,
+    user: User = Depends(get_vault_user_from_session),
+):
+    """
+    Ask a free-form question against the patient's PTV timeline graph.
+
+    Body: { "query": "...", "top_k": 20, "model": "eoh-llama3.1:8b" }
+
+    Seeds up to top_k PTV events by keyword match, then answers with
+    eoh-llama 8B.
+    """
+    import json as _json, re
+    body = await request.json()
+    query: str = (body.get("query") or "").strip()
+    top_k: int = min(int(body.get("top_k", 20)), 50)
+    model: str = body.get("model") or "eoh-llama3.1:8b"
+
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool unavailable")
+    patient_id = str(user.id)
+
+    # Load PTV vision
+    from server.eoh.patient_timeline_vision import load_timeline_vision_pg
+    vision = await load_timeline_vision_pg(pool, patient_id)
+    if vision is None:
+        raise HTTPException(status_code=404, detail="No timeline found. Upload documents first.")
+
+    # Keyword-BFS seed: score each event by how many query tokens appear in text/type
+    q_tokens = set(re.findall(r"\w+", query.lower()))
+    scored: List[tuple] = []
+    for eid, node in vision.nodes.items():
+        text_blob = (
+            (node.get("text") or "") + " " +
+            (node.get("event_type") or "") + " " +
+            _json.dumps(node.get("annotations") or {})
+        ).lower()
+        score = sum(1 for t in q_tokens if t in text_blob)
+        if score > 0:
+            scored.append((score, eid, node))
+
+    scored.sort(key=lambda x: -x[0])
+    seeds = scored[:top_k]
+
+    if not seeds:
+        # Fall back: return most recent events
+        all_nodes = sorted(
+            vision.nodes.items(),
+            key=lambda kv: kv[1].get("timestamp") or "",
+            reverse=True,
+        )
+        seeds = [(0, eid, node) for eid, node in all_nodes[:top_k]]
+
+    # Build context
+    context_parts = []
+    for _, eid, node in seeds:
+        ts = node.get("timestamp") or "unknown"
+        et = node.get("event_type") or "event"
+        txt = (node.get("text") or "")[:400]
+        context_parts.append(f"[{ts[:10]} | {et}] {txt}")
+    context_text = "\n".join(context_parts)
+
+    prompt = (
+        f"You are a medical assistant reviewing a patient's timeline.\n"
+        f"Answer the question using ONLY the context below.\n\n"
+        f"QUESTION: {query}\n\n"
+        f"TIMELINE CONTEXT ({len(seeds)} events):\n{context_text}\n\n"
+        f"Answer concisely and factually (3-5 sentences):"
+    )
+
+    try:
+        import httpx as _httpx
+        _ollama_base = __import__("os").getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
+        async with _httpx.AsyncClient(timeout=90) as http:
+            resp = await http.post(
+                f"{_ollama_base}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": {"num_ctx": 8192, "temperature": 0.1},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            answer = (data.get("message") or {}).get("content", "").strip()
+    except Exception as exc:
+        logger.exception("timeline/query ollama call failed")
+        raise HTTPException(status_code=502, detail=f"eoh-llama unavailable: {exc}")
+
+    return {
+        "query": query,
+        "seeds_used": len(seeds),
+        "total_events": len(vision.nodes),
+        "answer": answer,
+    }

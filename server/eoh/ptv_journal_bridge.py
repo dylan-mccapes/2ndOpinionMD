@@ -256,11 +256,12 @@ async def add_patient_artifact_event(
     document_date: Optional[str],
     notes: Optional[str],
     text_snippet: Optional[str],
-    # sha256 of raw file bytes — provided by callers that have the bytes
     content_sha256: Optional[str] = None,
+    raw_bytes: Optional[bytes] = None,
 ) -> Dict[str, Any]:
     """
-    Append a lightweight vault document node to PTV (no full timeline PDF pipeline).
+    Append a lightweight vault document node to PTV AND persist raw bytes to
+    ehr.patient_artifacts for HIPAA-compliant record retention.
 
     Returns a dict with ``event_id``, ``artifact_id``, ``sha256``, and
     ``is_duplicate`` so callers can reflect dedup state back to the UI.
@@ -286,7 +287,6 @@ async def add_patient_artifact_event(
     artifacts: List[Dict[str, Any]] = vision.metadata.setdefault("artifacts", [])
     existing = next((a for a in artifacts if a.get("artifact_id") == artifact_id), None)
     if existing:
-        # Same file uploaded again — touch last_seen_at, return is_duplicate=True
         existing["last_seen_at"] = datetime.now(timezone.utc).isoformat()
         await save_timeline_vision_pg(pool, vision)
         return {
@@ -341,6 +341,35 @@ async def add_patient_artifact_event(
 
     await save_timeline_vision_pg(pool, vision)
     await upsert_status_after_vision_write(pool, patient_id, vision)
+
+    # ── Persist to ehr.patient_artifacts for compliance ───────────────────
+    text_content: Optional[str] = None
+    if text_snippet:
+        text_content = text_snippet
+    elif raw_bytes:
+        try:
+            text_content = raw_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            text_content = None
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO ehr.patient_artifacts
+                    (patient_id, artifact_id, filename, mime_type, size_bytes,
+                     document_type, document_date, user_notes, content_sha,
+                     text_content, raw_bytes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT (patient_id, artifact_id) DO NOTHING
+                """,
+                patient_id, artifact_id, filename, content_type or "", size_bytes,
+                document_type, document_date or "", notes or "", sha or None,
+                text_content, raw_bytes or b"",
+            )
+    except Exception as _db_err:
+        logger.warning("patient_artifacts insert failed (non-fatal): %s", _db_err)
+
     return {
         "event_id": eid,
         "artifact_id": artifact_id,
