@@ -1285,43 +1285,35 @@
                         </div>
                     </div>
 
-                    <!-- Recall / Ask Documents -->
+                    <!-- Artifact Recall -->
                     <div class="card" style="margin-top: 16px;">
                         <div class="card-header">
-                            <div class="card-title">Ask My Documents</div>
-                            <div class="card-badge badge-green">eoh-llama recall</div>
+                            <div class="card-title">Artifact Recall</div>
+                            <div class="card-badge badge-green">eoh-llama · semantic</div>
                         </div>
                         <div class="notice notice-info" style="margin-bottom: 12px;">
-                            Search your uploaded documents by keyword. The local eoh-llama 8B model returns the top matching documents with a brief answer. Click any result to read the full document.
+                            Ask about your uploaded documents in natural language. eoh-llama 8B extracts keywords, sentence-transformers scores semantic similarity, and the top 4 matches are shown with a preview and AI answer.
                         </div>
                         <div class="form-group">
                             <div style="display: flex; gap: 8px;">
-                                <input type="text" class="form-input" id="doc-search-input" placeholder="e.g. blood pressure, MRI, creatinine">
-                                <button class="btn btn-primary" id="doc-search-btn">Search</button>
+                                <input type="text" class="form-input" id="doc-search-input" placeholder='e.g. "Tell me about recent lab trends" or "What medications am I on?"'>
+                                <button class="btn btn-primary" id="doc-search-btn">Recall</button>
                             </div>
                         </div>
-                        <div id="doc-recall-answer" style="display:none; margin-bottom: 12px;">
+                        <div id="doc-recall-keywords" style="display:none; margin-bottom:10px;">
+                            <span style="font-size:11px; color:var(--color-text-dim); font-family:var(--font-mono);">Keywords: </span>
+                            <span id="doc-recall-keywords-list" style="font-size:11px; color:var(--color-accent); font-family:var(--font-mono);"></span>
+                        </div>
+                        <div id="doc-recall-answer" style="display:none; margin-bottom: 14px;">
                             <div class="card" style="background: var(--color-surface-dim);">
                                 <div id="doc-recall-answer-text" style="font-size: 14px; line-height: 1.7;"></div>
                             </div>
                         </div>
                         <div id="doc-search-results">
                             <div class="empty-state" style="padding: 24px;">
-                                <div class="empty-state-desc">Search returns top matching documents from your vault with an AI-generated answer.</div>
+                                <div class="empty-state-desc">Ask a question to recall documents from your vault. Results show the 4 best matches with previews, then up to 12 more by title.</div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="card" style="margin-top: 16px;">
-                        <div class="card-header">
-                            <div class="card-title">Dev — mock PTV timeline</div>
-                            <div class="card-badge badge-blue">No files</div>
-                        </div>
-                        <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px;">
-                            Inserts sample <code>mock_timeline_event</code> nodes into your graph for quick testing (same PTV as journal mirrors).
-                        </p>
-                        <button type="button" class="btn btn-sm" id="mock-ptv-events-btn">Insert sample events</button>
-                        <div id="mock-ptv-msg" style="display: none;" class="modal-msg"></div>
                     </div>
                 </div>
 
@@ -1376,7 +1368,7 @@ Are there any patterns in my symptoms?"></textarea>
                                 <div class="card-badge badge-blue">Guidelines Only</div>
                             </div>
                             <div class="notice notice-info">
-                                <strong>Guidelines Q&amp;A only.</strong> This console answers questions based on clinical guidelines and medical literature. It does <em>not</em> access your personal timeline or uploaded documents. For personal document queries, use the <strong>Documents → Ask My Documents</strong> section. For timeline queries, use the <strong>Timeline → Ask Your Timeline</strong> section.
+                                <strong>Guidelines Q&amp;A only.</strong> This console answers questions based on clinical guidelines and medical literature. It does <em>not</em> access your personal timeline or uploaded documents. For personal document queries, use the <strong>Documents → Artifact Recall</strong> section. For timeline queries, use the <strong>Timeline → Ask Your Timeline</strong> section.
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Clinical Question <span class="required">*</span></label>
@@ -2566,40 +2558,83 @@ Are there any patterns in my symptoms?"></textarea>
             const container = document.getElementById('doc-search-results');
             const answerBox = document.getElementById('doc-recall-answer');
             const answerText = document.getElementById('doc-recall-answer-text');
-            container.innerHTML = '<div class="results-loading">Searching your documents...</div>';
+            const kwBox = document.getElementById('doc-recall-keywords');
+            const kwList = document.getElementById('doc-recall-keywords-list');
+            container.innerHTML = '<div class="results-loading">Recalling documents…</div>';
             answerBox.style.display = 'none';
+            if (kwBox) kwBox.style.display = 'none';
 
             try {
                 const r = await fetch(`${API_BASE}/api/timeline/artifacts/recall`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-                    body: JSON.stringify({ query: q, top_k: 5, with_answer: true, model: 'eoh-llama3.1:8b' })
+                    body: JSON.stringify({ query: q, model: 'eoh-llama3.1:8b' })
                 });
-                if (!r.ok) throw new Error(`Search failed: ${r.status}`);
+                if (!r.ok) throw new Error(`Recall failed: ${r.status}`);
                 const data = await r.json();
-                const hits = data.hits || [];
+                const preview = data.preview || [];
+                const titles = data.titles || [];
+                const keywords = data.keywords || [];
 
+                // Show keywords
+                if (kwBox && kwList && keywords.length) {
+                    kwList.textContent = keywords.join(', ');
+                    kwBox.style.display = 'block';
+                }
+
+                // Show answer
                 if (data.answer) {
                     answerBox.style.display = 'block';
                     answerText.innerHTML = formatMarkdown(data.answer);
                 }
 
-                if (hits.length === 0) {
+                if (preview.length === 0 && titles.length === 0) {
                     container.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-state-desc">No matching documents found in your vault.</div></div>';
-                } else {
-                    container.innerHTML = hits.map(h => `
-                        <div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openDocModal('${h.artifact_id}')">
+                    return;
+                }
+
+                let html = '';
+
+                // Top 4 preview cards
+                if (preview.length) {
+                    html += '<div style="margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Top results</div>';
+                    html += preview.map(h => {
+                        const sourceColor = h.source === 'semantic' ? 'badge-purple' : h.source === 'combined' ? 'badge-green' : 'badge-blue';
+                        const sourceLbl = h.source === 'semantic' ? 'Semantic' : h.source === 'combined' ? 'FTS + Semantic' : 'FTS';
+                        const scoreStr = h.score !== undefined ? Math.round(h.score * 100) + '%' : '';
+                        return `<div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openDocModal('${h.artifact_id}')">
                             <div class="card-header">
-                                <div class="card-title" style="font-size:14px;">${escapeHtml(h.filename || h.artifact_id)}</div>
-                                <div class="card-badge badge-blue">${h.document_type || 'document'}</div>
+                                <div class="card-title" style="font-size:14px;">${escapeHtml(h.filename)}</div>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <div class="card-badge ${sourceColor}">${sourceLbl}</div>
+                                    ${scoreStr ? `<div class="card-badge badge-gray">${scoreStr}</div>` : ''}
+                                </div>
                             </div>
-                            <div style="font-size:12px; color:var(--color-text-dim); margin-bottom:6px;">${h.document_date || ''} &bull; Uploaded ${new Date(h.uploaded_at).toLocaleDateString()}</div>
-                            <div style="font-size:13px; color:var(--color-text-secondary);">${escapeHtml((h.snippet || '').replace(/<[^>]+>/g,''))}</div>
-                            <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">Click to open full document ›</div>
+                            <div style="font-size:12px; color:var(--color-text-dim); margin-bottom:6px;">${escapeHtml(h.document_type || '')} ${h.document_date ? '· ' + h.document_date : ''}</div>
+                            <div style="font-size:13px; color:var(--color-text-secondary);">${escapeHtml((h.snippet || '').replace(/<[^>]+>/g,'').substring(0,300))}</div>
+                            <div style="margin-top:6px; font-size:12px; color:var(--color-accent);">Click to read full document ›</div>
+                        </div>`;
+                    }).join('');
+                }
+
+                // Additional titles list
+                if (titles.length) {
+                    html += '<div style="margin-top:16px; margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Additional documents</div>';
+                    html += '<div style="border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden;">';
+                    html += titles.map((h, i) => `
+                        <div style="padding:10px 14px; display:flex; justify-content:space-between; align-items:center; border-bottom:${i < titles.length-1 ? '1px solid var(--color-border)' : 'none'}; cursor:pointer;" onclick="openDocModal('${h.artifact_id}')">
+                            <div>
+                                <span style="font-size:13px; color:var(--color-text-primary);">${escapeHtml(h.filename)}</span>
+                                <span style="font-size:12px; color:var(--color-text-dim); margin-left:8px;">${escapeHtml(h.document_type || '')}</span>
+                            </div>
+                            <span style="font-size:12px; color:var(--color-accent);">View ›</span>
                         </div>
                     `).join('');
+                    html += '</div>';
                 }
-                addReceipt('Document recall: ' + q);
+
+                container.innerHTML = html;
+                addReceipt('Artifact Recall: ' + q);
             } catch (e) {
                 container.innerHTML = '<div class="results-error">' + e.message + '</div>';
             }

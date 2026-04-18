@@ -1,0 +1,41 @@
+PATIENT SYMPTOM DIARY — MOCK DATA FOR 2OPMD VAULT TESTING
+==========================================================
+Period: 2025-10-01 through 2025-11-10
+Patient: SYNTHETIC-001 (fictional)
+
+INSTRUCTIONS
+Rate each symptom 0 (absent) to 10 (severe). Free-text notes encouraged.
+
+--------------------------------------------------------------------
+DATE        FATIGUE  HEADACHE  CHEST     DYSPNEA  NOTES
+            (0-10)   (0-10)    TIGHTNESS (0-10)
+                               (0-10)
+--------------------------------------------------------------------
+2025-10-01  3        2         0         1        Mild fatigue after work.
+2025-10-04  4        3         0         1        Headache started midday.
+2025-10-08  2        1         1         2        Brief tightness climbing stairs.
+2025-10-12  5        2         0         2        Poor sleep, elevated fatigue.
+2025-10-15  3        4         0         1        Headache worse than usual,
+                                                   took ibuprofen 400 mg x1.
+2025-10-19  3        2         2         3        Chest tightness ~4 min on walk.
+                                                   Resolved with rest.
+2025-10-22  2        1         1         2        Mild tightness, shorter
+                                                   duration than prior episode.
+2025-10-26  4        2         2         3        Two episodes today. Notified GP.
+2025-10-29  2        1         0         1        Better after rest day.
+2025-11-02  3        2         3         4        Worst chest tightness episode
+                                                   to date (~7 min). Scheduled
+                                                   cardiology referral.
+2025-11-05  2        1         1         2        Slight improvement.
+2025-11-10  2        1         1         1        Cardiology consult booked.
+
+TRENDS
+  - Chest tightness and dyspnea show gradual worsening Oct→Nov.
+  - Fatigue consistently 2-5; no clear pattern.
+  - Headache severity variable; no clear association with other symptoms.
+
+MEDICATIONS TAKEN DURING PERIOD
+  - Ibuprofen 400 mg PRN (headache): used 3× this period.
+  - All prescription medications as listed on medication summary.
+
+Note: All data are fabricated for PTV artifact recall smoke tests.

@@ -594,6 +594,22 @@ async def timeline_vault_artifact(
         logger.exception("timeline_vault_artifact failed")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+    # Embed artifact (non-fatal)
+    try:
+        from server.eoh.artifact_embeddings import embed_and_store_artifact, ensure_embeddings_table
+        await ensure_embeddings_table(pool)
+        await embed_and_store_artifact(
+            pool,
+            str(user.id),
+            artifact_id=result["artifact_id"],
+            filename=fn,
+            document_type=document_type,
+            document_date=document_date,
+            text_content=text_snippet or data.decode("utf-8", errors="replace")[:4000],
+        )
+    except Exception as _emb_err:
+        logger.warning("vault_artifact embedding failed (non-fatal): %s", _emb_err)
+
     return {
         "event_id":    result["event_id"],
         "artifact_id": result["artifact_id"],
@@ -898,6 +914,24 @@ async def timeline_artifacts_ingest(
                         except Exception as _upd_err:
                             logger.warning("patient_artifacts text update failed (non-fatal): %s", _upd_err)
 
+                        # ── Embed artifact ────────────────────────────────────
+                        try:
+                            from server.eoh.artifact_embeddings import (
+                                embed_and_store_artifact, ensure_embeddings_table
+                            )
+                            await ensure_embeddings_table(pool)
+                            await embed_and_store_artifact(
+                                pool,
+                                patient_id,
+                                artifact_id=tier_a_result["artifact_id"],
+                                filename=fn,
+                                document_type=document_type,
+                                document_date=document_date,
+                                text_content=full_text[:4000],
+                            )
+                        except Exception as _emb_err:
+                            logger.warning("artifact embedding failed (non-fatal): %s", _emb_err)
+
                     # ── Heuristic pre-scan (PDF only) ─────────────────────
                     prescan_events_total = 0
                     prescan_by_page: dict = {}
@@ -1092,7 +1126,7 @@ async def timeline_artifact_content(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/timeline/artifacts/recall — sentence-BFS recall + eoh-llama answer
+# POST /api/timeline/artifacts/recall — multi-source recall + eoh-llama answer
 # ---------------------------------------------------------------------------
 
 @timeline_router.post("/artifacts/recall")
@@ -1101,19 +1135,24 @@ async def timeline_artifacts_recall(
     user: User = Depends(get_vault_user_from_session),
 ):
     """
-    Full-text recall across patient's stored artifacts.
+    Artifact Recall — three retrieval sources fused:
+      1. eoh-llama keyword extraction → FTS + ILIKE
+      2. sentence-transformers semantic search
+      3. Union ranked: top 4 returned with snippet, next 12 as titles only.
 
-    Body JSON: { "query": "...", "top_k": 5, "with_answer": true, "model": "eoh-llama3.1:8b" }
-
-    Returns: { "hits": [...], "answer": "..." }
-    Each hit: { artifact_id, filename, document_type, snippet, rank, uploaded_at }
+    Body JSON: { "query": "...", "model": "eoh-llama3.1:8b" }
+    Returns: {
+        "preview":  [{artifact_id, filename, document_type, document_date, snippet, score, source}, ...],  # up to 4
+        "titles":   [{artifact_id, filename, document_type, document_date, score}, ...],                   # up to 12
+        "answer":   "...",   # eoh-llama answer grounded on top-4 previews
+        "keywords": [...]    # extracted by eoh-llama
+    }
     """
-    import json as _json
+    import os as _os, re as _re, json as _json
     body = await request.json()
     query: str = (body.get("query") or "").strip()
-    top_k: int = min(int(body.get("top_k", 5)), 20)
-    with_answer: bool = bool(body.get("with_answer", True))
     model: str = body.get("model") or "eoh-llama3.1:8b"
+    _ollama_base = _os.getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
 
     if not query:
         raise HTTPException(status_code=400, detail="query is required")
@@ -1123,83 +1162,185 @@ async def timeline_artifacts_recall(
         raise HTTPException(status_code=503, detail="Database pool unavailable")
     patient_id = str(user.id)
 
-    # Full-text search using PostgreSQL ts_vector
-    rows = await pool.fetch(
-        """
-        SELECT artifact_id, filename, mime_type, document_type,
-               document_date, uploaded_at,
-               ts_headline('english', text_content, plainto_tsquery('english', $2),
-                   'MaxFragments=3, MaxWords=40, MinWords=10') AS snippet,
-               ts_rank_cd(
-                   to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,'')),
-                   plainto_tsquery('english', $2)
-               ) AS rank
-        FROM ehr.patient_artifacts
-        WHERE patient_id = $1
-          AND to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,''))
-              @@ plainto_tsquery('english', $2)
-        ORDER BY rank DESC
-        LIMIT $3
-        """,
-        patient_id, query, top_k,
-    )
+    # ── 1. eoh-llama keyword extraction ──────────────────────────────────────
+    keywords: List[str] = []
+    try:
+        import httpx as _httpx
+        kw_prompt = (
+            f"Extract 3–6 medical search keywords from the following patient query.\n"
+            f"Return ONLY a JSON array of lowercase strings, e.g. [\"creatinine\",\"kidney\"].\n\n"
+            f"QUERY: {query}"
+        )
+        async with _httpx.AsyncClient(timeout=15) as http:
+            resp = await http.post(
+                f"{_ollama_base}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": kw_prompt}],
+                    "stream": False,
+                    "options": {"num_ctx": 512, "temperature": 0},
+                },
+            )
+            resp.raise_for_status()
+            raw_kw = (resp.json().get("message") or {}).get("content", "")
+            bracket = raw_kw.find("[")
+            if bracket >= 0:
+                candidate = raw_kw[bracket:raw_kw.rfind("]") + 1]
+                parsed = _json.loads(candidate)
+                keywords = [str(k).lower().strip() for k in parsed if k][:8]
+    except Exception as _kw_err:
+        logger.warning("keyword extraction failed (%s) — falling back to simple tokenisation", _kw_err)
+    if not keywords:
+        keywords = list(dict.fromkeys(_re.findall(r"\b[a-z]{4,}\b", query.lower())))[:8]
 
-    # Fall back to ILIKE if FTS returns nothing
-    if not rows:
+    # ── 2. FTS + ILIKE retrieval ──────────────────────────────────────────────
+    fts_hits: List[dict] = []
+    fts_query_str = " | ".join(keywords) if keywords else query
+
+    try:
         rows = await pool.fetch(
             """
-            SELECT artifact_id, filename, mime_type, document_type,
-                   document_date, uploaded_at,
-                   LEFT(text_content, 300) AS snippet,
-                   0.1::float AS rank
+            SELECT artifact_id, filename, mime_type, document_type, document_date, uploaded_at,
+                   ts_headline('english', text_content,
+                       to_tsquery('english', $2),
+                       'MaxFragments=2, MaxWords=30, MinWords=8') AS snippet,
+                   ts_rank_cd(
+                       to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,'')),
+                       to_tsquery('english', $2)
+                   ) AS rank
             FROM ehr.patient_artifacts
             WHERE patient_id = $1
-              AND (text_content ILIKE $2 OR filename ILIKE $2)
-            ORDER BY uploaded_at DESC
-            LIMIT $3
+              AND to_tsvector('english', coalesce(text_content,'') || ' ' || coalesce(filename,''))
+                  @@ to_tsquery('english', $2)
+            ORDER BY rank DESC
+            LIMIT 16
             """,
-            patient_id, f"%{query}%", top_k,
+            patient_id, fts_query_str,
         )
+        fts_hits = [dict(r) for r in rows]
+    except Exception:
+        pass
 
-    hits = [dict(r) for r in rows]
+    # ILIKE sweep for any keyword not caught by FTS
+    ilike_seen = {h["artifact_id"] for h in fts_hits}
+    for kw in keywords[:4]:
+        if len(fts_hits) >= 16:
+            break
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT artifact_id, filename, mime_type, document_type, document_date, uploaded_at,
+                       LEFT(text_content, 300) AS snippet,
+                       0.05::float AS rank
+                FROM ehr.patient_artifacts
+                WHERE patient_id = $1
+                  AND (text_content ILIKE $2 OR filename ILIKE $2)
+                  AND artifact_id <> ALL($3::text[])
+                LIMIT 8
+                """,
+                patient_id, f"%{kw}%", list(ilike_seen),
+            )
+            for r in rows:
+                d = dict(r)
+                ilike_seen.add(d["artifact_id"])
+                fts_hits.append(d)
+        except Exception:
+            pass
 
+    # ── 3. Semantic search ────────────────────────────────────────────────────
+    from server.eoh.artifact_embeddings import semantic_search
+    sem_hits = await semantic_search(pool, patient_id, query, top_k=16)
+
+    # ── 4. Fuse results ───────────────────────────────────────────────────────
+    # Build a score map; semantic score on [0,1], FTS rank scaled to same range
+    max_fts_rank = max((h.get("rank", 0) or 0 for h in fts_hits), default=1) or 1
+    combined: dict[str, dict] = {}
+
+    for h in fts_hits:
+        aid = h["artifact_id"]
+        norm_rank = (h.get("rank") or 0) / max_fts_rank
+        combined[aid] = {
+            "artifact_id": aid,
+            "filename": h.get("filename", ""),
+            "document_type": h.get("document_type", ""),
+            "document_date": str(h.get("document_date") or ""),
+            "uploaded_at": str(h.get("uploaded_at") or ""),
+            "snippet": h.get("snippet") or "",
+            "score": norm_rank,
+            "source": "fts",
+        }
+
+    for s in sem_hits:
+        aid = s["artifact_id"]
+        sem_score = s.get("score", 0)
+        if aid in combined:
+            # boost: take max, tag as combined
+            existing = combined[aid]
+            combined[aid]["score"] = max(existing["score"], sem_score) + 0.1
+            combined[aid]["source"] = "combined"
+            if not existing.get("snippet") and s.get("snippet"):
+                combined[aid]["snippet"] = s["snippet"]
+        else:
+            combined[aid] = {
+                "artifact_id": aid,
+                "filename": s.get("filename", ""),
+                "document_type": s.get("document_type", ""),
+                "document_date": str(s.get("document_date") or ""),
+                "uploaded_at": "",
+                "snippet": s.get("snippet") or "",
+                "score": sem_score,
+                "source": "semantic",
+            }
+
+    ranked = sorted(combined.values(), key=lambda x: -x["score"])
+
+    preview = ranked[:4]
+    titles = [
+        {k: v for k, v in r.items() if k != "snippet"}
+        for r in ranked[4:16]
+    ]
+
+    # ── 5. eoh-llama answer grounded on top-4 ────────────────────────────────
     answer: Optional[str] = None
-    if with_answer and hits:
-        context_parts = []
-        for h in hits:
-            context_parts.append(
-                f"[{h['filename']} | {h.get('document_type','') or ''} | {str(h.get('document_date','') or '')}]\n"
+    if preview:
+        ctx_parts = []
+        for h in preview:
+            ctx_parts.append(
+                f"[{h['filename']} | {h.get('document_type','')} | {h.get('document_date','')}]\n"
                 f"{h.get('snippet','')}"
             )
-        context_text = "\n\n---\n\n".join(context_parts)
-        prompt = (
-            f"You are a medical assistant reviewing a patient's documents.\n"
-            f"Answer the question using ONLY the context below.\n\n"
+        context_text = "\n\n---\n\n".join(ctx_parts)
+        answer_prompt = (
+            f"You are a medical assistant reviewing a patient's uploaded documents.\n"
+            f"Answer the question using ONLY the context below.\n"
+            f"Be concise (2–4 sentences). If the answer is not in the context, say so.\n\n"
             f"QUESTION: {query}\n\n"
             f"CONTEXT:\n{context_text}\n\n"
-            f"Answer concisely (2-4 sentences):"
+            f"ANSWER:"
         )
         try:
             import httpx as _httpx
-            _ollama_base = __import__("os").getenv("OLLAMA_BASE_URL", "http://192.168.0.245:11434")
-            async with _httpx.AsyncClient(timeout=60) as http:
+            async with _httpx.AsyncClient(timeout=45) as http:
                 resp = await http.post(
                     f"{_ollama_base}/api/chat",
                     json={
                         "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "messages": [{"role": "user", "content": answer_prompt}],
                         "stream": False,
                         "options": {"num_ctx": 4096, "temperature": 0.1},
                     },
                 )
                 resp.raise_for_status()
-                data = resp.json()
-                answer = (data.get("message") or {}).get("content", "").strip()
+                answer = (resp.json().get("message") or {}).get("content", "").strip()
         except Exception as exc:
             logger.warning("recall answer generation failed: %s", exc)
-            answer = None
 
-    return {"hits": hits, "answer": answer}
+    return {
+        "preview": preview,
+        "titles": titles,
+        "answer": answer,
+        "keywords": keywords,
+    }
 
 
 # ---------------------------------------------------------------------------

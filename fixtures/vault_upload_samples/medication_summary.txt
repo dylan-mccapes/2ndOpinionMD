@@ -1,0 +1,47 @@
+PRESCRIPTION MEDICATION SUMMARY — MOCK DATA FOR 2OPMD VAULT TESTING
+====================================================================
+Generated: 2025-12-01
+Patient: SYNTHETIC-001 (fictional)
+Prescribing provider: Dr. A. Vasquez, MD (fictional)
+Pharmacy: MOCK PHARMACY, 123 Synthetic St.
+
+CURRENT ACTIVE MEDICATIONS
+--------------------------------------------------------------------
+1. Lisinopril 20 mg oral tablet
+   Sig: Take ONE tablet by mouth ONCE DAILY in the morning.
+   Indication: Hypertension
+   Qty: 30 tablets | Refills: 5
+   Rx#: MOCK-0001 | Start: 2025-11-14
+
+2. Atorvastatin 40 mg oral tablet
+   Sig: Take ONE tablet by mouth at BEDTIME.
+   Indication: Hyperlipidaemia (LDL-lowering)
+   Qty: 30 tablets | Refills: 11
+   Rx#: MOCK-0002 | Start: 2021-03-10
+
+3. Aspirin 81 mg enteric-coated tablet
+   Sig: Take ONE tablet by mouth ONCE DAILY with food.
+   Indication: Cardiovascular prophylaxis
+   Qty: 90 tablets | Refills: 3
+   Rx#: MOCK-0003 | Start: 2022-06-01
+
+4. Metoprolol succinate 25 mg ER tablet
+   Sig: Take ONE tablet by mouth ONCE DAILY.
+   Indication: Newly initiated — exertional angina symptom control pending
+   stress test results.
+   Qty: 30 tablets | Refills: 2
+   Rx#: MOCK-0004 | Start: 2025-11-14
+
+5. Cetirizine 10 mg oral tablet (OTC)
+   Sig: Take ONE tablet by mouth ONCE DAILY for seasonal allergy symptoms.
+   Qty: 30 tablets | Refills: OTC
+   Start: PRN
+
+ALLERGIES ON FILE
+  - Penicillin → rash (documented 2011)
+  - NKDA to contrast agents or statins
+
+DISCONTINUED / HISTORICAL
+  - Lisinopril 10 mg (dose increased 2025-11-14)
+
+Note: All data are fabricated for PTV artifact recall smoke tests.

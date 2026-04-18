@@ -1,0 +1,9 @@
+PERSONAL HEALTH DIARY — SYNTHETIC ENTRIES (MOCK)
+===============================================
+Not a real patient. For vault artifact upload testing only.
+
+2025-02-01: Energy 5/10; walked 20 minutes; slept ~7h.
+2025-02-02: Mild joint discomfort (left hand) — brief, resolved with rest in this stub.
+2025-02-03: Energy 6/10; no new medications in this fictional log.
+
+End of stub.

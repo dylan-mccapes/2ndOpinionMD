@@ -1,0 +1,48 @@
+CARDIOLOGY CONSULTATION NOTE — MOCK DATA FOR 2OPMD VAULT TESTING
+================================================================
+Date: 2025-11-14
+Patient: SYNTHETIC-001 (fictional)
+Ordering provider: Dr. A. Vasquez, MD (fictional)
+Consulting service: Cardiology
+
+CHIEF COMPLAINT
+Intermittent chest tightness and exertional dyspnea for 8 weeks.
+
+HISTORY OF PRESENT ILLNESS
+SYNTHETIC-001 is a 47-year-old patient who reports episodes of substernal
+chest tightness, rated 4/10, typically occurring during moderate exertion
+(climbing two flights of stairs). Episodes last 3–5 minutes and resolve
+with rest. No radiation to jaw or arm. Associated with mild dyspnea.
+No syncope, palpitations, or lower extremity oedema.
+
+PAST MEDICAL HISTORY
+- Hypertension (diagnosed 2019)
+- Hyperlipidaemia (diagnosed 2021)
+- No prior cardiac events
+
+MEDICATIONS (at time of consultation)
+- Lisinopril 10 mg daily
+- Atorvastatin 40 mg nightly
+- Low-dose aspirin 81 mg daily
+
+VITALS
+  BP   138/86 mmHg
+  HR   74 bpm, regular
+  SpO2 98% on room air
+  Wt   82 kg
+
+EXAMINATION
+Regular rate and rhythm. No murmurs, rubs, or gallops. Lungs clear to
+auscultation. No jugular venous distension. Peripheral pulses 2+ bilaterally.
+
+ECG (12-lead, resting)
+  Normal sinus rhythm. No ST changes at rest. No prior Q waves.
+
+ASSESSMENT & PLAN
+1. Atypical angina pectoris — intermediate pre-test probability.
+   - Order resting echocardiogram and exercise stress test.
+   - Continue current antiplatelet and statin therapy.
+2. Uncontrolled hypertension — uptitrate lisinopril to 20 mg daily.
+3. Follow-up in 3 weeks or sooner if symptoms worsen.
+
+Note: All data are fabricated for PTV artifact recall smoke tests.
