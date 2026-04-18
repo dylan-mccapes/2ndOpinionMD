@@ -2527,6 +2527,7 @@ Are there any patterns in my symptoms?"></textarea>
             const resultBox = document.getElementById('timeline-query-result');
             const answerEl = document.getElementById('timeline-query-answer');
             const metaEl = document.getElementById('timeline-query-meta');
+            if (!btn || !resultBox || !answerEl || !metaEl) return;
             btn.classList.add('loading');
             btn.disabled = true;
             resultBox.style.display = 'block';
@@ -2551,50 +2552,6 @@ Are there any patterns in my symptoms?"></textarea>
                 addReceipt('Timeline query: ' + query.substring(0, 40));
             } catch (e) {
                 answerEl.textContent = e.message || 'Network error';
-            } finally {
-                btn.classList.remove('loading');
-                btn.disabled = false;
-            }
-        }
-
-            try {
-                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q: query, limit: 8, ctx_k: 16, with_llm: 1, llm_mode: 'chunk', use_valyu: 0, use_ethos: 0 })
-                });
-                if (!r.ok) throw new Error(`API error: ${r.status}`);
-                const reader = r.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '', answer = '';
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (const line of lines) {
-                        if (!line.startsWith('data:')) continue;
-                        try {
-                            const data = JSON.parse(line.substring(5).trim());
-                            if (data.text) {
-                                answer += data.text;
-                                document.getElementById('query-results-content').innerHTML = formatMarkdown(answer);
-                            }
-                            if (data.type === 'llm_done' || data.done) {
-                                if (data.text) { answer = data.text; document.getElementById('query-results-content').innerHTML = formatMarkdown(answer); }
-                            }
-                        } catch (_) {}
-                    }
-                }
-                document.getElementById('query-confidence-badge').textContent = 'Complete';
-                queryCount++;
-                document.getElementById('stat-queries').textContent = queryCount;
-                addReceipt('Timeline query: ' + query.substring(0, 40) + '...');
-                updateTransparency('t-external', true, 'External API call');
-            } catch (e) {
-                document.getElementById('query-results-content').innerHTML = '<div class="results-error">' + e.message + '</div>';
             } finally {
                 btn.classList.remove('loading');
                 btn.disabled = false;
