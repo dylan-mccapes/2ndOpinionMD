@@ -967,10 +967,10 @@
                 Epistemic vault for patient-owned medical records.
             </div>
             <div class="vault-actions">
-                <button class="vault-btn vault-btn-primary" id="vault-initiate">
+                <button type="button" class="vault-btn vault-btn-primary" id="vault-initiate">
                     Start Session
                 </button>
-                <button class="vault-btn vault-btn-secondary" id="vault-onboard">
+                <button type="button" class="vault-btn vault-btn-secondary" id="vault-onboard">
                     System Onboarding
                 </button>
             </div>
@@ -1713,8 +1713,8 @@ Are there any patterns in my symptoms?"></textarea>
             </div>
             <div id="onboarding-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="onboarding-submit">Submit</button>
-                <button class="btn" id="onboarding-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="onboarding-submit">Submit</button>
+                <button type="button" class="btn" id="onboarding-cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -1740,8 +1740,8 @@ Are there any patterns in my symptoms?"></textarea>
             </div>
             <div id="session-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="session-submit">Initiate Session</button>
-                <button class="btn" id="session-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="session-submit">Initiate Session</button>
+                <button type="button" class="btn" id="session-cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -1753,7 +1753,7 @@ Are there any patterns in my symptoms?"></textarea>
             <p id="verification-status">Verifying...</p>
             <div id="verification-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn" id="verification-dismiss">Dismiss</button>
+                <button type="button" class="btn" id="verification-dismiss">Dismiss</button>
             </div>
         </div>
     </div>
@@ -1983,6 +1983,25 @@ Are there any patterns in my symptoms?"></textarea>
                 localStorage.removeItem('2opmd_timeline_id');
             }
             updateUI();
+        }
+
+        /**
+         * After DB resets (e.g. clear-users), the browser may still hold a session token
+         * while the sessions / users rows are gone. Re-open the vault landing in that case.
+         */
+        async function validateStoredVaultSession() {
+            const tok = sessionToken;
+            if (!tok) return false;
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/artifacts/list`, {
+                    headers: { 'Authorization': `Bearer ${tok}` }
+                });
+                if (r.status === 401) {
+                    setSession(null, '');
+                    return true;
+                }
+            } catch (_) {}
+            return false;
         }
 
         function updateUI() {
@@ -2776,6 +2795,7 @@ Are there any patterns in my symptoms?"></textarea>
             const zone = document.getElementById('doc-drop-zone');
             const input = document.getElementById('doc-file-input');
             const submitBtn = document.getElementById('doc-submit-btn');
+            if (!zone || !input || !submitBtn) return;
 
             zone.addEventListener('click', () => input.click());
             zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
@@ -2804,6 +2824,7 @@ Are there any patterns in my symptoms?"></textarea>
             const zone = document.getElementById('eohd-drop-zone');
             const input = document.getElementById('eohd-file-input');
             const submitBtn = document.getElementById('submit-eohd');
+            if (!zone || !input || !submitBtn) return;
 
             zone.addEventListener('click', () => input.click());
             input.addEventListener('change', e => {
@@ -3008,15 +3029,22 @@ Are there any patterns in my symptoms?"></textarea>
 
         // === SEND TIMELINE ===
         function setupSendTimeline() {
-            document.getElementById('send-scope').addEventListener('change', e => {
-                document.getElementById('send-custom-dates').style.display = e.target.value === 'custom' ? 'block' : 'none';
+            const sendScope = document.getElementById('send-scope');
+            const sendCustomDates = document.getElementById('send-custom-dates');
+            const sendEmailBtn = document.getElementById('send-email-btn');
+            const sendEmailField = document.getElementById('send-email-field');
+            const sendGenerateBtn = document.getElementById('send-generate-btn');
+            if (!sendScope || !sendCustomDates || !sendEmailBtn || !sendEmailField || !sendGenerateBtn) return;
+
+            sendScope.addEventListener('change', e => {
+                sendCustomDates.style.display = e.target.value === 'custom' ? 'block' : 'none';
             });
 
-            document.getElementById('send-email-btn').addEventListener('click', () => {
-                document.getElementById('send-email-field').style.display = document.getElementById('send-email-field').style.display === 'none' ? 'block' : 'none';
+            sendEmailBtn.addEventListener('click', () => {
+                sendEmailField.style.display = sendEmailField.style.display === 'none' ? 'block' : 'none';
             });
 
-            document.getElementById('send-generate-btn').addEventListener('click', () => {
+            sendGenerateBtn.addEventListener('click', () => {
                 const format = document.getElementById('send-format').value;
                 const scope = document.getElementById('send-scope').value;
                 showMsg('send-msg', `Export generation requested (${format}, ${scope}). This feature will connect to the backend export API.`, false);
@@ -3054,97 +3082,102 @@ Are there any patterns in my symptoms?"></textarea>
         }
 
         // === INITIALIZATION ===
-        function init() {
-            // Check for existing session
+        void (async function boot() {
+            const _bind = (id, ev, fn) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener(ev, fn);
+                else console.warn('[2OPMD] Missing element #' + id + ' — skipped listener');
+            };
+
+            // Vault + auth modals + close session first (always usable)
+            _bind('vault-initiate', 'click', () => showModal('modal-session'));
+            _bind('vault-onboard', 'click', () => showModal('modal-onboarding'));
+            _bind('onboarding-submit', 'click', handleOnboarding);
+            _bind('onboarding-cancel', 'click', () => hideModal('modal-onboarding'));
+            _bind('session-submit', 'click', handleInitiateSession);
+            _bind('session-cancel', 'click', () => hideModal('modal-session'));
+            _bind('verification-dismiss', 'click', () => hideModal('modal-verification'));
+            _bind('portal-close-session', 'click', handleCloseSession);
+
+            // Drop stale session tokens after DB resets (e.g. clear-users) before first paint
+            await validateStoredVaultSession();
+
             updateUI();
             checkVerificationToken();
 
-            // Vault landing buttons
-            document.getElementById('vault-initiate').addEventListener('click', () => showModal('modal-session'));
-            document.getElementById('vault-onboard').addEventListener('click', () => showModal('modal-onboarding'));
-
-            // Auth modals
-            document.getElementById('onboarding-submit').addEventListener('click', handleOnboarding);
-            document.getElementById('onboarding-cancel').addEventListener('click', () => hideModal('modal-onboarding'));
-            document.getElementById('session-submit').addEventListener('click', handleInitiateSession);
-            document.getElementById('session-cancel').addEventListener('click', () => hideModal('modal-session'));
-            document.getElementById('verification-dismiss').addEventListener('click', () => hideModal('modal-verification'));
-
-            // Portal close session
-            document.getElementById('portal-close-session').addEventListener('click', handleCloseSession);
-
-            // Navigation
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', () => switchView(item.dataset.view));
-            });
-
-            // Clinical mode buttons
-            document.querySelectorAll('.mode-btn').forEach(btn => {
-                btn.addEventListener('click', () => switchClinicalMode(btn.dataset.clinicalMode));
-            });
-
-            // Clinical console submit buttons
-            document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
-            document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
-            document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
-            document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
-
-            // Timeline
-            document.getElementById('timeline-query-btn').addEventListener('click', handleQueryTimeline);
-
-            // Query Timeline (legacy view-query panel)
-            const legacyQueryBtn = document.getElementById('query-submit-btn');
-            if (legacyQueryBtn) {
-                legacyQueryBtn.addEventListener('click', async () => {
-                    const qEl = document.getElementById('query-input');
-                    if (qEl) {
-                        document.getElementById('timeline-query-input') && (document.getElementById('timeline-query-input').value = qEl.value);
-                    }
-                    await handleQueryTimeline();
-                    // also show results in old panel
-                    const area = document.getElementById('query-results-area');
-                    if (area) area.style.display = 'block';
+            try {
+                // Navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', () => switchView(item.dataset.view));
                 });
+
+                // Clinical mode buttons
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.addEventListener('click', () => switchClinicalMode(btn.dataset.clinicalMode));
+                });
+
+                // Clinical console submit buttons
+                _bind('submit-ask', 'click', handleAskSubmit);
+                _bind('submit-coding', 'click', handleCodingSubmit);
+                _bind('submit-eoh', 'click', handleEohSubmit);
+                _bind('submit-eohd', 'click', handleEohdSubmit);
+
+                // Timeline
+                _bind('timeline-query-btn', 'click', handleQueryTimeline);
+
+                // Query Timeline (legacy view-query panel)
+                const legacyQueryBtn = document.getElementById('query-submit-btn');
+                if (legacyQueryBtn) {
+                    legacyQueryBtn.addEventListener('click', async () => {
+                        const qEl = document.getElementById('query-input');
+                        if (qEl) {
+                            const tq = document.getElementById('timeline-query-input');
+                            if (tq) tq.value = qEl.value;
+                        }
+                        await handleQueryTimeline();
+                        const area = document.getElementById('query-results-area');
+                        if (area) area.style.display = 'block';
+                    });
+                }
+
+                // Journal
+                _bind('journal-save-btn', 'click', handleJournalSave);
+                _bind('journal-query-btn', 'click', handleJournalQuery);
+                _bind('journal-query-input', 'keypress', e => { if (e.key === 'Enter') handleJournalQuery(); });
+                _bind('journal-refresh-btn', 'click', loadJournalEntries);
+
+                // Documents
+                setupDocDropZone();
+                setupTimelinePdfDropZone();
+                setupEohdDropZone();
+                _bind('doc-submit-btn', 'click', handleDocSubmitSSE);
+                const mockPtvBtn = document.getElementById('mock-ptv-events-btn');
+                if (mockPtvBtn) mockPtvBtn.addEventListener('click', handleMockPtvEvents);
+                _bind('doc-search-btn', 'click', handleDocSearch);
+                _bind('doc-search-input', 'keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
+
+                _bind('modal-doc-close', 'click', () => hideModal('modal-doc-viewer'));
+
+                // Risk
+                _bind('run-risk-btn', 'click', handleRunRisk);
+
+                // Send Timeline
+                setupSendTimeline();
+
+                // Export Receipts
+                _bind('export-receipts-btn', 'click', exportReceipts);
+
+                // Update header timestamp
+                setInterval(() => {
+                    const el = document.getElementById('header-timestamp');
+                    if (el) el.textContent = ts();
+                }, 1000);
+
+                addReceipt('2OPMD initialized — java_kali');
+            } catch (err) {
+                console.error('[2OPMD] Portal wiring failed:', err);
             }
-
-            // Journal
-            document.getElementById('journal-save-btn').addEventListener('click', handleJournalSave);
-            document.getElementById('journal-query-btn').addEventListener('click', handleJournalQuery);
-            document.getElementById('journal-query-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleJournalQuery(); });
-            document.getElementById('journal-refresh-btn').addEventListener('click', loadJournalEntries);
-
-            // Documents
-            setupDocDropZone();
-            setupTimelinePdfDropZone();
-            setupEohdDropZone();
-            document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmitSSE);
-            const mockPtvBtn = document.getElementById('mock-ptv-events-btn');
-            if (mockPtvBtn) mockPtvBtn.addEventListener('click', handleMockPtvEvents);
-            document.getElementById('doc-search-btn').addEventListener('click', handleDocSearch);
-            document.getElementById('doc-search-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
-
-            // Document viewer modal close
-            document.getElementById('modal-doc-close').addEventListener('click', () => hideModal('modal-doc-viewer'));
-
-            // Risk
-            document.getElementById('run-risk-btn').addEventListener('click', handleRunRisk);
-
-            // Send Timeline
-            setupSendTimeline();
-
-            // Export Receipts
-            document.getElementById('export-receipts-btn').addEventListener('click', exportReceipts);
-
-            // Update header timestamp
-            setInterval(() => {
-                document.getElementById('header-timestamp').textContent = ts();
-            }, 1000);
-
-            addReceipt('2OPMD initialized — java_kali');
-        }
-
-        // Run
-        init();
+        })();
     })();
     </script>
 </body>
