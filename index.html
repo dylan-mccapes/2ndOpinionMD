@@ -1984,6 +1984,10 @@ Are there any patterns in my symptoms?"></textarea>
             addReceipt('Clinical mode: ' + mode.toUpperCase());
         }
 
+        // Inline onclick handlers (Quick Actions) resolve on window — IIFE hides locals otherwise.
+        window.switchView = switchView;
+        window.switchClinicalMode = switchClinicalMode;
+
         // === AUTH HANDLERS ===
         async function handleOnboarding() {
             const email = document.getElementById('onboarding-email').value.trim();
