@@ -77,6 +77,8 @@
            VAULT LANDING PAGE (logged out)
            ===================================================== */
         #vault-landing {
+            position: relative;
+            z-index: 50;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -174,9 +176,13 @@
             height: 100vh;
             grid-template-columns: 240px 1fr;
             grid-template-rows: 1fr;
+            pointer-events: none;
         }
 
-        #portal-app.active { display: grid; }
+        #portal-app.active {
+            display: grid;
+            pointer-events: auto;
+        }
         #vault-landing.hidden { display: none; }
 
         /* === SIDEBAR === */
@@ -372,6 +378,9 @@
 
         .badge-blue { background: var(--color-accent-soft); color: var(--color-accent); }
         .badge-green { background: var(--color-success-soft); color: var(--color-success); }
+        .badge-gray { background: #f1f5f9; color: #64748b; }
+        .badge-yellow { background: #fef9c3; color: #92400e; }
+        .badge-red { background: var(--color-error-soft); color: #991b1b; }
         .badge-yellow { background: var(--color-warning-soft); color: var(--color-warning); }
         .badge-red { background: var(--color-error-soft); color: var(--color-error); }
         .badge-purple { background: var(--color-purple-soft); color: var(--color-purple); }
@@ -759,6 +768,39 @@
             border-left-color: var(--color-error);
         }
 
+        .modal-msg.success {
+            background: var(--color-success-soft);
+            color: #065f46;
+            border-left-color: var(--color-success);
+        }
+
+        .doc-uploaded-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .doc-uploaded-item {
+            padding: 10px 12px;
+            background: var(--color-bg);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            border: 1px solid var(--color-border);
+        }
+
+        .doc-uploaded-item-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--color-text);
+        }
+
+        .doc-uploaded-item-meta {
+            font-size: 12px;
+            color: var(--color-text-dim);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
         .modal-actions {
             display: flex;
             gap: 10px;
@@ -931,10 +973,10 @@
                 Epistemic vault for patient-owned medical records.
             </div>
             <div class="vault-actions">
-                <button class="vault-btn vault-btn-primary" id="vault-initiate">
+                <button type="button" class="vault-btn vault-btn-primary" id="vault-initiate" onclick="if(window.__2opmdOpenVaultModal)window.__2opmdOpenVaultModal('modal-session')">
                     Start Session
                 </button>
-                <button class="vault-btn vault-btn-secondary" id="vault-onboard">
+                <button type="button" class="vault-btn vault-btn-secondary" id="vault-onboard" onclick="if(window.__2opmdOpenVaultModal)window.__2opmdOpenVaultModal('modal-onboarding')">
                     System Onboarding
                 </button>
             </div>
@@ -1115,34 +1157,59 @@
                         </div>
                         <div class="card">
                             <div class="card-header">
-                                <div class="card-title">Initialize Timeline</div>
-                                <div class="card-badge badge-purple">New</div>
+                                <div class="card-title">Upload Full Timeline PDF</div>
+                                <div class="card-badge badge-purple">eoh-llama 8B</div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Timeline Name <span class="required">*</span></label>
-                                <input type="text" class="form-input" id="timeline-name-input" placeholder="My Medical History">
+                            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px;">
+                                Upload a comprehensive medical records PDF for deep ingestion. Events are extracted and merged into your timeline graph.
+                            </p>
+                            <div class="drop-zone" id="timeline-pdf-drop">
+                                <div class="drop-zone-icon">&#128196;</div>
+                                <div class="drop-zone-text">Drop PDF here or click to browse</div>
+                                <div class="drop-zone-hint">PDF only — comprehensive medical history</div>
                             </div>
-                            <div class="form-group">
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary);">
-                                    <input type="checkbox" id="timeline-anon-consent">
-                                    I consent to anonymized data sharing for research
-                                </label>
+                            <input type="file" id="timeline-pdf-input" style="display: none;" accept=".pdf">
+                            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+                                <button class="btn btn-primary" id="timeline-pdf-submit-btn" disabled>Ingest PDF</button>
+                                <span id="timeline-pdf-filename" style="font-size: 12px; color: var(--color-text-dim);"></span>
                             </div>
-                            <button class="btn btn-primary" id="initialize-timeline-btn">Initialize Timeline</button>
-                            <div id="timeline-init-msg" style="display: none;" class="modal-msg"></div>
+                            <div id="timeline-pdf-progress" style="margin-top: 12px; display: none;">
+                                <div id="timeline-pdf-progress-msgs" style="font-size: 12px; color: var(--color-text-secondary); max-height: 120px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Timeline Query -->
+                    <div class="card" style="margin-bottom: 20px;">
+                        <div class="card-header">
+                            <div class="card-title">Ask Your Timeline</div>
+                            <div class="card-badge badge-blue">eoh-llama 8B · BFS</div>
+                        </div>
+                        <div class="notice notice-info" style="margin-bottom: 12px;">
+                            Ask questions about your medical history. The local eoh-llama 8B model searches up to 20 events by keyword, then answers.
+                        </div>
+                        <div class="form-group">
+                            <textarea class="form-textarea" id="timeline-query-input" rows="3" placeholder="When was my last lab result? What medications have I been prescribed?"></textarea>
+                        </div>
+                        <button class="btn btn-primary" id="timeline-query-btn">Ask eoh-llama</button>
+                        <div id="timeline-query-result" style="margin-top: 16px; display: none;">
+                            <div class="card" style="background: var(--color-surface-dim);">
+                                <div id="timeline-query-answer" style="font-size: 14px; line-height: 1.7; color: var(--color-text-primary);"></div>
+                                <div id="timeline-query-meta" style="margin-top: 8px; font-size: 12px; color: var(--color-text-dim);"></div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title">Timeline Events</div>
-                            <button class="btn btn-sm" id="add-timeline-event-btn">+ Add Event</button>
+                            <div class="card-badge badge-gray" id="timeline-events-count">0 events</div>
                         </div>
                         <div id="timeline-events-container">
                             <div class="empty-state">
                                 <div class="empty-state-icon">&#128197;</div>
                                 <div class="empty-state-title">No timeline events yet</div>
-                                <div class="empty-state-desc">Submit documents or add events to build your medical timeline.</div>
+                                <div class="empty-state-desc">Upload documents to build your medical timeline.</div>
                             </div>
                         </div>
                     </div>
@@ -1152,19 +1219,21 @@
                      VIEW: DOCUMENTS
                      ========================================== -->
                 <div class="view-panel" id="view-documents">
+                    <!-- Upload card -->
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title">Submit Documents</div>
                             <div class="card-badge badge-blue">Upload</div>
                         </div>
                         <div class="notice notice-info">
-                            Upload medical records to your timeline. Supported: PDF, images, text files.<br>
-                            Documents are processed, embedded, and stored securely.
+                            <strong>Vault upload with eoh-llama 8B extraction:</strong> PDF, TXT, CSV, JSON files are
+                            ingested by the local eoh-llama 8B model — events are extracted and added to your timeline graph.
+                            Other formats (images, DOCX) are stored as lightweight artifact nodes. Max 500&nbsp;MB per file.
                         </div>
                         <div class="drop-zone" id="doc-drop-zone">
                             <div class="drop-zone-icon">&#128196;</div>
                             <div class="drop-zone-text">Drop files here or click to browse</div>
-                            <div class="drop-zone-hint">PDF, JPEG, PNG, TXT — Files over 100 MB upload via direct link</div>
+                            <div class="drop-zone-hint">PDF, TXT, CSV, JSON — Up to 20 files per upload</div>
                         </div>
                         <input type="file" id="doc-file-input" style="display: none;" multiple accept=".pdf,.jpg,.jpeg,.png,.txt,.csv,.hl7">
 
@@ -1191,26 +1260,68 @@
                             </div>
                             <button class="btn btn-primary" id="doc-submit-btn" disabled>Submit Documents</button>
                             <div id="doc-submit-msg" style="display: none;" class="modal-msg"></div>
+                            <div id="doc-uploaded-section" style="margin-top: 20px; display: none;">
+                                <label class="form-label">Uploaded to your vault</label>
+                                <p style="font-size: 12px; color: var(--color-text-dim); margin: 0 0 10px;">
+                                    Stored as lightweight <code>patient_artifact</code> nodes on your timeline (newest first).
+                                </p>
+                                <ul id="doc-uploaded-titles" class="doc-uploaded-list" aria-live="polite"></ul>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="card">
+                    <!-- My Documents list -->
+                    <div class="card" style="margin-top: 16px;">
                         <div class="card-header">
-                            <div class="card-title">Access Documents</div>
-                            <div class="card-badge badge-green">Top 4</div>
+                            <div class="card-title">My Documents</div>
+                            <button class="btn btn-sm" id="refresh-artifacts-btn" onclick="loadArtifactList()">&#8635; Refresh</button>
+                        </div>
+                        <div id="artifact-list-container">
+                            <div class="empty-state" style="padding: 24px;">
+                                <div class="empty-state-icon">&#128193;</div>
+                                <div class="empty-state-title">No documents stored yet</div>
+                                <div class="empty-state-desc">Upload documents above to store them in your secure vault.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recall / Ask Documents -->
+                    <div class="card" style="margin-top: 16px;">
+                        <div class="card-header">
+                            <div class="card-title">Ask My Documents</div>
+                            <div class="card-badge badge-green">eoh-llama recall</div>
+                        </div>
+                        <div class="notice notice-info" style="margin-bottom: 12px;">
+                            Search your uploaded documents by keyword. The local eoh-llama 8B model returns the top matching documents with a brief answer. Click any result to read the full document.
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Search Documents</label>
                             <div style="display: flex; gap: 8px;">
-                                <input type="text" class="form-input" id="doc-search-input" placeholder="e.g. blood pressure readings, last MRI report">
+                                <input type="text" class="form-input" id="doc-search-input" placeholder="e.g. blood pressure, MRI, creatinine">
                                 <button class="btn btn-primary" id="doc-search-btn">Search</button>
+                            </div>
+                        </div>
+                        <div id="doc-recall-answer" style="display:none; margin-bottom: 12px;">
+                            <div class="card" style="background: var(--color-surface-dim);">
+                                <div id="doc-recall-answer-text" style="font-size: 14px; line-height: 1.7;"></div>
                             </div>
                         </div>
                         <div id="doc-search-results">
                             <div class="empty-state" style="padding: 24px;">
-                                <div class="empty-state-desc">Search returns the top 4 most relevant documents with confidence scores.</div>
+                                <div class="empty-state-desc">Search returns top matching documents from your vault with an AI-generated answer.</div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 16px;">
+                        <div class="card-header">
+                            <div class="card-title">Dev — mock PTV timeline</div>
+                            <div class="card-badge badge-blue">No files</div>
+                        </div>
+                        <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px;">
+                            Inserts sample <code>mock_timeline_event</code> nodes into your graph for quick testing (same PTV as journal mirrors).
+                        </p>
+                        <button type="button" class="btn btn-sm" id="mock-ptv-events-btn">Insert sample events</button>
+                        <div id="mock-ptv-msg" style="display: none;" class="modal-msg"></div>
                     </div>
                 </div>
 
@@ -1261,11 +1372,11 @@ Are there any patterns in my symptoms?"></textarea>
                     <div class="clinical-mode active" data-clinical-mode="ask">
                         <div class="card">
                             <div class="card-header">
-                                <div class="card-title">Clinical Q&A</div>
-                                <div class="card-badge badge-blue">Read-Only</div>
+                                <div class="card-title">Clinical Guidelines Q&amp;A</div>
+                                <div class="card-badge badge-blue">Guidelines Only</div>
                             </div>
                             <div class="notice notice-info">
-                                Read-only clinical Q&A. No state mutation. No timeline. Each query is independent.
+                                <strong>Guidelines Q&amp;A only.</strong> This console answers questions based on clinical guidelines and medical literature. It does <em>not</em> access your personal timeline or uploaded documents. For personal document queries, use the <strong>Documents → Ask My Documents</strong> section. For timeline queries, use the <strong>Timeline → Ask Your Timeline</strong> section.
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Clinical Question <span class="required">*</span></label>
@@ -1401,6 +1512,10 @@ Are there any patterns in my symptoms?"></textarea>
                             <div class="form-group">
                                 <label class="form-label">Journal Text <span class="required">*</span></label>
                                 <textarea class="form-textarea" id="journal-text-input" rows="10" placeholder="How are you feeling today? What's on your mind? Write freely."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">FORWARD PRO JSON (optional)</label>
+                                <textarea class="form-textarea" id="journal-pro-json" rows="3" placeholder='e.g. [{"instrument":"PROMIS","domain":"Pain","value":42}]'></textarea>
                             </div>
                             <button class="btn btn-primary" id="journal-save-btn">Save Entry</button>
                             <div id="journal-save-msg" style="display: none;" class="modal-msg"></div>
@@ -1571,6 +1686,18 @@ Are there any patterns in my symptoms?"></textarea>
          ===================================================== -->
 
     <!-- System Onboarding Modal -->
+    <!-- Document Viewer Modal -->
+    <div id="modal-doc-viewer" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 760px; width: 95vw;">
+            <div class="modal-title" id="modal-doc-title">Document</div>
+            <div class="modal-subtitle" id="modal-doc-meta" style="font-size: 12px; color: var(--color-text-dim);"></div>
+            <div id="modal-doc-content" style="max-height: 60vh; overflow-y: auto; background: var(--color-surface-dim); border-radius: 6px; padding: 16px; margin-top: 12px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;"></div>
+            <div class="modal-actions">
+                <button class="btn" id="modal-doc-close">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-onboarding" class="modal-backdrop">
         <div class="modal-box">
             <div class="modal-title">System Onboarding</div>
@@ -1592,8 +1719,8 @@ Are there any patterns in my symptoms?"></textarea>
             </div>
             <div id="onboarding-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="onboarding-submit">Submit</button>
-                <button class="btn" id="onboarding-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="onboarding-submit">Submit</button>
+                <button type="button" class="btn" id="onboarding-cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -1611,10 +1738,16 @@ Are there any patterns in my symptoms?"></textarea>
                 <label class="form-label">Password <span class="required">*</span></label>
                 <input type="password" class="form-input" id="session-password" placeholder="Your password">
             </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer;">
+                    <input type="checkbox" id="session-stay-vault" checked>
+                    Stay in Epistemic Vault (this page) after session
+                </label>
+            </div>
             <div id="session-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="session-submit">Initiate Session</button>
-                <button class="btn" id="session-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="session-submit">Initiate Session</button>
+                <button type="button" class="btn" id="session-cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -1626,7 +1759,7 @@ Are there any patterns in my symptoms?"></textarea>
             <p id="verification-status">Verifying...</p>
             <div id="verification-msg" style="display: none;" class="modal-msg"></div>
             <div class="modal-actions">
-                <button class="btn" id="verification-dismiss">Dismiss</button>
+                <button type="button" class="btn" id="verification-dismiss">Dismiss</button>
             </div>
         </div>
     </div>
@@ -1672,9 +1805,17 @@ Are there any patterns in my symptoms?"></textarea>
         'use strict';
 
         // === CONFIG ===
-        const API_BASE = window.location.hostname === 'localhost' && window.location.port === '8080'
-            ? 'http://localhost:8000'
-            : (window.location.hostname === '2ndopinionmd.ai' ? '' : 'http://localhost:8000');
+        // Same-origin '' when nginx (or any proxy) serves /api to FastAPI. Do not default to
+        // localhost:8000 for www.* or other prod hostnames — that breaks validation fetches
+        // (mixed content, wrong host) and can leave the vault UI wedged.
+        const API_BASE = (function () {
+            const h = (window.location.hostname || '').toLowerCase();
+            const p = window.location.port || '';
+            if (h === 'localhost' && p === '8080') return 'http://localhost:8000';
+            if (h === '2ndopinionmd.ai' || h.endsWith('.2ndopinionmd.ai')) return '';
+            if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8000';
+            return '';
+        })();
 
         const UPLOAD_BASE = 'http://upload.2ndopinionmd.ai:8000';
         const CLOUDFLARE_MAX_BYTES = 100 * 1024 * 1024;
@@ -1717,12 +1858,14 @@ Are there any patterns in my symptoms?"></textarea>
             }
         }
 
-        function showMsg(id, text, isError) {
+        function showMsg(id, text, isError, asSuccess) {
             const el = document.getElementById(id);
             if (!el) return;
             el.textContent = text;
             el.style.display = 'block';
-            el.classList.toggle('error', !!isError);
+            el.classList.remove('error', 'success');
+            if (isError) el.classList.add('error');
+            else if (asSuccess) el.classList.add('success');
         }
 
         function clearMsg(id) {
@@ -1730,7 +1873,7 @@ Are there any patterns in my symptoms?"></textarea>
             if (!el) return;
             el.textContent = '';
             el.style.display = 'none';
-            el.classList.remove('error');
+            el.classList.remove('error', 'success');
         }
 
         function showModal(id) {
@@ -1742,6 +1885,16 @@ Are there any patterns in my symptoms?"></textarea>
             const el = document.getElementById(id);
             if (el) el.classList.remove('visible');
         }
+
+        /** Inline onclick on vault buttons uses this so modals open even if async boot() stalls. */
+        window.__2opmdOpenVaultModal = function (id) {
+            try {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('visible');
+            } catch (e) {
+                console.error('[2OPMD] __2opmdOpenVaultModal', id, e);
+            }
+        };
 
         function escapeHtml(s) {
             const d = document.createElement('div');
@@ -1773,8 +1926,70 @@ Are there any patterns in my symptoms?"></textarea>
             if (label) el.parentElement.lastChild.textContent = label;
         }
 
+        function docTypeLabel(code) {
+            const m = { lab: 'Lab results', imaging: 'Imaging report', note: 'Clinical note', prescription: 'Prescription', other: 'Other' };
+            return m[code] || code || 'Document';
+        }
+
+        function resetUploadedArtifactsUI() {
+            const ul = document.getElementById('doc-uploaded-titles');
+            const wrap = document.getElementById('doc-uploaded-section');
+            if (ul) ul.innerHTML = '';
+            if (wrap) wrap.style.display = 'none';
+            clearMsg('doc-submit-msg');
+        }
+
+        function appendUploadedArtifactRow({ title, filename, documentType, documentDate, eventId, badge }) {
+            const ul = document.getElementById('doc-uploaded-titles');
+            const wrap = document.getElementById('doc-uploaded-section');
+            if (!ul || !wrap) return null;
+            const meta = [];
+            if (filename && filename !== title) meta.push(filename);
+            meta.push(docTypeLabel(documentType));
+            if (documentDate) meta.push(documentDate);
+            if (eventId) meta.push('id: ' + String(eventId).slice(0, 18) + (String(eventId).length > 18 ? '…' : ''));
+            const rowId = 'vault-row-' + Math.random().toString(36).slice(2, 10);
+            const badgeClass = badge === 'processing' ? 'badge-blue'
+                             : badge === 'extracted'   ? 'badge-green'
+                             : badge === 'stored'      ? 'badge-gray'
+                             : badge === 'duplicate'   ? 'badge-yellow'
+                             : badge === 'error'       ? 'badge-red'
+                             : 'badge-blue';
+            const badgeText = badge === 'processing' ? 'Processing…'
+                            : badge === 'extracted'   ? 'Extracted'
+                            : badge === 'stored'      ? 'Stored'
+                            : badge === 'duplicate'   ? 'Duplicate'
+                            : badge === 'error'       ? 'Error'
+                            : 'Pending';
+            const li = document.createElement('li');
+            li.className = 'doc-uploaded-item';
+            li.id = rowId;
+            li.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                + '<div class="doc-uploaded-item-title">' + escapeHtml(title) + '</div>'
+                + '<span id="' + rowId + '-badge" class="card-badge ' + badgeClass + '" style="white-space:nowrap;flex-shrink:0;margin-left:8px;">' + escapeHtml(badgeText) + '</span>'
+                + '</div>'
+                + '<div class="doc-uploaded-item-meta">' + escapeHtml(meta.join(' · ')) + '</div>';
+            ul.prepend(li);
+            wrap.style.display = 'block';
+            return rowId;
+        }
+
+        function setArtifactRowBadge(rowId, badge, label) {
+            const el = document.getElementById(rowId + '-badge');
+            if (!el) return;
+            el.className = 'card-badge ' + (
+                badge === 'extracted'  ? 'badge-green'
+              : badge === 'stored'     ? 'badge-gray'
+              : badge === 'duplicate'  ? 'badge-yellow'
+              : badge === 'error'      ? 'badge-red'
+              : 'badge-blue'
+            );
+            el.textContent = label || badge;
+        }
+
         // === SESSION MANAGEMENT ===
         function setSession(token, email) {
+            resetUploadedArtifactsUI();
             sessionToken = token;
             sessionEmail = email || '';
             if (token) {
@@ -1794,6 +2009,32 @@ Are there any patterns in my symptoms?"></textarea>
             updateUI();
         }
 
+        /**
+         * After DB resets (e.g. clear-users), the browser may still hold a session token
+         * while the sessions / users rows are gone. Re-open the vault landing in that case.
+         */
+        async function validateStoredVaultSession() {
+            const tok = sessionToken;
+            if (!tok) return false;
+            const ctl = new AbortController();
+            const t = setTimeout(function () { try { ctl.abort(); } catch (_) {} }, 6000);
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/artifacts/list`, {
+                    headers: { 'Authorization': 'Bearer ' + tok },
+                    signal: ctl.signal,
+                });
+                if (r.status === 401) {
+                    setSession(null, '');
+                    return true;
+                }
+            } catch (_) {
+                /* network / timeout / mixed content — do not clear token */
+            } finally {
+                clearTimeout(t);
+            }
+            return false;
+        }
+
         function updateUI() {
             const landing = document.getElementById('vault-landing');
             const portal = document.getElementById('portal-app');
@@ -1804,6 +2045,11 @@ Are there any patterns in my symptoms?"></textarea>
                 document.getElementById('sidebar-operator-email').textContent = sessionEmail || 'Operator';
                 document.getElementById('header-timestamp').textContent = ts();
                 addReceipt('Portal active');
+                // Load data for document and timeline tabs
+                setTimeout(() => {
+                    loadArtifactList();
+                    loadTimelineEvents();
+                }, 200);
             } else {
                 landing.classList.remove('hidden');
                 portal.classList.remove('active');
@@ -1837,6 +2083,8 @@ Are there any patterns in my symptoms?"></textarea>
 
             // Load data for specific views
             if (view === 'journal') loadJournalEntries();
+            if (view === 'documents') loadArtifactList();
+            if (view === 'timeline') loadTimelineEvents();
         }
 
         // === CLINICAL MODE SWITCHING ===
@@ -1854,6 +2102,10 @@ Are there any patterns in my symptoms?"></textarea>
             addReceipt('Clinical mode: ' + mode.toUpperCase());
         }
 
+        // Inline onclick handlers (Quick Actions) resolve on window — IIFE hides locals otherwise.
+        window.switchView = switchView;
+        window.switchClinicalMode = switchClinicalMode;
+
         // === AUTH HANDLERS ===
         async function handleOnboarding() {
             const email = document.getElementById('onboarding-email').value.trim();
@@ -1863,10 +2115,11 @@ Are there any patterns in my symptoms?"></textarea>
             clearMsg('onboarding-msg');
 
             try {
+                const user_type = operator === 'clinician' ? 'doctor' : 'patient';
                 const r = await fetch(`${API_BASE}/api/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, operator_type: operator })
+                    body: JSON.stringify({ email, password, user_type, full_name: email.split('@')[0] || 'Vault user' })
                 });
                 const data = await r.json().catch(() => ({}));
                 if (r.ok) {
@@ -1897,8 +2150,13 @@ Are there any patterns in my symptoms?"></textarea>
                     if (data.timeline_id) localStorage.setItem('2opmd_timeline_id', data.timeline_id);
                     hideModal('modal-session');
                     addReceipt('Session instantiated: ' + email);
-                    // Navigate to Patient Portal
-                    window.location.href = 'patient_portal.html';
+                    const stay = document.getElementById('session-stay-vault') && document.getElementById('session-stay-vault').checked;
+                    if (stay) {
+                        updateUI();
+                        switchView('dashboard');
+                    } else {
+                        window.location.href = '/';
+                    }
                 } else {
                     const detail = data.detail;
                     showMsg('session-msg', (detail && detail.message) || (typeof detail === 'string' ? detail : 'Session failed.'), true);
@@ -1978,14 +2236,24 @@ Are there any patterns in my symptoms?"></textarea>
             clearMsg('journal-save-msg');
 
             try {
+                let pro = null;
+                const proRaw = (document.getElementById('journal-pro-json') && document.getElementById('journal-pro-json').value || '').trim();
+                if (proRaw) {
+                    try { pro = JSON.parse(proRaw); } catch (_) {
+                        showMsg('journal-save-msg', 'FORWARD PRO JSON must be valid JSON.', true);
+                        return;
+                    }
+                }
                 const r = await fetch(`${API_BASE}/api/journal/entry`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-                    body: JSON.stringify({ text })
+                    body: JSON.stringify(pro != null ? { text, patient_reported_outcomes: Array.isArray(pro) ? pro : [pro] } : { text })
                 });
                 if (r.ok) {
                     showMsg('journal-save-msg', 'Saved.', false);
                     document.getElementById('journal-text-input').value = '';
+                    const pj = document.getElementById('journal-pro-json');
+                    if (pj) pj.value = '';
                     addReceipt('Journal entry saved');
                     updateTransparency('t-mutation', true, 'State mutated');
                     updateTransparency('t-persist', true, 'Data persisted');
@@ -2251,65 +2519,271 @@ Are there any patterns in my symptoms?"></textarea>
 
         // === QUERY TIMELINE ===
         async function handleQueryTimeline() {
-            const query = document.getElementById('query-input').value.trim();
+            if (!sessionToken) { alert('Start a session first.'); return; }
+            const query = document.getElementById('timeline-query-input').value.trim();
             if (!query) { alert('Enter a question.'); return; }
 
-            const btn = document.getElementById('query-submit-btn');
-            const area = document.getElementById('query-results-area');
+            const btn = document.getElementById('timeline-query-btn');
+            const resultBox = document.getElementById('timeline-query-result');
+            const answerEl = document.getElementById('timeline-query-answer');
+            const metaEl = document.getElementById('timeline-query-meta');
+            if (!btn || !resultBox || !answerEl || !metaEl) return;
             btn.classList.add('loading');
             btn.disabled = true;
-            area.style.display = 'block';
-            document.getElementById('query-results-content').innerHTML = '<div class="results-loading">Searching timeline...</div>';
+            resultBox.style.display = 'block';
+            answerEl.textContent = 'Searching timeline...';
+            metaEl.textContent = '';
 
             try {
-                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                const r = await fetch(`${API_BASE}/api/timeline/query`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q: query, limit: 8, ctx_k: 16, with_llm: 1, llm_mode: 'chunk', use_valyu: 0, use_ethos: 0 })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify({ query, top_k: 20, model: 'eoh-llama3.1:8b' })
                 });
-                if (!r.ok) throw new Error(`API error: ${r.status}`);
-                const reader = r.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '', answer = '';
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (const line of lines) {
-                        if (!line.startsWith('data:')) continue;
-                        try {
-                            const data = JSON.parse(line.substring(5).trim());
-                            if (data.text) {
-                                answer += data.text;
-                                document.getElementById('query-results-content').innerHTML = formatMarkdown(answer);
-                            }
-                            if (data.type === 'llm_done' || data.done) {
-                                if (data.text) { answer = data.text; document.getElementById('query-results-content').innerHTML = formatMarkdown(answer); }
-                            }
-                        } catch (_) {}
-                    }
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    answerEl.textContent = data.detail || `Error ${r.status}`;
+                    return;
                 }
-                document.getElementById('query-confidence-badge').textContent = 'Complete';
+                answerEl.innerHTML = formatMarkdown(data.answer || '(No answer returned)');
+                metaEl.textContent = `${data.seeds_used} events searched of ${data.total_events} total`;
                 queryCount++;
                 document.getElementById('stat-queries').textContent = queryCount;
-                addReceipt('Timeline query: ' + query.substring(0, 40) + '...');
-                updateTransparency('t-external', true, 'External API call');
+                addReceipt('Timeline query: ' + query.substring(0, 40));
             } catch (e) {
-                document.getElementById('query-results-content').innerHTML = '<div class="results-error">' + e.message + '</div>';
+                answerEl.textContent = e.message || 'Network error';
             } finally {
                 btn.classList.remove('loading');
                 btn.disabled = false;
             }
         }
 
-        // === DOCUMENT HANDLING ===
+        // === DOCUMENT SEARCH (vault recall via eoh-llama) ===
+        async function handleDocSearch() {
+            if (!sessionToken) { alert('Start a session first.'); return; }
+            const q = document.getElementById('doc-search-input').value.trim();
+            if (!q) return;
+            const container = document.getElementById('doc-search-results');
+            const answerBox = document.getElementById('doc-recall-answer');
+            const answerText = document.getElementById('doc-recall-answer-text');
+            container.innerHTML = '<div class="results-loading">Searching your documents...</div>';
+            answerBox.style.display = 'none';
+
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/artifacts/recall`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify({ query: q, top_k: 5, with_answer: true, model: 'eoh-llama3.1:8b' })
+                });
+                if (!r.ok) throw new Error(`Search failed: ${r.status}`);
+                const data = await r.json();
+                const hits = data.hits || [];
+
+                if (data.answer) {
+                    answerBox.style.display = 'block';
+                    answerText.innerHTML = formatMarkdown(data.answer);
+                }
+
+                if (hits.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-state-desc">No matching documents found in your vault.</div></div>';
+                } else {
+                    container.innerHTML = hits.map(h => `
+                        <div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openDocModal('${h.artifact_id}')">
+                            <div class="card-header">
+                                <div class="card-title" style="font-size:14px;">${escapeHtml(h.filename || h.artifact_id)}</div>
+                                <div class="card-badge badge-blue">${h.document_type || 'document'}</div>
+                            </div>
+                            <div style="font-size:12px; color:var(--color-text-dim); margin-bottom:6px;">${h.document_date || ''} &bull; Uploaded ${new Date(h.uploaded_at).toLocaleDateString()}</div>
+                            <div style="font-size:13px; color:var(--color-text-secondary);">${escapeHtml((h.snippet || '').replace(/<[^>]+>/g,''))}</div>
+                            <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">Click to open full document ›</div>
+                        </div>
+                    `).join('');
+                }
+                addReceipt('Document recall: ' + q);
+            } catch (e) {
+                container.innerHTML = '<div class="results-error">' + e.message + '</div>';
+            }
+        }
+
+        // Load artifact list from vault
+        async function loadArtifactList() {
+            if (!sessionToken) return;
+            const container = document.getElementById('artifact-list-container');
+            if (!container) return;
+            container.innerHTML = '<div class="results-loading" style="padding:16px;">Loading documents...</div>';
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/artifacts/list`, {
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+                if (!r.ok) throw new Error(`${r.status}`);
+                const items = await r.json();
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-state-icon">&#128193;</div><div class="empty-state-title">No documents stored yet</div><div class="empty-state-desc">Upload documents above to store them in your secure vault.</div></div>';
+                    return;
+                }
+                container.innerHTML = items.map(a => `
+                    <div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openDocModal('${a.artifact_id}')">
+                        <div class="card-header">
+                            <div class="card-title" style="font-size:14px;">${escapeHtml(a.filename)}</div>
+                            <div class="card-badge badge-gray">${a.document_type || 'document'}</div>
+                        </div>
+                        <div style="font-size:12px; color:var(--color-text-dim);">${a.document_date || ''} &bull; ${a.size_bytes ? Math.ceil(a.size_bytes/1024)+' KB' : ''} &bull; ${new Date(a.uploaded_at).toLocaleDateString()}</div>
+                        ${a.snippet ? `<div style="font-size:12px; color:var(--color-text-secondary); margin-top:6px;">${escapeHtml(a.snippet)}…</div>` : ''}
+                        <div style="margin-top:6px; font-size:12px; color:var(--color-accent);">Click to view full document ›</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<div class="results-error" style="padding:12px;">Failed to load: ' + e.message + '</div>';
+            }
+        }
+        window.loadArtifactList = loadArtifactList;
+
+        // Open document viewer modal
+        async function openDocModal(artifactId) {
+            if (!sessionToken) return;
+            showModal('modal-doc-viewer');
+            document.getElementById('modal-doc-title').textContent = 'Loading…';
+            document.getElementById('modal-doc-meta').textContent = '';
+            document.getElementById('modal-doc-content').textContent = 'Fetching document…';
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/artifacts/${encodeURIComponent(artifactId)}/content`, {
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+                if (!r.ok) throw new Error(`${r.status}`);
+                const data = await r.json();
+                document.getElementById('modal-doc-title').textContent = data.filename || artifactId;
+                document.getElementById('modal-doc-meta').textContent =
+                    [data.document_type, data.document_date, data.uploaded_at ? new Date(data.uploaded_at).toLocaleString() : '']
+                    .filter(Boolean).join(' · ');
+                document.getElementById('modal-doc-content').textContent = data.text_content || '(No text content extracted for this document)';
+            } catch (e) {
+                document.getElementById('modal-doc-content').textContent = 'Error loading document: ' + e.message;
+            }
+        }
+        window.openDocModal = openDocModal;
+
+        // === TIMELINE PDF UPLOAD ===
+        function setupTimelinePdfDropZone() {
+            const zone = document.getElementById('timeline-pdf-drop');
+            const input = document.getElementById('timeline-pdf-input');
+            const btn = document.getElementById('timeline-pdf-submit-btn');
+            const fnLabel = document.getElementById('timeline-pdf-filename');
+            if (!zone) return;
+            let pdfFile = null;
+
+            zone.addEventListener('click', () => input.click());
+            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+            zone.addEventListener('drop', e => {
+                e.preventDefault(); zone.classList.remove('dragover');
+                const f = e.dataTransfer.files[0];
+                if (f) { pdfFile = f; fnLabel.textContent = f.name; btn.disabled = false; }
+            });
+            input.addEventListener('change', e => {
+                const f = e.target.files[0];
+                if (f) { pdfFile = f; fnLabel.textContent = f.name; btn.disabled = false; }
+            });
+
+            btn.addEventListener('click', async () => {
+                if (!pdfFile || !sessionToken) { alert('Select a PDF and start a session first.'); return; }
+                btn.disabled = true;
+                const progressDiv = document.getElementById('timeline-pdf-progress');
+                const msgDiv = document.getElementById('timeline-pdf-progress-msgs');
+                progressDiv.style.display = 'block';
+                msgDiv.innerHTML = '';
+
+                const addMsg = (txt) => {
+                    const p = document.createElement('div');
+                    p.style.cssText = 'padding:2px 0; border-bottom:1px solid var(--color-border);';
+                    p.textContent = txt;
+                    msgDiv.appendChild(p);
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                };
+
+                addMsg('Uploading PDF for ingestion…');
+                const fd = new FormData();
+                fd.append('files', pdfFile, pdfFile.name);
+                fd.append('document_type', 'other');
+                fd.append('model', 'eoh-llama3.1:8b');
+                fd.append('store_results', 'true');
+                fd.append('build_graph', 'true');
+
+                try {
+                    const r = await fetch(`${API_BASE}/api/timeline/artifacts/ingest`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${sessionToken}` },
+                        body: fd
+                    });
+                    if (!r.ok) { addMsg(`Error: ${r.status}`); btn.disabled = false; return; }
+
+                    const reader = r.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (!line.startsWith('data:')) continue;
+                            try {
+                                const ev = JSON.parse(line.substring(5).trim());
+                                if (ev.phase === 'pdf_extracting') addMsg(`Extracting text from ${ev.filename}…`);
+                                else if (ev.pages) addMsg(`PDF read: ${ev.pages} pages, ${ev.chars} chars`);
+                                else if (ev.batch) addMsg(`Batch ${ev.batch}/${ev.total} processing…`);
+                                else if (ev.events_extracted !== undefined) addMsg(`✓ ${ev.filename}: ${ev.events_extracted} events extracted`);
+                                else if (ev.events_extracted_total !== undefined) addMsg(`✅ Complete — ${ev.events_extracted_total} events added to timeline`);
+                            } catch (_) {}
+                        }
+                    }
+                    addMsg('Loading updated timeline events…');
+                    await loadTimelineEvents();
+                } catch (e) {
+                    addMsg('Error: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // Load timeline events from PTV graph status
+        async function loadTimelineEvents() {
+            if (!sessionToken) return;
+            const container = document.getElementById('timeline-events-container');
+            const countBadge = document.getElementById('timeline-events-count');
+            if (!container) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/status`, {
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+                if (!r.ok) return;
+                const data = await r.json();
+                const events = data.recent_events || data.events || [];
+                const total = data.event_count || events.length || 0;
+                if (countBadge) countBadge.textContent = total + ' event' + (total !== 1 ? 's' : '');
+
+                if (events.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128197;</div><div class="empty-state-title">No timeline events yet</div><div class="empty-state-desc">Upload documents to build your medical timeline.</div></div>';
+                    return;
+                }
+                container.innerHTML = events.slice(0, 50).map(e => `
+                    <div style="padding:10px 0; border-bottom:1px solid var(--color-border); display:flex; gap:16px; align-items:flex-start;">
+                        <div style="min-width:80px; font-size:11px; color:var(--color-text-dim); white-space:nowrap;">${(e.ts || e.timestamp || '').substring(0,10)}</div>
+                        <div style="flex:1;">
+                            <div style="font-size:11px; font-weight:600; color:var(--color-accent); text-transform:uppercase; margin-bottom:2px;">${escapeHtml(e.event_type || 'event')}</div>
+                            <div style="font-size:13px; color:var(--color-text-primary);">${escapeHtml((e.text || '').substring(0,200))}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (_) {}
+        }
+
         function setupDocDropZone() {
             const zone = document.getElementById('doc-drop-zone');
             const input = document.getElementById('doc-file-input');
             const submitBtn = document.getElementById('doc-submit-btn');
+            if (!zone || !input || !submitBtn) return;
 
             zone.addEventListener('click', () => input.click());
             zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
@@ -2338,6 +2812,7 @@ Are there any patterns in my symptoms?"></textarea>
             const zone = document.getElementById('eohd-drop-zone');
             const input = document.getElementById('eohd-file-input');
             const submitBtn = document.getElementById('submit-eohd');
+            if (!zone || !input || !submitBtn) return;
 
             zone.addEventListener('click', () => input.click());
             input.addEventListener('change', e => {
@@ -2352,7 +2827,7 @@ Are there any patterns in my symptoms?"></textarea>
         }
 
         // === DOCUMENT SUBMIT ===
-        async function handleDocSubmit() {
+        async function handleDocSubmitSSE() {
             if (selectedFiles.length === 0) return;
             if (!sessionToken) { showMsg('doc-submit-msg', 'Start a session first.', true); return; }
             clearMsg('doc-submit-msg');
@@ -2365,91 +2840,144 @@ Are there any patterns in my symptoms?"></textarea>
             btn.classList.add('loading');
             btn.disabled = true;
 
+            const batch = selectedFiles.slice();
+
+            // Build per-filename row id map so we can update badges
+            const rowIds = {};
+            for (const file of batch) {
+                const rid = appendUploadedArtifactRow({
+                    title: docNotes ? docNotes.slice(0, 200) : file.name,
+                    filename: file.name,
+                    documentType: docType,
+                    documentDate: docDate,
+                    eventId: null,
+                    badge: 'processing',
+                });
+                rowIds[file.name] = rid;
+            }
+
+            const formData = new FormData();
+            for (const file of batch) formData.append('files', file);
+            formData.append('document_type', docType);
+            if (docDate) formData.append('document_date', docDate);
+            if (docNotes) formData.append('notes', docNotes);
+
             try {
-                for (const file of selectedFiles) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('document_type', docType);
-                    if (docDate) formData.append('document_date', docDate);
-                    if (docNotes) formData.append('notes', docNotes);
+                const resp = await fetch(`${API_BASE}/api/timeline/artifacts/ingest`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${sessionToken}` },
+                    body: formData,
+                });
 
-                    const base = uploadBaseFor(file);
-                    const r = await fetch(`${base}/api/rag/upload_timeline_pdf`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${sessionToken}` },
-                        body: formData
-                    });
+                if (!resp.ok || !resp.body) {
+                    const errJson = await resp.json().catch(() => ({}));
+                    const msg = errJson.detail?.message || (typeof errJson.detail === 'string' ? errJson.detail : null) || `Upload failed (${resp.status})`;
+                    // Mark all rows as failed
+                    for (const fn of Object.keys(rowIds)) setArtifactRowBadge(rowIds[fn], 'error', 'Failed');
+                    showMsg('doc-submit-msg', msg, true);
+                    return;
+                }
 
-                    if (r.ok) {
-                        const via = base !== API_BASE ? ' (via direct upload)' : '';
-                        addReceipt('Document uploaded: ' + file.name + via);
-                    } else {
-                        showMsg('doc-submit-msg', 'Upload failed for: ' + file.name, true);
+                // Parse SSE stream
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                let lastEventType = '';
+
+                const handleEvent = (evType, data) => {
+                    if (evType === 'artifact_accepted') {
+                        const fn = data.filename;
+                        const label = data.is_duplicate ? 'Duplicate' : 'Processing…';
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], data.is_duplicate ? 'duplicate' : 'processing', label);
+                        addReceipt(`Vault: ${fn} ${data.is_duplicate ? '(duplicate, skipped)' : '(accepted)'}`);
+                    } else if (evType === 'batch_done') {
+                        const fn = data.filename;
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], 'processing', `Batch ${data.batch}/${data.total || '?'} done`);
+                    } else if (evType === 'artifact_done') {
+                        const fn = data.filename;
+                        const n = data.events_extracted || 0;
+                        const badge = data.reason === 'duplicate' ? 'duplicate'
+                                    : data.reason === 'unsupported_for_8b' ? 'stored'
+                                    : 'extracted';
+                        const label = data.reason === 'duplicate' ? 'Duplicate'
+                                    : data.reason === 'unsupported_for_8b' ? 'Stored'
+                                    : `${n} event${n !== 1 ? 's' : ''} extracted`;
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], badge, label);
+                        addReceipt(`Vault: ${fn} → ${label}`);
+                        updateTransparency('t-mutation', true, 'Timeline mutated');
+                        updateTransparency('t-persist', true, 'Documents persisted');
+                    } else if (evType === 'complete') {
+                        const n = data.events_extracted_total || 0;
+                        showMsg('doc-submit-msg', `Upload complete: ${data.artifacts} file(s), ${n} events extracted.`, false, true);
+                        // Refresh the artifact list and timeline events
+                        setTimeout(() => { loadArtifactList(); loadTimelineEvents(); }, 300);
+                    } else if (evType === 'error') {
+                        showMsg('doc-submit-msg', data.message || 'Server error', true);
+                    } else if (evType === 'batch_error') {
+                        const fn = data.filename || '';
+                        if (rowIds[fn]) setArtifactRowBadge(rowIds[fn], 'error', 'Batch error');
+                        addReceipt(`Vault error: ${fn} — ${data.message}`);
+                    }
+                };
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            lastEventType = line.substring(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            let d;
+                            try { d = JSON.parse(line.substring(5).trim()); } catch (_) { continue; }
+                            handleEvent(lastEventType, d);
+                        }
                     }
                 }
-                showMsg('doc-submit-msg', selectedFiles.length + ' document(s) submitted.', false);
-                updateTransparency('t-mutation', true, 'Timeline mutated');
-                updateTransparency('t-persist', true, 'Documents persisted');
-                selectedFiles = [];
-                document.getElementById('doc-upload-list').innerHTML = '';
-                document.getElementById('doc-file-input').value = '';
             } catch (e) {
                 showMsg('doc-submit-msg', e.message, true);
             } finally {
                 btn.classList.remove('loading');
                 btn.disabled = true;
+                selectedFiles = [];
+                document.getElementById('doc-upload-list').innerHTML = '';
+                document.getElementById('doc-file-input').value = '';
             }
         }
 
-        // === DOCUMENT SEARCH ===
-        async function handleDocSearch() {
-            const q = document.getElementById('doc-search-input').value.trim();
-            if (!q) return;
-            const container = document.getElementById('doc-search-results');
-            container.innerHTML = '<div class="results-loading">Searching documents...</div>';
-
+        // (handleDocSearch is defined above in the vault recall section)
+        async function handleMockPtvEvents() {
+            if (!sessionToken) {
+                showMsg('mock-ptv-msg', 'Start a session first.', true);
+                return;
+            }
+            clearMsg('mock-ptv-msg');
+            const sample = {
+                events: [
+                    { title: 'Outpatient visit — fatigue workup', timestamp: new Date().toISOString(), event_type: 'visit' },
+                    { title: 'Lab: CBC within reference range', event_type: 'lab' },
+                    { title: 'Patient notes: morning stiffness 45m', event_type: 'note' }
+                ]
+            };
             try {
-                const r = await fetch(`${API_BASE}/api/rag/ask_stream`, {
+                const r = await fetch(`${API_BASE}/api/timeline/mock-events`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q, limit: 4, ctx_k: 8, with_llm: 0, use_valyu: 0 })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+                    body: JSON.stringify(sample)
                 });
-                if (!r.ok) throw new Error(`Search failed: ${r.status}`);
-                const reader = r.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '', results = [];
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (const line of lines) {
-                        if (!line.startsWith('data:')) continue;
-                        try {
-                            const data = JSON.parse(line.substring(5).trim());
-                            if (data.docs) results = data.docs;
-                        } catch (_) {}
-                    }
-                }
-
-                if (results.length === 0) {
-                    container.innerHTML = '<div class="empty-state" style="padding: 24px;"><div class="empty-state-desc">No matching documents found.</div></div>';
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    showMsg('mock-ptv-msg', 'Added ' + (data.added || 0) + ' mock event(s) to PTV.', false);
+                    addReceipt('Mock PTV events inserted (' + (data.added || 0) + ')');
                 } else {
-                    container.innerHTML = results.map((d, i) => `
-                        <div class="card" style="margin-bottom: 12px;">
-                            <div class="card-header">
-                                <div class="card-title">Result #${i + 1}</div>
-                                <div class="card-badge badge-blue">${d.score ? (d.score * 100).toFixed(0) + '%' : 'Match'}</div>
-                            </div>
-                            <div style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.6;">${escapeHtml(d.text || d.content || JSON.stringify(d))}</div>
-                        </div>
-                    `).join('');
+                    const d = data.detail;
+                    const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || data);
+                    showMsg('mock-ptv-msg', msg, true);
                 }
-                addReceipt('Document search: ' + q);
-                updateTransparency('t-external', true, 'External API call');
             } catch (e) {
-                container.innerHTML = '<div class="results-error">' + e.message + '</div>';
+                showMsg('mock-ptv-msg', e.message || 'Network error', true);
             }
         }
 
@@ -2489,15 +3017,22 @@ Are there any patterns in my symptoms?"></textarea>
 
         // === SEND TIMELINE ===
         function setupSendTimeline() {
-            document.getElementById('send-scope').addEventListener('change', e => {
-                document.getElementById('send-custom-dates').style.display = e.target.value === 'custom' ? 'block' : 'none';
+            const sendScope = document.getElementById('send-scope');
+            const sendCustomDates = document.getElementById('send-custom-dates');
+            const sendEmailBtn = document.getElementById('send-email-btn');
+            const sendEmailField = document.getElementById('send-email-field');
+            const sendGenerateBtn = document.getElementById('send-generate-btn');
+            if (!sendScope || !sendCustomDates || !sendEmailBtn || !sendEmailField || !sendGenerateBtn) return;
+
+            sendScope.addEventListener('change', e => {
+                sendCustomDates.style.display = e.target.value === 'custom' ? 'block' : 'none';
             });
 
-            document.getElementById('send-email-btn').addEventListener('click', () => {
-                document.getElementById('send-email-field').style.display = document.getElementById('send-email-field').style.display === 'none' ? 'block' : 'none';
+            sendEmailBtn.addEventListener('click', () => {
+                sendEmailField.style.display = sendEmailField.style.display === 'none' ? 'block' : 'none';
             });
 
-            document.getElementById('send-generate-btn').addEventListener('click', () => {
+            sendGenerateBtn.addEventListener('click', () => {
                 const format = document.getElementById('send-format').value;
                 const scope = document.getElementById('send-scope').value;
                 showMsg('send-msg', `Export generation requested (${format}, ${scope}). This feature will connect to the backend export API.`, false);
@@ -2535,86 +3070,105 @@ Are there any patterns in my symptoms?"></textarea>
         }
 
         // === INITIALIZATION ===
-        function init() {
-            // Check for existing session
+        void (async function boot() {
+            const _bind = (id, ev, fn) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener(ev, fn);
+                else console.warn('[2OPMD] Missing element #' + id + ' — skipped listener');
+            };
+
+            // Vault + auth modals + close session first (always usable)
+            _bind('vault-initiate', 'click', () => showModal('modal-session'));
+            _bind('vault-onboard', 'click', () => showModal('modal-onboarding'));
+            _bind('onboarding-submit', 'click', handleOnboarding);
+            _bind('onboarding-cancel', 'click', () => hideModal('modal-onboarding'));
+            _bind('session-submit', 'click', handleInitiateSession);
+            _bind('session-cancel', 'click', () => hideModal('modal-session'));
+            _bind('verification-dismiss', 'click', () => hideModal('modal-verification'));
+            _bind('portal-close-session', 'click', handleCloseSession);
+
             updateUI();
             checkVerificationToken();
 
-            // Vault landing buttons
-            document.getElementById('vault-initiate').addEventListener('click', () => showModal('modal-session'));
-            document.getElementById('vault-onboard').addEventListener('click', () => showModal('modal-onboarding'));
+            try {
+                // Navigation
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', () => switchView(item.dataset.view));
+                });
 
-            // Auth modals
-            document.getElementById('onboarding-submit').addEventListener('click', handleOnboarding);
-            document.getElementById('onboarding-cancel').addEventListener('click', () => hideModal('modal-onboarding'));
-            document.getElementById('session-submit').addEventListener('click', handleInitiateSession);
-            document.getElementById('session-cancel').addEventListener('click', () => hideModal('modal-session'));
-            document.getElementById('verification-dismiss').addEventListener('click', () => hideModal('modal-verification'));
+                // Clinical mode buttons
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.addEventListener('click', () => switchClinicalMode(btn.dataset.clinicalMode));
+                });
 
-            // Portal close session
-            document.getElementById('portal-close-session').addEventListener('click', handleCloseSession);
+                // Clinical console submit buttons
+                _bind('submit-ask', 'click', handleAskSubmit);
+                _bind('submit-coding', 'click', handleCodingSubmit);
+                _bind('submit-eoh', 'click', handleEohSubmit);
+                _bind('submit-eohd', 'click', handleEohdSubmit);
 
-            // Navigation
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', () => switchView(item.dataset.view));
-            });
+                // Timeline
+                _bind('timeline-query-btn', 'click', handleQueryTimeline);
 
-            // Clinical mode buttons
-            document.querySelectorAll('.mode-btn').forEach(btn => {
-                btn.addEventListener('click', () => switchClinicalMode(btn.dataset.clinicalMode));
-            });
+                // Query Timeline (legacy view-query panel)
+                const legacyQueryBtn = document.getElementById('query-submit-btn');
+                if (legacyQueryBtn) {
+                    legacyQueryBtn.addEventListener('click', async () => {
+                        const qEl = document.getElementById('query-input');
+                        if (qEl) {
+                            const tq = document.getElementById('timeline-query-input');
+                            if (tq) tq.value = qEl.value;
+                        }
+                        await handleQueryTimeline();
+                        const area = document.getElementById('query-results-area');
+                        if (area) area.style.display = 'block';
+                    });
+                }
 
-            // Clinical console submit buttons
-            document.getElementById('submit-ask').addEventListener('click', handleAskSubmit);
-            document.getElementById('submit-coding').addEventListener('click', handleCodingSubmit);
-            document.getElementById('submit-eoh').addEventListener('click', handleEohSubmit);
-            document.getElementById('submit-eohd').addEventListener('click', handleEohdSubmit);
+                // Journal
+                _bind('journal-save-btn', 'click', handleJournalSave);
+                _bind('journal-query-btn', 'click', handleJournalQuery);
+                _bind('journal-query-input', 'keypress', e => { if (e.key === 'Enter') handleJournalQuery(); });
+                _bind('journal-refresh-btn', 'click', loadJournalEntries);
 
-            // Timeline
-            document.getElementById('initialize-timeline-btn').addEventListener('click', handleInitializeTimeline);
-            document.getElementById('add-timeline-event-btn').addEventListener('click', () => showModal('modal-add-event'));
-            document.getElementById('event-add-cancel').addEventListener('click', () => hideModal('modal-add-event'));
-            document.getElementById('event-add-submit').addEventListener('click', () => {
-                addReceipt('Timeline event added manually');
-                hideModal('modal-add-event');
-                showMsg('timeline-init-msg', 'Event added (will persist when backend timeline API is connected).', false);
-            });
+                // Documents
+                setupDocDropZone();
+                setupTimelinePdfDropZone();
+                setupEohdDropZone();
+                _bind('doc-submit-btn', 'click', handleDocSubmitSSE);
+                const mockPtvBtn = document.getElementById('mock-ptv-events-btn');
+                if (mockPtvBtn) mockPtvBtn.addEventListener('click', handleMockPtvEvents);
+                _bind('doc-search-btn', 'click', handleDocSearch);
+                _bind('doc-search-input', 'keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
 
-            // Query Timeline
-            document.getElementById('query-submit-btn').addEventListener('click', handleQueryTimeline);
+                _bind('modal-doc-close', 'click', () => hideModal('modal-doc-viewer'));
 
-            // Journal
-            document.getElementById('journal-save-btn').addEventListener('click', handleJournalSave);
-            document.getElementById('journal-query-btn').addEventListener('click', handleJournalQuery);
-            document.getElementById('journal-query-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleJournalQuery(); });
-            document.getElementById('journal-refresh-btn').addEventListener('click', loadJournalEntries);
+                // Risk
+                _bind('run-risk-btn', 'click', handleRunRisk);
 
-            // Documents
-            setupDocDropZone();
-            setupEohdDropZone();
-            document.getElementById('doc-submit-btn').addEventListener('click', handleDocSubmit);
-            document.getElementById('doc-search-btn').addEventListener('click', handleDocSearch);
-            document.getElementById('doc-search-input').addEventListener('keypress', e => { if (e.key === 'Enter') handleDocSearch(); });
+                // Send Timeline
+                setupSendTimeline();
 
-            // Risk
-            document.getElementById('run-risk-btn').addEventListener('click', handleRunRisk);
+                // Export Receipts
+                _bind('export-receipts-btn', 'click', exportReceipts);
 
-            // Send Timeline
-            setupSendTimeline();
+                // Update header timestamp
+                setInterval(() => {
+                    const el = document.getElementById('header-timestamp');
+                    if (el) el.textContent = ts();
+                }, 1000);
 
-            // Export Receipts
-            document.getElementById('export-receipts-btn').addEventListener('click', exportReceipts);
+                addReceipt('2OPMD initialized — java_kali');
+            } catch (err) {
+                console.error('[2OPMD] Portal wiring failed:', err);
+            }
 
-            // Update header timestamp
-            setInterval(() => {
-                document.getElementById('header-timestamp').textContent = ts();
-            }, 1000);
-
-            addReceipt('2OPMD initialized — java_kali');
-        }
-
-        // Run
-        init();
+            // After wiring: drop stale tokens (DB reset). Never block vault buttons on this.
+            try {
+                const cleared = await validateStoredVaultSession();
+                if (cleared) updateUI();
+            } catch (_) {}
+        })();
     })();
     </script>
 </body>

@@ -10,10 +10,11 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, Depends, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
+import asyncpg
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from fastapi.middleware.cors import CORSMiddleware
@@ -119,6 +120,20 @@ _MKG_EVIDENCE_AUTH = [Depends(require_scope("mkg:evidence")), Depends(b2b_rate_l
 _PTV_READ_AUTH = [Depends(require_scope("ptv:read")), Depends(b2b_rate_limit)]
 _PTV_EXTRACT_AUTH = [Depends(require_scope("ptv:extract")), Depends(b2b_rate_limit)]
 
+# asyncpg pool for PTV / vault routes (session_routes, ptv_journal_bridge).  Kept in
+# sync with SQLAlchemy URL — see lifespan() below.
+_pool: Optional[Any] = None
+
+
+def _asyncpg_dsn_for_pool(sqlalchemy_async_url: str) -> str:
+    """Strip SQLAlchemy's +asyncpg driver suffix for native asyncpg.create_pool."""
+    u = sqlalchemy_async_url.strip()
+    if u.startswith("postgresql+asyncpg://"):
+        return u.replace("postgresql+asyncpg://", "postgresql://", 1)
+    if u.startswith("postgresql://"):
+        return u
+    return u
+
 
 # --- lifespan: init async engine + session + RAG engine -----------------------
 @asynccontextmanager
@@ -168,10 +183,12 @@ async def lifespan(app: FastAPI):
 
     _dev_bypass = os.getenv("DEV_AUTH_BYPASS", "").lower() == "true" and APP_ENV != "production"
 
+    db_ok = False
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info("Database connection initialized successfully")
+        db_ok = True
     except Exception as _db_err:
         if _dev_bypass:
             logger.warning(
@@ -181,6 +198,34 @@ async def lifespan(app: FastAPI):
             )
         else:
             raise
+
+    # asyncpg pool for PTV / vault (must run in lifespan — legacy on_event("startup")
+    # is not guaranteed to run before traffic when lifespan is configured).
+    global _pool
+    app.state.pool = None
+    _pool = None
+    if db_ok:
+        pool_dsn = (os.getenv("POSTGRES_DSN") or "").strip() or _asyncpg_dsn_for_pool(raw_url)
+        try:
+            pool = await asyncpg.create_pool(
+                dsn=pool_dsn,
+                min_size=1,
+                max_size=int(os.getenv("PGPOOL_MAX", "10")),
+                command_timeout=60,
+            )
+            app.state.pool = pool
+            _pool = pool
+            logger.info("asyncpg pool attached for PTV / vault timeline routes")
+        except Exception as pool_err:
+            if _dev_bypass:
+                logger.warning(
+                    "asyncpg pool unavailable (%s). "
+                    "Set POSTGRES_DSN or ensure DATABASE_URL is reachable by asyncpg. "
+                    "PTV ingest will return 503 until fixed.",
+                    pool_err,
+                )
+            else:
+                raise
 
     try:
         await b2b_meter.start()
@@ -198,6 +243,15 @@ async def lifespan(app: FastAPI):
             await b2b_meter.stop()
         except Exception:
             pass
+        pool = getattr(app.state, "pool", None)
+        if pool is not None:
+            try:
+                await pool.close()
+            except Exception as close_err:
+                logger.warning("asyncpg pool close: %s", close_err)
+            app.state.pool = None
+            _pool = None
+            logger.info("asyncpg pool closed")
         await engine.dispose()
         logger.info("DB engine disposed")
 
@@ -210,26 +264,22 @@ app = FastAPI(
 
 
 async def get_pool():
+    """Return the shared asyncpg pool (created in lifespan)."""
     global _pool
     if _pool is None:
+        dsn = (os.getenv("POSTGRES_DSN") or "").strip()
+        if not dsn:
+            raw = os.getenv("DATABASE_URL") or os.getenv("SYNC_DATABASE_URL") or ""
+            if raw.startswith("postgresql://") and "+asyncpg" not in raw:
+                raw = raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+            dsn = _asyncpg_dsn_for_pool(raw) if raw else "postgresql://localhost/2ndopinionmd"
         _pool = await asyncpg.create_pool(
-            dsn=os.getenv("POSTGRES_DSN", "postgres://localhost/2ndopinionmd"),
-            min_size=1, max_size=int(os.getenv("PGPOOL_MAX", "10")),
+            dsn=dsn,
+            min_size=1,
+            max_size=int(os.getenv("PGPOOL_MAX", "10")),
             command_timeout=60,
         )
     return _pool
-
-# psycopg2 pool for sync endpoints
-@app.on_event("startup")
-async def _attach_pool():
-    try:
-        app.state.pool = await get_pool()
-    except Exception as e:
-        if os.getenv("DEV_AUTH_BYPASS", "").lower() == "true" and APP_ENV != "production":
-            logger.warning("DEV_AUTH_BYPASS: psycopg2 pool skipped (%s).", e)
-            app.state.pool = None
-        else:
-            raise
 
 
 # --- CORS (safe with credentials) ---------------------------------------------
@@ -491,6 +541,29 @@ async def diagnose_alias(
 
 
 # --- Health & OpenAPI compatibility -------------------------------------------
+@app.get("/", include_in_schema=False)
+async def serve_epistemic_vault_root():
+    """Serve the Epistemic Vault single-page HTML (not the React SPA)."""
+    path = project_root / "index.html"
+    if path.is_file():
+        return FileResponse(path, media_type="text/html; charset=utf-8")
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/index.html", include_in_schema=False)
+async def serve_epistemic_vault_index_named():
+    path = project_root / "index.html"
+    if path.is_file():
+        return FileResponse(path, media_type="text/html; charset=utf-8")
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/patient_portal.html", include_in_schema=False)
+async def patient_portal_redirect_to_vault():
+    """Legacy URL: patient UX now lives on ``/`` (Epistemic Vault ``index.html``)."""
+    return RedirectResponse(url="/", status_code=302)
+
+
 @app.get("/api/health")
 async def health_check(session: AsyncSession = Depends(get_session)):
     """

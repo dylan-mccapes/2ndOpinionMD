@@ -1410,7 +1410,7 @@ Example: Fatigue, joint pain, skin rash"></textarea>
                     if (data.timeline_id) localStorage.setItem('2opmd_timeline_id', data.timeline_id);
                     hideModal('modal-session');
                     // Navigate to Patient Portal
-                    window.location.href = 'patient_portal.html';
+                    window.location.href = '/';
                 } else {
                     const detail = data.detail;
                     const msg = (detail && detail.message) || (typeof detail === 'string' ? detail : 'Session failed.');

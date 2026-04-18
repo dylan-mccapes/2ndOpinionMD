@@ -391,8 +391,19 @@ async def _store_extracted_events(
     extracted: List[Dict[str, Any]],
     batch_idx: int,
     model: str,
+    artifact_id: Optional[str] = None,
 ) -> int:
+    """
+    Persist extracted events to ehr.patient_timeline.
+
+    Uses ON CONFLICT DO NOTHING on the (patient_id, event_type, content_sha)
+    partial unique index (migration 007) so re-importing a document
+    never duplicates rows. ``content_sha`` is a sha256 of the canonical
+    event coordinate so it is stable across runs.
+    """
     from sqlalchemy import text as sa_text
+    from server.eoh.event_dedup import canonical_event_id
+    import hashlib
 
     stored = 0
     for ev in extracted:
@@ -404,29 +415,54 @@ async def _store_extracted_events(
         except (ValueError, TypeError):
             continue
 
-        await db.execute(
+        event_type = ev.get("event_type", "note")
+        text_val = ev.get("text", "")
+        structured = ev.get("structured", {})
+        ann_for_sha = dict(structured) if isinstance(structured, dict) else {}
+
+        # Compute stable content_sha using the same canonical coordinate as PTV
+        canonical_id = canonical_event_id(
+            patient_id=patient_id,
+            event_type=event_type,
+            timestamp=ts_raw,
+            text=text_val,
+            annotations=ann_for_sha,
+        )
+        content_sha = hashlib.sha256(canonical_id.encode()).hexdigest()[:64]
+
+        meta_dict: Dict[str, Any] = {
+            "confidence": ev.get("confidence"),
+            "batch": batch_idx,
+            "model": model,
+        }
+        if artifact_id:
+            meta_dict["artifact_id"] = artifact_id
+
+        result = await db.execute(
             sa_text(
                 """
                 INSERT INTO ehr.patient_timeline
-                    (patient_id, ts, event_type, source, structured, text, meta)
+                    (patient_id, ts, event_type, source, structured, text, meta, content_sha)
                 VALUES
-                    (:patient_id, :ts, :event_type, :source, :structured, :text, :meta)
+                    (:patient_id, :ts, :event_type, :source, :structured, :text, :meta, :content_sha)
+                ON CONFLICT (patient_id, event_type, content_sha)
+                    WHERE content_sha IS NOT NULL
+                DO NOTHING
                 """
             ),
             {
-                "patient_id": patient_id,
-                "ts": ts,
-                "event_type": ev.get("event_type", "note"),
-                "source": "eoh-llama-8b-infer",
-                "structured": json.dumps(ev.get("structured", {}), default=str),
-                "text": ev.get("text", ""),
-                "meta": json.dumps(
-                    {"confidence": ev.get("confidence"), "batch": batch_idx, "model": model},
-                    default=str,
-                ),
+                "patient_id":  patient_id,
+                "ts":          ts,
+                "event_type":  event_type,
+                "source":      "eoh-llama-8b-infer",
+                "structured":  json.dumps(structured, default=str),
+                "text":        text_val,
+                "meta":        json.dumps(meta_dict, default=str),
+                "content_sha": content_sha,
             },
         )
-        stored += 1
+        if getattr(result, "rowcount", None) == 1:
+            stored += 1
     await db.commit()
     return stored
 

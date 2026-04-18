@@ -42,6 +42,8 @@ class UserResponse(BaseModel):
     subscription_tier: str
     user_type: str = "patient"
     created_at: datetime
+    is_verified: bool = False
+    ptv_ready: bool = False
 
 class EmailVerificationInfo(BaseModel):
     queued: bool
@@ -62,6 +64,24 @@ from server.utils.email.verification import send_verification_email, create_veri
 from server.utils.password_validation import validate_password_complexity
 
 router = APIRouter()
+
+
+async def _require_ptv_bootstrap_for_login(request: Request, user_id: str) -> None:
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        return
+    from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+    await ensure_user_ptv_row(pool, str(user_id))
+    if not await vision_row_exists(pool, str(user_id)):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "ptv_not_initialized",
+                "message": "Clinical graph initialization failed. Please try again shortly.",
+            },
+        )
+
 
 @router.post("/register", response_model=RegistrationResponse)
 async def register_user(user: UserCreate, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
@@ -137,6 +157,8 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
             subscription_tier=db_user.subscription_tier,
             user_type=user_type,
             created_at=db_user.created_at,
+            is_verified=bool(db_user.is_verified),
+            ptv_ready=False,
         ),
         email_verification=EmailVerificationInfo(
             queued=True,
@@ -146,7 +168,11 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks, ses
     )
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_session),
+):
     user = await authenticate_user(form_data.username, form_data.password, session)
     if not user:
         raise HTTPException(
@@ -165,6 +191,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             },
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    await _require_ptv_bootstrap_for_login(request, user.id)
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -174,7 +202,11 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/token/mobile", response_model=Token)
-async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
+async def login_for_mobile_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_session),
+):
     user = await authenticate_user(form_data.username, form_data.password, session)
     if not user:
         raise HTTPException(
@@ -193,6 +225,8 @@ async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = D
             },
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    await _require_ptv_bootstrap_for_login(request, user.id)
     
     access_token_expires = timedelta(days=7)
     access_token = create_access_token(
@@ -202,7 +236,11 @@ async def login_for_mobile_access_token(form_data: OAuth2PasswordRequestForm = D
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/verify-email")
-async def verify_email(token: str, session: AsyncSession = Depends(get_session)):
+async def verify_email(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     query = select(User).where(User.verification_token == token)
     result = await session.execute(query)
     user = result.scalar_one_or_none()
@@ -224,8 +262,20 @@ async def verify_email(token: str, session: AsyncSession = Depends(get_session))
     user.verification_token_expires = None
     
     await session.commit()
-    
-    return {"message": "Email verified successfully"}
+
+    ptv_initialized = True
+    pool = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        try:
+            from server.eoh.ptv_journal_bridge import ensure_user_ptv_row, vision_row_exists
+
+            await ensure_user_ptv_row(pool, str(user.id))
+            ptv_initialized = await vision_row_exists(pool, str(user.id))
+        except Exception:
+            logger.exception("PTV bootstrap after email verification failed for user %s", user.id)
+            ptv_initialized = False
+
+    return {"message": "Email verified successfully", "ptv_initialized": ptv_initialized}
 
 @router.post("/forgot-password")
 async def forgot_password(
@@ -324,6 +374,8 @@ async def get_current_user_info(
     if request.url.path.endswith("/users/me"):
         logger.warning("Deprecated path /api/auth/users/me used")
     user_type = getattr(current_user, "user_type", None) or "patient"
+    is_verified = bool(getattr(current_user, "is_verified", False))
+    ptv_ready = bool(getattr(current_user, "ptv_ready", False))
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
@@ -332,6 +384,8 @@ async def get_current_user_info(
         subscription_tier=current_user.subscription_tier,
         user_type=user_type,
         created_at=current_user.created_at,
+        is_verified=is_verified,
+        ptv_ready=ptv_ready,
     )
 
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import sys, os, asyncio
+import sys
+import os
+import asyncio
 from pathlib import Path
 
 # ✨ Put the REPO ROOT on sys.path (…/2ndOpinionMD-MVP), not …/server
@@ -8,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 
 from server.db import session as db_session
 from sqlalchemy.ext.asyncio import create_async_engine
-from database.models.postgresql.models import User, JournalEntry
-from sqlalchemy import delete
+from database.models.postgresql.models import User, JournalEntry, DoctorPatientInvite
+from sqlalchemy import delete, text, update
 
 def _ensure_session_local():
     """When run standalone, SessionLocal may be None; init engine from DATABASE_URL."""
@@ -24,17 +26,34 @@ async def clear_users_table():
     _ensure_session_local()
     try:
         async with db_session.SessionLocal() as session:
+            await session.execute(
+                text(
+                    "DELETE FROM ehr.patient_graph_chart WHERE patient_id IN (SELECT id::text FROM public.users)"
+                )
+            )
+            await session.execute(
+                text(
+                    "DELETE FROM ehr.patient_graph_status WHERE patient_id IN (SELECT id::text FROM public.users)"
+                )
+            )
+            await session.execute(
+                text(
+                    "DELETE FROM ehr.patient_graph_vision WHERE patient_id IN (SELECT id::text FROM public.users)"
+                )
+            )
+            await session.execute(delete(DoctorPatientInvite))
+            await session.execute(update(User).values(doctor_id=None))
             await session.execute(delete(JournalEntry))
             await session.execute(delete(User))
             await session.commit()
-            print("Deleted all users and journal entries.")
+            print("Deleted invites, ehr graph rows for app users, journal entries, and all users.")
             return True
     except Exception as e:
         print(f"Error clearing users table: {e}")
         return False
 
 if __name__ == "__main__":
-    print("This deletes ALL users and their journal entries.")
+    print("This deletes ALL users, journal entries, doctor invites, and ehr graph rows keyed by user UUIDs.")
     if input("Proceed? (yes/no): ").strip().lower() == "yes":
         asyncio.run(clear_users_table())
         print("Done.")

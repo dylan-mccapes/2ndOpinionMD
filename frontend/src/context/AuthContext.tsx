@@ -9,6 +9,8 @@ export interface UserProfile {
   subscription_tier: string;
   user_type: 'patient' | 'doctor';
   created_at: string;
+  is_verified: boolean;
+  ptv_ready: boolean;
 }
 
 interface AuthContextValue {
@@ -36,6 +38,8 @@ const DEV_USER: UserProfile = {
   subscription_tier: 'pro',
   user_type: DEV_USER_TYPE,
   created_at: new Date().toISOString(),
+  is_verified: true,
+  ptv_ready: true,
 };
 
 function getStoredToken(): string | null {
@@ -95,7 +99,11 @@ function AuthProviderReal({ children }: { children: ReactNode }) {
       const profile = await apiFetch<UserProfile>('/api/auth/me', {
         headers: authHeaders(currentToken),
       });
-      setUser(profile);
+      setUser({
+        ...profile,
+        is_verified: profile.is_verified ?? true,
+        ptv_ready: profile.ptv_ready ?? true,
+      });
     } catch {
       setToken(null);
     } finally {

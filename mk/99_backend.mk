@@ -26,8 +26,8 @@ post-launch-checks: integrity-all backup-verify
 	@echo "✅ Post-launch checks complete."
 
 clear-users:
-	@read -p "This WILL DELETE all users + journals. Type 'yes' to continue: " ans; \
+	@read -p "This WILL DELETE all users, journals, invites, and ehr graph rows for those users. Type 'yes' to continue: " ans; \
 	[ "$$ans" = "yes" ] || { echo "Cancelled."; exit 1; }; \
-	psql "$(DB)" -v ON_ERROR_STOP=1 -c "TRUNCATE TABLE public.journal_entries, public.users RESTART IDENTITY CASCADE;"; \
+	psql "$(DB)" -v ON_ERROR_STOP=1 -c "DELETE FROM ehr.patient_graph_chart WHERE patient_id IN (SELECT id::text FROM public.users); DELETE FROM ehr.patient_graph_status WHERE patient_id IN (SELECT id::text FROM public.users); DELETE FROM ehr.patient_graph_vision WHERE patient_id IN (SELECT id::text FROM public.users); TRUNCATE TABLE public.doctor_patient_invites RESTART IDENTITY; UPDATE public.users SET doctor_id = NULL; TRUNCATE TABLE public.journal_entries, public.users RESTART IDENTITY CASCADE;"; \
 	psql "$(DB)" -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) AS users FROM public.users;"; \
 	psql "$(DB)" -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) AS journals FROM public.journal_entries;"
