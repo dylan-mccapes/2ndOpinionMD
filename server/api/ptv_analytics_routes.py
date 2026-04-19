@@ -37,8 +37,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from database.models.postgresql.models import User
 from server.api.session_routes import get_vault_user_from_session
-from server.db.users import User
 
 logger = logging.getLogger(__name__)
 
