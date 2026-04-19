@@ -2979,22 +2979,26 @@ Are there any patterns in my symptoms?"></textarea>
             img.src = 'data:image/png;base64,' + b64;
             img.alt = meta.label;
 
-            // Per-chart eoh-llama interpretation — derive from the global interpretation
-            // by injecting the chart name and showing the shared narrative
             const interp = document.getElementById('modal-chart-interp');
             const loading = document.getElementById('modal-chart-interp-loading');
             interp.style.display = 'none';
             loading.style.display = 'none';
-            if (d.interpretation) {
+            const perChart = (d.interpretations && d.interpretations[chartKey]) || '';
+            if (perChart) {
+                interp.textContent = perChart;
+                interp.style.display = 'block';
+            } else if (d.interpretation) {
                 interp.textContent = d.interpretation;
                 interp.style.display = 'block';
             } else {
-                loading.textContent = 'eoh-llama interpretation not available (model offline or no dated events).';
+                loading.textContent = 'eoh-llama interpretation not available for this chart (model offline or timeout).';
                 loading.style.display = 'block';
             }
 
-            // Compact JSON for the viewer
+            // Compact JSON for the viewer — includes this chart’s slice + its interpretation
             const analyticsForModal = {
+                chart_shown: chartKey,
+                interpretation_this_chart: perChart || null,
                 total_events: d.analytics && d.analytics.total_events,
                 dated_count: d.dated_count,
                 span_days: d.analytics && d.analytics.span_days,
@@ -3004,8 +3008,8 @@ Are there any patterns in my symptoms?"></textarea>
                 noise_floor: d.analytics && d.analytics.noise_floor,
                 precedence_edges: d.analytics && d.analytics.precedence_edges,
                 graph_skeleton: d.graph_skeleton,
+                all_interpretation_keys: d.interpretations ? Object.keys(d.interpretations) : [],
                 disclaimer: d.disclaimer,
-                chart_shown: chartKey,
             };
             document.getElementById('modal-chart-json').textContent = JSON.stringify(analyticsForModal, null, 2);
 
@@ -3095,10 +3099,12 @@ Are there any patterns in my symptoms?"></textarea>
                 html += '</div>';
 
                 // ── eoh-llama narrative ───────────────────────────────────────
-                if (d.interpretation) {
+                const interpStab = (d.interpretations && d.interpretations.stability_band) || d.interpretation || '';
+                if (interpStab) {
                     html += '<div style="border-left:3px solid var(--color-accent);padding:10px 14px;margin-bottom:16px;background:var(--color-surface-dim);border-radius:0 var(--radius) var(--radius) 0;">';
-                    html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-accent);margin-bottom:6px;">eoh-llama · Timeline interpretation</div>';
-                    html += '<p style="font-size:13px;color:var(--color-text-secondary);line-height:1.65;margin:0;">' + escapeHtml(d.interpretation) + '</p>';
+                    html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--color-accent);margin-bottom:6px;">eoh-llama · Stability band (overview)</div>';
+                    html += '<p style="font-size:13px;color:var(--color-text-secondary);line-height:1.65;margin:0;">' + escapeHtml(interpStab) + '</p>';
+                    html += '<p style="font-size:11px;color:var(--color-text-dim);margin:10px 0 0 0;">Each chart button opens a modal with <strong>its own</strong> eoh-llama interpretation, hardcoded chart help, and full JSON context.</p>';
                     html += '</div>';
                 }
 

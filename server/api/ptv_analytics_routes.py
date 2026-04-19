@@ -12,20 +12,19 @@ Workflow
 3. Run analytics (windowed vectors, stability, phase-shifts, flares) + render
    all five Matplotlib charts.
 4. Build a reduced graph skeleton for eoh-llama context (≤ 50 events + arcs).
-5. Call eoh-llama to produce a plain-language interpretation of the JSON result.
-6. Persist the analytics summary + interpretation as vision.metadata["last_analytics"].
+5. Call eoh-llama once per chart (five parallel requests) for chart-specific text.
+6. Persist analytics summary + per-chart interpretations as vision.metadata["last_analytics"].
 7. Return:
    {
-     "analytics":     { total_events, span_days, windows, phase_shifts,
-                        flare_episodes, noise_floor, params },
-     "charts":        { stability_band, event_edge_intensity, precedence_map,
-                        terrain_trajectory, flare_noise_panel },   # base64 PNG
-     "interpretation": "<plain-language narrative>",
-     "graph_skeleton": { events: [...], arcs: [...] },
-     "event_count":   int,
-     "dated_count":   int,        # events with parseable timestamps
-     "source":        "ptv",
-     "disclaimer":    "…"
+     "analytics":        { … },
+     "charts":           { stability_band, … },   # base64 PNG
+     "interpretations":  { "<chart_key>": "<eoh-llama text per view>", … },
+     "interpretation":   "<stability_band text; backward compat>",
+     "graph_skeleton":   { events: [...], arcs: [...] },
+     "event_count":      int,
+     "dated_count":      int,
+     "source":           "ptv",
+     "disclaimer":       "…"
    }
 """
 from __future__ import annotations
@@ -33,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -148,87 +147,183 @@ def _build_graph_skeleton(
     return {"events": events_out, "arcs": arcs_out}
 
 
-async def _call_eoh_llama(
+CHART_KEYS: Tuple[str, ...] = (
+    "stability_band",
+    "event_edge_intensity",
+    "precedence_map",
+    "terrain_trajectory",
+    "flare_noise_panel",
+)
+
+
+def _chart_prompt_spec(chart_key: str) -> Tuple[str, str]:
+    """(title, instructions) for eoh-llama — one dedicated interpretation per chart."""
+    specs = {
+        "stability_band": (
+            "Stability band timeline",
+            "Interpret ONLY the stability-band view: windowed stability scores (0–1) over time, "
+            "the green/yellow/red regime bands, and any phase-shift markers. "
+            "Write 3–5 sentences for a patient: what the trend suggests, whether things look "
+            "more stable or more volatile lately, and one question for their clinician. "
+            "Do not diagnose; hedge your language.",
+        ),
+        "event_edge_intensity": (
+            "Event & edge intensity",
+            "Interpret ONLY this view: per-window event counts vs connascence load. "
+            "Explain what it means when bars are high with high vs low orange line. "
+            "3–5 sentences, patient-facing, no diagnosis.",
+        ),
+        "precedence_map": (
+            "Precedence map",
+            "Interpret ONLY the directed graph of event-type pairs and lags. "
+            "Stress that arrows are predictive associations, not causes. "
+            "Highlight 1–2 strongest patterns if any. 3–5 sentences, patient-facing.",
+        ),
+        "terrain_trajectory": (
+            "Terrain trajectory",
+            "Interpret ONLY the 2-D trajectory of windowed feature vectors (path from START to NOW). "
+            "Explain clustering vs wandering path in plain language. 3–5 sentences, no diagnosis.",
+        ),
+        "flare_noise_panel": (
+            "Flare vs noise",
+            "Interpret ONLY flare episodes vs the noise floor and event intensity bars. "
+            "What elevated periods might mean for follow-up. 3–5 sentences, hedged, patient-facing.",
+        ),
+    }
+    return specs.get(chart_key, (chart_key, "Interpret this chart for a patient in 3–5 sentences. No diagnosis."))
+
+
+def _context_json_for_chart(
+    chart_key: str,
+    analytics_payload: Dict[str, Any],
+    trajectory_serial: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Slice analytics for a single chart's LLM context."""
+    a = analytics_payload
+    wins = a.get("windows") or []
+
+    if chart_key == "stability_band":
+        return {
+            "chart": chart_key,
+            "total_events": a.get("total_events"),
+            "span_days": a.get("span_days"),
+            "windows": [
+                {
+                    "window_start": (w.get("window_start") or "")[:10],
+                    "stability_score": round(float(w.get("stability_score") or 0), 3),
+                    "event_count": w.get("event_count"),
+                }
+                for w in wins[-25:]
+            ],
+            "phase_shifts": a.get("phase_shifts") or [],
+        }
+
+    if chart_key == "event_edge_intensity":
+        return {
+            "chart": chart_key,
+            "windows": [
+                {
+                    "window_start": (w.get("window_start") or "")[:10],
+                    "event_count": w.get("event_count"),
+                    "connascence_load": round(float(w.get("connascence_load") or 0), 4),
+                }
+                for w in wins[-25:]
+            ],
+        }
+
+    if chart_key == "precedence_map":
+        edges = a.get("precedence_edges") or []
+        return {
+            "chart": chart_key,
+            "precedence_edges": edges[:16],
+        }
+
+    if chart_key == "terrain_trajectory":
+        return {
+            "chart": chart_key,
+            "trajectory_points": trajectory_serial[-40:],
+            "window_count": len(wins),
+        }
+
+    if chart_key == "flare_noise_panel":
+        return {
+            "chart": chart_key,
+            "noise_floor": a.get("noise_floor"),
+            "flare_episodes": a.get("flare_episodes") or [],
+            "windows_event_intensity": [
+                {"window_start": (w.get("window_start") or "")[:10], "event_count": w.get("event_count")}
+                for w in wins[-25:]
+            ],
+        }
+
+    return {"chart": chart_key}
+
+
+async def _call_eoh_llama_chart(
     ollama_base: str,
     model: str,
-    analytics_json: Dict[str, Any],
+    chart_key: str,
+    analytics_payload: Dict[str, Any],
+    trajectory_serial: List[Dict[str, Any]],
     skeleton: Dict[str, Any],
-) -> Optional[str]:
-    """Call eoh-llama with analytics JSON + graph skeleton for interpretation."""
+) -> tuple[str, Optional[str]]:
+    """Returns (chart_key, interpretation_text_or_None)."""
     import httpx
 
-    # Trim analytics for prompt: drop per-window provenance, keep summary fields
-    a = analytics_json
-    windows_summary = [
-        {
-            "window_start": w["window_start"][:10],
-            "stability_score": round(w["stability_score"], 3),
-            "event_count": w["event_count"],
-            "drift": round(w["drift"], 3),
-        }
-        for w in (a.get("windows") or [])
-    ]
-
-    analytics_compact = {
-        "total_events": a.get("total_events"),
-        "span_days": a.get("span_days"),
-        "windows": windows_summary[-20:],  # last 20 windows
-        "phase_shifts": [
-            {
-                "timestamp": ps["timestamp"][:10] if ps.get("timestamp") else "",
-                "from_phase": ps.get("from_phase"),
-                "to_phase": ps.get("to_phase"),
-            }
-            for ps in (a.get("phase_shifts") or [])
-        ],
-        "flare_episodes": [
-            {
-                "start": fe["start"][:10] if fe.get("start") else "",
-                "end": fe["end"][:10] if fe.get("end") else "",
-                "confidence": round(fe.get("confidence") or 0, 2),
-            }
-            for fe in (a.get("flare_episodes") or [])
-        ],
-        "noise_floor": a.get("noise_floor"),
-    }
+    title, instructions = _chart_prompt_spec(chart_key)
+    ctx = _context_json_for_chart(chart_key, analytics_payload, trajectory_serial)
+    sk_trim = json.dumps(skeleton, indent=2)[:2200]
 
     prompt = (
-        "You are a clinical second-opinion assistant reviewing a patient's "
-        "longitudinal health timeline graph.\n\n"
-        "Below is a JSON analytics summary computed from their Patient Timeline "
-        "Vision (PTV) graph. Your task is to write a clear, plain-language "
-        "interpretation (4–6 sentences) that a patient could read and understand. "
-        "Focus on:\n"
-        "  • Overall stability trend and what it means for the patient\n"
-        "  • Phase shifts if any — what changed and when\n"
-        "  • Flare episodes if any — periods of heightened activity\n"
-        "  • Whether the trajectory suggests improvement, worsening, or stability\n"
-        "  • One practical question the patient might bring to their next appointment\n\n"
-        "Do NOT make diagnoses. Use hedged language (e.g. 'the data suggests', "
-        "'this may indicate'). Reference specific dates when available.\n\n"
-        f"ANALYTICS JSON:\n{json.dumps(analytics_compact, indent=2)}\n\n"
-        f"GRAPH SKELETON ({len(skeleton.get('events', []))} events, "
-        f"{len(skeleton.get('arcs', []))} arcs shown):\n"
-        f"{json.dumps(skeleton, indent=2)[:3000]}\n\n"
-        "INTERPRETATION:"
+        f"You are a clinical second-opinion assistant. The patient is looking at "
+        f"one analytics chart from their Patient Timeline Vision (PTV).\n\n"
+        f"CHART: {title}\n"
+        f"TASK: {instructions}\n\n"
+        f"DATA FOR THIS CHART (JSON):\n{json.dumps(ctx, indent=2)}\n\n"
+        f"GRAPH SKELETON (truncated):\n{sk_trim}\n\n"
+        "Write ONLY the interpretation paragraphs — no preamble, no markdown headers."
     )
 
     try:
-        async with httpx.AsyncClient(timeout=90) as http:
+        async with httpx.AsyncClient(timeout=75) as http:
             resp = await http.post(
                 f"{ollama_base}/api/chat",
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "stream": False,
-                    "options": {"num_ctx": 8192, "temperature": 0.15},
+                    "options": {"num_ctx": 6144, "temperature": 0.12},
                 },
             )
             resp.raise_for_status()
-            return (resp.json().get("message") or {}).get("content", "").strip() or None
+            text = (resp.json().get("message") or {}).get("content", "").strip() or None
+            return chart_key, text
     except Exception as exc:
-        logger.warning("eoh-llama interpretation failed: %s", exc)
-        return None
+        logger.warning("eoh-llama chart %s interpretation failed: %s", chart_key, exc)
+        return chart_key, None
+
+
+async def _interpret_all_charts_parallel(
+    ollama_base: str,
+    model: str,
+    analytics_payload: Dict[str, Any],
+    trajectory_serial: List[Dict[str, Any]],
+    skeleton: Dict[str, Any],
+) -> Dict[str, Optional[str]]:
+    """One eoh-llama call per chart; run in parallel."""
+    import asyncio
+
+    tasks = [
+        _call_eoh_llama_chart(
+            ollama_base, model, key, analytics_payload, trajectory_serial, skeleton
+        )
+        for key in CHART_KEYS
+    ]
+    results = await asyncio.gather(*tasks)
+    out: Dict[str, Optional[str]] = {}
+    for k, text in results:
+        out[k] = text
+    return out
 
 
 def _ollama_base() -> str:
@@ -377,13 +472,34 @@ async def ptv_analytics(
         "params": summary.params,
     }
 
-    # ── 4. Build graph skeleton ───────────────────────────────────────────────
+    # ── 4. Build graph skeleton + trajectory serial for LLM ──────────────────
     skeleton = _build_graph_skeleton(vision_events, vision_arcs)
+    trajectory_serial = [
+        {
+            "timestamp": p.timestamp,
+            "x": round(p.x, 4),
+            "y": round(p.y, 4),
+            "stability_class": p.stability_class,
+            "event_count": p.event_count,
+        }
+        for p in traj_points
+    ]
 
-    # ── 5. eoh-llama interpretation ───────────────────────────────────────────
-    interpretation = await _call_eoh_llama(
-        _ollama_base(), model, analytics_payload, skeleton
+    # ── 5. eoh-llama — one interpretation per chart (parallel) ─────────────────
+    interpretations = await _interpret_all_charts_parallel(
+        _ollama_base(),
+        model,
+        analytics_payload,
+        trajectory_serial,
+        skeleton,
     )
+    # Backward compat: single field = stability band if present, else first non-empty
+    interpretation = interpretations.get("stability_band")
+    if not interpretation:
+        for _k in CHART_KEYS:
+            if interpretations.get(_k):
+                interpretation = interpretations[_k]
+                break
 
     # ── 6. Persist last_analytics into vision.metadata ────────────────────────
     try:
@@ -401,6 +517,7 @@ async def ptv_analytics(
             "latest_stability": (
                 summary.windows[-1].stability_score if summary.windows else None
             ),
+            "interpretations": interpretations,
             "interpretation": interpretation,
         }
         await save_timeline_vision_pg(pool, vision)
@@ -410,6 +527,7 @@ async def ptv_analytics(
     return {
         "analytics": analytics_payload,
         "charts": charts,
+        "interpretations": interpretations,
         "interpretation": interpretation,
         "graph_skeleton": skeleton,
         "event_count": total_count,
