@@ -1,0 +1,14 @@
+# 2OPMD OCR Forge requirements.
+#
+# PyTorch CUDA wheels are installed separately in setup.sh via the
+# pytorch index to ensure cu121 builds. Do NOT pin torch here — let
+# setup.sh handle it to avoid CPU-only accidental installs.
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+python-multipart>=0.0.12
+httpx>=0.27
+easyocr>=1.7.2
+pypdfium2>=4.30
+pillow>=10.0
+numpy>=1.24,<3.0
