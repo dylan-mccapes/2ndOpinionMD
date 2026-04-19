@@ -2656,7 +2656,12 @@ Are there any patterns in my symptoms?"></textarea>
                     container.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-state-icon">&#128193;</div><div class="empty-state-title">No documents stored yet</div><div class="empty-state-desc">Upload documents above to store them in your secure vault.</div></div>';
                     return;
                 }
-                container.innerHTML = items.map(a => `
+                const preview = items.slice(0, 4);
+                const titles = items.slice(4, 12);
+                let html = '';
+
+                html += '<div style="margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Top documents</div>';
+                html += preview.map(a => `
                     <div class="card" style="margin-bottom:10px; cursor:pointer;" onclick="openDocModal('${a.artifact_id}')">
                         <div class="card-header">
                             <div class="card-title" style="font-size:14px;">${escapeHtml(a.filename)}</div>
@@ -2667,6 +2672,26 @@ Are there any patterns in my symptoms?"></textarea>
                         <div style="margin-top:6px; font-size:12px; color:var(--color-accent);">Click to view full document ›</div>
                     </div>
                 `).join('');
+
+                if (titles.length) {
+                    html += '<div style="margin-top:16px; margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Additional documents</div>';
+                    html += '<div style="border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden;">';
+                    html += titles.map((a, i) => `
+                        <div style="padding:10px 14px; display:flex; justify-content:space-between; align-items:center; border-bottom:${i < titles.length-1 ? '1px solid var(--color-border)' : 'none'}; cursor:pointer;" onclick="openDocModal('${a.artifact_id}')">
+                            <div>
+                                <span style="font-size:13px; color:var(--color-text-primary);">${escapeHtml(a.filename)}</span>
+                                <span style="font-size:12px; color:var(--color-text-dim); margin-left:8px;">${escapeHtml(a.document_type || '')}</span>
+                            </div>
+                            <span style="font-size:12px; color:var(--color-accent);">View ›</span>
+                        </div>
+                    `).join('');
+                    html += '</div>';
+                }
+
+                if (items.length > 12) {
+                    html += `<div style="margin-top:10px; font-size:12px; color:var(--color-text-dim);">Showing 12 of ${items.length} documents. Use Artifact Recall to query the rest.</div>`;
+                }
+                container.innerHTML = html;
             } catch (e) {
                 container.innerHTML = '<div class="results-error" style="padding:12px;">Failed to load: ' + e.message + '</div>';
             }
@@ -2802,15 +2827,40 @@ Are there any patterns in my symptoms?"></textarea>
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128197;</div><div class="empty-state-title">No timeline events yet</div><div class="empty-state-desc">Upload documents to build your medical timeline.</div></div>';
                     return;
                 }
-                container.innerHTML = events.slice(0, 50).map(e => `
-                    <div style="padding:10px 0; border-bottom:1px solid var(--color-border); display:flex; gap:16px; align-items:flex-start;">
-                        <div style="min-width:80px; font-size:11px; color:var(--color-text-dim); white-space:nowrap;">${(e.ts || e.timestamp || '').substring(0,10)}</div>
-                        <div style="flex:1;">
-                            <div style="font-size:11px; font-weight:600; color:var(--color-accent); text-transform:uppercase; margin-bottom:2px;">${escapeHtml(e.event_type || 'event')}</div>
-                            <div style="font-size:13px; color:var(--color-text-primary);">${escapeHtml((e.text || '').substring(0,200))}</div>
+                const preview = events.slice(0, 4);
+                const titles = events.slice(4, 12);
+                let html = '';
+
+                html += '<div style="margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Top timeline events</div>';
+                html += preview.map(e => `
+                    <div class="card" style="margin-bottom:10px;">
+                        <div class="card-header">
+                            <div class="card-title" style="font-size:13px;">${escapeHtml((e.ts || e.timestamp || '').substring(0,10) || 'Unknown date')}</div>
+                            <div class="card-badge badge-blue">${escapeHtml((e.event_type || 'event').toUpperCase())}</div>
                         </div>
+                        <div style="font-size:13px; color:var(--color-text-primary);">${escapeHtml((e.text || '').substring(0,220) || '(No preview text)')}</div>
                     </div>
                 `).join('');
+
+                if (titles.length) {
+                    html += '<div style="margin-top:16px; margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-dim);">Additional events</div>';
+                    html += '<div style="border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden;">';
+                    html += titles.map((e, i) => `
+                        <div style="padding:10px 14px; border-bottom:${i < titles.length-1 ? '1px solid var(--color-border)' : 'none'};">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                <span style="font-size:12px; color:var(--color-text-dim);">${escapeHtml((e.ts || e.timestamp || '').substring(0,10) || 'Unknown')}</span>
+                                <span style="font-size:11px; color:var(--color-accent); text-transform:uppercase;">${escapeHtml(e.event_type || 'event')}</span>
+                            </div>
+                            <div style="font-size:13px; color:var(--color-text-primary); margin-top:4px;">${escapeHtml((e.text || '').substring(0,90) || '(No title)')}</div>
+                        </div>
+                    `).join('');
+                    html += '</div>';
+                }
+
+                if (total > 12) {
+                    html += `<div style="margin-top:10px; font-size:12px; color:var(--color-text-dim);">Showing 12 of ${total} events. Use Query Timeline to search the rest.</div>`;
+                }
+                container.innerHTML = html;
             } catch (_) {}
         }
 
