@@ -124,20 +124,24 @@ def _ocr_pdf_pages(
     dpi: int,
     max_dimension: int,
     skip_empty: bool,
+    password: Optional[str] = None,
 ) -> Dict[str, Any]:
     t0 = time.perf_counter()
     results: Dict[int, str] = {}
     rendered_pages = 0
+    skipped_pages = 0
     ocr_seconds = 0.0
 
     for page_num, pil in rasterize_pdf_pages(
         pdf_bytes, pages=pages, dpi=dpi, max_dimension=max_dimension,
+        password=password, skip_errors=True,
     ):
         rendered_pages += 1
         tp = time.perf_counter()
         text = engine.ocr_pil_image(pil)
         ocr_seconds += time.perf_counter() - tp
         if skip_empty and not text.strip():
+            skipped_pages += 1
             continue
         results[page_num] = text
 
@@ -146,6 +150,7 @@ def _ocr_pdf_pages(
         "pages": {str(k): v for k, v in sorted(results.items())},
         "page_count_processed": rendered_pages,
         "pages_with_text": len(results),
+        "pages_skipped_empty": skipped_pages,
         "total_chars": sum(len(v) for v in results.values()),
         "ocr_seconds": round(ocr_seconds, 3),
         "total_seconds": round(total, 3),
@@ -155,11 +160,18 @@ def _ocr_pdf_pages(
 
 
 @app.post("/ocr/pdf/page_count")
-async def pdf_pages(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def pdf_pages(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+) -> Dict[str, Any]:
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty upload")
-    return {"filename": file.filename, "page_count": pdf_page_count(data)}
+    try:
+        count = pdf_page_count(data, password=password or None)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"filename": file.filename, "page_count": count}
 
 
 @app.post("/ocr/pdf")
@@ -168,6 +180,7 @@ async def ocr_pdf(
     dpi: int = Query(220, ge=72, le=600),
     max_dimension: int = Query(4000, ge=500, le=10000),
     skip_empty: bool = Query(False),
+    password: Optional[str] = Query(None, description="PDF decryption password"),
 ) -> Dict[str, Any]:
     engine = _require_engine()
     data = await file.read()
@@ -178,7 +191,10 @@ async def ocr_pdf(
         out = _ocr_pdf_pages(
             engine, data, pages=None, dpi=dpi,
             max_dimension=max_dimension, skip_empty=skip_empty,
+            password=password or None,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("OCR pdf failed")
         raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
@@ -195,9 +211,10 @@ async def ocr_pdf_range(
     dpi: int = Form(220),
     max_dimension: int = Form(4000),
     skip_empty: bool = Form(False),
+    password: Optional[str] = Form(None, description="PDF decryption password"),
     pages_csv: Optional[str] = Form(
         None,
-        description="Optional comma-separated 1-indexed page list (overrides start/end).",
+        description="Comma-separated 1-indexed page list (overrides start/end).",
     ),
 ) -> Dict[str, Any]:
     engine = _require_engine()
@@ -205,13 +222,18 @@ async def ocr_pdf_range(
     if not data:
         raise HTTPException(status_code=400, detail="Empty upload")
 
+    pw = password or None
+
     if pages_csv:
         try:
             pages = [int(x.strip()) for x in pages_csv.split(",") if x.strip()]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Bad pages_csv: {e}")
     else:
-        n_total = pdf_page_count(data)
+        try:
+            n_total = pdf_page_count(data, password=pw)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         end = end_page if end_page is not None else n_total
         start = max(1, start_page)
         end = min(n_total, end)
@@ -223,7 +245,10 @@ async def ocr_pdf_range(
         out = _ocr_pdf_pages(
             engine, data, pages=pages, dpi=dpi,
             max_dimension=max_dimension, skip_empty=skip_empty,
+            password=pw,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("OCR pdf range failed")
         raise HTTPException(status_code=500, detail=f"OCR failed: {e}")

@@ -18,9 +18,34 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 
-def pdf_page_count(pdf_bytes: bytes) -> int:
-    """Return total page count of a PDF given as bytes."""
+def _open_doc(pdf_bytes: bytes, password: Optional[str] = None) -> pdfium.PdfDocument:
+    """Open a PdfDocument, decrypting if a password is supplied or needed."""
     doc = pdfium.PdfDocument(pdf_bytes)
+    if doc.get_formtype() == pdfium.FORMTYPE_XFA_FOREGROUND:
+        pass  # XFA — no decryption step needed
+    if password:
+        try:
+            doc.unlock(password)
+        except Exception:
+            doc.close()
+            raise ValueError("PDF password incorrect or decryption failed")
+    else:
+        # Probe whether the doc is locked without a password.
+        # pypdfium2 raises on get_page() if encrypted and no password given.
+        # We surface a cleaner error here.
+        try:
+            _ = len(doc)
+        except Exception as e:
+            doc.close()
+            raise ValueError(
+                f"PDF may be encrypted — provide `password` parameter. ({e})"
+            )
+    return doc
+
+
+def pdf_page_count(pdf_bytes: bytes, password: Optional[str] = None) -> int:
+    """Return total page count of a PDF given as bytes."""
+    doc = _open_doc(pdf_bytes, password)
     try:
         return len(doc)
     finally:
@@ -33,18 +58,26 @@ def rasterize_pdf_pages(
     pages: Optional[Iterable[int]] = None,
     dpi: int = 220,
     max_dimension: int = 4000,
+    password: Optional[str] = None,
+    skip_errors: bool = True,
 ) -> Iterator[Tuple[int, Image.Image]]:
     """Yield (page_num, PIL.Image) for each requested 1-indexed page.
 
     If `pages` is None, every page is yielded. Pages are clamped to the
     document's range and silently skipped if out of bounds.
 
+    `password` decrypts password-protected PDFs (most common cause of
+    PdfiumError: Failed to load page).
+
+    `skip_errors` (default True) skips individual corrupt/unrenderable pages
+    instead of raising, so a single bad page doesn't abort a 4000-page run.
+
     `max_dimension` caps the long edge of each rasterized page to protect
     VRAM — very large DPI x page-size combinations can otherwise produce
     10000+ pixel images that blow out the OCR model.
     """
     scale = dpi / 72.0
-    doc = pdfium.PdfDocument(pdf_bytes)
+    doc = _open_doc(pdf_bytes, password)
     try:
         n_pages = len(doc)
         if pages is None:
@@ -53,9 +86,21 @@ def rasterize_pdf_pages(
             wanted = [p for p in pages if 1 <= p <= n_pages]
 
         for page_num in wanted:
-            page = doc[page_num - 1]
+            try:
+                page = doc[page_num - 1]
+            except Exception as e:
+                if skip_errors:
+                    logger.warning("Skipping page %d — failed to load: %s", page_num, e)
+                    continue
+                raise
+
             try:
                 pil = page.render(scale=scale).to_pil().convert("RGB")
+            except Exception as e:
+                if skip_errors:
+                    logger.warning("Skipping page %d — render failed: %s", page_num, e)
+                    continue
+                raise
             finally:
                 page.close()
 
@@ -76,9 +121,12 @@ def rasterize_single_page_bytes(
     *,
     dpi: int = 220,
     fmt: str = "PNG",
+    password: Optional[str] = None,
 ) -> bytes:
     """Render one page and return its bytes (useful for debugging / previews)."""
-    for _, img in rasterize_pdf_pages(pdf_bytes, pages=[page_num], dpi=dpi):
+    for _, img in rasterize_pdf_pages(
+        pdf_bytes, pages=[page_num], dpi=dpi, password=password,
+    ):
         buf = io.BytesIO()
         img.save(buf, format=fmt)
         return buf.getvalue()
