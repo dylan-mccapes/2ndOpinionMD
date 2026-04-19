@@ -1,0 +1,7 @@
+{
+  "instrument": "PROMIS-style-mock",
+  "domain": "Pain",
+  "t_score": 55,
+  "raw_score": 12,
+  "note": "Synthetic FORWARD-style payload for file upload testing — not from a real registry."
+}

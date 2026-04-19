@@ -1,0 +1,15 @@
+OUTPATIENT NOTE (SYNTHETIC) — MOCK ONLY
+======================================
+Date of visit (fictional): 2025-02-03
+
+Chief complaint: Intermittent fatigue and morning stiffness, duration weeks (placeholder).
+
+History of present illness:
+  Patient reports gradual onset of low energy. No fever documented in this mock note.
+  Stiffness improves over ~45 minutes after waking in this synthetic narrative.
+
+Assessment / plan (not real clinical advice):
+  - Continue symptom tracking in app journal.
+  - Follow-up as arranged with treating clinician.
+
+This document is for 2ndOpinionMD vault / PTV upload testing only.

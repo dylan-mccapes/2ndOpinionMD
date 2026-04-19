@@ -1,0 +1,10 @@
+HOME MEDICATION LIST — SYNTHETIC / MOCK
+=======================================
+Do not treat as a real prescription. For upload testing only.
+
+Example entries (fictional drug names / doses):
+  - Placeholder-A 10 mg once daily (mock)
+  - Placeholder-B 500 mg twice daily with food (mock)
+  - OTC vitamin D 1000 IU daily (mock)
+
+Allergies (synthetic): NKDA in this stub.

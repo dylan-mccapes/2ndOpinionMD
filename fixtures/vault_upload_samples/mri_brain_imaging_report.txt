@@ -1,0 +1,49 @@
+MRI BRAIN WITH AND WITHOUT CONTRAST — MOCK IMAGING REPORT
+==========================================================
+Date: 2025-09-03
+Patient: SYNTHETIC-001 (fictional)
+Ordering provider: Dr. B. Osei, MD (fictional)
+Modality: MRI 3T — Brain w/ & w/o gadolinium
+
+CLINICAL INDICATION
+New onset headaches, 6-week duration. Rule out intracranial pathology.
+
+TECHNIQUE
+Axial T1 pre- and post-contrast, T2, FLAIR, DWI/ADC, and SWI sequences
+obtained at 3.0 Tesla.
+
+FINDINGS
+
+Brain Parenchyma
+  Cerebral cortex: No focal cortical signal abnormality. Gray-white
+  differentiation preserved throughout.
+  White matter: A single 3 mm T2/FLAIR hyperintensity in the right
+  periventricular white matter. Non-enhancing. No restricted diffusion.
+  Appearance is non-specific; may represent a small vessel ischaemic
+  change or incidental UBO (unidentified bright object). No lesion burden
+  suggestive of demyelinating disease.
+
+Cerebellum / Brainstem
+  No signal abnormality. Cranial nerve VII-VIII complex normal.
+
+Vascular Structures
+  Circle of Willis patent on MRA sequences. No aneurysm or arteriovenous
+  malformation identified.
+
+Ventricles / CSF Spaces
+  Normal ventricular size. No hydrocephalus. Midline intact.
+
+Sella / Pituitary
+  Gland height 6 mm. No focal adenoma.
+
+Post-Contrast Enhancement
+  No abnormal parenchymal, leptomeningeal, or dural enhancement.
+
+IMPRESSION
+1. Single 3 mm right periventricular T2/FLAIR hyperintensity — likely
+   incidental small vessel change. No active demyelination or enhancing
+   lesion.
+2. No intracranial mass, haemorrhage, or acute infarction.
+3. Clinical correlation recommended for ongoing headache evaluation.
+
+Note: All data are fabricated for PTV artifact recall smoke tests.
