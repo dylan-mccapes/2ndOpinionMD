@@ -24,8 +24,10 @@ if [[ -z "$PYTHON" ]]; then
 fi
 echo "Using: $PYTHON ($($PYTHON --version 2>&1))"
 
-if [[ -d ".BeatingHeart" ]]; then
-  echo "Removing existing .BeatingHeart..."
+# Remove any prior path: directory, broken symlink, or stray file (git sometimes
+# leaves a file or submodule pointer — `python -m venv` fails with "File exists").
+if [[ -e ".BeatingHeart" ]] || [[ -L ".BeatingHeart" ]]; then
+  echo "Removing existing .BeatingHeart (file, symlink, or directory)..."
   rm -rf .BeatingHeart
 fi
 

@@ -97,6 +97,7 @@ from .eoh_router_routes import router as eoh_router_router
 from server.api import eoh_demo_routes
 from server.api.timeline_routes import router as timeline_router
 from server.api.timeline_analytics_routes import router as timeline_analytics_router
+from server.api.ptv_analytics_routes import router as ptv_analytics_router
 from server.api.timeline_infer_routes import router as timeline_infer_router, forward_router as forward_infer_router
 from server.api.graph_query_routes import router as graph_query_router
 
@@ -362,6 +363,7 @@ app.include_router(eoh_demo_routes.router)
 # --- Frontend-facing PTV/timeline routers (open — session auth where needed) ---
 app.include_router(timeline_router)
 app.include_router(timeline_analytics_router)
+app.include_router(ptv_analytics_router)
 app.include_router(timeline_infer_router)
 app.include_router(graph_query_router)
 

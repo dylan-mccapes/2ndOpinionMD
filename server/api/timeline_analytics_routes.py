@@ -6,11 +6,17 @@ Endpoints:
   GET  /api/timeline/{patient_id}/analytics/precedence
   GET  /api/timeline/{patient_id}/analytics/trajectory
   POST /api/timeline/{patient_id}/analytics/export
+
+Event sources: prefers ``ehr.patient_timeline``; if empty, falls back to dated
+events in ``ehr.patient_graph_vision`` (PTV / vault) so the React
+``TimelineChartCard`` and Epistemic Vault dashboard can chart vault-only data.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,10 +45,10 @@ router = APIRouter(
 
 
 # ---------------------------------------------------------------------------
-# Shared: load events from ehr.patient_timeline
+# Shared: load events from ehr.patient_timeline, else PTV graph_json
 # ---------------------------------------------------------------------------
 
-async def _load_events(
+async def _load_events_from_sql(
     db: AsyncSession,
     patient_id: str,
 ) -> List[Dict[str, Any]]:
@@ -81,6 +87,84 @@ async def _load_events(
             }
         )
     return events
+
+
+async def _load_events_from_ptv(
+    db: AsyncSession,
+    patient_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    When ``ehr.patient_timeline`` has no rows (vault-first / PTV-only flows),
+    synthesize analytics-compatible events from ``ehr.patient_graph_vision``.
+    """
+    from server.utils.parse_date import extract_date_from_text, parse_clinical_date
+
+    row_q = await db.execute(
+        text(
+            """
+            SELECT graph_json
+            FROM ehr.patient_graph_vision
+            WHERE patient_id = :pid
+            """
+        ),
+        {"pid": patient_id},
+    )
+    row = row_q.mappings().first()
+    if not row or row.get("graph_json") is None:
+        return []
+
+    gj = row["graph_json"]
+    if isinstance(gj, str):
+        gj = json.loads(gj)
+    if not isinstance(gj, dict):
+        return []
+
+    events_section = gj.get("events") or {}
+    out: List[Dict[str, Any]] = []
+    for eid, raw in events_section.items():
+        if not isinstance(raw, dict):
+            continue
+        event_id = str(raw.get("event_id") or eid)
+        ts_raw = (raw.get("timestamp") or "").strip()
+        preview = (raw.get("preview") or "") or ""
+        ts = parse_clinical_date(ts_raw) if ts_raw else None
+        if ts is None and preview:
+            ts = extract_date_from_text(preview)
+        if ts is None:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        discovered = raw.get("discovered_by") or []
+        src = "ptv"
+        if isinstance(discovered, list) and discovered:
+            src = ",".join(str(x) for x in discovered[:3])
+        elif isinstance(discovered, str) and discovered:
+            src = discovered
+        out.append(
+            {
+                "id": event_id,
+                "patient_id": patient_id,
+                "ts": ts,
+                "event_type": raw.get("event_type") or "unknown",
+                "source": src,
+                "structured": None,
+                "text": preview[:4000] if preview else None,
+                "meta": {"from_ptv": True},
+            }
+        )
+
+    out.sort(key=lambda e: e["ts"])
+    return out
+
+
+async def _load_events(
+    db: AsyncSession,
+    patient_id: str,
+) -> List[Dict[str, Any]]:
+    sql_events = await _load_events_from_sql(db, patient_id)
+    if sql_events:
+        return sql_events
+    return await _load_events_from_ptv(db, patient_id)
 
 
 # ---------------------------------------------------------------------------
