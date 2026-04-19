@@ -1089,6 +1089,20 @@
                         </div>
                     </div>
 
+                    <!-- Mirrors React PatientPortalPage + TimelineChartCard: dashboard-first health insights -->
+                    <div class="card" id="dashboard-your-timeline-card" style="margin-bottom: 24px;">
+                        <div class="card-header">
+                            <div class="card-title">Your Timeline</div>
+                            <div class="card-badge badge-green" id="dashboard-timeline-source-badge" style="display: none;">PTV</div>
+                        </div>
+                        <p style="font-size: 12px; color: var(--color-text-dim); margin: 0 0 12px 0;">
+                            Longitudinal view aligned with the React patient portal: windowed stability, charts, and prompts (no separate EoHD run required).
+                        </p>
+                        <div id="dashboard-health-insights-body">
+                            <p style="color: var(--color-text-dim); font-size: 13px;">Sign in to load timeline status and analytics.</p>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title">Quick Actions</div>
@@ -2039,12 +2053,21 @@ Are there any patterns in my symptoms?"></textarea>
                 addReceipt('Portal active');
                 // Load data for document and timeline tabs
                 setTimeout(() => {
+                    loadDashboardYourTimeline();
                     loadArtifactList();
                     loadTimelineEvents();
                 }, 200);
             } else {
                 landing.classList.remove('hidden');
                 portal.classList.remove('active');
+                const dBody = document.getElementById('dashboard-health-insights-body');
+                if (dBody) dBody.innerHTML = '<p style="color: var(--color-text-dim); font-size: 13px;">Sign in to load timeline status and analytics.</p>';
+                const dBadge = document.getElementById('dashboard-timeline-source-badge');
+                if (dBadge) dBadge.style.display = 'none';
+                const sd = document.getElementById('stat-docs');
+                const se = document.getElementById('stat-events');
+                if (sd) sd.textContent = '0';
+                if (se) se.textContent = '0';
             }
         }
 
@@ -2077,6 +2100,7 @@ Are there any patterns in my symptoms?"></textarea>
             if (view === 'journal') loadJournalEntries();
             if (view === 'documents') loadArtifactList();
             if (view === 'timeline') loadTimelineEvents();
+            if (view === 'dashboard') loadDashboardYourTimeline();
         }
 
         // === CLINICAL MODE SWITCHING ===
@@ -2654,8 +2678,12 @@ Are there any patterns in my symptoms?"></textarea>
                 const items = await r.json();
                 if (items.length === 0) {
                     container.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-state-icon">&#128193;</div><div class="empty-state-title">No documents stored yet</div><div class="empty-state-desc">Upload documents above to store them in your secure vault.</div></div>';
+                    const sd0 = document.getElementById('stat-docs');
+                    if (sd0) sd0.textContent = '0';
                     return;
                 }
+                const sd = document.getElementById('stat-docs');
+                if (sd) sd.textContent = String(items.length);
                 const preview = items.slice(0, 4);
                 const titles = items.slice(4, 12);
                 let html = '';
@@ -2799,6 +2827,7 @@ Are there any patterns in my symptoms?"></textarea>
                     }
                     addMsg('Loading updated timeline events…');
                     await loadTimelineEvents();
+                    await loadDashboardYourTimeline();
                 } catch (e) {
                     addMsg('Error: ' + e.message);
                 } finally {
@@ -2806,6 +2835,124 @@ Are there any patterns in my symptoms?"></textarea>
                 }
             });
         }
+
+        function populateTimelineInfoCard(data) {
+            const el = document.getElementById('timeline-info');
+            const badge = document.getElementById('timeline-status-badge');
+            if (!el || !badge) return;
+            if (!data || !data.has_timeline) {
+                badge.textContent = 'No data';
+                badge.className = 'card-badge badge-gray';
+                el.innerHTML = '<p style="color: var(--color-text-secondary); font-size: 13px; line-height: 1.6;">No timeline yet. Upload documents or ingest a PDF from this tab. The <strong>Dashboard</strong> shows the same longitudinal summary as the React patient portal.</p>';
+                return;
+            }
+            badge.textContent = 'Active';
+            badge.className = 'card-badge badge-green';
+            const src = data.source || 'timeline';
+            const last = data.last_updated ? escapeHtml(String(data.last_updated).substring(0, 10)) : '—';
+            const edges = data.edge_count != null ? data.edge_count : '—';
+            el.innerHTML = `
+                <div style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.65;">
+                    <p style="margin: 0 0 8px 0;"><strong>${data.event_count || 0}</strong> events · <strong>${edges}</strong> graph edges <span style="color: var(--color-text-dim);">(${escapeHtml(src)})</span></p>
+                    <p style="margin: 0; color: var(--color-text-dim);">Last activity: <span class="font-mono">${last}</span></p>
+                    <p style="margin: 10px 0 0 0; color: var(--color-text-dim); font-size: 12px;">Open <strong>Dashboard</strong> for Health Insights charts (windowed analytics).</p>
+                </div>`;
+        }
+
+        function _insightMiniTile(label, valueHtml) {
+            return `<div style="padding:10px;background:var(--color-surface-dim);border-radius:var(--radius);border:1px solid var(--color-border);">
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-dim);margin-bottom:4px;">${escapeHtml(label)}</div>
+                <div style="font-size:18px;font-family:var(--font-mono);font-weight:700;color:var(--color-text-primary);">${valueHtml}</div>
+            </div>`;
+        }
+
+        async function loadDashboardYourTimeline() {
+            const body = document.getElementById('dashboard-health-insights-body');
+            const srcBadge = document.getElementById('dashboard-timeline-source-badge');
+            if (!body) return;
+            if (!sessionToken) {
+                body.innerHTML = '<p style="color: var(--color-text-dim); font-size: 13px;">Sign in to load timeline status and analytics.</p>';
+                if (srcBadge) srcBadge.style.display = 'none';
+                return;
+            }
+            body.innerHTML = '<div class="results-loading" style="padding: 12px;">Loading health insights…</div>';
+            try {
+                const r = await fetch(`${API_BASE}/api/timeline/status`, {
+                    headers: { 'Authorization': `Bearer ${sessionToken}` }
+                });
+                if (!r.ok) throw new Error('status ' + r.status);
+                const st = await r.json();
+                const statEv = document.getElementById('stat-events');
+                if (statEv) statEv.textContent = String(st.event_count || 0);
+                if (srcBadge) {
+                    if (st.source) {
+                        srcBadge.style.display = 'inline-block';
+                        srcBadge.textContent = String(st.source).toUpperCase();
+                    } else {
+                        srcBadge.style.display = 'none';
+                    }
+                }
+                if (!st.has_timeline || !st.timeline_id) {
+                    body.innerHTML = '<p style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.6;">Upload your patient timeline to unlock AI-assisted health analytics, stability trends, and clinical prompts (same entry pattern as the React patient portal).</p>'
+                        + '<button type="button" class="btn btn-primary" style="margin-top: 12px;" onclick="switchView(\'timeline\')">Open Timeline</button>';
+                    return;
+                }
+                const pid = encodeURIComponent(st.timeline_id);
+                const ar = await fetch(`${API_BASE}/api/timeline/${pid}/analytics/summary?window_days=7`);
+                if (!ar.ok) {
+                    const hint = ar.status === 404
+                        ? 'Not enough dated events for charts yet. Ingest clinical PDFs or ensure events have parseable dates in previews.'
+                        : ('Charts unavailable (HTTP ' + ar.status + ').');
+                    body.innerHTML = '<p style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.6;">' + escapeHtml(hint) + '</p>'
+                        + '<button type="button" class="btn btn-sm" style="margin-top:10px;" onclick="switchView(\'timeline\')">Go to Timeline</button>';
+                    return;
+                }
+                const d = await ar.json();
+                const wins = d.windows || [];
+                const latestS = wins.length ? wins[wins.length - 1].stability_score : null;
+                let stLabel = 'UNKNOWN';
+                let stColor = 'var(--color-text-dim)';
+                if (latestS != null) {
+                    if (latestS >= 0.7) { stLabel = 'STABLE'; stColor = 'var(--color-accent)'; }
+                    else if (latestS >= 0.4) { stLabel = 'TRANSITIONING'; stColor = '#c9a227'; }
+                    else { stLabel = 'VARIABLE'; stColor = '#c94a4a'; }
+                }
+                const spanDays = d.span_days || 0;
+                const spanLabel = spanDays > 365 ? ((spanDays / 365).toFixed(1)) + ' yr' : (spanDays + 'd');
+                const phases = (d.phase_shifts || []).length;
+                const charts = d.charts || {};
+                let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
+                html += _insightMiniTile('Events', escapeHtml(String(d.total_events || 0)));
+                html += _insightMiniTile('Span', escapeHtml(spanLabel));
+                html += _insightMiniTile('Stability', '<span style="color:' + stColor + '">' + escapeHtml(stLabel) + '</span>');
+                html += _insightMiniTile('Phase shifts', escapeHtml(String(phases)));
+                html += '</div>';
+                if (charts.stability_band) {
+                    html += '<p style="font-size:11px;color:var(--color-text-dim);margin:0 0 6px 0;">Stability over time</p>';
+                    html += '<img src="data:image/png;base64,' + charts.stability_band + '" alt="Stability band" style="width:100%;max-width:100%;border-radius:var(--radius);border:1px solid var(--color-border);margin-bottom:14px;" />';
+                }
+                if (charts.terrain_trajectory) {
+                    html += '<p style="font-size:11px;color:var(--color-text-dim);margin:0 0 6px 0;">Health terrain trajectory</p>';
+                    html += '<img src="data:image/png;base64,' + charts.terrain_trajectory + '" alt="Terrain trajectory" style="width:100%;max-width:100%;border-radius:var(--radius);border:1px solid var(--color-border);margin-bottom:14px;" />';
+                }
+                const flares = d.flare_episodes || [];
+                if (flares.length > 0) {
+                    html += '<div style="border-left:3px solid var(--color-accent);padding:10px 12px;margin-bottom:12px;background:var(--color-surface-dim);border-radius:0 var(--radius) var(--radius) 0;">';
+                    html += '<p style="font-size:11px;font-weight:600;color:var(--color-accent);margin:0 0 8px 0;">Questions for your next appointment</p>';
+                    html += '<ul style="margin:0;padding-left:18px;color:var(--color-text-secondary);font-size:13px;line-height:1.55;">';
+                    html += '<li>Timeline shows ' + flares.length + ' period' + (flares.length !== 1 ? 's' : '') + ' of elevated activity — can we review what was happening then?</li>';
+                    html += '<li>Stability reads <strong style="color:' + stColor + '">' + escapeHtml(stLabel.toLowerCase()) + '</strong> — does that match your clinical impression?</li>';
+                    html += '</ul></div>';
+                }
+                if (d.disclaimer) {
+                    html += '<p style="font-size:11px;color:var(--color-text-dim);font-style:italic;margin:12px 0 0 0;line-height:1.5;">' + escapeHtml(d.disclaimer) + '</p>';
+                }
+                body.innerHTML = html;
+            } catch (e) {
+                body.innerHTML = '<div class="results-error" style="padding:8px;">' + escapeHtml(e.message || 'Failed to load') + '</div>';
+            }
+        }
+        window.loadDashboardYourTimeline = loadDashboardYourTimeline;
 
         // Load timeline events from PTV graph status
         async function loadTimelineEvents() {
@@ -2819,6 +2966,7 @@ Are there any patterns in my symptoms?"></textarea>
                 });
                 if (!r.ok) return;
                 const data = await r.json();
+                populateTimelineInfoCard(data);
                 const events = data.recent_events || data.events || [];
                 const total = data.event_count || events.length || 0;
                 if (countBadge) countBadge.textContent = total + ' event' + (total !== 1 ? 's' : '');
@@ -2995,7 +3143,7 @@ Are there any patterns in my symptoms?"></textarea>
                         const n = data.events_extracted_total || 0;
                         showMsg('doc-submit-msg', `Upload complete: ${data.artifacts} file(s), ${n} events extracted.`, false, true);
                         // Refresh the artifact list and timeline events
-                        setTimeout(() => { loadArtifactList(); loadTimelineEvents(); }, 300);
+                        setTimeout(() => { loadDashboardYourTimeline(); loadArtifactList(); loadTimelineEvents(); }, 300);
                     } else if (evType === 'error') {
                         showMsg('doc-submit-msg', data.message || 'Server error', true);
                     } else if (evType === 'batch_error') {
@@ -3056,6 +3204,8 @@ Are there any patterns in my symptoms?"></textarea>
                 if (r.ok) {
                     showMsg('mock-ptv-msg', 'Added ' + (data.added || 0) + ' mock event(s) to PTV.', false);
                     addReceipt('Mock PTV events inserted (' + (data.added || 0) + ')');
+                    await loadTimelineEvents();
+                    await loadDashboardYourTimeline();
                 } else {
                     const d = data.detail;
                     const msg = typeof d === 'string' ? d : (d && d.message) ? d.message : JSON.stringify(d || data);
