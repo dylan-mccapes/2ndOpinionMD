@@ -933,18 +933,23 @@ async def run_ingest_from_pdf_bytes(
     )
 
     # ------------------------------------------------------------------
-    # 2. Compute dynamic batches sized to the active enrichment model's context
+    # 2. Compute batches using the same sizing logic as run_eohd_timeline_pdf.py
     # ------------------------------------------------------------------
-    from server.eoh.graph_enrichment import compute_batch_boundaries, BATCH_MAX_CHARS, INGESTION_MODEL
+    from server.eoh.timeline_summarizer import (
+        _iter_pdf_event_extraction_batches,
+        PDF_EVENT_BATCH_MAX_INPUT_CHARS,
+        _extract_events_from_pages_batch,
+    )
+    from server.eoh.graph_enrichment import INGESTION_MODEL, _USE_OLLAMA, _OLLAMA_BASE_URL
 
-    batches = compute_batch_boundaries(pages, max_chars=BATCH_MAX_CHARS)
+    batches = _iter_pdf_event_extraction_batches(pages, max_chars=PDF_EVENT_BATCH_MAX_INPUT_CHARS)
     logger.info(
         "INGEST [%s] split into %d batches (target %s chars each)",
-        patient_id, len(batches), f"{BATCH_MAX_CHARS:,}",
+        patient_id, len(batches), f"{PDF_EVENT_BATCH_MAX_INPUT_CHARS:,}",
     )
     print(
         f"  model: {INGESTION_MODEL}\n"
-        f"  batch target: {BATCH_MAX_CHARS:,} chars\n"
+        f"  batch target: {PDF_EVENT_BATCH_MAX_INPUT_CHARS:,} chars\n"
         f"  batches: {len(batches)}"
     )
 
@@ -969,10 +974,7 @@ async def run_ingest_from_pdf_bytes(
     for batch_idx, batch_pages in enumerate(batches):
         batch_page_nums = [p[0] for p in batch_pages]
         page_range_str = f"{batch_page_nums[0]}-{batch_page_nums[-1]}"
-        batch_text = "\n\n".join(
-            f"=== Page {pn} ===\n{txt}" for pn, txt in batch_pages
-        )
-        batch_chars = len(batch_text)
+        batch_chars = sum(len(t) for _, t in batch_pages)
 
         logger.info(
             "INGEST [%s] batch %d/%d — pages %s (%d pages, %s chars)",
@@ -1009,28 +1011,58 @@ async def run_ingest_from_pdf_bytes(
         )
         print(f"     timeline events stored: {batch_events_stored} (running total: {events_stored})")
 
-        # 3b. Graph enrichment via GPT-4.1 (if enabled)
+        # 3b. Graph enrichment — same per-page extraction as run_eohd_timeline_pdf.py
         if enable_graph_enrichment and vision is not None:
-            from server.eoh.graph_enrichment import enrich_graph_from_batch
+            from server.eoh.patient_timeline_vision import add_events_from_pdf_page
 
-            enrich_stats = await enrich_graph_from_batch(
-                batch_text=batch_text,
-                page_range=page_range_str,
-                patient_id=patient_id,
-                vision=vision,
-                batch_index=batch_idx,
-                total_batches=len(batches),
-            )
+            if _USE_OLLAMA:
+                from server.llm.llm_client import get_ollama_client
+                _enrich_client = get_ollama_client(base_url=_OLLAMA_BASE_URL)
+                _force_json = False
+            else:
+                from openai import AsyncOpenAI
+                _enrich_client = AsyncOpenAI()
+                _force_json = True
+
+            t_enrich = _time.perf_counter()
+            try:
+                page_events: Dict[int, List[Dict[str, Any]]] = await _extract_events_from_pages_batch(
+                    _enrich_client,
+                    batch_pages,
+                    model=INGESTION_MODEL,
+                    force_json_format=_force_json,
+                )
+                events_added = 0
+                for pn, ev_list in page_events.items():
+                    add_events_from_pdf_page(vision, pn, ev_list)
+                    events_added += len(ev_list)
+                enrich_err = None
+            except Exception as _ee:
+                logger.warning("INGEST [%s] batch %d enrichment failed: %s", patient_id, batch_idx + 1, _ee)
+                page_events = {}
+                events_added = 0
+                enrich_err = str(_ee)
+
+            elapsed_enrich_ms = int((_time.perf_counter() - t_enrich) * 1000)
+            enrich_stats = {
+                "batch_index": batch_idx,
+                "page_range": page_range_str,
+                "input_chars": sum(len(t) for _, t in batch_pages),
+                "events_extracted": events_added,
+                "edges_extracted": 0,
+                "elapsed_ms": elapsed_enrich_ms,
+                "error": enrich_err,
+            }
             enrichment_stats_list.append(enrich_stats)
 
             logger.info(
-                "INGEST [%s] graph state after batch %d: %d events, %d edges",
-                patient_id, batch_idx + 1,
-                len(vision.events), vision.count_edges(),
+                "INGEST [%s] batch %d: %d graph events from %d pages (%dms) | total graph: %d events, %d edges",
+                patient_id, batch_idx + 1, events_added, len(batch_pages),
+                elapsed_enrich_ms, len(vision.events), vision.count_edges(),
             )
             print(
-                f"     graph state: {len(vision.events)} events, "
-                f"{vision.count_edges()} edges"
+                f"     graph events added: {events_added}  "
+                f"(running total: {len(vision.events)} events, {vision.count_edges()} edges)"
             )
 
     # ------------------------------------------------------------------
