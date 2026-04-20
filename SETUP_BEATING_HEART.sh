@@ -44,6 +44,7 @@ pip install -r server/requirements.txt
 echo "Verifying critical migration deps..."
 python - <<'PY'
 import importlib
+import importlib.util
 missing = [name for name in ("alembic", "greenlet") if importlib.util.find_spec(name) is None]
 if missing:
     raise SystemExit(f"Missing required packages in .BeatingHeart: {', '.join(missing)}")
