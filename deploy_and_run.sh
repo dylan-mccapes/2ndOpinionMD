@@ -15,6 +15,13 @@ INDEX_SRC="$SCRIPT_DIR/index.html"
 INDEX_DEST="$NGINX_WEBROOT/index.html"
 
 # -----------------------------------------------------------------------
+# 0. Pull latest code
+# -----------------------------------------------------------------------
+echo "⬇️  Pulling latest code..."
+git pull origin "$(git rev-parse --abbrev-ref HEAD)"
+echo "   ✅ Up to date"
+
+# -----------------------------------------------------------------------
 # 1. Deploy index.html
 # -----------------------------------------------------------------------
 echo "📄 Deploying index.html → $INDEX_DEST"

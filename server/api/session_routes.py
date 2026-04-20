@@ -84,7 +84,8 @@ async def get_or_create_operator(
     db: AsyncSession, user_id: str, operator_type: str = "patient", sovereignty_level: str = "full"
 ) -> str:
     """Get existing operator for user_id or create one. Returns operator_id (UUID str)."""
-    user_uuid = uuid.UUID(user_id)
+    # Accept asyncpg pgproto.UUID, stdlib uuid.UUID, or plain str
+    user_uuid = user_id if isinstance(user_id, uuid.UUID) else uuid.UUID(str(user_id))
     r = await db.execute(
         text("SELECT operator_id FROM operators WHERE user_id = :uid"),
         {"uid": user_uuid},
