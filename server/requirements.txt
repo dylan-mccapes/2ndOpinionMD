@@ -85,6 +85,7 @@ pydantic_core==2.14.6
 Pygments==2.19.2
 pymongo==4.6.1
 pypdf==6.1.1
+pypdfium2>=4.30
 python-calamine==0.5.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.0

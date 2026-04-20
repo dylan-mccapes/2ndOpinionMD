@@ -1,0 +1,5233 @@
+{
+  "patient_id": "norman_eric_roberts",
+  "query": "What patterns matter for inflammatory load?",
+  "rounds": [
+    {
+      "step_id": "reduce",
+      "tool": "graph_reduce",
+      "result_summary": {
+        "tool": "graph_reduce",
+        "strategy_id": "S2",
+        "generated_at": "2026-04-13T19:58:42.881670+00:00",
+        "kept_count": 3705,
+        "dropped_count": 4000,
+        "dropped_sample": [
+          {
+            "event_id": "pdf_p0001_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0002_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0003_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0004_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0005_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0006_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0007_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0008_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0009_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0000",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0001",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0002",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0004",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0005",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0007",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0009",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0010",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0011",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0013",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0015",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0017",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0019",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0021",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0024",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0027",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0011_e0030",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0000",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0001",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0003",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0005",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0007",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0009",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0012_e0011",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0013_e0001",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0017_e0000",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0018_e0002",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0018_e0005",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0018_e0008",
+            "reasons": "isolate"
+          },
+          {
+            "event_id": "pdf_p0021_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0022_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0023_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0024_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0025_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0026_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0027_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0028_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0029_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0030_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0031_generic",
+            "reasons": "page,isolate"
+          },
+          {
+            "event_id": "pdf_p0032_generic",
+            "reasons": "page,isolate"
+          }
+        ],
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0010_e0000",
+            "event_type": "lab",
+            "timestamp": "12/28/2023",
+            "status": "included",
+            "preview": "Hgb A1c %6.2 (H)",
+            "edge_count": 28,
+            "connascence_counts": {
+              "temporal": 11,
+              "treatment": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0010_e0001",
+            "event_type": "lab",
+            "timestamp": "05/18/2022",
+            "status": "included",
+            "preview": "Hgb A1c %6.0 (H)",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 10,
+              "treatment": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0010_e0002",
+            "event_type": "lab",
+            "timestamp": "01/26/2021",
+            "status": "included",
+            "preview": "Hgb A1c %6.0 (H)",
+            "edge_count": 25,
+            "connascence_counts": {
+              "temporal": 15,
+              "treatment": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0003",
+            "event_type": "lab",
+            "timestamp": "2021-08-05",
+            "status": "included",
+            "preview": "COVID-19 mRNA LNP-S, PF (Moderna) vaccination",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 10,
+              "treatment": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0006",
+            "event_type": "lab",
+            "timestamp": "2021-09-02",
+            "status": "included",
+            "preview": "COVID-19 mRNA LNP-S, PF (Moderna) vaccination",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 10,
+              "treatment": 8
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0008",
+            "event_type": "lab",
+            "timestamp": "2009-10-04",
+            "status": "included",
+            "preview": "INFs pres free 3yrs-adult (Influenza) vaccination",
+            "edge_count": 1,
+            "connascence_counts": {
+              "temporal": 1
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0012",
+            "event_type": "lab",
+            "timestamp": "2016-11-01",
+            "status": "included",
+            "preview": "PCV13 (PREVNAR13) (Pneumococcal conjugate, 13 valent) vaccination",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 12,
+              "treatment": 1
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0014",
+            "event_type": "lab",
+            "timestamp": "2017-05-16",
+            "status": "included",
+            "preview": "PPSV23 (Pneumococcal polysaccharide) vaccination",
+            "edge_count": 25,
+            "connascence_counts": {
+              "temporal": 16,
+              "treatment": 9
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0016",
+            "event_type": "lab",
+            "timestamp": "2020-09-15",
+            "status": "included",
+            "preview": "TD pres free (Tetanus, Diphtheria) (Tenivac), adsorbed vaccination",
+            "edge_count": 25,
+            "connascence_counts": {
+              "temporal": 20,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0018",
+            "event_type": "lab",
+            "timestamp": "2016-03-07",
+            "status": "included",
+            "preview": "ZOS (Herpes zoster recombinant) Shingrix vaccination",
+            "edge_count": 22,
+            "connascence_counts": {
+              "temporal": 14,
+              "treatment": 8
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0020",
+            "event_type": "lab",
+            "timestamp": "2023-01-24",
+            "status": "included",
+            "preview": "ZOS (Zostervirus live, shingles) vaccination",
+            "edge_count": 26,
+            "connascence_counts": {
+              "temporal": 16,
+              "treatment": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0022",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Alcohol dependence",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0023",
+            "event_type": "lab",
+            "timestamp": "2020-09-22",
+            "status": "included",
+            "preview": "Hyperglycemia with hgA1c 6.1",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 13,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0025",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Leukocytosis",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0026",
+            "event_type": "lab",
+            "timestamp": "2020-09-22",
+            "status": "included",
+            "preview": "Hyperlipidemia intolerance to statins",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 13,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0028",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Hematuria",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0029",
+            "event_type": "lab",
+            "timestamp": "2020-09-22",
+            "status": "included",
+            "preview": "Chronic post-traumatic stress disorder",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 13,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0031",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Hyperlipidemia",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0032",
+            "event_type": "medication",
+            "timestamp": "2017-08-21",
+            "status": "included",
+            "preview": "BENADRYL [DIPHENHYDRAMINE HYDROCHLORIDE] for restless, oversedation",
+            "edge_count": 41,
+            "connascence_counts": {
+              "temporal": 17,
+              "treatment": 24
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0033",
+            "event_type": "medication",
+            "timestamp": "2020-01-07",
+            "status": "included",
+            "preview": "CYMBALTA [DULOXETINE HCL] for BPH symptoms",
+            "edge_count": 46,
+            "connascence_counts": {
+              "temporal": 8,
+              "treatment": 38
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0034",
+            "event_type": "medication",
+            "timestamp": "2024-07-09",
+            "status": "included",
+            "preview": "NSAIDS, NON-SELECTIVE [NON-STEROIDAL ANTI-INFLAMMATORY AGENTS] for patient on DOACs",
+            "edge_count": 24,
+            "connascence_counts": {
+              "temporal": 11,
+              "treatment": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0012_e0002",
+            "event_type": "lab",
+            "timestamp": "2009-09-30",
+            "status": "included",
+            "preview": "INFs pres free 3yrs-adult (Influenza) vaccination",
+            "edge_count": 1,
+            "connascence_counts": {
+              "temporal": 1
+            }
+          },
+          {
+            "event_id": "pdf_p0012_e0004",
+            "event_type": "lab",
+            "timestamp": "2016-11-01",
+            "status": "included",
+            "preview": "PCV13 (PREVNAR13) (Pneumococcal conjugate, 13 valent) vaccination",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 13,
+              "treatment": 1
+            }
+          },
+          {
+            "event_id": "pdf_p0012_e0006",
+            "event_type": "lab",
+            "timestamp": "2017-05-16",
+            "status": "included",
+            "preview": "PPSV23 (Pneumococcal polysaccharide) vaccination",
+            "edge_count": 24,
+            "connascence_counts": {
+              "temporal": 15,
+              "treatment": 9
+            }
+          },
+          {
+            "event_id": "pdf_p0012_e0008",
+            "event_type": "lab",
+            "timestamp": "2020-09-15",
+            "status": "included",
+            "preview": "TD pres free (Tetanus, Diphtheria) (Tenivac), adsorbed vaccination",
+            "edge_count": 24,
+            "connascence_counts": {
+              "temporal": 19,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0012_e0010",
+            "event_type": "lab",
+            "timestamp": "2016-03-07",
+            "status": "included",
+            "preview": "ZOS (Herpes zoster recombinant) Shingrix vaccination",
+            "edge_count": 23,
+            "connascence_counts": {
+              "temporal": 15,
+              "treatment": 8
+            }
+          },
+          {
+            "event_id": "pdf_p0013_e0000",
+            "event_type": "lab",
+            "timestamp": "2020-09-15",
+            "status": "included",
+            "preview": "TD pres free (Tetanus, Diphtheria) (Tenivac), adsorbed vaccination",
+            "edge_count": 23,
+            "connascence_counts": {
+              "temporal": 18,
+              "treatment": 5
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          }
+        ],
+        "context_node_count": 48,
+        "context_note": "Expanded 48 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text.",
+        "event_ids_head": [
+          "pdf_p0010_e0000",
+          "pdf_p0010_e0001",
+          "pdf_p0010_e0002",
+          "pdf_p0011_e0003",
+          "pdf_p0011_e0006",
+          "pdf_p0011_e0008",
+          "pdf_p0011_e0012",
+          "pdf_p0011_e0014",
+          "pdf_p0011_e0016",
+          "pdf_p0011_e0018",
+          "pdf_p0011_e0020",
+          "pdf_p0011_e0022",
+          "pdf_p0011_e0023",
+          "pdf_p0011_e0025",
+          "pdf_p0011_e0026",
+          "pdf_p0011_e0028",
+          "pdf_p0011_e0029",
+          "pdf_p0011_e0031",
+          "pdf_p0011_e0032",
+          "pdf_p0011_e0033",
+          "pdf_p0011_e0034",
+          "pdf_p0011_e0035",
+          "pdf_p0011_e0036",
+          "pdf_p0011_e0037"
+        ],
+        "event_ids_total": 3705
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "temporal_reduce",
+      "tool": "graph_reduce",
+      "result_summary": {
+        "tool": "graph_reduce",
+        "strategy_id": "S2",
+        "generated_at": "2026-04-13T19:58:42.919932+00:00",
+        "kept_count": 146,
+        "dropped_count": 7559,
+        "dropped_sample": [
+          {
+            "event_id": "pdf_p0001_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0002_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0003_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0004_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0005_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0006_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0007_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0008_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0009_generic",
+            "reasons": "page,isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0010_e0000",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0010_e0001",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0010_e0002",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0000",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0001",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0002",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0003",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0004",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0005",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0006",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0007",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0008",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0009",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0010",
+            "reasons": "isolate,temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0011",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0012",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0013",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0014",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0015",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0016",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0017",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0018",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0019",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0020",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0021",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0023",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0024",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0026",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0027",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0029",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0030",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0011_e0032",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0033",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0011_e0034",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0012_e0000",
+            "reasons": "isolate,temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0012_e0001",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0012_e0002",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0012_e0003",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0012_e0004",
+            "reasons": "temporal_before_window"
+          },
+          {
+            "event_id": "pdf_p0012_e0005",
+            "reasons": "isolate,temporal_unparsed_date"
+          },
+          {
+            "event_id": "pdf_p0012_e0006",
+            "reasons": "temporal_before_window"
+          }
+        ],
+        "temporal_filter": {
+          "start": "2024-12-05T00:00:00+00:00",
+          "end": "2025-12-05T00:00:00+00:00",
+          "recent_years": 1.0,
+          "temporal_anchor": "latest_in_corpus",
+          "temporal_start_arg": null,
+          "temporal_end_arg": null
+        },
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0022",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Alcohol dependence",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0025",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Leukocytosis",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0028",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Hematuria",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0031",
+            "event_type": "diagnosis",
+            "timestamp": "2025-10-29",
+            "status": "included",
+            "preview": "Hyperlipidemia",
+            "edge_count": 7,
+            "connascence_counts": {
+              "temporal": 7
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0016_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0016_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0016_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0016_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0016_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          }
+        ],
+        "context_node_count": 48,
+        "context_note": "Expanded 48 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text.",
+        "event_ids_head": [
+          "pdf_p0011_e0022",
+          "pdf_p0011_e0025",
+          "pdf_p0011_e0028",
+          "pdf_p0011_e0031",
+          "pdf_p0011_e0035",
+          "pdf_p0011_e0036",
+          "pdf_p0011_e0037",
+          "pdf_p0011_e0038",
+          "pdf_p0011_e0039",
+          "pdf_p0011_e0040",
+          "pdf_p0011_e0041",
+          "pdf_p0011_e0042",
+          "pdf_p0011_e0043",
+          "pdf_p0011_e0044",
+          "pdf_p0011_e0045",
+          "pdf_p0011_e0046",
+          "pdf_p0011_e0047",
+          "pdf_p0014_e0000",
+          "pdf_p0014_e0001",
+          "pdf_p0014_e0002",
+          "pdf_p0014_e0003",
+          "pdf_p0014_e0004",
+          "pdf_p0014_e0005",
+          "pdf_p0014_e0006"
+        ],
+        "event_ids_total": 146
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "hybrid_search",
+      "tool": "graph_hybrid_search",
+      "result_summary": {
+        "tool": "graph_hybrid_search",
+        "strategy_id": "S11",
+        "generated_at": "2026-04-13T19:58:42.924276+00:00",
+        "event_ids": [
+          "pdf_p0011_e0035",
+          "pdf_p0011_e0037",
+          "pdf_p0011_e0038",
+          "pdf_p0011_e0039",
+          "pdf_p0011_e0040",
+          "pdf_p0011_e0041",
+          "pdf_p0011_e0042",
+          "pdf_p0011_e0043",
+          "pdf_p0011_e0044",
+          "pdf_p0011_e0045",
+          "pdf_p0011_e0047",
+          "pdf_p0014_e0000",
+          "pdf_p0014_e0002",
+          "pdf_p0014_e0003",
+          "pdf_p0014_e0004",
+          "pdf_p0014_e0005",
+          "pdf_p0014_e0006",
+          "pdf_p0014_e0007",
+          "pdf_p0014_e0008",
+          "pdf_p0014_e0009",
+          "pdf_p0014_e0010",
+          "pdf_p0014_e0012",
+          "pdf_p0015_e0000",
+          "pdf_p0015_e0002",
+          "pdf_p0015_e0003",
+          "pdf_p0015_e0004",
+          "pdf_p0015_e0005",
+          "pdf_p0015_e0006",
+          "pdf_p0015_e0007",
+          "pdf_p0015_e0008"
+        ],
+        "keyword_hits": 30,
+        "semantic_hits": 0,
+        "corpus_scope": "subset",
+        "corpus_size": 146,
+        "note": "semantic skipped: sentence-transformers not installed (install with: pip install 'sentence-transformers>=3' — see server/requirements.txt)",
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          }
+        ],
+        "context_node_count": 30,
+        "context_note": "Expanded 30 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "bfs_expand",
+      "tool": "graph_bfs_expand",
+      "result_summary": {
+        "tool": "graph_bfs_expand",
+        "strategy_id": "S4",
+        "generated_at": "2026-04-13T19:58:42.924761+00:00",
+        "event_ids": [
+          "pdf_p0011_e0035",
+          "pdf_p0011_e0037",
+          "pdf_p0011_e0038",
+          "pdf_p0011_e0039",
+          "pdf_p0011_e0040",
+          "pdf_p0011_e0041",
+          "pdf_p0011_e0042",
+          "pdf_p0011_e0043",
+          "pdf_p0011_e0044",
+          "pdf_p0011_e0045",
+          "pdf_p0011_e0036",
+          "pdf_p0011_e0046",
+          "pdf_p0011_e0047",
+          "pdf_p0014_e0000",
+          "pdf_p0014_e0001",
+          "pdf_p0014_e0002",
+          "pdf_p0014_e0003",
+          "pdf_p0014_e0004",
+          "pdf_p0014_e0005",
+          "pdf_p0014_e0006",
+          "pdf_p0014_e0007",
+          "pdf_p0014_e0008",
+          "pdf_p0014_e0009",
+          "pdf_p0014_e0010",
+          "pdf_p0014_e0011",
+          "pdf_p0014_e0012",
+          "pdf_p0015_e0000",
+          "pdf_p0015_e0001",
+          "pdf_p0015_e0002",
+          "pdf_p0015_e0003",
+          "pdf_p0015_e0004"
+        ],
+        "max_depth": 2,
+        "seeds": [
+          "pdf_p0011_e0035",
+          "pdf_p0011_e0037",
+          "pdf_p0011_e0038",
+          "pdf_p0011_e0039",
+          "pdf_p0011_e0040",
+          "pdf_p0011_e0041",
+          "pdf_p0011_e0042",
+          "pdf_p0011_e0043",
+          "pdf_p0011_e0044",
+          "pdf_p0011_e0045"
+        ],
+        "restricted": true,
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          }
+        ],
+        "context_node_count": 31,
+        "context_note": "Expanded 31 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "pe_lorenz",
+      "tool": "graph_pe_lorenz_classify",
+      "result_summary": {
+        "tool": "graph_pe_lorenz_classify",
+        "strategy_id": "S8",
+        "generated_at": "2026-04-13T19:58:43.500799+00:00",
+        "rho": 28.0,
+        "tau": 2.0,
+        "steps": 1500,
+        "items": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "classification": "KEEP",
+            "mean_x": -6.90905,
+            "load_bearing": false,
+            "x0": 0.0,
+            "y0": 0.2582,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "classification": "KEEP",
+            "mean_x": -6.38585,
+            "load_bearing": false,
+            "x0": 0.2,
+            "y0": 0.2568,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "classification": "KEEP",
+            "mean_x": -2.20213,
+            "load_bearing": true,
+            "x0": 0.3,
+            "y0": 0.256,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "classification": "KEEP",
+            "mean_x": -2.09333,
+            "load_bearing": true,
+            "x0": 0.4,
+            "y0": 0.2572,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "classification": "KEEP",
+            "mean_x": -2.03651,
+            "load_bearing": true,
+            "x0": 0.5,
+            "y0": 0.2575,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "classification": "REVIEW",
+            "mean_x": -1.9859,
+            "load_bearing": true,
+            "x0": 0.6,
+            "y0": 0.255,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "classification": "REVIEW",
+            "mean_x": -1.93714,
+            "load_bearing": true,
+            "x0": 0.7,
+            "y0": 0.258,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "classification": "REVIEW",
+            "mean_x": -1.89467,
+            "load_bearing": true,
+            "x0": 0.8,
+            "y0": 0.2595,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "classification": "REVIEW",
+            "mean_x": -1.86136,
+            "load_bearing": true,
+            "x0": 0.9,
+            "y0": 0.2572,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "classification": "REVIEW",
+            "mean_x": -1.84013,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2562,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "classification": "REVIEW",
+            "mean_x": -1.84021,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2555,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "classification": "REVIEW",
+            "mean_x": -1.83991,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2582,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "classification": "REVIEW",
+            "mean_x": -1.84006,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2568,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "classification": "REVIEW",
+            "mean_x": -1.84015,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.256,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "classification": "REVIEW",
+            "mean_x": -1.84002,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2572,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "classification": "REVIEW",
+            "mean_x": -1.83999,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2575,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "classification": "REVIEW",
+            "mean_x": -1.84026,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.255,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "classification": "REVIEW",
+            "mean_x": -1.83993,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.258,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "classification": "REVIEW",
+            "mean_x": -1.83977,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2595,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "classification": "REVIEW",
+            "mean_x": -1.84002,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2572,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "classification": "REVIEW",
+            "mean_x": -1.84013,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2562,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "classification": "REVIEW",
+            "mean_x": -1.84021,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2555,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "classification": "REVIEW",
+            "mean_x": -1.83991,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2582,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "classification": "REVIEW",
+            "mean_x": -1.84006,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2568,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "classification": "REVIEW",
+            "mean_x": -1.84015,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.256,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "classification": "REVIEW",
+            "mean_x": -1.84002,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2572,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "classification": "REVIEW",
+            "mean_x": -1.83999,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2575,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "classification": "REVIEW",
+            "mean_x": -1.84026,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.255,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "classification": "REVIEW",
+            "mean_x": -1.83993,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.258,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "classification": "REVIEW",
+            "mean_x": -1.83977,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2595,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "classification": "KEEP",
+            "mean_x": -6.80104,
+            "load_bearing": false,
+            "x0": 0.1,
+            "y0": 0.2557,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "classification": "REVIEW",
+            "mean_x": -1.84027,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2549,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "classification": "REVIEW",
+            "mean_x": -1.84018,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2557,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "classification": "REVIEW",
+            "mean_x": -1.84027,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2549,
+            "z0": 0.99562
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "classification": "REVIEW",
+            "mean_x": -1.84018,
+            "load_bearing": true,
+            "x0": 1.0,
+            "y0": 0.2557,
+            "z0": 0.99562
+          }
+        ],
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -6.90905,
+              "load_bearing": false
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -6.38585,
+              "load_bearing": false
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.20213,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.09333,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.03651,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.9859,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.93714,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.89467,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.86136,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84013,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84021,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83991,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84006,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84015,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84002,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83999,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84026,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83993,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83977,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84002,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84013,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84021,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83991,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84006,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84015,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84002,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83999,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84026,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83993,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.83977,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -6.80104,
+              "load_bearing": false
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84027,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84018,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84027,
+              "load_bearing": true
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.84018,
+              "load_bearing": true
+            }
+          }
+        ],
+        "context_node_count": 35,
+        "context_note": "Expanded 35 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "pe_govern",
+      "tool": "graph_pe_govern_adjust",
+      "result_summary": {
+        "tool": "graph_pe_govern_adjust",
+        "strategy_id": "S10",
+        "generated_at": "2026-04-13T19:58:43.501717+00:00",
+        "items": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "classification_before": "KEEP",
+            "classification_after": "KEEP",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "classification_before": "REVIEW",
+            "classification_after": "REVIEW",
+            "reason": null
+          }
+        ],
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            },
+            "tool_row": {
+              "classification_before": "KEEP",
+              "classification_after": "KEEP",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification_before": "REVIEW",
+              "classification_after": "REVIEW",
+              "reason": null
+            }
+          }
+        ],
+        "context_node_count": 35,
+        "context_note": "Expanded 35 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "token_budget",
+      "tool": "graph_token_budget",
+      "result_summary": {
+        "tool": "graph_token_budget",
+        "strategy_id": "S3",
+        "generated_at": "2026-04-13T19:58:43.502169+00:00",
+        "event_ids": [
+          "pdf_p0011_e0045",
+          "pdf_p0011_e0047",
+          "pdf_p0014_e0000",
+          "pdf_p0014_e0002",
+          "pdf_p0014_e0003",
+          "pdf_p0014_e0004",
+          "pdf_p0014_e0005",
+          "pdf_p0014_e0006",
+          "pdf_p0014_e0007",
+          "pdf_p0014_e0008",
+          "pdf_p0014_e0009",
+          "pdf_p0014_e0010",
+          "pdf_p0014_e0012",
+          "pdf_p0015_e0000",
+          "pdf_p0015_e0002",
+          "pdf_p0015_e0003",
+          "pdf_p0015_e0004",
+          "pdf_p0015_e0005",
+          "pdf_p0015_e0006",
+          "pdf_p0015_e0007",
+          "pdf_p0015_e0008",
+          "pdf_p0011_e0044",
+          "pdf_p0011_e0043",
+          "pdf_p0011_e0042",
+          "pdf_p0011_e0041",
+          "pdf_p0011_e0040",
+          "pdf_p0011_e0039",
+          "pdf_p0011_e0038",
+          "pdf_p0011_e0037",
+          "pdf_p0011_e0035"
+        ],
+        "estimated_tokens": 521,
+        "max_tokens": 8000,
+        "considered": 30,
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            }
+          }
+        ],
+        "context_node_count": 30,
+        "context_note": "Expanded 30 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    },
+    {
+      "step_id": "provenance_engine",
+      "tool": "provenance_engine.classify",
+      "result_summary": {
+        "ok": true,
+        "items": [
+          {
+            "id": "pdf_p0011_e0035",
+            "classification": "REVIEW",
+            "mean_x": -0.40608392257357795,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0037",
+            "classification": "REVIEW",
+            "mean_x": -1.3684343479435739,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0038",
+            "classification": "REVIEW",
+            "mean_x": 6.9489557590925,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0039",
+            "classification": "KEEP",
+            "mean_x": -8.3067204193124,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0040",
+            "classification": "REVIEW",
+            "mean_x": 7.566709023230379,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0041",
+            "classification": "REVIEW",
+            "mean_x": 7.547134942529371,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0042",
+            "classification": "KEEP",
+            "mean_x": -2.476727069338773,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0043",
+            "classification": "KEEP",
+            "mean_x": -8.216235190358194,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0044",
+            "classification": "REVIEW",
+            "mean_x": -1.0251680007148742,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0045",
+            "classification": "REVIEW",
+            "mean_x": -1.7090484917973376,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0047",
+            "classification": "REVIEW",
+            "mean_x": 2.6864553549655663,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0000",
+            "classification": "REVIEW",
+            "mean_x": -1.0153175694717038,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0002",
+            "classification": "KEEP",
+            "mean_x": -7.424404764382534,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0003",
+            "classification": "KEEP",
+            "mean_x": -7.761028857032678,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0004",
+            "classification": "KEEP",
+            "mean_x": -8.00480048816942,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0005",
+            "classification": "KEEP",
+            "mean_x": -8.238695562253037,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0006",
+            "classification": "KEEP",
+            "mean_x": -8.377875538372733,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0007",
+            "classification": "KEEP",
+            "mean_x": -8.460456436131528,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0008",
+            "classification": "KEEP",
+            "mean_x": -8.479093734993883,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0009",
+            "classification": "KEEP",
+            "mean_x": -8.461708520993517,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0010",
+            "classification": "KEEP",
+            "mean_x": -8.422038810479808,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0012",
+            "classification": "KEEP",
+            "mean_x": -8.401459103095702,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0000",
+            "classification": "KEEP",
+            "mean_x": -8.419466762102852,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0002",
+            "classification": "REVIEW",
+            "mean_x": 8.423620899295122,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0003",
+            "classification": "REVIEW",
+            "mean_x": 8.265629201378664,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0004",
+            "classification": "REVIEW",
+            "mean_x": 0.961291563328774,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0005",
+            "classification": "REVIEW",
+            "mean_x": 6.605202152765631,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0006",
+            "classification": "KEEP",
+            "mean_x": -2.378116930654419,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0007",
+            "classification": "REVIEW",
+            "mean_x": 0.7829201335317718,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0008",
+            "classification": "KEEP",
+            "mean_x": -2.8056286402261317,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0036",
+            "classification": "EVICT",
+            "mean_x": 2.4851812732535477,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0011_e0046",
+            "classification": "REVIEW",
+            "mean_x": -1.1166396555859122,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0001",
+            "classification": "KEEP",
+            "mean_x": -6.833711401445279,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0014_e0011",
+            "classification": "REVIEW",
+            "mean_x": 2.350411616779509,
+            "rho": 28.0,
+            "tau": 2.0
+          },
+          {
+            "id": "pdf_p0015_e0001",
+            "classification": "KEEP",
+            "mean_x": -7.804373514429593,
+            "rho": 28.0,
+            "tau": 2.0
+          }
+        ],
+        "node_count": 35,
+        "context_nodes": [
+          {
+            "event_id": "pdf_p0011_e0035",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 10,
+            "connascence_counts": {
+              "temporal": 10
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -0.40608392257357795
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0037",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 12,
+            "connascence_counts": {
+              "temporal": 12
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.3684343479435739
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0038",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 13,
+            "connascence_counts": {
+              "temporal": 13
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 6.9489557590925
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0039",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 14,
+            "connascence_counts": {
+              "temporal": 14
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.3067204193124
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0040",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 15,
+            "connascence_counts": {
+              "temporal": 15
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 7.566709023230379
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0041",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 16,
+            "connascence_counts": {
+              "temporal": 16
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 7.547134942529371
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0042",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 17,
+            "connascence_counts": {
+              "temporal": 17
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.476727069338773
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0043",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 18,
+            "connascence_counts": {
+              "temporal": 18
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.216235190358194
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0044",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 19,
+            "connascence_counts": {
+              "temporal": 19
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.0251680007148742
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0045",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.7090484917973376
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0047",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 2.6864553549655663
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.0153175694717038
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -7.424404764382534
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -7.761028857032678
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.00480048816942
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.238695562253037
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.377875538372733
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.460456436131528
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.479093734993883
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0009",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Sennosides-Docusate Sod (Senna Plus) 8.6-50 mg Oral Tab for constipation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.461708520993517
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0010",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Docusate Calcium (Surfak) 240 mg Oral Cap for bowel management",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.422038810479808
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0012",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Ferrous Sulfate 325 mg (65 mg iron) Oral Tab for anemia",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.401459103095702
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0000",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Pantoprazole (PROTONIX) 40 mg Oral TBEC DR Tab for gastroesophageal reflux disease",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -8.419466762102852
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0002",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Nitroglycerin (NITROSTAT/NITROTAB) 0.4 mg SL Subl Tab for chest pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 8.423620899295122
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0003",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab for pain",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 8.265629201378664
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0004",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "LORazepam (ATIVAN INTENSOL) 2 mg/mL Oral Conc for mild anxiety/agitation",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 0.961291563328774
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0005",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Glycopyrrolate (ROBINUL) 1 mg Oral Tab for excessive respiratory secretions",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 6.605202152765631
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0006",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Acetaminophen (TYLENOL) 650 mg Rect Supp for fever",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.378116930654419
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0007",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Bisacodyl (Dulcolax, bisacodyl,) 10 mg Rect Supp for no bowel movement in 3 days",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 0.7829201335317718
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0008",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "morphine Concentrate (ROXANOL) 100 mg/5 mL (20 mg/mL) Oral Soln for pain or shortness of breath",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -2.8056286402261317
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0036",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 11,
+            "connascence_counts": {
+              "temporal": 11
+            },
+            "tool_row": {
+              "classification": "EVICT",
+              "mean_x": 2.4851812732535477
+            }
+          },
+          {
+            "event_id": "pdf_p0011_e0046",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": -1.1166396555859122
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -6.833711401445279
+            }
+          },
+          {
+            "event_id": "pdf_p0014_e0011",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Aspirin 81 mg Oral Chew Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "REVIEW",
+              "mean_x": 2.350411616779509
+            }
+          },
+          {
+            "event_id": "pdf_p0015_e0001",
+            "event_type": "medication",
+            "timestamp": "2025-03-26",
+            "status": "included",
+            "preview": "Clopidogrel (PLAVIX) 75 mg Oral Tab to prevent blood clot",
+            "edge_count": 20,
+            "connascence_counts": {
+              "temporal": 20
+            },
+            "tool_row": {
+              "classification": "KEEP",
+              "mean_x": -7.804373514429593
+            }
+          }
+        ],
+        "context_node_count": 35,
+        "context_note": "Expanded 35 PTV timeline node(s) with preview text; event_id lists above may list additional ids without full text."
+      },
+      "agent_analysis": null
+    }
+  ],
+  "context_keys": {
+    "query": "What patterns matter for inflammatory load?",
+    "semantic": true,
+    "pe_nodes": 400,
+    "temporal_recent_years": 1.0,
+    "temporal_anchor": "latest_in_corpus",
+    "hybrid_seed_ids": 10,
+    "working_ids": 35,
+    "lorenz_items": 35,
+    "budget_seed_ids": 30,
+    "structural_reduced_ids": 3705,
+    "reduced_ids": 146,
+    "temporal_reduced_ids": 146,
+    "hybrid_ids": 30,
+    "bfs_ids": 31
+  },
+  "final_synthesis": {
+    "skipped": true,
+    "reason": "--no-agent"
+  },
+  "harness_wall_time_s": 0.734,
+  "written_artifacts": {
+    "json": "C:\\2OPMD\\2ndOpinionMD-MVP\\sandbox\\norman_graph_retrieval\\out\\tool_agent_harness_20260413_195843.json",
+    "inspection_log": "C:\\2OPMD\\2ndOpinionMD-MVP\\sandbox\\norman_graph_retrieval\\out\\tool_agent_harness_20260413_195843.log"
+  }
+}

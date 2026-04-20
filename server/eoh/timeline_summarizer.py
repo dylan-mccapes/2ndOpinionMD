@@ -3845,16 +3845,18 @@ async def summarize_timeline_from_pdf(
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
     
     logger.info("Timeline PDF import (session-only): %s", pdf_file.name)
-    
-    # Step 1: Open and decrypt if needed
-    reader = PdfReader(str(pdf_file))
+
+    # Step 1: Read bytes and decrypt if needed
+    pdf_bytes = pdf_file.read_bytes()
+    from io import BytesIO
+    reader = PdfReader(BytesIO(pdf_bytes))
     was_encrypted = reader.is_encrypted
-    
+
     if was_encrypted:
         if password is None:
             logger.info("PDF is encrypted; prompting for password")
             password = getpass.getpass("Enter PDF decryption password: ")
-        
+
         try:
             if reader.decrypt(password) == 0:
                 raise ValueError("Incorrect password")
@@ -3862,24 +3864,89 @@ async def summarize_timeline_from_pdf(
         except Exception as e:
             raise ValueError(f"Failed to decrypt PDF: {e}")
         finally:
-            # Delete password from memory immediately
             if password:
                 del password
-    
-    # Step 2: Extract text and build PatientTimelineVision
-    logger.info("Extracting text from %d pages", len(reader.pages))
-    chunks = []
-    # Preserve real PDF page numbers (1-based) for provenance — only non-empty pages.
-    page_entries: List[Tuple[int, str]] = []
 
-    for idx, page in enumerate(reader.pages):
-        text = (page.extract_text() or "").strip()
-        text = text.replace("\x00", "")  # Clean NUL bytes
-        if text:
-            pdf_page = idx + 1
-            page_entries.append((pdf_page, text))
-            chunks.append(f"=== Page {pdf_page} ===\n{text}")
+    # Step 2: Resilient text extraction — pypdf first, pypdfium2 fallback.
+    #
+    # Some PDFs have broken xref/page-tree structures that crash pypdf at
+    # len(reader.pages) or page.extract_text() while still rendering fine
+    # in browsers.  We handle this in two tiers:
+    #   - Tier A (pypdf OK): per-page pypdf, pypdfium2 fallback on empty/error.
+    #   - Tier B (pypdf broken): full pypdfium2 extraction from one open doc.
+    # In both tiers the pypdfium2 document is opened ONCE to avoid O(n²) cost.
 
+    page_entries: List[Tuple[int, str]] = []  # (1-based page num, text)
+
+    # Try to walk pypdf's page tree — this is where TypeError surfaces.
+    pypdf_tree_ok = False
+    total_pdf_pages = 0
+    try:
+        total_pdf_pages = len(reader.pages)
+        pypdf_tree_ok = True
+        logger.info("Extracting text from %d pages (pypdf)", total_pdf_pages)
+    except Exception as tree_err:
+        logger.warning(
+            "pypdf page tree broken for %s (%s: %s) — switching to pypdfium2",
+            pdf_file.name, type(tree_err).__name__, tree_err,
+        )
+
+    # Open pypdfium2 once for the entire document.
+    _pdfium_doc = None
+    try:
+        import pypdfium2 as pdfium
+        _pdfium_doc = pdfium.PdfDocument(pdf_bytes)
+        if not pypdf_tree_ok:
+            total_pdf_pages = len(_pdfium_doc)
+            logger.info("Extracting text from %d pages (pypdfium2 full)", total_pdf_pages)
+    except ImportError:
+        _pdfium_doc = None
+        if not pypdf_tree_ok:
+            raise RuntimeError(
+                "pypdf page tree is broken and pypdfium2 is not installed. "
+                "Install it: pip install 'pypdfium2>=4.30'"
+            )
+    except Exception as pdfium_open_err:
+        logger.warning("pypdfium2 failed to open %s: %s", pdf_file.name, pdfium_open_err)
+        _pdfium_doc = None
+        if not pypdf_tree_ok:
+            raise
+
+    def _pdfium_text(idx: int) -> str:
+        if _pdfium_doc is None:
+            return ""
+        try:
+            p = _pdfium_doc[idx]
+            tp = p.get_textpage()
+            t = (tp.get_text_bounded() or "").strip().replace("\x00", "")
+            tp.close(); p.close()
+            return t
+        except Exception as e:
+            logger.warning("pypdfium2 failed on page %d: %s", idx + 1, e)
+            return ""
+
+    try:
+        if pypdf_tree_ok:
+            for idx, page in enumerate(reader.pages):
+                try:
+                    text = (page.extract_text() or "").strip().replace("\x00", "")
+                except Exception:
+                    text = ""
+                if not text:
+                    text = _pdfium_text(idx)
+                if text:
+                    pdf_page = idx + 1
+                    page_entries.append((pdf_page, text))
+        else:
+            for idx in range(total_pdf_pages):
+                text = _pdfium_text(idx)
+                if text:
+                    page_entries.append((idx + 1, text))
+    finally:
+        if _pdfium_doc is not None:
+            _pdfium_doc.close()
+
+    chunks = [f"=== Page {pg} ===\n{txt}" for pg, txt in page_entries]
     timeline_text = "\n\n".join(chunks)
     logger.info(
         "Timeline PDF extracted: %d non-empty pages, %d chars",

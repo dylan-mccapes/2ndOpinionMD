@@ -788,6 +788,11 @@ async def run_ingest_from_pdf_bytes(
 
     # ------------------------------------------------------------------
     # 1. Read PDF pages
+    #
+    # Strategy: try pypdf first. If its page-tree walk fails (TypeError on
+    # len/flatten — common with xref-damaged PDFs), abandon pypdf entirely
+    # and use pypdfium2 for all pages. When pypdf CAN walk the tree, use it
+    # per-page with pypdfium2 as a per-page fallback for empty/failed pages.
     # ------------------------------------------------------------------
     stream = BytesIO(pdf_bytes)
     reader = PdfReader(stream)
@@ -797,7 +802,27 @@ async def run_ingest_from_pdf_bytes(
         if reader.decrypt(password) == 0:
             raise ValueError("Incorrect PDF password")
 
-    total_pages = len(reader.pages)
+    # --- detect broken page tree before entering the loop ---
+    pypdf_tree_ok = False
+    total_pages: int = 0
+    try:
+        total_pages = len(reader.pages)  # TypeError surfaces here on damaged PDFs
+        pypdf_tree_ok = True
+    except Exception as tree_err:
+        logger.warning(
+            "INGEST [%s] pypdf page tree broken (%s: %s) — switching to full pypdfium2 extraction",
+            patient_id, type(tree_err).__name__, tree_err,
+        )
+        try:
+            import pypdfium2 as pdfium
+            _doc_tmp = pdfium.PdfDocument(pdf_bytes)
+            total_pages = len(_doc_tmp)
+            _doc_tmp.close()
+        except Exception as count_err:
+            raise ValueError(
+                f"Cannot determine PDF page count via pypdf or pypdfium2: {count_err}"
+            ) from count_err
+
     logger.info("INGEST [%s] PDF has %d total pages", patient_id, total_pages)
     print(f"\n{'='*70}")
     print(f"  PDF INGESTION — patient: {patient_id}")
@@ -805,15 +830,94 @@ async def run_ingest_from_pdf_bytes(
     print(f"{'='*70}")
 
     pages: List[Tuple[int, str]] = []
+    needs_ocr: List[int] = []
     chars_total = 0
-    for idx, page in enumerate(reader.pages):
-        t = (page.extract_text() or "").strip().replace("\x00", "")
-        if t:
-            pages.append((idx + 1, t))
-            chars_total += len(t)
+
+    # Open pypdfium2 document once — reused across all pages so we don't pay
+    # document-open cost per page (which would be O(n²) for large PDFs).
+    _pdfium_doc = None
+    try:
+        import pypdfium2 as pdfium
+        _pdfium_doc = pdfium.PdfDocument(pdf_bytes)
+    except ImportError:
+        if not pypdf_tree_ok:
+            raise ImportError(
+                "pypdf page tree is broken and pypdfium2 is not installed. "
+                "Add pypdfium2>=4.30 to server/requirements.txt"
+            )
+        logger.warning("INGEST pypdfium2 not installed — pypdf-only extraction (some pages may be missed)")
+    except Exception as pdfium_open_err:
+        logger.warning("INGEST [%s] pypdfium2 failed to open document: %s", patient_id, pdfium_open_err)
+        if not pypdf_tree_ok:
+            raise
+
+    def _pdfium2_page_text(idx: int) -> str:
+        """Extract text from the already-open pdfium doc. O(1) per call."""
+        if _pdfium_doc is None:
+            return ""
+        try:
+            p = _pdfium_doc[idx]
+            tp = p.get_textpage()
+            t = (tp.get_text_bounded() or "").strip().replace("\x00", "")
+            tp.close(); p.close()
+            return t
+        except Exception as e:
+            logger.warning("INGEST [%s] pypdfium2 failed on page %d: %s", patient_id, idx + 1, e)
+            return ""
+
+    try:
+        if pypdf_tree_ok:
+            # Hybrid: pypdf per-page, pypdfium2 fallback for empty/failed pages
+            for idx, page in enumerate(reader.pages):
+                try:
+                    t = (page.extract_text() or "").strip().replace("\x00", "")
+                except Exception as pypdf_err:
+                    logger.warning(
+                        "INGEST [%s] pypdf failed on page %d: %s", patient_id, idx + 1, pypdf_err
+                    )
+                    t = ""
+
+                if not t:
+                    t = _pdfium2_page_text(idx)
+                    if t:
+                        logger.info(
+                            "INGEST [%s] pypdfium2 recovered page %d (%d chars)",
+                            patient_id, idx + 1, len(t),
+                        )
+
+                if t:
+                    pages.append((idx + 1, t))
+                    chars_total += len(t)
+                else:
+                    needs_ocr.append(idx + 1)
+
+        else:
+            # Full pypdfium2 extraction — pypdf page tree unusable
+            logger.info("INGEST [%s] full pypdfium2 extraction over %d pages", patient_id, total_pages)
+            for idx in range(total_pages):
+                t = _pdfium2_page_text(idx)
+                if t:
+                    pages.append((idx + 1, t))
+                    chars_total += len(t)
+                else:
+                    needs_ocr.append(idx + 1)
+
+    finally:
+        if _pdfium_doc is not None:
+            _pdfium_doc.close()
 
     if not pages:
-        raise ValueError("No text could be extracted from PDF")
+        raise ValueError(
+            f"No text could be extracted from PDF "
+            f"({total_pages} total pages, {len(needs_ocr)} need OCR)"
+        )
+
+    if needs_ocr:
+        logger.info(
+            "INGEST [%s] %d page(s) yielded no text (OCR candidates): %s",
+            patient_id, len(needs_ocr), needs_ocr[:20],
+        )
+        print(f"  pages needing OCR: {len(needs_ocr)} — {needs_ocr[:10]}")
 
     logger.info(
         "INGEST [%s] %d/%d pages yielded text — %s total chars",
