@@ -2492,11 +2492,11 @@ EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT = textwrap.dedent(
 # graph enrichment opportunistic pass, and related high-context EoH timeline calls.
 EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-4.1")
 
-# PDF event extraction (_extract_events_from_pages_batch) and connascence LLM passes.
-# Swap to a local Ollama model (e.g. "llama3.1:8b") via the INGESTION_MODEL env var
-# or the --ingestion-model CLI flag to eliminate ingestion API costs.
-# Defaults to EOH_TIMELINE_SUMMARIZER_MODEL so existing behaviour is unchanged.
-INGESTION_MODEL = os.getenv("INGESTION_MODEL", EOH_TIMELINE_SUMMARIZER_MODEL)
+# PDF / PTV extraction (_extract_events_from_pages_batch, import-pdf pipeline).
+# Default: local Ollama (no API spend). Premium / high-context OpenAI: set
+# INGESTION_MODEL=gpt-4.1 (or gpt-4o, etc.). Larger local models: e.g. eoh-llama-70b when deployed.
+DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama-8b")
+INGESTION_MODEL = os.getenv("INGESTION_MODEL", DEFAULT_INGESTION_MODEL)
 
 # Ollama inference server base URL. Used when --llm-backend ollama|ollama-full is set.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")

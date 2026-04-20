@@ -9,7 +9,7 @@ Two modes:
   2. Opportunistic enrichment – lighter, called per detective step at runtime
 
 Model selection:
-  - Set INGESTION_MODEL env var to choose the model (default: gpt-4.1)
+  - Default INGESTION_MODEL is eoh-llama-8b (stream_config). Set INGESTION_MODEL=gpt-4.1 for premium OpenAI.
   - Ollama models (any name not containing "gpt") use the OLLAMA_BASE_URL and
     smaller batches (~24k chars) to fit within typical 8k–32k token contexts.
 """
@@ -24,7 +24,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from server.api.stream_config import EOH_TIMELINE_SUMMARIZER_MODEL, MAX_CONTEXT_CHARS
+from server.api.stream_config import EOH_TIMELINE_SUMMARIZER_MODEL, INGESTION_MODEL, MAX_CONTEXT_CHARS
 from server.eoh.patient_timeline_vision import (
     PatientTimelineVision,
     TimelineEventVision,
@@ -35,12 +35,8 @@ from server.llm.llm_client import chat_completion_async, get_ollama_client
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Model selection
+# Model selection (INGESTION_MODEL imported from stream_config — single default)
 # ---------------------------------------------------------------------------
-
-# INGESTION_MODEL can override EOH_TIMELINE_SUMMARIZER_MODEL for the
-# ingestion pipeline specifically (e.g. use a local Ollama model).
-INGESTION_MODEL: str = os.getenv("INGESTION_MODEL", EOH_TIMELINE_SUMMARIZER_MODEL)
 
 _OLLAMA_BASE_URL: str = (
     os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
