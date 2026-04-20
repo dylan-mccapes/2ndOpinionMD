@@ -670,12 +670,12 @@ async def timeline_status(
 async def timeline_import_pdf(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
-    current_user: Any = Depends(get_current_user_postgres),
+    current_user: Any = Depends(get_user_for_timeline_status),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """
     Accept PDF upload, extract text, ingest into ehr.patient_timeline.
-    Auth: JWT Bearer. Returns timeline_id, event_count, status.
+    Auth: session Bearer or JWT. Returns timeline_id, event_count, status.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
