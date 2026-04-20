@@ -710,8 +710,8 @@ async def timeline_import_pdf(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
 
-    if len(contents) > 200 * 1024 * 1024:  # 200MB — large patient record PDFs can be 185MB+
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 200MB)")
+    if len(contents) > 500 * 1024 * 1024:  # 500MB ceiling — full patient record PDFs can exceed 200MB
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 500MB)")
 
     # Delegate to timeline ingest module
     from server.timeline.ingest import run_ingest_from_pdf_bytes
