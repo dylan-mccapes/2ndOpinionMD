@@ -2526,7 +2526,7 @@ Are there any patterns in my symptoms?"></textarea>
                 formData.append('patient_id', patient);
 
                 area.innerHTML = '<div class="results-loading">Processing PDF (may take a minute)...</div>';
-                const uploadR = await fetch(`${uploadBaseFor(selectedEohdPdf)}/api/rag/upload_timeline_pdf`, { method: 'POST', body: formData });
+                const uploadR = await fetch(`${uploadBaseFor(selectedEohdPdf)}/api/timeline/import-pdf`, { method: 'POST', body: formData });
                 if (!uploadR.ok) throw new Error('PDF upload failed');
                 const uploadResult = await uploadR.json();
                 addReceipt('PDF uploaded: ' + selectedEohdPdf.name);
@@ -2539,7 +2539,7 @@ Are there any patterns in my symptoms?"></textarea>
                 const r2 = await fetch(`${API_BASE}/api/rag/eoh_detective_stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ q, timeline_patient_id: uploadResult.session_key, max_steps: 6, limit: 10, ctx_k: 32, valyu_k: 0, use_valyu: false, valyu_mode: 'search', valyu_raw: false, with_llm: true, llm_mode: 'chunk', research: 0, enable_gap: 1 })
+                    body: JSON.stringify({ q, timeline_patient_id: uploadResult.timeline_id, max_steps: 6, limit: 10, ctx_k: 32, valyu_k: 0, use_valyu: false, valyu_mode: 'search', valyu_raw: false, with_llm: true, llm_mode: 'chunk', research: 0, enable_gap: 1 })
                 });
                 if (!r2.ok) throw new Error(`API error: ${r2.status}`);
                 const reader = r2.body.getReader();
