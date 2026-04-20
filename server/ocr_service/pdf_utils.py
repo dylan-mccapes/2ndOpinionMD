@@ -24,6 +24,16 @@ def _open_doc(pdf_bytes: bytes, password: Optional[str] = None) -> pdfium.PdfDoc
         doc = pdfium.PdfDocument(pdf_bytes, password=password.encode())
     else:
         doc = pdfium.PdfDocument(pdf_bytes)
+        # Probe whether the doc is locked without a password.
+        # pypdfium2 raises on get_page() if encrypted and no password given.
+        # We surface a cleaner error here.
+        try:
+            _ = len(doc)
+        except Exception as e:
+            doc.close()
+            raise ValueError(
+                f"PDF may be encrypted — provide `password` parameter. ({e})"
+            )
     return doc
 
 
