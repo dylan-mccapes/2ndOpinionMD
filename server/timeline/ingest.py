@@ -767,7 +767,7 @@ async def run_ingest_from_pdf_bytes(
     and graph timestamp sanitize.
 
     Model: ``INGESTION_MODEL`` env (default ``gpt-4.1``). For Ollama, set e.g.
-    ``eoh-llama-8b`` and ``INGESTION_CONTEXT_TOKENS=32768``.
+    ``eoh-llama-8b`` and ``INGESTION_CONTEXT_TOKENS=16384`` (aligned with ``OLLAMA_NUM_CTX``).
 
     Returns a stats dict:
         {
@@ -948,7 +948,7 @@ async def run_ingest_from_pdf_bytes(
     _use_openai = "gpt" in INGESTION_MODEL.lower()
     ingestion_context_tokens: Optional[int] = None
     if not _use_openai:
-        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "32768").strip()
+        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "16384").strip()
         ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 32768
 
     logger.info(

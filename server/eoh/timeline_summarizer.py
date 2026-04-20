@@ -2876,6 +2876,40 @@ _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE = 4
 # Per page: wrapper keys in JSON (~40) + small margin
 _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS = 64
 
+
+def _ollama_num_ctx_default() -> int:
+    """
+    Ollama KV cache size (options.num_ctx) for PDF batch extraction.
+    Lower values often give more stable JSON from 8B models and less VRAM churn.
+    Override: OLLAMA_NUM_CTX (default 16384; was 32768).
+    """
+    return max(2048, int(os.getenv("OLLAMA_NUM_CTX", "16384")))
+
+
+def _ollama_max_predict_tokens(ollama_num_ctx: Optional[int]) -> int:
+    """
+    Max new tokens per PDF extraction batch (num_predict / max_tokens).
+    Override: OLLAMA_MAX_PREDICT (default 6144). Capped relative to num_ctx.
+    """
+    ctx = ollama_num_ctx if ollama_num_ctx is not None else _ollama_num_ctx_default()
+    env_cap = max(1024, int(os.getenv("OLLAMA_MAX_PREDICT", "6144")))
+    # Stay within ~40% of context so prompt + output fit reliably
+    return min(env_cap, max(2048, (ctx * 2) // 5))
+
+
+def _ollama_max_pages_per_batch() -> int:
+    """Hard cap on pages per Ollama extraction batch. Default 3 (was 5)."""
+    return max(1, min(12, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "3"))))
+
+
+def _ollama_output_tokens_per_page_estimate() -> int:
+    """
+    Used only to derive max pages per batch for small-context models.
+    Higher = assume more output per page = smaller batches. Default 3000 (was 2400).
+    """
+    return max(1500, int(os.getenv("OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE", "3000")))
+
+
 PDF_EVENT_BATCH_MAX_INPUT_CHARS: int = int(
     (
         _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
@@ -3406,7 +3440,7 @@ async def _extract_events_from_pages_batch(
             # rather than a cryptic JSONDecodeError inside the SDK's Pydantic
             # layer.  Only safe on localhost — remote Ollama (e.g. RTX 4090 over
             # LAN) has shown silent httpx.ReadError failures with this path.
-            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _max_tok = _ollama_max_predict_tokens(ollama_num_ctx)
             _ollama_url = str(client.base_url).rstrip("/")
             logger.info(
                 "Ollama native /api/chat: model=%s  num_ctx=%s  num_predict=%s  pages=%s",
@@ -3428,7 +3462,7 @@ async def _extract_events_from_pages_batch(
             # /v1/chat/completions WITHOUT response_format (grammar-constrained
             # mode is 5-10x slower).  Pass num_ctx and num_predict via
             # extra_body["options"] so Ollama respects our context budget.
-            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _max_tok = _ollama_max_predict_tokens(ollama_num_ctx)
             _extra: Optional[Dict[str, Any]] = None
             if ollama_num_ctx:
                 _extra = {"options": {"num_ctx": ollama_num_ctx, "num_predict": _max_tok}}
@@ -3759,7 +3793,7 @@ async def populate_vision_from_extracted_pages(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
+    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
     _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
     _ollama_native_api: bool = _is_ollama and _is_local_ollama
 
@@ -3829,16 +3863,16 @@ async def populate_vision_from_extracted_pages(
 
     _batch_max_chars = max(_batch_max_chars, 8_000)
 
-    _OLLAMA_MAX_PAGES_PER_BATCH = 5
-    _OUTPUT_TOKENS_PER_PAGE_ESTIMATE = 2400
+    _ollama_page_cap = _ollama_max_pages_per_batch()
+    _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
     _output_token_cap = (
         _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
         if _ctx_tokens >= 500_000
         else min(16384, max(4096, _ctx_tokens // 2))
     )
     _max_pages_per_batch: Optional[int] = min(
-        _OLLAMA_MAX_PAGES_PER_BATCH,
-        max(3, _output_token_cap // _OUTPUT_TOKENS_PER_PAGE_ESTIMATE),
+        _ollama_page_cap,
+        max(2, _output_token_cap // _ollama_tok_per_page),
     )
     if _ctx_tokens >= 500_000:
         _max_pages_per_batch = None
@@ -4113,11 +4147,9 @@ async def summarize_timeline_from_pdf(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    # For Ollama, explicitly set num_ctx.  65536 caused HTTP 500 on the M2 Ultra
-    # (KV cache ~8GB + model ~5GB = memory pressure on back-to-back batches).
-    # 32768 comfortably fits our batches (~6K input + 8K output = ~14K tokens)
-    # while keeping KV cache at ~4GB — stable for 71 sequential batches.
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
+    # For Ollama, num_ctx defaults lower (OLLAMA_NUM_CTX, default 16384) — smaller
+    # KV often yields cleaner extraction JSON from 8B models; tune per GPU.
+    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
     # Native /api/chat is only used for localhost Ollama (validated on M2 Ultra).
     # Remote Ollama (e.g. RTX 4090 at 192.168.x.x) uses the OpenAI-compat
     # /v1/chat/completions path with num_ctx/num_predict passed via extra_body

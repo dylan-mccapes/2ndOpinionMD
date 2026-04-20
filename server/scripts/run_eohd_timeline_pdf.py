@@ -140,8 +140,8 @@ def main() -> None:
             "Context window size (tokens) of the ingestion model, used to compute "
             "batch sizes for PDF event extraction. "
             "Defaults to 1,048,576 (GPT-4.1) for OpenAI backend. "
-            "For Ollama backends defaults to 32,768 (safe for 8B models with 128K "
-            "training context — keeps KV cache under ~2GB and leaves room for output). "
+            "For Ollama backends defaults to 16,384 (tighter KV; override with "
+            "--ingestion-context-tokens or INGESTION_CONTEXT_TOKENS). "
             "Override with the actual context size of any custom model."
         ),
     )
@@ -219,7 +219,8 @@ def main() -> None:
     if args.ingestion_context_tokens is not None:
         ingestion_context_tokens = args.ingestion_context_tokens
     elif backend in ("ollama", "ollama-full"):
-        ingestion_context_tokens = 32_768
+        # Match timeline_summarizer Ollama defaults (smaller ctx → often better 8B JSON).
+        ingestion_context_tokens = 16_384
     else:
         ingestion_context_tokens = None  # uses GPT-4.1 1M default
 
