@@ -1,22 +1,24 @@
 """
 Graph Enrichment Agent
 
-GPT-4.1-powered entity/relationship extraction for PatientTimelineVision.
+Entity/relationship extraction for PatientTimelineVision.
+Supports GPT-4.1 (large-context batches) and Ollama models (small-context batches).
 
 Two modes:
   1. Ingestion enrichment  – heavy, called per PDF batch during ingest
   2. Opportunistic enrichment – lighter, called per detective step at runtime
 
-Design:
-  - Batches fill 60% of GPT-4.1's 1M-token context for ingestion
-  - Uses structured JSON output → merged into PatientTimelineVision
-  - Extensive logging so the operator sees every step
+Model selection:
+  - Set INGESTION_MODEL env var to choose the model (default: gpt-4.1)
+  - Ollama models (any name not containing "gpt") use the OLLAMA_BASE_URL and
+    smaller batches (~24k chars) to fit within typical 8k–32k token contexts.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import textwrap
 import time
 from datetime import datetime, timezone
@@ -28,28 +30,57 @@ from server.eoh.patient_timeline_vision import (
     TimelineEventVision,
     _infer_temporal_connascence,
 )
-from server.llm.llm_client import chat_completion_async
+from server.llm.llm_client import chat_completion_async, get_ollama_client
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Constants
+# Model selection
 # ---------------------------------------------------------------------------
 
-GPT41_MAX_CONTEXT_TOKENS = 1_048_576
-ENRICHMENT_CONTEXT_FILL_RATIO = 0.60
-ENRICHMENT_SYSTEM_PROMPT_TOKENS_RESERVE = 4_000
-ENRICHMENT_OUTPUT_TOKENS = 16_384
-CHARS_PER_TOKEN_ESTIMATE = 4
+# INGESTION_MODEL can override EOH_TIMELINE_SUMMARIZER_MODEL for the
+# ingestion pipeline specifically (e.g. use a local Ollama model).
+INGESTION_MODEL: str = os.getenv("INGESTION_MODEL", EOH_TIMELINE_SUMMARIZER_MODEL)
 
-BATCH_MAX_CHARS = int(
-    (
-        GPT41_MAX_CONTEXT_TOKENS * ENRICHMENT_CONTEXT_FILL_RATIO
-        - ENRICHMENT_SYSTEM_PROMPT_TOKENS_RESERVE
-        - ENRICHMENT_OUTPUT_TOKENS
-    )
-    * CHARS_PER_TOKEN_ESTIMATE
+_OLLAMA_BASE_URL: str = (
+    os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 )
+# Strip trailing /v1 if present (Ollama's native base is /v1, client adds it)
+if _OLLAMA_BASE_URL.lower().endswith("/v1"):
+    _OLLAMA_BASE_URL = _OLLAMA_BASE_URL[:-3].rstrip("/")
+_OLLAMA_BASE_URL = _OLLAMA_BASE_URL + "/v1"
+
+_USE_OLLAMA: bool = "gpt" not in INGESTION_MODEL.lower()
+
+# ---------------------------------------------------------------------------
+# Constants — batch sizing adapts to model context window
+# ---------------------------------------------------------------------------
+
+CHARS_PER_TOKEN_ESTIMATE = 4
+ENRICHMENT_SYSTEM_PROMPT_TOKENS_RESERVE = 4_000
+
+if _USE_OLLAMA:
+    # Ollama models typically support 8k–32k tokens; target 6k input tokens
+    ENRICHMENT_OUTPUT_TOKENS = 4_096
+    _MODEL_CTX_TOKENS = int(os.getenv("OLLAMA_CTX_TOKENS", "8192"))
+    BATCH_MAX_CHARS = int(
+        (_MODEL_CTX_TOKENS * 0.75 - ENRICHMENT_SYSTEM_PROMPT_TOKENS_RESERVE - ENRICHMENT_OUTPUT_TOKENS)
+        * CHARS_PER_TOKEN_ESTIMATE
+    )
+    BATCH_MAX_CHARS = max(BATCH_MAX_CHARS, 8_000)  # floor: never below 8k chars
+else:
+    # GPT-4.1: 1M token context, fill 60%
+    GPT41_MAX_CONTEXT_TOKENS = 1_048_576
+    ENRICHMENT_CONTEXT_FILL_RATIO = 0.60
+    ENRICHMENT_OUTPUT_TOKENS = 32_768  # raised from 16k — room for ~150 events
+    BATCH_MAX_CHARS = int(
+        (
+            GPT41_MAX_CONTEXT_TOKENS * ENRICHMENT_CONTEXT_FILL_RATIO
+            - ENRICHMENT_SYSTEM_PROMPT_TOKENS_RESERVE
+            - ENRICHMENT_OUTPUT_TOKENS
+        )
+        * CHARS_PER_TOKEN_ESTIMATE
+    )
 
 OPPORTUNISTIC_MAX_CHARS = 200_000
 
@@ -58,7 +89,7 @@ OPPORTUNISTIC_MAX_CHARS = 200_000
 # ---------------------------------------------------------------------------
 
 INGESTION_ENRICHMENT_SYSTEM_PROMPT = textwrap.dedent("""\
-You are a clinical timeline graph enrichment agent (GPT-4.1).
+You are a clinical timeline graph enrichment agent.
 
 Your task: Extract structured clinical entities and relationships from raw
 patient document text to build a PatientTimelineVision graph.
@@ -88,12 +119,13 @@ patient document text to build a PatientTimelineVision graph.
 ```
 
 **Instructions:**
-1. Read the document text carefully. Extract every clinically relevant event.
+1. Read the document text carefully. Extract ALL clinically relevant events — do not truncate.
 2. Assign meaningful event_ids incorporating page numbers for traceability.
 3. Infer timestamps where possible from context (dates, relative references).
 4. Identify relationships (edges) between events — only high-confidence ones.
 5. Be thorough but honest. Do not hallucinate events not present in the text.
-6. For large batches, focus on the most clinically significant events first.
+6. Include every distinct diagnosis, medication change, procedure, lab result, imaging study,
+   and clinical note that contains meaningful medical information.
 
 **Connascence edge types:**
 - temporal: events close in time (within days/weeks)
@@ -105,7 +137,7 @@ patient document text to build a PatientTimelineVision graph.
 """)
 
 OPPORTUNISTIC_ENRICHMENT_SYSTEM_PROMPT = textwrap.dedent("""\
-You are an opportunistic graph enrichment agent (GPT-4.1).
+You are an opportunistic graph enrichment agent.
 
 Given a detective step's findings and the current graph state, you have FOUR jobs:
   1. Identify new clinical events to add.
@@ -210,7 +242,7 @@ async def enrich_graph_from_batch(
     total_batches: int,
 ) -> Dict[str, Any]:
     """
-    Run GPT-4.1 on a batch of PDF text to extract entities and relationships.
+    Run the enrichment model on a batch of PDF text to extract entities and relationships.
 
     Returns enrichment stats dict for logging.
     """
@@ -218,8 +250,8 @@ async def enrich_graph_from_batch(
     batch_chars = len(batch_text)
 
     logger.info(
-        "GRAPH_ENRICH [batch %d/%d] patient=%s pages=%s chars=%s — calling GPT-4.1...",
-        batch_index + 1, total_batches, patient_id, page_range, f"{batch_chars:,}",
+        "GRAPH_ENRICH [batch %d/%d] patient=%s pages=%s chars=%s — calling %s...",
+        batch_index + 1, total_batches, patient_id, page_range, f"{batch_chars:,}", INGESTION_MODEL,
     )
     print(
         f"\n{'─'*70}\n"
@@ -253,13 +285,17 @@ async def enrich_graph_from_batch(
     }
 
     try:
-        resp = await chat_completion_async(
-            model=EOH_TIMELINE_SUMMARIZER_MODEL,
+        call_kwargs: Dict[str, Any] = dict(
+            model=INGESTION_MODEL,
             messages=messages,
             max_tokens=ENRICHMENT_OUTPUT_TOKENS,
             response_format={"type": "json_object"},
             temperature=0.1,
         )
+        if _USE_OLLAMA:
+            call_kwargs["client"] = get_ollama_client(base_url=_OLLAMA_BASE_URL)
+
+        resp = await chat_completion_async(**call_kwargs)
 
         raw = resp.choices[0].message.content or "{}"
         result = json.loads(raw)

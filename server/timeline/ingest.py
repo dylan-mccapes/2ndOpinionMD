@@ -933,17 +933,18 @@ async def run_ingest_from_pdf_bytes(
     )
 
     # ------------------------------------------------------------------
-    # 2. Compute dynamic batches (60% of GPT-4.1 context)
+    # 2. Compute dynamic batches sized to the active enrichment model's context
     # ------------------------------------------------------------------
-    from server.eoh.graph_enrichment import compute_batch_boundaries, BATCH_MAX_CHARS
+    from server.eoh.graph_enrichment import compute_batch_boundaries, BATCH_MAX_CHARS, INGESTION_MODEL
 
     batches = compute_batch_boundaries(pages, max_chars=BATCH_MAX_CHARS)
     logger.info(
-        "INGEST [%s] split into %d batches (target %s chars each, 60%% GPT-4.1 context)",
+        "INGEST [%s] split into %d batches (target %s chars each)",
         patient_id, len(batches), f"{BATCH_MAX_CHARS:,}",
     )
     print(
-        f"  batch target: {BATCH_MAX_CHARS:,} chars (60% of GPT-4.1 1M-token context)\n"
+        f"  model: {INGESTION_MODEL}\n"
+        f"  batch target: {BATCH_MAX_CHARS:,} chars\n"
         f"  batches: {len(batches)}"
     )
 
