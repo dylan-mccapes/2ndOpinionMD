@@ -681,7 +681,8 @@ async def timeline_import_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
 
     # Resolve user -> operator -> timeline
-    user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
+    # Stringify user_id — asyncpg returns pgproto.UUID objects which uuid.UUID() cannot accept directly
+    user_id = str(current_user.id) if hasattr(current_user, "id") else None
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
