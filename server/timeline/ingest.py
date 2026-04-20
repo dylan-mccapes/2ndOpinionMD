@@ -760,11 +760,14 @@ async def run_ingest_from_pdf_bytes(
 ) -> Dict[str, Any]:
     """
     Extract text from PDF bytes, parse into timeline events, store in
-    ehr.patient_timeline, and optionally run GPT-4.1 graph enrichment on
-    each batch.
+    ehr.patient_timeline, and optionally build PatientTimelineVision using
+    the same pipeline as ``run_eohd_timeline_pdf.py`` / ``populate_vision_from_extracted_pages``:
+    regex heuristics on every page, batched per-page LLM extraction (with heuristic
+    hints), timestamp recovery, one temporal connascence pass, type reclassification,
+    and graph timestamp sanitize.
 
-    Batches are sized to fill ~60% of GPT-4.1's context window so the
-    enrichment agent sees maximum clinical context per call.
+    Model: ``INGESTION_MODEL`` env (default ``gpt-4.1``). For Ollama, set e.g.
+    ``eoh-llama-8b`` and ``INGESTION_CONTEXT_TOKENS=32768``.
 
     Returns a stats dict:
         {
@@ -933,37 +936,40 @@ async def run_ingest_from_pdf_bytes(
     )
 
     # ------------------------------------------------------------------
-    # 2. Compute batches using the same sizing logic as run_eohd_timeline_pdf.py
+    # 2–3. Store regex-parsed timeline rows (per page), then build PTV with the
+    #      same pipeline as run_eohd_timeline_pdf.py (heuristics → LLM batches →
+    #      timestamp recovery → connascence → reclassify → sanitize).
     # ------------------------------------------------------------------
-    from server.eoh.timeline_summarizer import (
-        _iter_pdf_event_extraction_batches,
-        PDF_EVENT_BATCH_MAX_INPUT_CHARS,
-        _extract_events_from_pages_batch,
-    )
-    from server.eoh.graph_enrichment import INGESTION_MODEL, _USE_OLLAMA, _OLLAMA_BASE_URL
+    from server.api.stream_config import INGESTION_MODEL, OLLAMA_BASE_URL
+    from server.eoh.timeline_summarizer import populate_vision_from_extracted_pages
+    from server.llm.llm_client import get_ollama_client
+    from openai import AsyncOpenAI
 
-    batches = _iter_pdf_event_extraction_batches(pages, max_chars=PDF_EVENT_BATCH_MAX_INPUT_CHARS)
+    _use_openai = "gpt" in INGESTION_MODEL.lower()
+    ingestion_context_tokens: Optional[int] = None
+    if not _use_openai:
+        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "32768").strip()
+        ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 32768
+
     logger.info(
-        "INGEST [%s] split into %d batches (target %s chars each)",
-        patient_id, len(batches), f"{PDF_EVENT_BATCH_MAX_INPUT_CHARS:,}",
+        "INGEST [%s] PTV pipeline model=%s (openai=%s ctx_tokens=%s)",
+        patient_id, INGESTION_MODEL, _use_openai, ingestion_context_tokens,
     )
     print(
-        f"  model: {INGESTION_MODEL}\n"
-        f"  batch target: {PDF_EVENT_BATCH_MAX_INPUT_CHARS:,} chars\n"
-        f"  batches: {len(batches)}"
+        f"  PTV / extraction model: {INGESTION_MODEL}\n"
+        f"  (set INGESTION_MODEL + INGESTION_CONTEXT_TOKENS for Ollama — same as run_eohd_timeline_pdf.py)"
     )
 
-    # ------------------------------------------------------------------
-    # 3. Process each batch: store events + enrich graph
-    # ------------------------------------------------------------------
     parser = DocumentParser()
     engine = TimelineEngine()
     events_stored = 0
     enrichment_stats_list: List[Dict[str, Any]] = []
     vision = None
+    vision_batches = 0
 
     if enable_graph_enrichment:
         from server.eoh.patient_timeline_vision import PatientTimelineVision
+
         vision = PatientTimelineVision(
             patient_id=patient_id,
             built_at=datetime.now().isoformat(),
@@ -971,99 +977,54 @@ async def run_ingest_from_pdf_bytes(
             metadata={"source": "pdf_ingestion", "total_pages": total_pages},
         )
 
-    for batch_idx, batch_pages in enumerate(batches):
-        batch_page_nums = [p[0] for p in batch_pages]
-        page_range_str = f"{batch_page_nums[0]}-{batch_page_nums[-1]}"
-        batch_chars = sum(len(t) for _, t in batch_pages)
+    for pn, txt in pages:
+        page_text = f"=== Page {pn} ===\n{txt}"
+        page_events = parser.parse_document(
+            page_text,
+            patient_id,
+            source=EventSource.PATIENT_UPLOAD,
+            filename="uploaded.pdf",
+        )
+        for event in page_events:
+            event.meta = event.meta or {}
+            event.meta["page"] = pn
+            await engine.store_event(db, event)
+            events_stored += 1
 
+        if events_stored % 500 == 0:
+            logger.info("INGEST [%s] stored %d regex timeline rows so far…", patient_id, events_stored)
+
+    logger.info("INGEST [%s] stored %d regex timeline rows (ehr.patient_timeline)", patient_id, events_stored)
+
+    if enable_graph_enrichment and vision is not None:
+        if _use_openai:
+            ingestion_client = AsyncOpenAI()
+        else:
+            ingestion_client = get_ollama_client(base_url=OLLAMA_BASE_URL)
+
+        _conc = int(os.getenv("INGESTION_EXTRACTION_CONCURRENCY", "1"))
+        pop_stats = await populate_vision_from_extracted_pages(
+            vision=vision,
+            extraction_pages=pages,
+            ingestion_client=ingestion_client,
+            ingestion_model=INGESTION_MODEL,
+            ingestion_context_tokens=ingestion_context_tokens,
+            extraction_concurrency=max(1, _conc),
+        )
+        enrichment_stats_list = pop_stats.get("enrichment_stats") or []
+        vision_batches = int(pop_stats.get("batches") or 0)
         logger.info(
-            "INGEST [%s] batch %d/%d — pages %s (%d pages, %s chars)",
-            patient_id, batch_idx + 1, len(batches),
-            page_range_str, len(batch_pages), f"{batch_chars:,}",
+            "INGEST [%s] PTV populate done — heuristic=%s LLM_events=%s batches=%s edges=%s",
+            patient_id,
+            pop_stats.get("heuristic_events_added"),
+            pop_stats.get("llm_events_total"),
+            vision_batches,
+            vision.count_edges(),
         )
         print(
-            f"\n  ── batch {batch_idx+1}/{len(batches)} ──\n"
-            f"     pages: {page_range_str}  ({len(batch_pages)} pages, {batch_chars:,} chars)"
+            f"\n  PTV graph (run-script algorithm): {len(vision.events)} events, "
+            f"{vision.count_edges()} edges  |  LLM batches: {vision_batches}"
         )
-
-        # 3a. Parse + store timeline events (regex-based, fast)
-        batch_events_stored = 0
-        for pn, txt in batch_pages:
-            page_text = f"=== Page {pn} ===\n{txt}"
-            events = parser.parse_document(
-                page_text,
-                patient_id,
-                source=EventSource.PATIENT_UPLOAD,
-                filename="uploaded.pdf",
-            )
-            for event in events:
-                event.meta = event.meta or {}
-                event.meta["page"] = pn
-                event.meta["batch_index"] = batch_idx
-                event.meta["page_range"] = page_range_str
-                await engine.store_event(db, event)
-                batch_events_stored += 1
-
-        events_stored += batch_events_stored
-        logger.info(
-            "INGEST [%s] batch %d stored %d timeline events (total so far: %d)",
-            patient_id, batch_idx + 1, batch_events_stored, events_stored,
-        )
-        print(f"     timeline events stored: {batch_events_stored} (running total: {events_stored})")
-
-        # 3b. Graph enrichment — same per-page extraction as run_eohd_timeline_pdf.py
-        if enable_graph_enrichment and vision is not None:
-            from server.eoh.patient_timeline_vision import add_events_from_pdf_page
-
-            if _USE_OLLAMA:
-                from server.llm.llm_client import get_ollama_client
-                _enrich_client = get_ollama_client(base_url=_OLLAMA_BASE_URL)
-                _force_json = False
-            else:
-                from openai import AsyncOpenAI
-                _enrich_client = AsyncOpenAI()
-                _force_json = True
-
-            t_enrich = _time.perf_counter()
-            try:
-                page_events: Dict[int, List[Dict[str, Any]]] = await _extract_events_from_pages_batch(
-                    _enrich_client,
-                    batch_pages,
-                    model=INGESTION_MODEL,
-                    force_json_format=_force_json,
-                )
-                events_added = 0
-                for pn, ev_list in page_events.items():
-                    add_events_from_pdf_page(vision, pn, ev_list)
-                    events_added += len(ev_list)
-                enrich_err = None
-            except Exception as _ee:
-                logger.warning("INGEST [%s] batch %d enrichment failed: %s", patient_id, batch_idx + 1, _ee)
-                page_events = {}
-                events_added = 0
-                enrich_err = str(_ee)
-
-            elapsed_enrich_ms = int((_time.perf_counter() - t_enrich) * 1000)
-            enrich_stats = {
-                "batch_index": batch_idx,
-                "page_range": page_range_str,
-                "input_chars": sum(len(t) for _, t in batch_pages),
-                "events_extracted": events_added,
-                "edges_extracted": 0,
-                "elapsed_ms": elapsed_enrich_ms,
-                "error": enrich_err,
-            }
-            enrichment_stats_list.append(enrich_stats)
-
-            logger.info(
-                "INGEST [%s] batch %d: %d graph events from %d pages (%dms) | total graph: %d events, %d edges",
-                patient_id, batch_idx + 1, events_added, len(batch_pages),
-                elapsed_enrich_ms, len(vision.events), vision.count_edges(),
-            )
-            print(
-                f"     graph events added: {events_added}  "
-                f"(running total: {len(vision.events)} events, {vision.count_edges()} edges)"
-            )
 
     # ------------------------------------------------------------------
     # 4. Commit + save vision
@@ -1071,11 +1032,8 @@ async def run_ingest_from_pdf_bytes(
     await db.commit()
 
     if vision is not None:
-        from server.eoh.patient_timeline_vision import (
-            _infer_temporal_connascence,
-            save_timeline_vision,
-        )
-        _infer_temporal_connascence(vision, window_days=7)
+        from server.eoh.patient_timeline_vision import save_timeline_vision
+
         save_timeline_vision(vision)
         logger.info(
             "INGEST [%s] final graph: %d events, %d edges — saved to disk",
@@ -1084,14 +1042,14 @@ async def run_ingest_from_pdf_bytes(
 
     elapsed_ms = int((_time.perf_counter() - t0) * 1000)
     logger.info(
-        "INGEST [%s] COMPLETE — %d events stored, %d batches, %dms",
-        patient_id, events_stored, len(batches), elapsed_ms,
+        "INGEST [%s] COMPLETE — %d events stored, %d LLM batches, %dms",
+        patient_id, events_stored, vision_batches, elapsed_ms,
     )
     print(
         f"\n{'='*70}\n"
         f"  INGESTION COMPLETE\n"
         f"  events stored: {events_stored}\n"
-        f"  batches processed: {len(batches)}\n"
+        f"  LLM extraction batches: {vision_batches}\n"
         f"  graph events: {len(vision.events) if vision else 'N/A'}\n"
         f"  graph edges: {vision.count_edges() if vision else 'N/A'}\n"
         f"  elapsed: {elapsed_ms:,}ms\n"
@@ -1102,7 +1060,7 @@ async def run_ingest_from_pdf_bytes(
         "events_stored": events_stored,
         "total_pages": total_pages,
         "pages_with_text": len(pages),
-        "batches": len(batches),
+        "batches": vision_batches,
         "enrichment_stats": enrichment_stats_list,
         "vision": vision,
         "elapsed_ms": elapsed_ms,

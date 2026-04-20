@@ -3729,6 +3729,298 @@ async def _extract_events_from_page_text(
         }]
 
 
+async def populate_vision_from_extracted_pages(
+    *,
+    vision: PatientTimelineVision,
+    extraction_pages: List[Tuple[int, str]],
+    ingestion_client: AsyncOpenAI,
+    ingestion_model: str,
+    ingestion_context_tokens: Optional[int] = None,
+    extraction_concurrency: int = 1,
+) -> Dict[str, Any]:
+    """
+    Heuristic skeleton → batched per-page LLM extraction (with heuristic hints) →
+    timestamp recovery → single temporal connascence pass → type reclassification →
+    graph timestamp sanitize.
+
+    Same algorithm as ``run_eohd_timeline_pdf.py`` / the PDF branch of
+    ``summarize_timeline_from_pdf``. Mutates ``vision`` in place; does not write files.
+    """
+    import time as _time_mod
+    from server.eoh.heuristic_page_extract import heuristic_extract_batch
+
+    pid = vision.patient_id
+
+    _base_url_full = str(getattr(ingestion_client, "_base_url", "") or "")
+    _is_ollama = (
+        "11434" in _base_url_full
+        or "localhost" in _base_url_full
+        or "127.0.0.1" in _base_url_full
+        or "ollama" in _base_url_full.lower()
+    )
+    _force_json_format: bool = not _is_ollama
+    _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
+    _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
+    _ollama_native_api: bool = _is_ollama and _is_local_ollama
+
+    _heur_t0 = _time_mod.perf_counter()
+    _heuristic_results = heuristic_extract_batch(extraction_pages)
+    _heur_elapsed = _time_mod.perf_counter() - _heur_t0
+
+    _heur_events = sum(len(r.events) for r in _heuristic_results.values())
+    _heur_pages_with_date = sum(1 for r in _heuristic_results.values() if r.page_date)
+    logger.info(
+        "Heuristic pre-extraction [%s]: %d pages in %.0fms — %d events, %d/%d pages with encounter dates",
+        pid,
+        len(extraction_pages),
+        _heur_elapsed * 1000,
+        _heur_events,
+        _heur_pages_with_date,
+        len(extraction_pages),
+    )
+
+    _heur_added = 0
+    for pn, heur_result in sorted(_heuristic_results.items()):
+        if not heur_result.events:
+            continue
+        heur_event_dicts = []
+        for he in heur_result.events:
+            d = he.to_dict()
+            d["annotations"] = {"heuristic_source": he.source}
+            if he.drug_name:
+                d["drug_name"] = he.drug_name
+                d["annotations"]["drug_name"] = he.drug_name
+            if he.drug_dosage:
+                d["drug_dosage"] = he.drug_dosage
+                d["annotations"]["drug_dosage"] = he.drug_dosage
+            if he.drug_route:
+                d["drug_route"] = he.drug_route
+                d["annotations"]["drug_route"] = he.drug_route
+            if he.icd_code:
+                d["annotations"]["icd_code"] = he.icd_code
+            heur_event_dicts.append(d)
+        add_events_from_pdf_page(vision=vision, page_num=pn, events=heur_event_dicts)
+        _heur_added += len(heur_event_dicts)
+
+    logger.info("Heuristic events added to vision [%s]: %d (pre-LLM)", pid, _heur_added)
+
+    _page_date_lookup: Dict[int, str] = {
+        pn: r.page_date for pn, r in _heuristic_results.items() if r.page_date
+    }
+
+    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+
+    if _ctx_tokens >= 500_000:
+        _batch_max_chars = int(
+            (
+                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+            )
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    else:
+        _small_output_reserve = max(4096, _ctx_tokens // 2)
+        _small_system_reserve = max(512, _ctx_tokens // 16)
+        _batch_max_chars = int(
+            (_ctx_tokens - _small_output_reserve - _small_system_reserve)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+
+    _batch_max_chars = max(_batch_max_chars, 8_000)
+
+    _OLLAMA_MAX_PAGES_PER_BATCH = 5
+    _OUTPUT_TOKENS_PER_PAGE_ESTIMATE = 2400
+    _output_token_cap = (
+        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+        if _ctx_tokens >= 500_000
+        else min(16384, max(4096, _ctx_tokens // 2))
+    )
+    _max_pages_per_batch: Optional[int] = min(
+        _OLLAMA_MAX_PAGES_PER_BATCH,
+        max(3, _output_token_cap // _OUTPUT_TOKENS_PER_PAGE_ESTIMATE),
+    )
+    if _ctx_tokens >= 500_000:
+        _max_pages_per_batch = None
+
+    batches = _iter_pdf_event_extraction_batches(
+        extraction_pages, max_chars=_batch_max_chars, max_pages=_max_pages_per_batch
+    )
+    oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
+    logger.info(
+        "PDF event extraction [%s]: %d pages → %d batch(es); max ~%d input chars/batch "
+        "(%dK-token context; model=%s)",
+        pid,
+        len(extraction_pages),
+        len(batches),
+        _batch_max_chars,
+        _ctx_tokens // 1024,
+        ingestion_model,
+    )
+
+    _concurrency = max(1, extraction_concurrency)
+    _sem = asyncio.Semaphore(_concurrency)
+    enrichment_stats_list: List[Dict[str, Any]] = []
+
+    async def _extract_one(
+        b_idx: int, batch: List[Tuple[int, str]]
+    ) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]], int, Optional[str]]:
+        batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
+        logger.info(
+            "PDF event extraction batch %d/%d [%s]: %d pages, ~%d chars",
+            b_idx,
+            len(batches),
+            pid,
+            len(batch),
+            batch_chars,
+        )
+        batch_heur = (
+            {pn: _heuristic_results[pn] for pn, _ in batch if pn in _heuristic_results}
+            if _heuristic_results
+            else None
+        )
+
+        t0 = _time_mod.perf_counter()
+        err: Optional[str] = None
+        try:
+            async with _sem:
+                result = await _extract_events_from_pages_batch(
+                    ingestion_client,
+                    batch,
+                    model=ingestion_model,
+                    force_json_format=_force_json_format,
+                    ollama_num_ctx=_ollama_num_ctx,
+                    ollama_native_api=_ollama_native_api,
+                    heuristic_results=batch_heur,
+                )
+        except Exception as _ex:
+            logger.warning(
+                "PDF extraction batch %d/%d [%s] failed: %s", b_idx, len(batches), pid, _ex
+            )
+            result = {}
+            err = str(_ex)
+        elapsed_ms = int((_time_mod.perf_counter() - t0) * 1000)
+        return b_idx, batch, result, elapsed_ms, err
+
+    extraction_tasks = [_extract_one(i + 1, batch) for i, batch in enumerate(batches)]
+    all_results = await asyncio.gather(*extraction_tasks)
+
+    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+
+    _stat_total_events = 0
+    _stat_fallback_pages = 0
+    _stat_ts_recovered = 0
+
+    for b_idx, batch, page_to_events, elapsed_ms, batch_err in sorted(all_results, key=lambda x: x[0]):
+        ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
+        batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        _stat_total_events += batch_event_count
+
+        for evts in page_to_events.values():
+            for ev in evts:
+                if ev.get("event_id", "").endswith("_batch_error"):
+                    _stat_fallback_pages += 1
+
+        for page_num, evts in page_to_events.items():
+            page_date = _page_date_lookup.get(page_num)
+            if not page_date:
+                continue
+            for ev in evts:
+                ts = ev.get("timestamp", "")
+                if ts.lower() in ("unknown", "", "n/a", "none"):
+                    from server.utils.parse_date import extract_date_from_text
+
+                    preview_date = extract_date_from_text(ev.get("preview", ""))
+                    if preview_date:
+                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    else:
+                        ev["timestamp"] = page_date
+                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                    _stat_ts_recovered += 1
+
+        pn_first = batch[0][0]
+        pn_last = batch[-1][0]
+        enrichment_stats_list.append(
+            {
+                "batch_index": b_idx - 1,
+                "page_range": f"{pn_first}-{pn_last}",
+                "input_chars": sum(len(t) for _, t in batch),
+                "events_extracted": batch_event_count,
+                "edges_extracted": 0,
+                "elapsed_ms": elapsed_ms,
+                "error": batch_err,
+            }
+        )
+
+        ts_samples: list[str] = []
+        for evts in page_to_events.values():
+            for ev in evts:
+                t = ev.get("timestamp", "")
+                if t and t != "unknown" and len(ts_samples) < 6:
+                    ts_samples.append(t)
+        log_msg = "Batch %d/%d [%s] extracted %d events across %d pages; samples: %s"
+        if ts_scrubbed:
+            log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
+        logger.info(
+            log_msg,
+            b_idx,
+            len(batches),
+            pid,
+            batch_event_count,
+            len(page_to_events),
+            ts_samples,
+        )
+
+        edges_before = vision.count_edges()
+        for page_num in sorted(page_to_events.keys()):
+            add_events_from_pdf_page(
+                vision=vision, page_num=page_num, events=page_to_events[page_num]
+            )
+
+        logger.info(
+            "PatientTimelineVision [%s]: after batch %d/%d — events=%d edges=%d (+%d edges)",
+            pid,
+            b_idx,
+            len(batches),
+            len(vision.events),
+            vision.count_edges(),
+            vision.count_edges() - edges_before,
+        )
+
+    logger.info(
+        "═══ PDF extraction complete [%s]: %d batches, %d LLM page-events, "
+        "%d fallback pages, %d ts recovered",
+        pid,
+        len(batches),
+        _stat_total_events,
+        _stat_fallback_pages,
+        _stat_ts_recovered,
+    )
+
+    _infer_temporal_connascence(vision, window_days=7)
+
+    n_reclassified = _reclassify_event_types(vision)
+    if n_reclassified:
+        logger.info("[%s] PDF event type reclassification: %d events", pid, n_reclassified)
+
+    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+    if n_ts_scrubbed:
+        logger.info("[%s] PDF timestamp sanity: %d scrubbed", pid, n_ts_scrubbed)
+
+    return {
+        "heuristic_events_added": _heur_added,
+        "batches": len(batches),
+        "llm_events_total": _stat_total_events,
+        "fallback_pages": _stat_fallback_pages,
+        "timestamps_recovered": _stat_ts_recovered,
+        "reclassified": n_reclassified,
+        "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "enrichment_stats": enrichment_stats_list,
+        "ingestion_model": ingestion_model,
+    }
+
+
 async def summarize_timeline_from_pdf(
     client: AsyncOpenAI,
     question: str,
@@ -3989,273 +4281,14 @@ async def summarize_timeline_from_pdf(
         len(page_entries),
     )
 
-    # ── Heuristic pre-extraction pass ─────────────────────────────────────
-    # Pure Python regex pass over all pages BEFORE the LLM touches anything.
-    # Extracts dates, ICD codes, medication patterns, lab orders, and section
-    # context. ~1 second for 4,000 pages. The LLM then corrects and supplements.
-    from server.eoh.heuristic_page_extract import (
-        heuristic_extract_batch,
-        HeuristicPageResult,
+    await populate_vision_from_extracted_pages(
+        vision=vision,
+        extraction_pages=extraction_pages,
+        ingestion_client=_ingestion_client,
+        ingestion_model=_ingestion_model,
+        ingestion_context_tokens=ingestion_context_tokens,
+        extraction_concurrency=extraction_concurrency,
     )
-
-    import time as _time
-    _heur_t0 = _time.perf_counter()
-    _heuristic_results = heuristic_extract_batch(extraction_pages)
-    _heur_elapsed = _time.perf_counter() - _heur_t0
-
-    _heur_events = sum(len(r.events) for r in _heuristic_results.values())
-    _heur_pages_with_date = sum(1 for r in _heuristic_results.values() if r.page_date)
-    logger.info(
-        "Heuristic pre-extraction: %d pages in %.0fms (%.2fms/page) — "
-        "%d events, %d/%d pages with encounter dates",
-        len(extraction_pages), _heur_elapsed * 1000,
-        _heur_elapsed / max(len(extraction_pages), 1) * 1000,
-        _heur_events, _heur_pages_with_date, len(extraction_pages),
-    )
-
-    # Add heuristic events to vision immediately — these are the "free" events
-    # that don't cost any LLM tokens.
-    _heur_added = 0
-    for pn, heur_result in sorted(_heuristic_results.items()):
-        if not heur_result.events:
-            continue
-        heur_event_dicts = []
-        for he in heur_result.events:
-            d = he.to_dict()
-            d["annotations"] = {"heuristic_source": he.source}
-            if he.drug_name:
-                d["drug_name"] = he.drug_name
-                d["annotations"]["drug_name"] = he.drug_name
-            if he.drug_dosage:
-                d["drug_dosage"] = he.drug_dosage
-                d["annotations"]["drug_dosage"] = he.drug_dosage
-            if he.drug_route:
-                d["drug_route"] = he.drug_route
-                d["annotations"]["drug_route"] = he.drug_route
-            if he.icd_code:
-                d["annotations"]["icd_code"] = he.icd_code
-            heur_event_dicts.append(d)
-        add_events_from_pdf_page(
-            vision=vision,
-            page_num=pn,
-            events=heur_event_dicts,
-        )
-        _heur_added += len(heur_event_dicts)
-
-    logger.info(
-        "Heuristic events added to vision: %d events (pre-LLM)",
-        _heur_added,
-    )
-
-    # Build page date lookup for timestamp recovery on LLM results
-    _page_date_lookup: Dict[int, str] = {
-        pn: r.page_date
-        for pn, r in _heuristic_results.items()
-        if r.page_date
-    }
-
-    # Batched LLM extraction: batch size scales with the ingestion model's
-    # context window.  For small local models (e.g. llama3.1:8b with 128K
-    # context) we must use far fewer input chars per batch so the KV cache
-    # stays manageable and the model has enough headroom to generate output.
-    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
-
-    if _ctx_tokens >= 500_000:
-        # Large-context model (GPT-4.1 etc.): use fill ratio to limit input so
-        # the model has ample output headroom (~900K tokens free).
-        _batch_max_chars = int(
-            (
-                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
-                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
-                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-            )
-            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
-        )
-    else:
-        # Small/medium context model (e.g. llama3.1:8b at 32K).
-        # Reserve output budget as 50% of context — must match the num_predict
-        # cap used in _extract_events_from_pages_batch (min(16384, ctx//2)).
-        # Previous 25% reserve caused constant truncation: batch input sized to
-        # ~90K chars (~22K tokens) left only ~8K tokens for output, but the
-        # model was allowed 16K output tokens, so every batch hit the limit.
-        # With 50% reserved, input shrinks to ~45% of context → ~35 pages/batch
-        # → ~8K output tokens needed, safely under the 16K cap.
-        _small_output_reserve = max(4096, _ctx_tokens // 2)   # 50% for output
-        _small_system_reserve = max(512,  _ctx_tokens // 16)  # ~6% for system
-        _batch_max_chars = int(
-            (_ctx_tokens - _small_output_reserve - _small_system_reserve)
-            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
-        )
-
-    _batch_max_chars = max(_batch_max_chars, 8_000)
-
-    # Cap pages per batch so the output token budget isn't exceeded.
-    # Dense clinical pages (labs, medication lists) can require 2000-3000 output
-    # tokens each.  Prior runs with a 10-page cap on llama3.1:8b produced 15
-    # fully-failed batches from output truncation.  Capping at 5 pages keeps the
-    # worst-case output under 15K tokens, safely inside the 16K num_predict limit.
-    _OLLAMA_MAX_PAGES_PER_BATCH = 5
-    _OUTPUT_TOKENS_PER_PAGE_ESTIMATE = 2400
-    _output_token_cap = (
-        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-        if _ctx_tokens >= 500_000
-        else min(16384, max(4096, _ctx_tokens // 2))
-    )
-    _max_pages_per_batch: Optional[int] = min(
-        _OLLAMA_MAX_PAGES_PER_BATCH,
-        max(3, _output_token_cap // _OUTPUT_TOKENS_PER_PAGE_ESTIMATE),
-    )
-    if _ctx_tokens >= 500_000:
-        _max_pages_per_batch = None  # GPT-4.1 has ample output budget
-
-    batches = _iter_pdf_event_extraction_batches(
-        extraction_pages, max_chars=_batch_max_chars, max_pages=_max_pages_per_batch,
-    )
-    oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
-    _effective_output_reserve = (
-        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-        if _ctx_tokens >= 500_000
-        else max(4096, _ctx_tokens // 2)
-    )
-    logger.info(
-        "PDF event extraction: %d pages → %d batch(es); max ~%d input chars/batch "
-        "(%dK-token context; ~%d output tokens/page)",
-        len(extraction_pages),
-        len(batches),
-        _batch_max_chars,
-        _ctx_tokens // 1024,
-        _effective_output_reserve // max(1, len(batches[0]) if batches else 1),
-    )
-
-    # Parallel batch extraction: run up to `extraction_concurrency` batches
-    # concurrently, then process results in page order before running connascence.
-    # concurrency=1 is identical to the previous sequential behaviour.
-    # concurrency=2-3 saturates a GPU with spare VRAM (e.g. RTX 4090 + 8b-q8).
-    _concurrency = max(1, extraction_concurrency)
-    _sem = asyncio.Semaphore(_concurrency)
-
-    async def _extract_one(b_idx: int, batch: List[Tuple[int, str]]) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]:
-        batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
-        logger.info(
-            "PDF event extraction batch %d/%d: %d pages, ~%d chars in payload",
-            b_idx, len(batches), len(batch), batch_chars,
-        )
-        # Pass heuristic results for pages in this batch so the LLM prompt
-        # includes the pre-extracted skeleton.
-        batch_heur = {
-            pn: _heuristic_results[pn]
-            for pn, _ in batch
-            if pn in _heuristic_results
-        } if _heuristic_results else None
-
-        async with _sem:
-            result = await _extract_events_from_pages_batch(
-                _ingestion_client, batch, model=_ingestion_model,
-                force_json_format=_force_json_format,
-                ollama_num_ctx=_ollama_num_ctx,
-                ollama_native_api=_ollama_native_api,
-                heuristic_results=batch_heur,
-            )
-        return b_idx, batch, result
-
-    extraction_tasks = [
-        _extract_one(i + 1, batch) for i, batch in enumerate(batches)
-    ]
-    all_results: list[Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]] = \
-        await asyncio.gather(*extraction_tasks)
-
-    # Process results in original batch order so connascence sees events in
-    # temporal document order.  Run one final connascence pass at the end
-    # (more accurate than per-batch passes since it sees the full event set).
-    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
-
-    _stat_total_events = 0
-    _stat_fallback_pages = 0
-
-    _stat_ts_recovered = 0
-
-    for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
-        ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
-        batch_event_count = sum(len(evts) for evts in page_to_events.values())
-        _stat_total_events += batch_event_count
-
-        for evts in page_to_events.values():
-            for ev in evts:
-                if ev.get("event_id", "").endswith("_batch_error"):
-                    _stat_fallback_pages += 1
-
-        # Timestamp recovery: apply heuristic page dates to LLM events
-        # that have unknown timestamps.
-        for page_num, evts in page_to_events.items():
-            page_date = _page_date_lookup.get(page_num)
-            if not page_date:
-                continue
-            for ev in evts:
-                ts = ev.get("timestamp", "")
-                if ts.lower() in ("unknown", "", "n/a", "none"):
-                    from server.utils.parse_date import extract_date_from_text
-                    preview_date = extract_date_from_text(ev.get("preview", ""))
-                    if preview_date:
-                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
-                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
-                    else:
-                        ev["timestamp"] = page_date
-                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
-                    _stat_ts_recovered += 1
-
-        ts_samples: list[str] = []
-        for evts in page_to_events.values():
-            for ev in evts:
-                t = ev.get("timestamp", "")
-                if t and t != "unknown" and len(ts_samples) < 6:
-                    ts_samples.append(t)
-        log_msg = (
-            "Batch %d/%d extracted %d events across %d pages; timestamp samples: %s"
-        )
-        if ts_scrubbed:
-            log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
-        logger.info(log_msg, b_idx, len(batches), batch_event_count, len(page_to_events), ts_samples)
-
-        edges_before = vision.count_edges()
-        for page_num in sorted(page_to_events.keys()):
-            add_events_from_pdf_page(
-                vision=vision,
-                page_num=page_num,
-                events=page_to_events[page_num],
-            )
-
-        logger.info(
-            "PatientTimelineVision: after batch %d/%d — total events=%d edges=%d (+%d this batch)",
-            b_idx, len(batches), len(vision.events), vision.count_edges(),
-            vision.count_edges() - edges_before,
-        )
-
-    logger.info(
-        "═══ PDF extraction complete: %d batches, %d total events, %d fallback pages "
-        "(pages where extraction failed and only raw text was preserved), "
-        "%d timestamps recovered from heuristic page dates",
-        len(batches), _stat_total_events, _stat_fallback_pages, _stat_ts_recovered,
-    )
-
-    # Single final connascence pass over the complete event set.
-    # More accurate than incremental per-batch passes and avoids redundant work.
-    _infer_temporal_connascence(vision, window_days=7)
-    
-    # Keyword-based type reclassification: upgrade "page"/"unknown"/"note" events
-    # that the LLM tagged generically (output-token budget prevents per-page detail).
-    n_reclassified = _reclassify_event_types(vision)
-    if n_reclassified:
-        logger.info(
-            "PDF event type reclassification: %d events upgraded from generic type",
-            n_reclassified,
-        )
-
-    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
-    if n_ts_scrubbed:
-        logger.info(
-            "PDF timestamp sanity: %d prompt-bleed timestamps scrubbed from graph",
-            n_ts_scrubbed,
-        )
 
     # Save vision snapshot (session_only still true; path is for sharing / gap artifacts)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
