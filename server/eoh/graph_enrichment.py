@@ -69,10 +69,16 @@ if _USE_OLLAMA:
     )
     BATCH_MAX_CHARS = max(BATCH_MAX_CHARS, 8_000)  # floor: never below 8k chars
 else:
-    # GPT-4.1: 1M token context, fill 60%
+    # GPT-4.1: 1M token context.
+    # Fill ratio MUST be low (0.10) so there is output budget for events.
+    # Math from timeline_summarizer.py:
+    #   GPT-4.1 hard output cap = 32,768 tokens.
+    #   Target ~150-180 output tokens per page → max ~180 pages/batch.
+    #   0.10 fill → input ≈ (1,048,576 × 0.10 − 6,000 − 32,768) × 4 ≈ 264k input chars ≈ 183 pages.
+    # Using 0.60 (old value) crammed 1,650 pages/batch → model returned only ~10 events total.
     GPT41_MAX_CONTEXT_TOKENS = 1_048_576
-    ENRICHMENT_CONTEXT_FILL_RATIO = 0.60
-    ENRICHMENT_OUTPUT_TOKENS = 32_768  # raised from 16k — room for ~150 events
+    ENRICHMENT_CONTEXT_FILL_RATIO = 0.10
+    ENRICHMENT_OUTPUT_TOKENS = 32_768
     BATCH_MAX_CHARS = int(
         (
             GPT41_MAX_CONTEXT_TOKENS * ENRICHMENT_CONTEXT_FILL_RATIO
