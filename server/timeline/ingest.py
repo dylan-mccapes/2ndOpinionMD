@@ -795,23 +795,26 @@ async def run_ingest_from_pdf_bytes(
     # per-page with pypdfium2 as a per-page fallback for empty/failed pages.
     # ------------------------------------------------------------------
     stream = BytesIO(pdf_bytes)
-    reader = PdfReader(stream)
-    if reader.is_encrypted:
-        if not password:
-            raise ValueError("PDF is encrypted; password required")
-        if reader.decrypt(password) == 0:
-            raise ValueError("Incorrect PDF password")
 
-    # --- detect broken page tree before entering the loop ---
+    # --- initialise pypdf reader; it can throw on truncated/corrupt files ---
     pypdf_tree_ok = False
     total_pages: int = 0
+    reader = None
     try:
-        total_pages = len(reader.pages)  # TypeError surfaces here on damaged PDFs
+        reader = PdfReader(stream)
+        if reader.is_encrypted:
+            if not password:
+                raise ValueError("PDF is encrypted; password required")
+            if reader.decrypt(password) == 0:
+                raise ValueError("Incorrect PDF password")
+        total_pages = len(reader.pages)  # TypeError / PdfStreamError on damaged PDFs
         pypdf_tree_ok = True
-    except Exception as tree_err:
+    except ValueError:
+        raise  # password errors bubble up unchanged
+    except Exception as init_err:
         logger.warning(
-            "INGEST [%s] pypdf page tree broken (%s: %s) — switching to full pypdfium2 extraction",
-            patient_id, type(tree_err).__name__, tree_err,
+            "INGEST [%s] pypdf init/page-tree failed (%s: %s) — switching to full pypdfium2 extraction",
+            patient_id, type(init_err).__name__, init_err,
         )
         try:
             import pypdfium2 as pdfium
@@ -820,7 +823,7 @@ async def run_ingest_from_pdf_bytes(
             _doc_tmp.close()
         except Exception as count_err:
             raise ValueError(
-                f"Cannot determine PDF page count via pypdf or pypdfium2: {count_err}"
+                f"PDF is unreadable by both pypdf and pypdfium2. pypdf: {init_err} | pypdfium2: {count_err}"
             ) from count_err
 
     logger.info("INGEST [%s] PDF has %d total pages", patient_id, total_pages)
