@@ -3942,18 +3942,43 @@ async def populate_vision_from_extracted_pages(
     from server.eoh.patient_timeline_vision import _infer_temporal_connascence
 
     _stat_total_events = 0
-    _stat_fallback_pages = 0
+    _stat_hard_fallback_events = 0  # *_batch_error — extraction failed / transport error
+    _stat_generic_stub_events = 0  # *_generic — model omitted page
     _stat_ts_recovered = 0
 
     for b_idx, batch, page_to_events, elapsed_ms, batch_err in sorted(all_results, key=lambda x: x[0]):
+        # Whole-batch failure used to return {} and silently skip pages — never add vision events.
+        if not page_to_events:
+            logger.warning(
+                "PDF batch %d/%d [%s]: empty extraction result (%s) — per-page stubs",
+                b_idx,
+                len(batches),
+                pid,
+                batch_err or "no error detail",
+            )
+            page_to_events = {
+                pn: [
+                    {
+                        "event_type": "page",
+                        "timestamp": "unknown",
+                        "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
+                        "event_id": f"pdf_p{pn:04d}_batch_error",
+                    }
+                ]
+                for pn, txt in batch
+            }
+
         ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
         batch_event_count = sum(len(evts) for evts in page_to_events.values())
         _stat_total_events += batch_event_count
 
         for evts in page_to_events.values():
             for ev in evts:
-                if ev.get("event_id", "").endswith("_batch_error"):
-                    _stat_fallback_pages += 1
+                eid = str(ev.get("event_id", ""))
+                if eid.endswith("_batch_error"):
+                    _stat_hard_fallback_events += 1
+                elif eid.endswith("_generic"):
+                    _stat_generic_stub_events += 1
 
         for page_num, evts in page_to_events.items():
             page_date = _page_date_lookup.get(page_num)
@@ -4006,29 +4031,43 @@ async def populate_vision_from_extracted_pages(
             ts_samples,
         )
 
-        edges_before = vision.count_edges()
+        events_before_graph = len(vision.events)
         for page_num in sorted(page_to_events.keys()):
             add_events_from_pdf_page(
                 vision=vision, page_num=page_num, events=page_to_events[page_num]
             )
+        added_this_batch = len(vision.events) - events_before_graph
 
         logger.info(
-            "PatientTimelineVision [%s]: after batch %d/%d — events=%d edges=%d (+%d edges)",
+            "PatientTimelineVision [%s]: after batch %d/%d — total events=%d (+%d this batch); "
+            "edges=%d (unchanged until final connascence)",
             pid,
             b_idx,
             len(batches),
             len(vision.events),
+            added_this_batch,
             vision.count_edges(),
-            vision.count_edges() - edges_before,
+        )
+
+    _avg_batch_ms = sum(r[3] for r in all_results) / max(len(all_results), 1)
+    if _avg_batch_ms < 120 and len(batches) > 200:
+        logger.warning(
+            "[%s] Mean batch time %.0fms with %d batches — if using Ollama, check "
+            "OLLAMA_BASE_URL / model name; very fast batches often mean failed HTTP calls.",
+            pid,
+            _avg_batch_ms,
+            len(batches),
         )
 
     logger.info(
-        "═══ PDF extraction complete [%s]: %d batches, %d LLM page-events, "
-        "%d fallback pages, %d ts recovered",
+        "═══ PDF extraction complete [%s]: %d batches, %d LLM-added events, "
+        "%d hard-fallback (*_batch_error), %d generic stubs (*_generic), "
+        "%d timestamps recovered from heuristics/preview",
         pid,
         len(batches),
         _stat_total_events,
-        _stat_fallback_pages,
+        _stat_hard_fallback_events,
+        _stat_generic_stub_events,
         _stat_ts_recovered,
     )
 
@@ -4046,7 +4085,8 @@ async def populate_vision_from_extracted_pages(
         "heuristic_events_added": _heur_added,
         "batches": len(batches),
         "llm_events_total": _stat_total_events,
-        "fallback_pages": _stat_fallback_pages,
+        "hard_fallback_events": _stat_hard_fallback_events,
+        "generic_stub_events": _stat_generic_stub_events,
         "timestamps_recovered": _stat_ts_recovered,
         "reclassified": n_reclassified,
         "graph_timestamps_scrubbed": n_ts_scrubbed,
