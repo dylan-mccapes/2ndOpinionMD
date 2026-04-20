@@ -20,26 +20,10 @@ logger = logging.getLogger(__name__)
 
 def _open_doc(pdf_bytes: bytes, password: Optional[str] = None) -> pdfium.PdfDocument:
     """Open a PdfDocument, decrypting if a password is supplied or needed."""
-    doc = pdfium.PdfDocument(pdf_bytes)
-    if doc.get_formtype() == pdfium.FORMTYPE_XFA_FOREGROUND:
-        pass  # XFA — no decryption step needed
     if password:
-        try:
-            doc.unlock(password)
-        except Exception:
-            doc.close()
-            raise ValueError("PDF password incorrect or decryption failed")
+        doc = pdfium.PdfDocument(pdf_bytes, password=password.encode())
     else:
-        # Probe whether the doc is locked without a password.
-        # pypdfium2 raises on get_page() if encrypted and no password given.
-        # We surface a cleaner error here.
-        try:
-            _ = len(doc)
-        except Exception as e:
-            doc.close()
-            raise ValueError(
-                f"PDF may be encrypted — provide `password` parameter. ({e})"
-            )
+        doc = pdfium.PdfDocument(pdf_bytes)
     return doc
 
 
