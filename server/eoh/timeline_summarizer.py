@@ -2898,16 +2898,18 @@ def _ollama_max_predict_tokens(ollama_num_ctx: Optional[int]) -> int:
 
 
 def _ollama_max_pages_per_batch() -> int:
-    """Hard cap on pages per Ollama extraction batch. Default 3 (was 5)."""
-    return max(1, min(12, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "3"))))
+    """Hard cap on pages per Ollama extraction batch. Default 5."""
+    return max(1, min(12, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
 
 
 def _ollama_output_tokens_per_page_estimate() -> int:
     """
     Used only to derive max pages per batch for small-context models.
-    Higher = assume more output per page = smaller batches. Default 3000 (was 2400).
+    Higher = assume more output per page = smaller batches.
+    Default 1200 pairs with default num_predict (~6144): ~5 pages/batch without
+    starving JSON. Raise via env if batches hit max_tokens / truncated JSON.
     """
-    return max(1500, int(os.getenv("OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE", "3000")))
+    return max(800, int(os.getenv("OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE", "1200")))
 
 
 PDF_EVENT_BATCH_MAX_INPUT_CHARS: int = int(
@@ -3865,14 +3867,17 @@ async def populate_vision_from_extracted_pages(
 
     _ollama_page_cap = _ollama_max_pages_per_batch()
     _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
-    _output_token_cap = (
-        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-        if _ctx_tokens >= 500_000
-        else min(16384, max(4096, _ctx_tokens // 2))
-    )
+    if _ctx_tokens >= 500_000:
+        _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+    elif _is_ollama and _ollama_num_ctx is not None:
+        # Match actual Ollama num_predict — avoids sizing batches from ctx//2 while
+        # generation is capped by _ollama_max_predict_tokens (typically lower).
+        _output_token_cap = _ollama_max_predict_tokens(_ollama_num_ctx)
+    else:
+        _output_token_cap = min(16384, max(4096, _ctx_tokens // 2))
     _max_pages_per_batch: Optional[int] = min(
         _ollama_page_cap,
-        max(2, _output_token_cap // _ollama_tok_per_page),
+        max(1, _output_token_cap // _ollama_tok_per_page),
     )
     if _ctx_tokens >= 500_000:
         _max_pages_per_batch = None
