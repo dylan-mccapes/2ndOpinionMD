@@ -2924,12 +2924,47 @@ def _ollama_max_pages_per_batch() -> int:
     """
     Safety ceiling on pages per Ollama extraction batch.
 
-    With chapter-aware batching the real limit is the input-token budget
-    (``INGESTION_OLLAMA_INPUT_FILL_RATIO`` × ``num_ctx``). This cap exists only
-    to keep pathological chapters (a 200-page administrative-forms run) from
-    being dispatched as a single call.
+    Default **5** pages keeps eoh-llama JSON generation within a predictable
+    output budget per call (large summary chapters are split by
+    ``pack_chapters_into_batches``). Override with ``OLLAMA_MAX_PAGES_PER_BATCH``.
+
+    Chapter-aware batching still applies; this is a hard per-LLM-call page cap.
     """
-    return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "40"))))
+    return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
+
+
+def _ingestion_max_pages_per_batch(
+    *,
+    ctx_tokens: int,
+    gpt41_ingest: bool,
+    is_ollama: bool,
+    ollama_num_ctx: Optional[int],
+) -> Optional[int]:
+    """Pages per ``pack_chapters_into_batches`` LLM batch.
+
+    - ``ctx_tokens >= 500_000``: ``None`` (only ``max_chars`` limits size).
+    - Else: ``min(OLLAMA_MAX_PAGES_PER_BATCH ceiling, output_tokens // per-page est)``
+      so streaming and non-streaming paths match and Ollama cannot pack 20+
+      pages when ``num_predict`` is ~10k.
+    """
+    _ollama_page_cap = _ollama_max_pages_per_batch()
+    _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
+    if ctx_tokens >= 500_000:
+        if gpt41_ingest:
+            _output_token_cap = INGESTION_GPT41_MAX_OUTPUT_TOKENS
+        else:
+            _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+    elif is_ollama and ollama_num_ctx is not None:
+        _output_token_cap = _ollama_max_predict_tokens(ollama_num_ctx)
+    else:
+        _output_token_cap = min(16384, max(4096, ctx_tokens // 2))
+    max_pages: Optional[int] = min(
+        _ollama_page_cap,
+        max(1, _output_token_cap // _ollama_tok_per_page),
+    )
+    if ctx_tokens >= 500_000:
+        max_pages = None
+    return max_pages
 
 
 def _ollama_output_tokens_per_page_estimate() -> int:
@@ -3989,25 +4024,12 @@ async def populate_vision_from_extracted_pages(
 
     _batch_max_chars = max(_batch_max_chars, 8_000)
 
-    _ollama_page_cap = _ollama_max_pages_per_batch()
-    _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
-    if _ctx_tokens >= 500_000:
-        if _gpt41_ingest:
-            _output_token_cap = INGESTION_GPT41_MAX_OUTPUT_TOKENS
-        else:
-            _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-    elif _is_ollama and _ollama_num_ctx is not None:
-        # Match actual Ollama num_predict — avoids sizing batches from ctx//2 while
-        # generation is capped by _ollama_max_predict_tokens (typically lower).
-        _output_token_cap = _ollama_max_predict_tokens(_ollama_num_ctx)
-    else:
-        _output_token_cap = min(16384, max(4096, _ctx_tokens // 2))
-    _max_pages_per_batch: Optional[int] = min(
-        _ollama_page_cap,
-        max(1, _output_token_cap // _ollama_tok_per_page),
+    _max_pages_per_batch = _ingestion_max_pages_per_batch(
+        ctx_tokens=_ctx_tokens,
+        gpt41_ingest=_gpt41_ingest,
+        is_ollama=_is_ollama,
+        ollama_num_ctx=_ollama_num_ctx,
     )
-    if _ctx_tokens >= 500_000:
-        _max_pages_per_batch = None
 
     # Chapter-aware batching: a PDF chapter = one Kaiser encounter (one clinical
     # day's visit/lab/message) or one administrative summary section (problem
@@ -4479,11 +4501,12 @@ async def stream_populate_vision_from_extracted_pages(
         _batch_max_chars = _small_input_tokens * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
     _batch_max_chars = max(_batch_max_chars, 8_000)
 
-    _max_pages_per_batch: Optional[int]
-    if _ctx_tokens >= 500_000:
-        _max_pages_per_batch = None
-    else:
-        _max_pages_per_batch = _ollama_max_pages_per_batch()
+    _max_pages_per_batch = _ingestion_max_pages_per_batch(
+        ctx_tokens=_ctx_tokens,
+        gpt41_ingest=_gpt41_ingest,
+        is_ollama=_is_ollama,
+        ollama_num_ctx=_ollama_num_ctx,
+    )
 
     chapters = sectionize_pages(extraction_pages)
     chapter_batches = pack_chapters_into_batches(

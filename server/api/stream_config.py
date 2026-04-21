@@ -2510,20 +2510,18 @@ INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
 )
 
 # ─── eoh-llama3.1:8b (local) ingestion budget ─────────────────────────────────
-# The Modelfile pins num_ctx=32768 for eoh-llama3.1:8b. Earlier we ran the PDF
-# batcher with only 16k ctx / 5 pages per batch because the eventual output
-# budget on small models is what starves first. Now that the ingest pipeline is
-# chapter-aware (whole encounters per batch) we drive by token budget, not page
-# count, and we mirror the GPT-4.1 split:
+# The Modelfile pins num_ctx=32768 for eoh-llama3.1:8b. Ingest uses the GPT-4.1
+# split in token space (input / output / system reserves) **and** a hard page
+# cap so one dense summary chapter cannot send 20+ pages to the 8B model in a
+# single JSON extraction call:
 #
 #   input tokens  = 60% of num_ctx          → INGESTION_OLLAMA_INPUT_FILL_RATIO
 #   output tokens = 30% of num_ctx          → INGESTION_OLLAMA_OUTPUT_FILL_RATIO
 #   prompt/system =  ~10% margin
 #
-# At the default 32k context that maps to roughly 78 KB of page text in and
-# ~9.8 K output tokens per batch — easily enough headroom for a 2-page visit
-# note or a dense lab result chapter. `OLLAMA_MAX_PAGES_PER_BATCH` stays as a
-# safety net only; the chapter packer is the real batching authority.
+# Default ``OLLAMA_MAX_PAGES_PER_BATCH`` is **5** (override via env). The
+# packer also intersects with ``num_predict // OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE``
+# so streaming and non-streaming batch sizing stay aligned.
 INGESTION_OLLAMA_CONTEXT_TOKENS = int(os.getenv("INGESTION_OLLAMA_CONTEXT_TOKENS", "32768"))
 INGESTION_OLLAMA_INPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_INPUT_FILL_RATIO", "0.60"))
 INGESTION_OLLAMA_OUTPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_OUTPUT_FILL_RATIO", "0.30"))
