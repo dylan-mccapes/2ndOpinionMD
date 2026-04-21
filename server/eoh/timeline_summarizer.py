@@ -23,6 +23,9 @@ from server.api.stream_config import (
     EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT,
     EOH_TIMELINE_SUMMARIZER_MODEL,
     INGESTION_MODEL,
+    INGESTION_GPT41_MAX_OUTPUT_TOKENS,
+    INGESTION_GPT41_INPUT_FILL_RATIO,
+    INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
     OLLAMA_BASE_URL,
     EOH_TIMELINE_GAP_MODEL,
     EOH_TIMELINE_RAG_SUMMARY_ENABLED,
@@ -2877,6 +2880,14 @@ _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE = 4
 _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS = 64
 
 
+def _ingestion_is_full_gpt41(model: Optional[str]) -> bool:
+    """True for GPT-4.1 (not gpt-4.1-mini) — long prompt + 60% input / large completion budget."""
+    if not model:
+        return False
+    m = model.lower().strip()
+    return m.startswith("gpt-4.1") and not m.startswith("gpt-4.1-mini")
+
+
 def _ollama_num_ctx_default() -> int:
     """
     Ollama KV cache size (options.num_ctx) for PDF batch extraction.
@@ -3360,6 +3371,53 @@ async def _extract_events_from_pages_batch(
         Focus your output tokens on what the heuristics MISSED.
     """).strip()
 
+    # GPT-4.1 long-context path: maximize recall and clinical detail for the graph.
+    _SYSTEM_PROMPT_GPT41_HIGH_DETAIL = textwrap.dedent("""
+        You are an exhaustive clinical timeline extractor for a longitudinal patient record.
+        You receive multiple PDF pages as JSON with a "pages" array (each item: page_num, text,
+        and optionally pre_extracted heuristic hints).
+
+        GOAL: Emit AS MANY distinct, clinically meaningful events as the text supports — prefer
+        splitting separate findings, visits, medication changes, labs, imaging, procedures,
+        diagnoses, and symptoms into separate events rather than collapsing them.
+
+        For EACH page, extract ONLY what appears on that page. Never merge across pages.
+
+        Per event (use every applicable field; do not omit optional fields when the text supports them):
+        - event_type: one of diagnosis | medication | lab | procedure | symptom | note
+        - timestamp: YYYY-MM-DD if explicitly anchored on that page; else "unknown". Never invent dates.
+        - preview: 2–4 sentences when warranted, up to ~800 characters — include values, trends,
+          indication, clinician name or setting ONLY if stated in the page text.
+        - detail: (optional) longer structured narrative for complex rows (differential, reasoning,
+          multi-step plans) — up to ~2000 characters when the page is dense; omit if preview suffices.
+        - drug_name: (medication only) generic name as written; REQUIRED for every medication event.
+        - drug_dosage: (medication only) dose, frequency, changes, as written.
+        - drug_route: (medication only) oral|IV|IM|SC|topical|inhaled|other when known.
+
+        Quality rules:
+        - Capture labs with names and numeric results when present; procedures with laterality/site when stated.
+        - Immunizations and vaccinations are "procedure", not "lab".
+        - Do not hallucinate; empty administrative-only pages → "events": [].
+
+        Output MUST be a single JSON object:
+        {
+          "pages": [
+            { "page_num": <int>, "events": [
+                { "event_type": "...", "timestamp": "...", "preview": "...",
+                  "detail": "...", "drug_name": "...", "drug_dosage": "...", "drug_route": "..." },
+                ...
+            ] },
+            ...
+          ]
+        }
+
+        Include exactly one "pages" entry per input page_num in ascending order.
+        No markdown or commentary outside JSON.
+
+        When "pre_extracted" is present: fix misclassifications, enrich previews, and ADD everything
+        material the heuristics missed. Do NOT duplicate correctly captured heuristic events verbatim.
+    """).strip()
+
     # Compact prompt for Ollama / small models.
     # Priority-ordered and brevity-constrained to fit within tight output budgets.
     # preview capped at 80 chars. drug_name is MANDATORY for medication events.
@@ -3399,7 +3457,13 @@ async def _extract_events_from_pages_batch(
           Do NOT re-emit events the heuristics already found correctly.
     """).strip()
 
-    system_prompt = _SYSTEM_PROMPT_OLLAMA if not force_json_format else _SYSTEM_PROMPT_FULL
+    _gpt41_extract = bool(force_json_format and _ingestion_is_full_gpt41(model))
+    if not force_json_format:
+        system_prompt = _SYSTEM_PROMPT_OLLAMA
+    elif _gpt41_extract:
+        system_prompt = _SYSTEM_PROMPT_GPT41_HIGH_DETAIL
+    else:
+        system_prompt = _SYSTEM_PROMPT_FULL
 
     # Build payload — include heuristic skeleton when available so the LLM
     # can correct/supplement rather than extracting from scratch.
@@ -3419,8 +3483,11 @@ async def _extract_events_from_pages_batch(
 
     try:
         if force_json_format:
-            # OpenAI large-context path: generous output budget, JSON enforced.
-            _max_tok = min(32768, _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE + 4096)
+            # OpenAI: GPT-4.1 uses env-tuned completion budget for large graph JSON.
+            if _gpt41_extract:
+                _max_tok = max(4096, min(INGESTION_GPT41_MAX_OUTPUT_TOKENS, 262_144))
+            else:
+                _max_tok = min(32768, _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE + 4096)
             call_kwargs: Dict[str, Any] = dict(
                 max_tokens=_max_tok,
                 temperature=0.1,
@@ -3520,11 +3587,15 @@ async def _extract_events_from_pages_batch(
             for e in evs:
                 if not isinstance(e, dict):
                     continue
+                _prev_cap = 2000 if _gpt41_extract else 500
                 ev_dict: Dict[str, Any] = {
                     "event_type": str(e.get("event_type", "note")),
                     "timestamp": str(e.get("timestamp", "unknown")),
-                    "preview": str(e.get("preview", ""))[:500],
+                    "preview": str(e.get("preview", ""))[:_prev_cap],
                 }
+                _detail = e.get("detail")
+                if _detail and isinstance(_detail, str) and _detail.strip():
+                    ev_dict.setdefault("annotations", {})["extraction_detail"] = _detail.strip()[:4000]
                 drug = e.get("drug_name")
                 if drug and isinstance(drug, str) and drug.strip():
                     ev_dict["drug_name"] = drug.strip()
@@ -3569,10 +3640,17 @@ async def _extract_events_from_pages_batch(
             for pn, txt in pages:
                 try:
                     single_result = await _extract_events_from_pages_batch(
-                        client, [(pn, txt)], model=model,
+                        client,
+                        [(pn, txt)],
+                        model=model,
                         force_json_format=force_json_format,
                         ollama_num_ctx=ollama_num_ctx,
                         ollama_native_api=ollama_native_api,
+                        heuristic_results=(
+                            {pn: heuristic_results[pn]}
+                            if heuristic_results and pn in heuristic_results
+                            else None
+                        ),
                     )
                     out.update(single_result)
                 except Exception as e2:
@@ -3846,7 +3924,19 @@ async def populate_vision_from_extracted_pages(
 
     _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
 
-    if _ctx_tokens >= 500_000:
+    _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
+
+    if _gpt41_ingest and _ctx_tokens >= 500_000:
+        # ~60% of context for input page text; system reserve sized for the long GPT-4.1 prompt.
+        _sys_r = max(
+            _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE,
+            INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = int(
+            (_ctx_tokens * INGESTION_GPT41_INPUT_FILL_RATIO - _sys_r)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    elif _ctx_tokens >= 500_000:
         _batch_max_chars = int(
             (
                 _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
@@ -3868,7 +3958,10 @@ async def populate_vision_from_extracted_pages(
     _ollama_page_cap = _ollama_max_pages_per_batch()
     _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
     if _ctx_tokens >= 500_000:
-        _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+        if _gpt41_ingest:
+            _output_token_cap = INGESTION_GPT41_MAX_OUTPUT_TOKENS
+        else:
+            _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
     elif _is_ollama and _ollama_num_ctx is not None:
         # Match actual Ollama num_predict — avoids sizing batches from ctx//2 while
         # generation is capped by _ollama_max_predict_tokens (typically lower).

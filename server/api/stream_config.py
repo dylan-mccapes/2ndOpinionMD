@@ -2498,6 +2498,17 @@ EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-
 DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama3.1:8b")
 INGESTION_MODEL = os.getenv("INGESTION_MODEL", DEFAULT_INGESTION_MODEL)
 
+# Optional UI/API toggle: premium PDF→graph extraction with GPT-4.1 (1M context).
+# Batching uses ~INGESTION_GPT41_INPUT_FILL_RATIO of the context window for page text;
+# completion budget is INGESTION_GPT41_MAX_OUTPUT_TOKENS (graph-sized JSON).
+INGESTION_GPT41_MODEL = os.getenv("INGESTION_GPT41_MODEL", "gpt-4.1")
+INGESTION_GPT41_CONTEXT_TOKENS = int(os.getenv("INGESTION_GPT41_CONTEXT_TOKENS", str(1_048_576)))
+INGESTION_GPT41_INPUT_FILL_RATIO = float(os.getenv("INGESTION_GPT41_INPUT_FILL_RATIO", "0.60"))
+INGESTION_GPT41_MAX_OUTPUT_TOKENS = int(os.getenv("INGESTION_GPT41_MAX_OUTPUT_TOKENS", "65536"))
+INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
+    os.getenv("INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE", "12000")
+)
+
 # Ollama OpenAI-compatible base (must end with /v1). PDF ingest + run_eohd_timeline_pdf use this.
 # Env: OLLAMA_BASE_URL — e.g. http://192.168.0.245:11434/v1
 # Pair with INGESTION_MODEL (default eoh-llama3.1:8b — must match `ollama list` name) and

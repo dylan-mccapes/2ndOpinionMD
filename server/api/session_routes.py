@@ -671,6 +671,7 @@ async def timeline_status(
 async def timeline_import_pdf(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
+    use_gpt41_ingestion: Optional[str] = Form(None),
     current_user: Any = Depends(get_user_for_timeline_status),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -714,7 +715,16 @@ async def timeline_import_pdf(
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 500MB)")
 
     # Delegate to timeline ingest module
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
     from server.timeline.ingest import run_ingest_from_pdf_bytes
+
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    _ingest_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
 
     try:
         ingest_result = await run_ingest_from_pdf_bytes(
@@ -722,6 +732,7 @@ async def timeline_import_pdf(
             pdf_bytes=contents,
             patient_id=str(timeline_id),
             password=password,
+            ingestion_model=_ingest_model,
         )
         event_count = int(ingest_result.get("events_stored", 0))
     except ImportError:
@@ -904,6 +915,7 @@ async def timeline_artifacts_ingest(
     model: str = Form("eoh-llama3.1:8b"),
     store_results: bool = Form(True),
     build_graph: bool = Form(True),
+    use_gpt41_ingestion: Optional[str] = Form(None),
     user: User = Depends(get_vault_user_from_session),
     db: AsyncSession = Depends(get_session),
 ):
@@ -917,6 +929,8 @@ async def timeline_artifacts_ingest(
     3. **PDF:** same pipeline as ``POST /api/timeline/import-pdf`` —
        ``ingest_extracted_pdf_pages`` / ``populate_vision_from_extracted_pages``
        (regex ``ehr.patient_timeline`` rows + batched per-page LLM extraction).
+       Form field ``use_gpt41_ingestion=true`` switches extraction to OpenAI GPT-4.1
+       (see ``INGESTION_GPT41_*`` in ``stream_config``).
     4. **Plaintext / CSV / JSON:** legacy infer-style 8B batches (JSON array)
        via ``_infer_lock`` GPU single-flight.
        Other binary formats stay as Tier A only.
@@ -975,6 +989,16 @@ async def timeline_artifacts_ingest(
         })
 
     patient_id = str(user.id)
+
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
+
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    pdf_ingestion_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
 
     async def _generate():
         import asyncio
@@ -1172,6 +1196,7 @@ async def timeline_artifacts_ingest(
                                 source_filename=fn,
                                 enable_timeline_rows=store_results,
                                 enable_graph_enrichment=build_graph,
+                                ingestion_model=pdf_ingestion_model,
                             )
                         except Exception as exc:
                             logger.exception("artifacts/ingest PDF import pipeline failed for %s", fn)

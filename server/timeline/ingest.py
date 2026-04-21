@@ -918,30 +918,38 @@ async def ingest_extracted_pdf_pages(
     source_filename: str = "uploaded.pdf",
     enable_timeline_rows: bool = True,
     enable_graph_enrichment: bool = True,
+    ingestion_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Regex timeline rows + ``populate_vision_from_extracted_pages`` on already-extracted
     PDF pages. When ``pool`` is set (vault / Epistemic flow), load and merge into
     ``ehr.patient_graph_vision``; otherwise save JSONL to disk (JWT import-pdf flow).
     """
-    from server.api.stream_config import INGESTION_MODEL, OLLAMA_BASE_URL
+    from server.api.stream_config import (
+        INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
+        INGESTION_GPT41_CONTEXT_TOKENS,
+        OLLAMA_BASE_URL,
+    )
     from server.eoh.timeline_summarizer import populate_vision_from_extracted_pages
     from server.llm.llm_client import get_ollama_client
     from openai import AsyncOpenAI
 
-    _use_openai = "gpt" in INGESTION_MODEL.lower()
+    effective_model = ingestion_model if ingestion_model is not None else _DEFAULT_INGESTION_MODEL
+    _use_openai = "gpt" in effective_model.lower()
     ingestion_context_tokens: Optional[int] = None
-    if not _use_openai:
+    if _use_openai:
+        ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
+    else:
         _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "16384").strip()
         ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 16384
 
     logger.info(
         "INGEST [%s] PTV pipeline model=%s (openai=%s ctx_tokens=%s)",
-        patient_id, INGESTION_MODEL, _use_openai, ingestion_context_tokens,
+        patient_id, effective_model, _use_openai, ingestion_context_tokens,
     )
     print(
-        f"  PTV / extraction model: {INGESTION_MODEL}\n"
-        f"  (premium: INGESTION_MODEL=gpt-4.1 — default is local Ollama)"
+        f"  PTV / extraction model: {effective_model}\n"
+        f"  (premium toggle or INGESTION_MODEL=gpt-4.1 — default env is local Ollama)"
     )
 
     parser = DocumentParser()
@@ -1015,7 +1023,7 @@ async def ingest_extracted_pdf_pages(
             vision=vision,
             extraction_pages=pages,
             ingestion_client=ingestion_client,
-            ingestion_model=INGESTION_MODEL,
+            ingestion_model=effective_model,
             ingestion_context_tokens=ingestion_context_tokens,
             extraction_concurrency=max(1, _conc),
         )
@@ -1081,6 +1089,7 @@ async def run_ingest_from_pdf_bytes(
     patient_id: str,
     password: Optional[str] = None,
     enable_graph_enrichment: bool = True,
+    ingestion_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Extract text from PDF bytes, parse into timeline events, store in
@@ -1117,6 +1126,7 @@ async def run_ingest_from_pdf_bytes(
         source_filename="uploaded.pdf",
         enable_timeline_rows=True,
         enable_graph_enrichment=enable_graph_enrichment,
+        ingestion_model=ingestion_model,
     )
     result["elapsed_ms"] = int((_time.perf_counter() - t0) * 1000)
     logger.info(
