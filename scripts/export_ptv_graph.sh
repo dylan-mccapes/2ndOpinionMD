@@ -14,15 +14,19 @@
 #   # Optional explicit output path (second arg overrides default dir + name):
 #   ./scripts/export_ptv_graph.sh ptv_<uuid>.json /tmp/other.json
 #
+# Default output name is NOT ptv_<uuid>.json (so you never overwrite a reference
+# file and scp targets are obvious): ptv_<uuid>_pg_export_<UTCstamp>.json
+#
 # Equivalent SQL file (versioned): database/sql/export_ptv_graph.sql
 #
-# Then from your laptop (WSL example):
-#   scp 'USER@HOST:REMOTE_PATH/ptv_428b017a-3840-490c-8a95-65c4d6cfe10d.json' ./artifacts/
+# Then from your laptop: copy the exact path printed by this script (scp does
+# not expand globs on the remote). Or use rsync, which expands on the server:
+#   rsync -avz -e ssh 'USER@HOST:REMOTE_DIR/ptv_<uuid>_pg_export_*.json' ./artifacts/
 set -euo pipefail
 
 usage() {
   echo "usage: $0 <patient_uuid | ptv_<uuid>.json [path]> [output.json]" >&2
-  echo "  Default output: \${PTV_ARTIFACT_DIR:-./artifacts}/ptv_<uuid>.json" >&2
+  echo "  Default output: \${PTV_ARTIFACT_DIR:-./artifacts}/ptv_<uuid>_pg_export_<UTCstamp>.json" >&2
   exit 1
 }
 
@@ -58,7 +62,8 @@ ART_DIR="${PTV_ARTIFACT_DIR:-./artifacts}"
 if [[ -n "${2:-}" ]]; then
   OUT="$2"
 else
-  OUT="${ART_DIR%/}/ptv_${PATIENT_ID}.json"
+  _stamp="$(date -u +"%Y%m%dT%H%M%S")Z"
+  OUT="${ART_DIR%/}/ptv_${PATIENT_ID}_pg_export_${_stamp}.json"
 fi
 
 if [[ -z "${POSTGRES_DSN:-${DATABASE_URL:-}}" ]]; then
