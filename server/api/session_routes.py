@@ -671,7 +671,14 @@ async def timeline_status(
 async def timeline_import_pdf(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
-    use_gpt41_ingestion: Optional[str] = Form(None),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "Premium PDF extraction: pass true, 1, yes, or on to use OpenAI GPT-4.1 "
+            "(see INGESTION_GPT41_* in server/api/stream_config.py). Requires OPENAI_API_KEY. "
+            "Otherwise uses INGESTION_MODEL (default: local Ollama)."
+        ),
+    ),
     current_user: Any = Depends(get_user_for_timeline_status),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -912,10 +919,19 @@ async def timeline_artifacts_ingest(
     document_type: str = Form("other"),
     document_date: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
-    model: str = Form("eoh-llama3.1:8b"),
+    model: str = Form(
+        "eoh-llama3.1:8b",
+        description="Legacy infer path only (plaintext/CSV/JSON batches). PDFs use INGESTION_MODEL or GPT-4.1 when use_gpt41_ingestion is set.",
+    ),
     store_results: bool = Form(True),
     build_graph: bool = Form(True),
-    use_gpt41_ingestion: Optional[str] = Form(None),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "For PDF files only: true/1/yes/on → OpenAI GPT-4.1 graph extraction (INGESTION_GPT41_MODEL). "
+            "Plaintext infer batches ignore this and use `model` + Ollama."
+        ),
+    ),
     user: User = Depends(get_vault_user_from_session),
     db: AsyncSession = Depends(get_session),
 ):

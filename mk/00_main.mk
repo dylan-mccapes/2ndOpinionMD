@@ -33,7 +33,7 @@ HOST                 ?= 2ndopinionmd.ai
 # ---------- PHONY ----------
 .PHONY: help dev-setup env-doctor py-venv deps-install deps-upgrade pip-check \
         ship fe-build deploy-fe nginx-reload smoke verify-live rollback clean fe-clean \
-        db-audit api-openapi rag-search rag-neighbors rag-backfill-meta
+        db-audit api-openapi openapi-export rag-search rag-neighbors rag-backfill-meta
 
 # ======================================
 # Dev env helpers (brew, venv, deps)
@@ -133,6 +133,10 @@ db-audit:
 api-openapi:
 	@{ curl -sf http://localhost:8000/api/openapi.json || curl -sf http://localhost:8000/openapi.json; } \
 	| jq -r '.paths | keys[]' | sed 's/^/  /'
+
+openapi-export: ## Write docs/openapi.json via $(PY) (no running server)
+	@cd "$(CURDIR)" && $(PY) -m server.scripts.export_openapi -o docs/openapi.json
+	@echo "Wrote docs/openapi.json — commit or diff as needed."
 
 rag-search:
 	@curl -s "$(API_BASE)/api/rag/search?q=$(Q)&limit=$(LIMIT)&source=$(SOURCE)&probes=$(PROBES)" | jq .
