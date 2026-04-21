@@ -91,10 +91,13 @@ fi
 
 echo ""
 read -rp "⚠️  Proceed with cleanse for $EMAIL? [y/N] " confirm
-if [[ "${confirm,,}" != "y" ]]; then
+# Portable lowercase — ${var,,} requires Bash 4+ (macOS ships Bash 3.2).
+_confirm_lc="$(printf '%s' "$confirm" | tr '[:upper:]' '[:lower:]')"
+if [[ "$_confirm_lc" != "y" ]]; then
     echo "Aborted."
     exit 0
 fi
+unset _confirm_lc
 
 # ---------------------------------------------------------------------------
 # Execute cleanse (PTV graph row preserved)
