@@ -2494,18 +2494,19 @@ EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-
 
 # PDF / PTV extraction (_extract_events_from_pages_batch, import-pdf pipeline).
 # Default: local Ollama (no API spend). Premium / high-context OpenAI: set
-# INGESTION_MODEL=gpt-4.1 (or gpt-4o, etc.). Larger local models: e.g. eoh-llama-70b when deployed.
-DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama-8b")
+# INGESTION_MODEL=gpt-4.1 (or gpt-4o, etc.). Larger local models: e.g. llama3.1:70b-instruct-q4_K_M.
+DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama3.1:8b")
 INGESTION_MODEL = os.getenv("INGESTION_MODEL", DEFAULT_INGESTION_MODEL)
 
 # Ollama OpenAI-compatible base (must end with /v1). PDF ingest + run_eohd_timeline_pdf use this.
 # Env: OLLAMA_BASE_URL — e.g. http://192.168.0.245:11434/v1
-# Pair with INGESTION_MODEL (default eoh-llama-8b) and optional OLLAMA_NUM_CTX / OLLAMA_MAX_PREDICT.
+# Pair with INGESTION_MODEL (default eoh-llama3.1:8b — must match `ollama list` name) and
+# optional OLLAMA_NUM_CTX / OLLAMA_MAX_PREDICT.
 #
 # Quick checks from any host that can reach Ollama:
 #   curl -s "${OLLAMA_BASE_URL%/v1}/api/tags" | head
 #   curl -sS "$OLLAMA_BASE_URL/chat/completions" -H "Content-Type: application/json" -d \
-#     '{"model":"eoh-llama-8b","messages":[{"role":"user","content":"Say OK"}],"max_tokens":8}'
+#     '{"model":"eoh-llama3.1:8b","messages":[{"role":"user","content":"Say OK"}],"max_tokens":8}'
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 # Gap analysis, connascence LLM pass, and similar “precision second opinion” calls.

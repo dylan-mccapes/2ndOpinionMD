@@ -9,7 +9,7 @@ Two modes:
   2. Opportunistic enrichment – lighter, called per detective step at runtime
 
 Model selection:
-  - Default INGESTION_MODEL is eoh-llama-8b (stream_config). Set INGESTION_MODEL=gpt-4.1 for premium OpenAI.
+  - Default INGESTION_MODEL is eoh-llama3.1:8b (stream_config). Set INGESTION_MODEL=gpt-4.1 for premium OpenAI.
   - Ollama models (any name not containing "gpt") use the OLLAMA_BASE_URL and
     smaller batches (~24k chars) to fit within typical 8k–32k token contexts.
 """

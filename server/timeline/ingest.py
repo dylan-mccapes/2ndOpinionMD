@@ -766,7 +766,7 @@ async def run_ingest_from_pdf_bytes(
     hints), timestamp recovery, one temporal connascence pass, type reclassification,
     and graph timestamp sanitize.
 
-    Model: ``INGESTION_MODEL`` env (default ``eoh-llama-8b`` via ``stream_config``).
+    Model: ``INGESTION_MODEL`` env (default ``eoh-llama3.1:8b`` via ``stream_config``).
     Premium OpenAI extraction: ``INGESTION_MODEL=gpt-4.1``. Ollama tuning: ``INGESTION_CONTEXT_TOKENS`` / ``OLLAMA_NUM_CTX``.
 
     Returns a stats dict:
