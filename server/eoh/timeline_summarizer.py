@@ -3582,7 +3582,7 @@ async def _extract_events_from_pages_batch(
                         "event_type": "page",
                         "timestamp": "unknown",
                         "preview": txt[:200],
-                        "event_id": f"pdf_p{pn:04d}_batch_error",
+                        "event_id": f"pdf_p{pn:04d}_extract_fail",
                     }]
             return out
 
@@ -3597,7 +3597,7 @@ async def _extract_events_from_pages_batch(
                     "event_type": "page",
                     "timestamp": "unknown",
                     "preview": txt[:200],
-                    "event_id": f"pdf_p{pn:04d}_batch_error",
+                    "event_id": f"pdf_p{pn:04d}_extract_fail",
                 }
             ]
             for pn, txt in pages
@@ -3942,7 +3942,8 @@ async def populate_vision_from_extracted_pages(
     from server.eoh.patient_timeline_vision import _infer_temporal_connascence
 
     _stat_total_events = 0
-    _stat_hard_fallback_events = 0  # *_batch_error — extraction failed / transport error
+    _stat_extract_fail_events = 0  # LLM/JSON failed after retries (*_extract_fail)
+    _stat_batch_empty_stubs = 0  # gather-level empty batch (*_batch_empty)
     _stat_generic_stub_events = 0  # *_generic — model omitted page
     _stat_ts_recovered = 0
 
@@ -3962,7 +3963,7 @@ async def populate_vision_from_extracted_pages(
                         "event_type": "page",
                         "timestamp": "unknown",
                         "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
-                        "event_id": f"pdf_p{pn:04d}_batch_error",
+                        "event_id": f"pdf_p{pn:04d}_batch_empty",
                     }
                 ]
                 for pn, txt in batch
@@ -3975,10 +3976,15 @@ async def populate_vision_from_extracted_pages(
         for evts in page_to_events.values():
             for ev in evts:
                 eid = str(ev.get("event_id", ""))
-                if eid.endswith("_batch_error"):
-                    _stat_hard_fallback_events += 1
+                if eid.endswith("_extract_fail"):
+                    _stat_extract_fail_events += 1
+                elif eid.endswith("_batch_empty"):
+                    _stat_batch_empty_stubs += 1
                 elif eid.endswith("_generic"):
                     _stat_generic_stub_events += 1
+                elif eid.endswith("_batch_error"):
+                    # legacy id from older runs / manual edits
+                    _stat_extract_fail_events += 1
 
         for page_num, evts in page_to_events.items():
             page_date = _page_date_lookup.get(page_num)
@@ -4018,7 +4024,18 @@ async def populate_vision_from_extracted_pages(
                 t = ev.get("timestamp", "")
                 if t and t != "unknown" and len(ts_samples) < 6:
                     ts_samples.append(t)
+        _stub_ev = sum(
+            1
+            for evs in page_to_events.values()
+            for e in evs
+            if str(e.get("event_id", "")).endswith(
+                ("_extract_fail", "_batch_empty", "_generic")
+            )
+        )
+        _all_stub = _stub_ev == batch_event_count and batch_event_count > 0
         log_msg = "Batch %d/%d [%s] extracted %d events across %d pages; samples: %s"
+        if _all_stub:
+            log_msg += " — stubs only (LLM/JSON did not produce events; dates often from heuristics)"
         if ts_scrubbed:
             log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
         logger.info(
@@ -4060,16 +4077,22 @@ async def populate_vision_from_extracted_pages(
         )
 
     logger.info(
-        "═══ PDF extraction complete [%s]: %d batches, %d LLM-added events, "
-        "%d hard-fallback (*_batch_error), %d generic stubs (*_generic), "
-        "%d timestamps recovered from heuristics/preview",
+        "═══ PDF extraction complete [%s]: %d batches, %d graph events added from LLM batches "
+        "(%d extract_fail, %d batch_empty, %d generic), %d timestamps recovered (heuristic/preview)",
         pid,
         len(batches),
         _stat_total_events,
-        _stat_hard_fallback_events,
+        _stat_extract_fail_events,
+        _stat_batch_empty_stubs,
         _stat_generic_stub_events,
         _stat_ts_recovered,
     )
+    if _stat_extract_fail_events + _stat_batch_empty_stubs >= max(1, _stat_total_events // 2):
+        logger.warning(
+            "[%s] Most LLM batch output was stubs — check Ollama is reachable (OLLAMA_BASE_URL), "
+            "model exists (ollama list), and INGESTION_MODEL matches the tag.",
+            pid,
+        )
 
     _infer_temporal_connascence(vision, window_days=7)
 
@@ -4085,7 +4108,8 @@ async def populate_vision_from_extracted_pages(
         "heuristic_events_added": _heur_added,
         "batches": len(batches),
         "llm_events_total": _stat_total_events,
-        "hard_fallback_events": _stat_hard_fallback_events,
+        "extract_fail_events": _stat_extract_fail_events,
+        "batch_empty_stubs": _stat_batch_empty_stubs,
         "generic_stub_events": _stat_generic_stub_events,
         "timestamps_recovered": _stat_ts_recovered,
         "reclassified": n_reclassified,
