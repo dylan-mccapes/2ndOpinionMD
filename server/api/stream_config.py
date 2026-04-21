@@ -2522,6 +2522,9 @@ INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
 # Default ``OLLAMA_MAX_PAGES_PER_BATCH`` is **5** (override via env). The
 # packer also intersects with ``num_predict // OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE``
 # so streaming and non-streaming batch sizing stay aligned.
+# Ollama ingest context (``options.num_ctx`` + batch char budget). ``OLLAMA_NUM_CTX``
+# overrides when unset elsewhere; ``INGESTION_CONTEXT_TOKENS`` (ingest.py) overrides
+# both packing and num_ctx when set for the PDF pipeline.
 INGESTION_OLLAMA_CONTEXT_TOKENS = int(os.getenv("INGESTION_OLLAMA_CONTEXT_TOKENS", "32768"))
 INGESTION_OLLAMA_INPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_INPUT_FILL_RATIO", "0.60"))
 INGESTION_OLLAMA_OUTPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_OUTPUT_FILL_RATIO", "0.30"))

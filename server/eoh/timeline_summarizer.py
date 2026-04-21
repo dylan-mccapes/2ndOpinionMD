@@ -3936,7 +3936,17 @@ async def populate_vision_from_extracted_pages(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
+    # Keep Ollama ``num_ctx`` aligned with ``ingestion_context_tokens`` (ingest
+    # layer) so batch char budgets and ``options.num_ctx`` are not split across
+    # two different env defaults (historically 16k vs 32k).
+    if _force_json_format:
+        _ollama_num_ctx: Optional[int] = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
     _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
     _ollama_native_api: bool = _is_ollama and _is_local_ollama
 
@@ -3985,7 +3995,15 @@ async def populate_vision_from_extracted_pages(
         pn: r.page_date for pn, r in _heuristic_results.items() if r.page_date
     }
 
-    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+    _ctx_tokens = (
+        ingestion_context_tokens
+        if ingestion_context_tokens is not None
+        else (
+            _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+            if _force_json_format
+            else (_ollama_num_ctx or _ollama_num_ctx_default())
+        )
+    )
 
     _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
 
@@ -4431,7 +4449,14 @@ async def stream_populate_vision_from_extracted_pages(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
+    if _force_json_format:
+        _ollama_num_ctx = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
     _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
     _ollama_native_api: bool = _is_ollama and _is_local_ollama
 
@@ -4468,7 +4493,15 @@ async def stream_populate_vision_from_extracted_pages(
 
     # --- plan ------------------------------------------------------------------
     _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
-    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+    _ctx_tokens = (
+        ingestion_context_tokens
+        if ingestion_context_tokens is not None
+        else (
+            _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+            if _force_json_format
+            else (_ollama_num_ctx or _ollama_num_ctx_default())
+        )
+    )
 
     if _gpt41_ingest and _ctx_tokens >= 500_000:
         _sys_r = max(
@@ -4916,9 +4949,15 @@ async def summarize_timeline_from_pdf(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    # For Ollama, num_ctx defaults lower (OLLAMA_NUM_CTX, default 16384) — smaller
-    # KV often yields cleaner extraction JSON from 8B models; tune per GPU.
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
+    # Ollama KV size (kept in sync with ``populate_vision`` when this param is set).
+    if _force_json_format:
+        _ollama_num_ctx = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
     # Native /api/chat is only used for localhost Ollama (validated on M2 Ultra).
     # Remote Ollama (e.g. RTX 4090 at 192.168.x.x) uses the OpenAI-compat
     # /v1/chat/completions path with num_ctx/num_predict passed via extra_body

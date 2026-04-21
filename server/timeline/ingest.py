@@ -928,6 +928,7 @@ async def ingest_extracted_pdf_pages(
     from server.api.stream_config import (
         INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
         INGESTION_GPT41_CONTEXT_TOKENS,
+        INGESTION_OLLAMA_CONTEXT_TOKENS,
         OLLAMA_BASE_URL,
     )
     from server.eoh.timeline_summarizer import populate_vision_from_extracted_pages
@@ -940,8 +941,13 @@ async def ingest_extracted_pdf_pages(
     if _use_openai:
         ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
     else:
-        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "16384").strip()
-        ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 16384
+        # Same default as streaming ingest + ``INGESTION_OLLAMA_CONTEXT_TOKENS``
+        # (32k for eoh-llama3.1:8b). ``INGESTION_CONTEXT_TOKENS`` overrides both
+        # packing and Ollama ``num_ctx`` when passed through to the summarizer.
+        _raw_ctx = (os.getenv("INGESTION_CONTEXT_TOKENS") or "").strip()
+        ingestion_context_tokens = (
+            int(_raw_ctx) if _raw_ctx else int(INGESTION_OLLAMA_CONTEXT_TOKENS)
+        )
 
     logger.info(
         "INGEST [%s] PTV pipeline model=%s (openai=%s ctx_tokens=%s)",
@@ -1155,6 +1161,7 @@ async def stream_ingest_extracted_pdf_pages(
     from server.api.stream_config import (
         INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
         INGESTION_GPT41_CONTEXT_TOKENS,
+        INGESTION_OLLAMA_CONTEXT_TOKENS,
         OLLAMA_BASE_URL,
     )
     from server.eoh.timeline_summarizer import stream_populate_vision_from_extracted_pages
@@ -1168,8 +1175,10 @@ async def stream_ingest_extracted_pdf_pages(
     if _use_openai:
         ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
     else:
-        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "32768").strip()
-        ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 32768
+        _raw_ctx = (os.getenv("INGESTION_CONTEXT_TOKENS") or "").strip()
+        ingestion_context_tokens = (
+            int(_raw_ctx) if _raw_ctx else int(INGESTION_OLLAMA_CONTEXT_TOKENS)
+        )
 
     parser = DocumentParser()
     engine = TimelineEngine()
