@@ -203,6 +203,28 @@ _DIAGNOSIS_LABEL = re.compile(
 
 # ── result types ─────────────────────────────────────────────────────────────
 
+# Maximum preview length for heuristic events.  The LLM prompt targets
+# ~240 chars for a 2-sentence summary; we keep heuristic previews a bit
+# shorter but generous enough to carry the full condition name + ICD code
+# without truncating mid-word (see _preview_trim below).
+_HEURISTIC_PREVIEW_MAX = 200
+
+
+def _preview_trim(text: str, limit: int = _HEURISTIC_PREVIEW_MAX) -> str:
+    """Trim ``text`` to ``limit`` chars without chopping a word.
+
+    Prefers the last whitespace boundary at or before ``limit`` and appends
+    an ellipsis if anything was cut.  Leaves short text untouched.
+    """
+    s = text.strip()
+    if len(s) <= limit:
+        return s
+    cut = s.rfind(" ", 0, limit)
+    if cut < limit - 40:  # fallback: hard cut if no space nearby
+        cut = limit
+    return s[:cut].rstrip(" ,.;:-") + "\u2026"
+
+
 @dataclass
 class HeuristicEvent:
     event_type: str
@@ -219,7 +241,7 @@ class HeuristicEvent:
         d: Dict[str, Any] = {
             "event_type": self.event_type,
             "timestamp": self.timestamp,
-            "preview": self.preview[:80],
+            "preview": _preview_trim(self.preview),
             "heuristic_source": self.source,
         }
         if self.drug_name:
@@ -311,6 +333,43 @@ _DX_LABEL_BEFORE_ICD = re.compile(
 )
 
 
+# Backwards context lookbehind for ICD code matches.  Kaiser problem-list
+# entries are frequently long condition descriptions (e.g. "SESSILE SERRATED
+# POLYP/ADENOMA. Clinical and endoscopic correlation is suggested.") so we
+# need a roomy window and must align to a word / line boundary to avoid
+# clipping the leading letters.
+_ICD_BACKWARD_LOOKAHEAD = 240
+
+
+def _backward_context(text: str, end: int, max_len: int = _ICD_BACKWARD_LOOKAHEAD) -> str:
+    """Return up to ``max_len`` chars ending at ``end``, aligned to a
+    word or line boundary so we never slice into the middle of a word.
+
+    Preference order for the starting boundary:
+      1. the most recent newline within the window;
+      2. the nearest whitespace *before* the window start (grow leftward);
+      3. if none is found, fall back to the raw window (rare).
+    """
+    if end <= 0:
+        return ""
+    window_start = max(0, end - max_len)
+    # If we cut into the middle of a word, walk left to the nearest
+    # whitespace so the first captured token is whole.
+    if window_start > 0 and not text[window_start - 1].isspace():
+        probe = text.rfind(" ", 0, window_start)
+        nl = text.rfind("\n", 0, window_start)
+        aligned = max(probe, nl)
+        if aligned != -1 and end - aligned <= max_len + 80:
+            window_start = aligned + 1
+    chunk = text[window_start:end]
+    # Prefer the final line of the captured window (problem-list rows are
+    # newline-delimited in Kaiser exports).
+    last_nl = chunk.rfind("\n")
+    if last_nl != -1:
+        chunk = chunk[last_nl + 1 :]
+    return chunk.strip()
+
+
 def _extract_icd_codes(text: str) -> List[Tuple[str, str]]:
     """Extract (icd_code, condition_name) tuples."""
     results = []
@@ -331,9 +390,7 @@ def _extract_icd_codes(text: str) -> List[Tuple[str, str]]:
         if code in seen_codes:
             continue
         seen_codes.add(code)
-        start = max(0, m.start() - 80)
-        context = text[start:m.start()].strip().split("\n")[-1].strip()
-        # Clean trailing punctuation and ICD labels
+        context = _backward_context(text, m.start())
         context = re.sub(r"\s*ICD-10-CM:\s*$", "", context).strip()
         context = re.sub(r"\s*Diagnoses\s*$", "", context, flags=re.I).strip()
         results.append((code, context))
@@ -344,8 +401,7 @@ def _extract_icd_codes(text: str) -> List[Tuple[str, str]]:
         if code in seen_codes:
             continue
         seen_codes.add(code)
-        start = max(0, m.start() - 80)
-        context = text[start:m.start()].strip().split("\n")[-1].strip()
+        context = _backward_context(text, m.start())
         context = re.sub(r"\s*ICD-10-CM:\s*$", "", context).strip()
         results.append((code, context))
 
@@ -377,7 +433,7 @@ def _extract_medications(text: str) -> List[HeuristicEvent]:
         meds.append(HeuristicEvent(
             event_type="medication",
             timestamp="unknown",
-            preview=f"{drug} {dose}".strip()[:80],
+            preview=_preview_trim(f"{drug} {dose}".strip()),
             source="regex_med_line",
             drug_name=drug.split("(")[0].strip(),
             drug_dosage=dose,
@@ -397,7 +453,7 @@ def _extract_medications(text: str) -> List[HeuristicEvent]:
         meds.append(HeuristicEvent(
             event_type="medication",
             timestamp="unknown",
-            preview=f"{drug} {dose}".strip()[:80],
+            preview=_preview_trim(f"{drug} {dose}".strip()),
             source="regex_med_order",
             drug_name=drug.split("(")[0].strip(),
             drug_dosage=dose,
@@ -431,7 +487,7 @@ def _extract_labs(text: str) -> List[HeuristicEvent]:
         labs.append(HeuristicEvent(
             event_type="lab",
             timestamp="unknown",
-            preview=name[:80],
+            preview=_preview_trim(name),
             source="regex_lab_order",
         ))
 
@@ -446,7 +502,10 @@ def _extract_diagnoses(text: str) -> List[HeuristicEvent]:
     for m in _PROBLEM_LIST_ENTRY.finditer(text):
         condition = m.group(1).strip().rstrip("•").strip()
         date_raw = m.group(2)
-        if len(condition) < 3 or len(condition) > 80:
+        # Condition may be a long sentence (e.g. "Sessile serrated polyp/adenoma.
+        # Clinical and endoscopic correlation is suggested.") – allow up to the
+        # heuristic preview cap so we can truncate gracefully at a word boundary.
+        if len(condition) < 3 or len(condition) > _HEURISTIC_PREVIEW_MAX:
             continue
         if condition.lower() in seen:
             continue
@@ -460,7 +519,7 @@ def _extract_diagnoses(text: str) -> List[HeuristicEvent]:
         dx.append(HeuristicEvent(
             event_type="diagnosis",
             timestamp=ts,
-            preview=condition[:80],
+            preview=_preview_trim(condition),
             source="regex_problem_list",
         ))
 
@@ -474,7 +533,7 @@ def _extract_diagnoses(text: str) -> List[HeuristicEvent]:
         dx.append(HeuristicEvent(
             event_type="diagnosis",
             timestamp="unknown",
-            preview=f"{context_clean} [{icd}]"[:80],
+            preview=_preview_trim(f"{context_clean} [{icd}]"),
             source="regex_icd_code",
             icd_code=icd,
         ))
@@ -483,13 +542,18 @@ def _extract_diagnoses(text: str) -> List[HeuristicEvent]:
 
 
 def _extract_noted_dates(text: str) -> List[Tuple[str, str]]:
-    """Extract 'Noted on:' dates with preceding context."""
+    """Extract 'Noted on:' dates with preceding context.
+
+    Uses the same word-aligned backward window as the ICD extractor so we
+    don't clip the leading letters of multi-word problem-list rows like
+    "COUNSELING, CONTINUING RECOVERY GROUP" (previously returned as
+    "OUNSELING, CONTINUING RECOVERY GROUP").
+    """
     results = []
     for m in _NOTED_ON.finditer(text):
         d = _normalize_date(m.group(1))
         if d:
-            start = max(0, m.start() - 120)
-            context = text[start:m.start()].strip().split("\n")[-1]
+            context = _backward_context(text, m.start(), max_len=200)
             results.append((d, context))
     return results
 

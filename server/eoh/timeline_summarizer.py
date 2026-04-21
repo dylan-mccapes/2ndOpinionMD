@@ -4314,6 +4314,35 @@ async def populate_vision_from_extracted_pages(
     if n_ts_scrubbed:
         logger.info("[%s] PDF timestamp sanity: %d scrubbed", pid, n_ts_scrubbed)
 
+    # Deterministic graph enrichment: canonical IDs, timestamp backfill,
+    # status flags, entities, arcs, causal edges, admin collapse, PROs,
+    # patient metadata, salience, cards, traversal index.  All passes are
+    # pure-Python and idempotent.
+    try:
+        from server.eoh.graph_finalize import finalize_graph
+        _pages_text_map = {pn: txt for pn, txt in extraction_pages}
+        finalize_stats = finalize_graph(
+            vision,
+            chapters=_chapters,
+            pages_text=_pages_text_map,
+        )
+        logger.info(
+            "[%s] PDF graph finalize: arcs=%d entities=%d cards=%d ts_backfilled=%d causal=(cb:%d,wu:%d) admin_collapsed=%d pros=%d",
+            pid,
+            finalize_stats.get("arcs", {}).get("arcs_total", 0),
+            finalize_stats.get("entities", {}).get("entity_count", 0),
+            finalize_stats.get("cards", {}).get("cards_built", 0),
+            (finalize_stats.get("timestamp_backfill", {}).get("from_chapter", 0)
+             + finalize_stats.get("timestamp_backfill", {}).get("from_encounter_ann", 0)),
+            finalize_stats.get("causal_edges", {}).get("caused_by", 0),
+            finalize_stats.get("causal_edges", {}).get("in_workup_for", 0),
+            finalize_stats.get("admin_collapse", {}).get("admin_chapters_collapsed", 0),
+            finalize_stats.get("pros", {}).get("pros_extracted", 0),
+        )
+    except Exception as e:
+        logger.warning("[%s] graph finalize pass failed (non-fatal): %s", pid, e)
+        finalize_stats = {"error": str(e)}
+
     return {
         "heuristic_events_added": _heur_added,
         "batches": len(batches),
@@ -4331,6 +4360,7 @@ async def populate_vision_from_extracted_pages(
         "graph_timestamps_scrubbed": n_ts_scrubbed,
         "enrichment_stats": enrichment_stats_list,
         "ingestion_model": ingestion_model,
+        "finalize_stats": finalize_stats,
     }
 
 
@@ -4715,6 +4745,37 @@ async def stream_populate_vision_from_extracted_pages(
         n_ch_stamped,
     )
 
+    # Deterministic graph enrichment (see graph_finalize.finalize_graph).
+    try:
+        from server.eoh.graph_finalize import finalize_graph
+        _pages_text_map = {pn: txt for pn, txt in extraction_pages}
+        finalize_stats = finalize_graph(
+            vision,
+            chapters=chapters,
+            pages_text=_pages_text_map,
+        )
+        logger.info(
+            "PDF streaming finalize [%s]: arcs=%d entities=%d cards=%d ts_backfilled=%d causal=(cb:%d,wu:%d) admin_collapsed=%d pros=%d",
+            pid,
+            finalize_stats.get("arcs", {}).get("arcs_total", 0),
+            finalize_stats.get("entities", {}).get("entity_count", 0),
+            finalize_stats.get("cards", {}).get("cards_built", 0),
+            (finalize_stats.get("timestamp_backfill", {}).get("from_chapter", 0)
+             + finalize_stats.get("timestamp_backfill", {}).get("from_encounter_ann", 0)),
+            finalize_stats.get("causal_edges", {}).get("caused_by", 0),
+            finalize_stats.get("causal_edges", {}).get("in_workup_for", 0),
+            finalize_stats.get("admin_collapse", {}).get("admin_chapters_collapsed", 0),
+            finalize_stats.get("pros", {}).get("pros_extracted", 0),
+        )
+        yield {
+            "type": "finalize",
+            "patient_id": pid,
+            "stats": finalize_stats,
+        }
+    except Exception as e:
+        logger.warning("[%s] streaming graph finalize failed (non-fatal): %s", pid, e)
+        finalize_stats = {"error": str(e)}
+
     yield {
         "type": "done",
         "patient_id": pid,
@@ -4736,6 +4797,7 @@ async def stream_populate_vision_from_extracted_pages(
         "ocr_pending_pages": ocr_pending,
         "enrichment_stats": enrichment_stats_list,
         "ingestion_model": ingestion_model,
+        "finalize_stats": finalize_stats,
     }
 
 
