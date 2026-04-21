@@ -2498,7 +2498,14 @@ EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-
 DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama-8b")
 INGESTION_MODEL = os.getenv("INGESTION_MODEL", DEFAULT_INGESTION_MODEL)
 
-# Ollama inference server base URL. Used when --llm-backend ollama|ollama-full is set.
+# Ollama OpenAI-compatible base (must end with /v1). PDF ingest + run_eohd_timeline_pdf use this.
+# Env: OLLAMA_BASE_URL — e.g. http://192.168.0.245:11434/v1
+# Pair with INGESTION_MODEL (default eoh-llama-8b) and optional OLLAMA_NUM_CTX / OLLAMA_MAX_PREDICT.
+#
+# Quick checks from any host that can reach Ollama:
+#   curl -s "${OLLAMA_BASE_URL%/v1}/api/tags" | head
+#   curl -sS "$OLLAMA_BASE_URL/chat/completions" -H "Content-Type: application/json" -d \
+#     '{"model":"eoh-llama-8b","messages":[{"role":"user","content":"Say OK"}],"max_tokens":8}'
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 # Gap analysis, connascence LLM pass, and similar “precision second opinion” calls.
