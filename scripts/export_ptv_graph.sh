@@ -8,6 +8,8 @@
 #   ./scripts/export_ptv_graph.sh 428b017a-3840-490c-8a95-65c4d6cfe10d
 #   ./scripts/export_ptv_graph.sh 428b017a-3840-490c-8a95-65c4d6cfe10d /tmp/ptv.json
 #
+# Equivalent SQL file (versioned): database/sql/export_ptv_graph.sql
+#
 # Then from your laptop (WSL example):
 #   scp 'USER@HOST:REMOTE_PATH/ptv_428b017a-3840-490c-8a95-65c4d6cfe10d.json' ./artifacts/
 set -euo pipefail
