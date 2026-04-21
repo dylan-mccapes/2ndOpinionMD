@@ -980,25 +980,32 @@ def add_events_from_pdf_page(
                 Each event: {event_type, timestamp, preview, event_id (optional)}
     """
     discovered_by = f"pdf_page_{page_num}"
-    
+
     for idx, event in enumerate(events):
         event_id = event.get("event_id") or f"pdf_p{page_num:04d}_e{idx:03d}"
         event_type = event.get("event_type", "unknown")
         timestamp = event.get("timestamp", "")
         preview = event.get("preview", "")
-        
-        annotations: Dict[str, Any] = {"pdf_page": page_num}
+
+        # Start from any annotations the caller already stamped (chapter_id,
+        # encounter_date, encounter_type, section_header, chapter_kind,
+        # icd_code, heuristic_source, timestamp_source, ...) so the graph
+        # retains all clinical context instead of re-creating a bare dict.
+        passthrough = event.get("annotations") or {}
+        annotations: Dict[str, Any] = dict(passthrough) if isinstance(passthrough, dict) else {}
+        annotations["pdf_page"] = page_num
+
         drug_name = event.get("drug_name")
         if drug_name and isinstance(drug_name, str) and drug_name.strip():
             annotations["drug_name"] = drug_name.strip()
-            annotations["drug_norm_source"] = "llm_extraction"
+            annotations.setdefault("drug_norm_source", "llm_extraction")
         drug_dosage = event.get("drug_dosage")
         if drug_dosage and isinstance(drug_dosage, str) and drug_dosage.strip():
             annotations["drug_dosage"] = drug_dosage.strip()
         drug_route = event.get("drug_route")
         if drug_route and isinstance(drug_route, str) and drug_route.strip():
             annotations["drug_route"] = drug_route.strip().lower()
-        
+
         vision.add_event(
             event_id=event_id,
             event_type=event_type,

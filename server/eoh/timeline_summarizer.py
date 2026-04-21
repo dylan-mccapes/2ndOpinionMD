@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import math
@@ -3352,9 +3353,11 @@ async def _extract_events_from_pages_batch(
         For EACH page, extract timeline events found ONLY in that page's text.
 
         Event rules (per event):
-        - `event_type`: one of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
+        - `event_type`: one of ["diagnosis", "medication", "lab", "procedure", "symptom", "clinical_note", "vital_signs", "imaging", "immunization", "administrative"]
+          NEVER use "page" or a bare "note" — always pick a medically meaningful type.
+          "administrative" is only for pages with no clinical content (release-of-info, consent forms, pure demographics).
         - `timestamp`: YYYY-MM-DD if present in text, else "unknown"
-        - `preview`: 1–2 sentences, max ~200 characters
+        - `preview`: 2 sentences, ≤240 characters. Sentence 1 states WHAT (name/value/finding/drug+dose). Sentence 2 states WHY/CONTEXT (indication, change rationale, site, clinician) when the page states it; otherwise omit sentence 2. Never fabricate context.
         - `drug_name`: (medication events ONLY) the generic drug name exactly as written
           in the text, e.g. "prednisone", "pyridostigmine", "mycophenolate mofetil".
           REQUIRED for every medication event. Use generic name when brand also present.
@@ -3402,10 +3405,12 @@ async def _extract_events_from_pages_batch(
         For EACH page, extract ONLY what appears on that page. Never merge across pages.
 
         Per event (use every applicable field; do not omit optional fields when the text supports them):
-        - event_type: one of diagnosis | medication | lab | procedure | symptom | note
+        - event_type: one of diagnosis | medication | lab | procedure | symptom | clinical_note | vital_signs | imaging | immunization | administrative.
+          NEVER use "page" or a bare "note" — always pick a medically meaningful type.
+          "administrative" is only for pages with no clinical content (release-of-info forms, page boilerplate, pure demographics).
         - timestamp: YYYY-MM-DD if explicitly anchored on that page; else "unknown". Never invent dates.
         - preview: 2–4 sentences when warranted, up to ~800 characters — include values, trends,
-          indication, clinician name or setting ONLY if stated in the page text.
+          indication, clinician name or setting ONLY if stated in the page text. Minimum 2 sentences whenever the page supports it.
         - detail: (optional) longer structured narrative for complex rows (differential, reasoning,
           multi-step plans) — up to ~2000 characters when the page is dense; omit if preview suffices.
         - drug_name: (medication only) generic name as written; REQUIRED for every medication event.
@@ -3437,8 +3442,10 @@ async def _extract_events_from_pages_batch(
     """).strip()
 
     # Compact prompt for Ollama / small models.
-    # Priority-ordered and brevity-constrained to fit within tight output budgets.
-    # preview capped at 80 chars. drug_name is MANDATORY for medication events.
+    # Priority-ordered and structured to fit within output budgets while
+    # still yielding medically informative previews.
+    # preview is a 2-sentence clinical summary (≤240 chars).
+    # drug_name is MANDATORY for medication events.
     _SYSTEM_PROMPT_OLLAMA = textwrap.dedent("""
         You are a medical event extractor. Extract events from each page of a patient record.
 
@@ -3446,33 +3453,36 @@ async def _extract_events_from_pages_batch(
         1. medication (ALWAYS emit; drug_name REQUIRED)
         2. diagnosis
         3. lab
-        4. procedure (includes vaccinations/immunizations)
+        4. procedure (includes vaccinations/immunizations, imaging, surgery)
         5. symptom
-        6. note (only if clinically significant)
+        6. clinical_note (visit notes, assessments, plans)
+        7. vital_signs (BP, HR, temp, weight, SpO2)
+        8. administrative (release-of-info, consent forms, boilerplate — ONLY if page has no clinical content)
 
         Fields per event:
-        - event_type: medication|diagnosis|lab|procedure|symptom|note
+        - event_type: medication|diagnosis|lab|procedure|symptom|clinical_note|vital_signs|imaging|immunization|administrative
         - timestamp: YYYY-MM-DD extracted from the page text, or "unknown" if no date is present. NEVER invent a date.
-        - preview: ≤80 chars, be brief
+        - preview: A 2-sentence clinical summary (≤240 chars). Sentence 1: WHAT happened (name, value, finding, drug + dose). Sentence 2: WHY / CONTEXT (indication, change rationale, site, ordering clinician, abnormal flag) when the page states it; otherwise omit sentence 2. Never fabricate context.
         - drug_name: REQUIRED for medication — generic name (e.g. "pyridostigmine"). NEVER omit.
         - drug_dosage: medication only, optional — dose as written (e.g. "60 mg daily")
         - drug_route: medication only, optional — oral|IV|IM|SC|topical|inhaled|other
 
         Output ONLY this JSON (no markdown, no explanation):
         {"pages":[{"page_num":<int>,"events":[
-          {"event_type":"medication","timestamp":"YYYY-MM-DD","preview":"Started pyridostigmine for MG","drug_name":"pyridostigmine","drug_dosage":"60 mg","drug_route":"oral"},
-          {"event_type":"diagnosis","timestamp":"YYYY-MM-DD","preview":"Myasthenia gravis confirmed"}
+          {"event_type":"medication","timestamp":"2023-05-15","preview":"Started pyridostigmine 60 mg TID for myasthenia gravis. Ordered by Dr. Chen (neurology) at follow-up.","drug_name":"pyridostigmine","drug_dosage":"60 mg TID","drug_route":"oral"},
+          {"event_type":"diagnosis","timestamp":"2023-05-15","preview":"Myasthenia gravis confirmed by positive AChR antibody and clinical exam. Recommended initiation of cholinesterase inhibitor therapy."}
         ]},{"page_num":<int>,"events":[]},...]}
 
         Rules:
         - One entry per input page_num, in order
-        - Empty page → "events": []
+        - If a page is truly empty or structurally blank → "events": []
+        - If a page is boilerplate (release-of-info, page footer, patient-demographics-only) emit ONE "administrative" event summarizing the form type. Do NOT emit "clinical_note" for non-clinical text.
+        - NEVER use the event_type "page" or "note" — always pick a medically meaningful type.
         - Do NOT merge events across pages
         - NEVER omit drug_name for any medication event
-        - Vaccinations and immunizations are type "procedure", NOT "lab"
+        - Vaccinations and immunizations are type "procedure" or "immunization", NOT "lab"
         - Timestamps must come from the actual page text — do not copy dates from these instructions
-        - If a page has "pre_extracted" data, focus on what it MISSED (symptoms, notes, procedures).
-          Do NOT re-emit events the heuristics already found correctly.
+        - If a page has "pre_extracted" data, correct misclassifications and ADD what was missed (symptoms, clinical_notes, procedures); do not duplicate correct heuristic events.
     """).strip()
 
     _gpt41_extract = bool(force_json_format and _ingestion_is_full_gpt41(model))
@@ -3605,7 +3615,7 @@ async def _extract_events_from_pages_batch(
             for e in evs:
                 if not isinstance(e, dict):
                     continue
-                _prev_cap = 2000 if _gpt41_extract else 500
+                _prev_cap = 2000 if _gpt41_extract else 400
                 ev_dict: Dict[str, Any] = {
                     "event_type": str(e.get("event_type", "note")),
                     "timestamp": str(e.get("timestamp", "unknown")),
@@ -3632,7 +3642,7 @@ async def _extract_events_from_pages_batch(
             if not out[pn]:
                 out[pn] = [
                     {
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
                         "preview": (txt[:200] if txt.strip() else "(no events extracted)"),
                         "event_id": f"pdf_p{pn:04d}_generic",
@@ -3677,7 +3687,7 @@ async def _extract_events_from_pages_batch(
                         pn, type(e2).__name__,
                     )
                     out[pn] = [{
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
                         "preview": txt[:200],
                         "event_id": f"pdf_p{pn:04d}_extract_fail",
@@ -3692,7 +3702,7 @@ async def _extract_events_from_pages_batch(
         return {
             pn: [
                 {
-                    "event_type": "page",
+                    "event_type": "administrative",
                     "timestamp": "unknown",
                     "preview": txt[:200],
                     "event_id": f"pdf_p{pn:04d}_extract_fail",
@@ -3725,7 +3735,7 @@ async def _extract_events_from_page_text(
     if not page_text.strip():
         # Empty page: return generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
             "preview": "(empty page)",
             "event_id": f"pdf_p{page_num:04d}_empty",
@@ -3833,7 +3843,7 @@ async def _extract_events_from_page_text(
         # If no events extracted, create a generic page event
         if not events:
             events = [{
-                "event_type": "page",
+                "event_type": "administrative",
                 "timestamp": "unknown",
                 "preview": page_text[:200],
                 "event_id": f"pdf_p{page_num:04d}_generic",
@@ -3845,7 +3855,7 @@ async def _extract_events_from_page_text(
         logger.error(f"Failed to parse LLM event extraction output for page {page_num}: {e}")
         # Fallback: create a generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
             "preview": page_text[:200],
             "event_id": f"pdf_p{page_num:04d}_fallback",
@@ -3854,7 +3864,7 @@ async def _extract_events_from_page_text(
         logger.error(f"Event extraction failed for page {page_num}: {e}")
         # Fallback: create a generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
             "preview": page_text[:200],
             "event_id": f"pdf_p{page_num:04d}_error",
@@ -4116,7 +4126,7 @@ async def populate_vision_from_extracted_pages(
             page_to_events = {
                 pn: [
                     {
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
                         "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
                         "event_id": f"pdf_p{pn:04d}_batch_empty",
@@ -4277,6 +4287,29 @@ async def populate_vision_from_extracted_pages(
     if n_reclassified:
         logger.info("[%s] PDF event type reclassification: %d events", pid, n_reclassified)
 
+    n_ts_recovered_preview = _recover_timestamps_from_preview(vision)
+    if n_ts_recovered_preview:
+        logger.info(
+            "[%s] PDF timestamp recovery (Noted on: regex): %d events",
+            pid, n_ts_recovered_preview,
+        )
+
+    _page_to_chapter = _build_page_to_chapter_index(_chapters)
+    n_ch_stamped = _backfill_chapter_annotations(vision, _chapter_index, _page_to_chapter)
+    if n_ch_stamped:
+        logger.info("[%s] PDF chapter back-stamp: %d events", pid, n_ch_stamped)
+
+    reduced_stats = _infer_reduced_graph_connascence(vision)
+    logger.info(
+        "[%s] PDF reduced-graph connascence: chapter=%d encounter=%d drug=%d icd=%d day=%d",
+        pid,
+        reduced_stats["same_chapter"],
+        reduced_stats["same_encounter"],
+        reduced_stats["same_drug"],
+        reduced_stats["same_icd"],
+        reduced_stats["same_day"],
+    )
+
     n_ts_scrubbed = _sanitize_timestamps_graph(vision)
     if n_ts_scrubbed:
         logger.info("[%s] PDF timestamp sanity: %d scrubbed", pid, n_ts_scrubbed)
@@ -4288,6 +4321,8 @@ async def populate_vision_from_extracted_pages(
         "chapter_plan": [ch.to_dict() for ch in _chapters],
         "ocr_pending_pages": list(_ocr_pending_pages),
         "llm_events_total": _stat_total_events,
+        "reduced_graph_connascence": reduced_stats,
+        "timestamps_recovered_from_preview": n_ts_recovered_preview,
         "extract_fail_events": _stat_extract_fail_events,
         "batch_empty_stubs": _stat_batch_empty_stubs,
         "generic_stub_events": _stat_generic_stub_events,
@@ -4557,7 +4592,7 @@ async def stream_populate_vision_from_extracted_pages(
             page_to_events = {
                 pn: [
                     {
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
                         "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
                         "event_id": f"pdf_p{pn:04d}_batch_empty",
@@ -4660,7 +4695,25 @@ async def stream_populate_vision_from_extracted_pages(
 
     _infer_temporal_connascence(vision, window_days=7)
     n_reclassified = _reclassify_event_types(vision)
+    n_ts_recovered_preview = _recover_timestamps_from_preview(vision)
+    page_to_chapter = _build_page_to_chapter_index(chapters)
+    n_ch_stamped = _backfill_chapter_annotations(vision, chapter_index, page_to_chapter)
+    reduced_stats = _infer_reduced_graph_connascence(vision)
     n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+
+    logger.info(
+        "PDF streaming extraction [%s]: reduced-graph connascence "
+        "chapter=%d encounter=%d drug=%d icd=%d day=%d; "
+        "preview-ts recovered=%d; chapter back-stamped=%d",
+        pid,
+        reduced_stats["same_chapter"],
+        reduced_stats["same_encounter"],
+        reduced_stats["same_drug"],
+        reduced_stats["same_icd"],
+        reduced_stats["same_day"],
+        n_ts_recovered_preview,
+        n_ch_stamped,
+    )
 
     yield {
         "type": "done",
@@ -4673,8 +4726,11 @@ async def stream_populate_vision_from_extracted_pages(
         "batch_empty_stubs": _stat_batch_empty_stubs,
         "generic_stub_events": _stat_generic_stub_events,
         "timestamps_recovered": _stat_ts_recovered,
+        "timestamps_recovered_from_preview": n_ts_recovered_preview,
         "reclassified": n_reclassified,
         "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "chapter_backstamped": n_ch_stamped,
+        "reduced_graph_connascence": reduced_stats,
         "total_graph_events": len(vision.events),
         "total_graph_edges": vision.count_edges(),
         "ocr_pending_pages": ocr_pending,
@@ -5130,8 +5186,13 @@ def _sanitize_timestamps_graph(vision: "PatientTimelineVision") -> int:
 def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
     """
     Keyword-based post-processing pass: upgrade events whose event_type is
-    "page", "unknown", or "note" to a more specific clinical type based on
-    the content of their preview text.
+    ambiguous ("page", "note", "unknown", "administrative") to a more specific
+    clinical type based on preview text.
+
+    Also normalizes the legacy bucket names — any remaining "page" or bare
+    "note" becomes either a specific clinical type (preferred) or
+    "administrative" / "clinical_note" so the exported graph never ships with
+    an event_type that isn't medically meaningful.
 
     Returns the number of events reclassified.
     """
@@ -5192,20 +5253,52 @@ def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
         )),
     ]
 
-    RECLASSIFY_FROM = {"page", "unknown", "note"}
+    RECLASSIFY_FROM = {"page", "unknown", "note", "administrative"}
     reclassified = 0
+
+    _ADMIN_RE = re.compile(
+        r"\b(?:release of medical information|authorization to release|"
+        r"consent for|advance (?:care )?directive|living will|hipaa|"
+        r"power of attorney|demographic|registration|billing|insurance|"
+        r"page \d+ of \d+|continued\b)",
+        re.I,
+    )
 
     for event in vision.events.values():
         if event.event_type not in RECLASSIFY_FROM:
             continue
         text = (event.preview or "").lower()
         if not text:
+            # No text to classify. Demote legacy "page"/"unknown" to
+            # "administrative" so downstream analytics never sees "page".
+            if event.event_type in ("page", "unknown", "note"):
+                event.event_type = "administrative"
+                reclassified += 1
             continue
+        matched = False
         for new_type, pattern in _PATTERNS:
             if pattern.search(text):
                 event.event_type = new_type
+                matched = True
                 reclassified += 1
                 break
+        if matched:
+            continue
+        if _ADMIN_RE.search(text):
+            if event.event_type != "administrative":
+                event.event_type = "administrative"
+                reclassified += 1
+            continue
+        # Still ambiguous: if the preview looks like prose (≥40 chars and has
+        # some letters), treat it as a clinical_note rather than leaving it
+        # as "page"/"unknown"/bare "note".
+        if len(text) >= 40 and re.search(r"[a-z]{4,}", text):
+            if event.event_type != "clinical_note":
+                event.event_type = "clinical_note"
+                reclassified += 1
+        elif event.event_type in ("page", "unknown", "note"):
+            event.event_type = "administrative"
+            reclassified += 1
 
     _VACCINE_RE = re.compile(
         r"\b(?:vaccin|immuniz|inoculat|covid.{0,8}(?:dose|shot|booster)|"
@@ -5219,7 +5312,7 @@ def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
             continue
         text = (event.preview or "").lower()
         if text and _VACCINE_RE.search(text):
-            event.event_type = "procedure"
+            event.event_type = "immunization"
             reclassified += 1
 
     return reclassified
@@ -5229,6 +5322,223 @@ def _parse_ts(ts_str: str) -> Optional["datetime"]:
     """Thin wrapper → canonical ``parse_clinical_date``."""
     from server.utils.parse_date import parse_clinical_date
     return parse_clinical_date(ts_str)
+
+
+# ---------------------------------------------------------------------------
+# Reduced-graph connascence passes
+# ---------------------------------------------------------------------------
+#
+# Strategy, not cleverness: each pass groups events by a clinically meaningful
+# key (chapter, encounter, same-drug, same-ICD, same-day) and emits pairwise
+# edges within each group. The algorithm is dumb pairwise-within-bucket; the
+# intelligence is in the choice of key. Large buckets collapse to a star
+# topology (one hub → N members) to avoid O(n²) edge bloat.
+#
+# Returns a dict of {pass_name: edges_added} for logging / SSE.
+# ---------------------------------------------------------------------------
+
+_ICD_CODE_RX = re.compile(r"\[([A-Z]\d{2}(?:\.[0-9A-Za-z]+)?)\]")
+_NOTED_ON_RX = re.compile(r"\bNoted\s+on[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})", re.I)
+_STAR_THRESHOLD = 8  # Buckets with > N events emit star edges instead of full clique.
+
+
+def _emit_bucket_edges(
+    vision: "PatientTimelineVision",
+    bucket_key: str,
+    members: List[str],
+    kind: str,
+) -> int:
+    """Emit connascence edges for a bucket of ≥2 event IDs.
+
+    Small buckets get a full clique. Large buckets collapse to a star around
+    the earliest-timestamped member (or the first member if no timestamps) to
+    keep edge counts bounded.
+    """
+    if len(members) < 2:
+        return 0
+
+    if len(members) > _STAR_THRESHOLD:
+        # Star topology — pick a hub (earliest real timestamp, then first).
+        def _sort_key(eid: str) -> Tuple[int, str]:
+            ev = vision.events.get(eid)
+            ts = (ev.timestamp if ev else "") or ""
+            if ts and ts.lower() not in ("unknown", "n/a", ""):
+                return (0, ts)
+            return (1, eid)
+
+        ordered = sorted(members, key=_sort_key)
+        hub, spokes = ordered[0], ordered[1:]
+        edges = 0
+        for spoke in spokes:
+            vision.add_edge(
+                source_event_id=hub,
+                target_event_id=spoke,
+                connascence_type=kind,
+                discovered_by=f"{kind}:star",
+                metadata={"group": bucket_key, "topology": "star"},
+            )
+            edges += 1
+        return edges
+
+    # Full clique for small buckets.
+    edges = 0
+    for a, b in itertools.combinations(sorted(members), 2):
+        vision.add_edge(
+            source_event_id=a,
+            target_event_id=b,
+            connascence_type=kind,
+            discovered_by=f"{kind}:clique",
+            metadata={"group": bucket_key},
+        )
+        edges += 1
+    return edges
+
+
+def _infer_reduced_graph_connascence(
+    vision: "PatientTimelineVision",
+) -> Dict[str, int]:
+    """Run all reduced-graph connascence passes. Strategic, not clever.
+
+    Each pass groups events by a clinically meaningful key and emits edges
+    within each group. Edges are distinct connascence kinds so the graph UI
+    can filter/weight them independently.
+
+    Passes:
+      - same_chapter       : annotations.chapter_id
+      - same_encounter     : annotations.encounter_date (fallback to chapter_id's encounter_date)
+      - same_drug          : annotations.drug_name.lower() — medication continuity
+      - same_icd           : [Ann.nn] ICD-10 code in preview — condition threads
+      - same_day           : timestamp[:10] — procedural bundles
+      - temporal_7d        : already emitted by ``_infer_temporal_connascence``
+                             earlier in the pipeline; not repeated here.
+    """
+    from collections import defaultdict
+
+    by_chapter: Dict[str, List[str]] = defaultdict(list)
+    by_encounter: Dict[str, List[str]] = defaultdict(list)
+    by_drug: Dict[str, List[str]] = defaultdict(list)
+    by_icd: Dict[str, List[str]] = defaultdict(list)
+    by_day: Dict[str, List[str]] = defaultdict(list)
+
+    for eid, ev in vision.events.items():
+        ann = ev.annotations or {}
+        ch = ann.get("chapter_id")
+        if ch:
+            by_chapter[str(ch)].append(eid)
+        enc = ann.get("encounter_date")
+        if enc:
+            by_encounter[str(enc)].append(eid)
+        if ev.event_type == "medication":
+            dn = ann.get("drug_name")
+            if dn and isinstance(dn, str):
+                by_drug[dn.strip().lower()].append(eid)
+        code = ann.get("icd_code")
+        if not code:
+            m = _ICD_CODE_RX.search(ev.preview or "")
+            if m:
+                code = m.group(1)
+        if code:
+            by_icd[str(code).upper()].append(eid)
+        ts = (ev.timestamp or "").strip()
+        if ts and ts.lower() not in ("unknown", "n/a"):
+            day = ts[:10]
+            if re.match(r"\d{4}-\d{2}-\d{2}$", day):
+                by_day[day].append(eid)
+
+    stats: Dict[str, int] = {
+        "same_chapter": 0,
+        "same_encounter": 0,
+        "same_drug": 0,
+        "same_icd": 0,
+        "same_day": 0,
+    }
+    for key, members in by_chapter.items():
+        stats["same_chapter"] += _emit_bucket_edges(vision, key, members, "same_chapter")
+    for key, members in by_encounter.items():
+        stats["same_encounter"] += _emit_bucket_edges(vision, key, members, "same_encounter")
+    for key, members in by_drug.items():
+        stats["same_drug"] += _emit_bucket_edges(vision, key, members, "same_drug")
+    for key, members in by_icd.items():
+        stats["same_icd"] += _emit_bucket_edges(vision, key, members, "same_icd")
+    for key, members in by_day.items():
+        stats["same_day"] += _emit_bucket_edges(vision, key, members, "same_day")
+
+    return stats
+
+
+def _backfill_chapter_annotations(
+    vision: "PatientTimelineVision",
+    chapter_index: Dict[str, Dict[str, Any]],
+    page_to_chapter: Dict[int, str],
+) -> int:
+    """Stamp chapter_id / encounter_* / chapter_kind / section_header on any
+    event that lacks them, using its ``annotations.pdf_page`` → chapter map.
+
+    Heuristic-only events (added during the regex skeleton phase) don't know
+    their chapter at insertion time; this pass closes the loop so reduced-graph
+    ``same_chapter`` / ``same_encounter`` connascence can find them.
+    """
+    stamped = 0
+    for ev in vision.events.values():
+        ann = ev.annotations
+        if ann.get("chapter_id"):
+            continue
+        pn = ann.get("pdf_page")
+        if not isinstance(pn, int):
+            continue
+        cid = page_to_chapter.get(pn)
+        if not cid:
+            continue
+        meta = chapter_index.get(cid) or {}
+        ann["chapter_id"] = cid
+        if meta.get("encounter_date"):
+            ann.setdefault("encounter_date", meta["encounter_date"])
+        if meta.get("encounter_type"):
+            ann.setdefault("encounter_type", meta["encounter_type"])
+        if meta.get("section_header"):
+            ann.setdefault("section_header", meta["section_header"])
+        if meta.get("kind"):
+            ann.setdefault("chapter_kind", meta["kind"])
+        stamped += 1
+    return stamped
+
+
+def _build_page_to_chapter_index(chapters: List[Any]) -> Dict[int, str]:
+    """Build a page_num → chapter_id lookup from a list of ``PdfChapter``."""
+    idx: Dict[int, str] = {}
+    for ch in chapters:
+        for pn in getattr(ch, "pages", None) or []:
+            if isinstance(pn, int):
+                idx[pn] = ch.chapter_id
+    return idx
+
+
+def _recover_timestamps_from_preview(vision: "PatientTimelineVision") -> int:
+    """Dumb post-pass regex: lift 'Noted on: MM/DD/YYYY' dates from preview text
+    into ``timestamp`` when the current timestamp is missing.
+
+    The Problem-List page of an EHR dump stamps onset dates inline (e.g.
+    ``"ANEMIA [D64.9] ... Noted on: 04/06/2017"``) but the LLM leaves the
+    event with ``timestamp: "unknown"`` because there is no top-level date on
+    the page. This post-pass reclaims those dates.
+    """
+    from server.utils.parse_date import parse_clinical_date
+
+    recovered = 0
+    for ev in vision.events.values():
+        ts = (ev.timestamp or "").strip().lower()
+        if ts and ts not in ("unknown", "n/a", ""):
+            continue
+        m = _NOTED_ON_RX.search(ev.preview or "")
+        if not m:
+            continue
+        dt = parse_clinical_date(m.group(1))
+        if not dt:
+            continue
+        ev.timestamp = dt.strftime("%Y-%m-%d")
+        ev.annotations.setdefault("timestamp_source", "noted_on_regex")
+        recovered += 1
+    return recovered
 
 
 async def _enrich_timeline_vision_connascence(
