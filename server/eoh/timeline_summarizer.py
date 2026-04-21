@@ -4487,6 +4487,24 @@ async def stream_populate_vision_from_extracted_pages(
         "pages_with_date": len(_page_date_lookup),
     }
 
+    # Build and emit an early "regex skeleton" graph before any LLM batch work.
+    # This gives the UI a fast, clinically structured baseline (chapterized +
+    # temporal connascence over regex/heuristic events) instead of appearing
+    # frozen while waiting for chapter 1 extraction to complete.
+    _skel_t0 = _time_mod.perf_counter()
+    _infer_temporal_connascence(vision, window_days=7)
+    _skel_elapsed_ms = int((_time_mod.perf_counter() - _skel_t0) * 1000)
+    yield {
+        "type": "skeleton_ready",
+        "patient_id": pid,
+        "total_pages": len(extraction_pages),
+        "total_chapters": len(chapters),
+        "regex_heuristic_events": len(vision.events),
+        "temporal_edges": vision.count_edges(),
+        "elapsed_ms": _skel_elapsed_ms,
+        "message": "Regex skeleton ready (chapterized + temporal connascence). Continuing LLM enrichment...",
+    }
+
     # --- iterate batches sequentially -----------------------------------------
     _stat_total_events = 0
     _stat_extract_fail_events = 0

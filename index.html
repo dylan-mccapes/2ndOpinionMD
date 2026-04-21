@@ -2978,6 +2978,16 @@ Are there any patterns in my symptoms?"></textarea>
                                 addMsg(`plan · ${totalChapters} chapters · ${ev.total_batches || '?'} batches · eta=${etaStr} · ctx=${ev.context_tokens || '?'}`);
                             } else if (t === 'heuristic') {
                                 addMsg(`heuristic · ${ev.events_added || 0} pre-scan events · ${ev.elapsed_ms || 0}ms`);
+                            } else if (t === 'skeleton_ready') {
+                                fillDiv.style.width = '10%';
+                                summaryDiv.innerHTML = `<strong>Regex skeleton ready</strong> · ${ev.regex_heuristic_events || 0} events · ${ev.temporal_edges || 0} temporal edges`;
+                                addMsg(`skeleton_ready · chapters=${ev.total_chapters || 0} events=${ev.regex_heuristic_events || 0} edges=${ev.temporal_edges || 0}`);
+                                // Show users immediate value before long LLM chapter extraction.
+                                await loadTimelineEvents();
+                                await loadDashboardYourTimeline();
+                            } else if (t === 'skeleton_persisted') {
+                                addMsg(`skeleton_persisted · graph=${ev.graph_events || 0} edges=${ev.graph_edges || 0}`);
+                                summaryDiv.innerHTML = `<strong>Baseline graph persisted</strong> · ${ev.graph_events || 0} events · ${ev.graph_edges || 0} edges · now enriching with LLM`;
                             } else if (t === 'chapter_start') {
                                 const cid = ev.primary_chapter_id;
                                 renderChapterHeader({ chapter_id: cid, label: ev.chapter_label, kind: ev.kind });

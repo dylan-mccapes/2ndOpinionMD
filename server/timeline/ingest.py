@@ -1270,6 +1270,24 @@ async def stream_ingest_extracted_pdf_pages(
         ingestion_model=effective_model,
         ingestion_context_tokens=ingestion_context_tokens,
     ):
+        if frame.get("type") == "skeleton_ready":
+            # Persist the regex/heuristic baseline graph before long-running LLM
+            # extraction so clients can immediately query a chapterized skeleton.
+            if pool is not None:
+                from server.eoh.patient_timeline_vision import save_timeline_vision_pg
+
+                await save_timeline_vision_pg(pool, vision)
+            else:
+                from server.eoh.patient_timeline_vision import save_timeline_vision
+
+                save_timeline_vision(vision)
+            yield {
+                "type": "skeleton_persisted",
+                "patient_id": patient_id,
+                "graph_events": len(vision.events),
+                "graph_edges": vision.count_edges(),
+                "chapters": len(chapters),
+            }
         yield frame
 
     # --- persist graph -----------------------------------------------------
