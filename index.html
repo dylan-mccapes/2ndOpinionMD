@@ -1192,7 +1192,14 @@
                                 <span id="timeline-pdf-filename" style="font-size: 12px; color: var(--color-text-dim);"></span>
                             </div>
                             <div id="timeline-pdf-progress" style="margin-top: 12px; display: none;">
-                                <div id="timeline-pdf-progress-msgs" style="font-size: 12px; color: var(--color-text-secondary); max-height: 120px; overflow-y: auto;"></div>
+                                <div id="timeline-pdf-progress-summary" style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px;"></div>
+                                <div id="timeline-pdf-progress-bar" style="height: 6px; background: var(--color-surface-dim); border-radius: 3px; overflow: hidden; margin-bottom: 10px;">
+                                    <div id="timeline-pdf-progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #60a5fa, #a855f7); transition: width .25s;"></div>
+                                </div>
+                                <div id="timeline-pdf-chapters-panel" style="max-height: 360px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 8px; background: var(--color-surface-dim); font-size: 12px;">
+                                    <div style="color: var(--color-text-dim); font-style: italic;">Chapters will appear here as they stream in…</div>
+                                </div>
+                                <div id="timeline-pdf-progress-msgs" style="font-size: 11px; color: var(--color-text-dim); max-height: 100px; overflow-y: auto; margin-top: 8px; font-family: var(--font-mono);"></div>
                             </div>
                         </div>
                     </div>
@@ -2838,39 +2845,103 @@ Are there any patterns in my symptoms?"></textarea>
                 btn.disabled = true;
                 const progressDiv = document.getElementById('timeline-pdf-progress');
                 const msgDiv = document.getElementById('timeline-pdf-progress-msgs');
+                const summaryDiv = document.getElementById('timeline-pdf-progress-summary');
+                const fillDiv = document.getElementById('timeline-pdf-progress-fill');
+                const panel = document.getElementById('timeline-pdf-chapters-panel');
                 progressDiv.style.display = 'block';
                 msgDiv.innerHTML = '';
+                panel.innerHTML = '';
+                summaryDiv.textContent = 'Uploading PDF…';
+                fillDiv.style.width = '0%';
 
                 const addMsg = (txt) => {
                     const p = document.createElement('div');
-                    p.style.cssText = 'padding:2px 0; border-bottom:1px solid var(--color-border);';
+                    p.style.cssText = 'padding:1px 0;';
                     p.textContent = txt;
                     msgDiv.appendChild(p);
                     msgDiv.scrollTop = msgDiv.scrollHeight;
                 };
 
-                addMsg('Uploading PDF for ingestion…');
+                const chapterEls = new Map(); // chapter_id -> root element
+                const renderChapterHeader = (frame) => {
+                    const cid = frame.chapter_id || `c_${chapterEls.size}`;
+                    if (chapterEls.has(cid)) return chapterEls.get(cid);
+                    const label = frame.label || frame.encounter_date || frame.section_header || cid;
+                    const kindBadgeColor = frame.kind === 'encounter' ? '#60a5fa'
+                        : frame.kind === 'summary' ? '#a855f7'
+                        : frame.kind === 'ocr_pending' ? '#f59e0b'
+                        : '#6b7280';
+                    const wrap = document.createElement('div');
+                    wrap.dataset.chapterId = cid;
+                    wrap.style.cssText = 'border:1px solid var(--color-border); border-radius:6px; padding:8px 10px; margin-bottom:8px; background:var(--color-surface);';
+                    wrap.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${kindBadgeColor};"></span>
+                            <strong style="font-size:12px;">${label.replace(/</g,'&lt;')}</strong>
+                            <span style="margin-left:auto; font-size:10px; color:var(--color-text-dim); font-family:var(--font-mono);" data-role="status">queued</span>
+                        </div>
+                        <div style="font-size:10px; color:var(--color-text-dim); margin-bottom:6px; font-family:var(--font-mono);" data-role="meta"></div>
+                        <ul style="list-style:none; padding:0; margin:0; font-size:11px;" data-role="events"></ul>`;
+                    panel.appendChild(wrap);
+                    panel.scrollTop = panel.scrollHeight;
+                    chapterEls.set(cid, wrap);
+                    return wrap;
+                };
+                const updateChapter = (cid, field, value) => {
+                    const el = chapterEls.get(cid);
+                    if (!el) return;
+                    const target = el.querySelector(`[data-role="${field}"]`);
+                    if (target) target.textContent = value;
+                };
+                const appendChapterEvents = (cid, events) => {
+                    const el = chapterEls.get(cid);
+                    if (!el || !events || !events.length) return;
+                    const ul = el.querySelector('[data-role="events"]');
+                    events.forEach(ev => {
+                        const li = document.createElement('li');
+                        li.style.cssText = 'padding:2px 0; border-top:1px dashed var(--color-border);';
+                        const ts = ev.ts ? String(ev.ts).substring(0, 10) : '—';
+                        const type = ev.event_type || ev.type || 'event';
+                        const txt = ev.text || ev.summary || '';
+                        li.innerHTML = `<span style="color:var(--color-text-dim); font-family:var(--font-mono); margin-right:6px;">${ts}</span>`
+                            + `<strong style="font-size:10px; text-transform:uppercase; color:#60a5fa;">${type}</strong> `
+                            + `<span>${String(txt).substring(0, 220).replace(/</g,'&lt;')}</span>`;
+                        ul.appendChild(li);
+                    });
+                    panel.scrollTop = panel.scrollHeight;
+                };
+
+                const useGpt41 = !!(document.getElementById('timeline-pdf-use-gpt41') && document.getElementById('timeline-pdf-use-gpt41').checked);
+
                 const fd = new FormData();
-                fd.append('files', pdfFile, pdfFile.name);
-                fd.append('document_type', 'other');
-                fd.append('model', 'eoh-llama3.1:8b');
-                fd.append('store_results', 'true');
-                fd.append('build_graph', 'true');
-                if (document.getElementById('timeline-pdf-use-gpt41') && document.getElementById('timeline-pdf-use-gpt41').checked) {
-                    fd.append('use_gpt41_ingestion', 'true');
-                }
+                fd.append('file', pdfFile, pdfFile.name);
+                if (useGpt41) fd.append('use_gpt41_ingestion', 'true');
+
+                let totalChapters = 0;
+                let doneChapters = 0;
+                let runningEvents = 0;
+                let etaSeconds = null;
+                let startedAt = Date.now();
 
                 try {
-                    const r = await fetch(`${API_BASE}/api/timeline/artifacts/ingest`, {
+                    const r = await fetch(`${API_BASE}/api/timeline/import-pdf-stream`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${sessionToken}` },
                         body: fd
                     });
-                    if (!r.ok) { addMsg(`Error: ${r.status}`); btn.disabled = false; return; }
+                    if (!r.ok) {
+                        const txt = await r.text();
+                        addMsg(`Error ${r.status}: ${txt.substring(0, 300)}`);
+                        summaryDiv.textContent = 'Upload failed.';
+                        btn.disabled = false;
+                        return;
+                    }
 
                     const reader = r.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
+                    let currentEvent = null;
+
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
@@ -2878,22 +2949,76 @@ Are there any patterns in my symptoms?"></textarea>
                         const lines = buffer.split('\n');
                         buffer = lines.pop();
                         for (const line of lines) {
+                            if (line.startsWith('event:')) {
+                                currentEvent = line.substring(6).trim();
+                                continue;
+                            }
                             if (!line.startsWith('data:')) continue;
-                            try {
-                                const ev = JSON.parse(line.substring(5).trim());
-                                if (ev.phase === 'pdf_extracting') addMsg(`Extracting text from ${ev.filename}…`);
-                                else if (ev.pages) addMsg(`PDF read: ${ev.pages} pages, ${ev.chars} chars`);
-                                else if (ev.batch) addMsg(`Batch ${ev.batch}/${ev.total} processing…`);
-                                else if (ev.events_extracted !== undefined) addMsg(`✓ ${ev.filename}: ${ev.events_extracted} events extracted`);
-                                else if (ev.events_extracted_total !== undefined) addMsg(`✅ Complete — ${ev.events_extracted_total} events added to timeline`);
-                            } catch (_) {}
+                            const raw = line.substring(5).trim();
+                            if (!raw) continue;
+                            let ev;
+                            try { ev = JSON.parse(raw); } catch (_) { continue; }
+                            const t = ev.type || currentEvent;
+                            if (t === 'ready') {
+                                summaryDiv.textContent = `Model: ${ev.ingestion_model} · ${(ev.bytes/1024/1024).toFixed(1)} MB`;
+                                addMsg(`ready · timeline=${ev.timeline_id} model=${ev.ingestion_model}`);
+                            } else if (t === 'stage' && ev.stage === 'pdf_extracted') {
+                                addMsg(`pdf_extracted · ${ev.pages_with_text}/${ev.total_pages} pages had text`);
+                            } else if (t === 'stage' && ev.stage === 'regex_rows') {
+                                addMsg(`regex_rows · ${ev.events_stored} rows · ${ev.chapters} chapters · ${ev.ocr_pending} need OCR`);
+                            } else if (t === 'plan') {
+                                totalChapters = ev.total_chapters || (ev.chapters && ev.chapters.length) || 0;
+                                etaSeconds = ev.total_eta_seconds || null;
+                                const etaStr = etaSeconds != null
+                                    ? (etaSeconds >= 90 ? `~${Math.round(etaSeconds/60)} min` : `~${Math.round(etaSeconds)} s`)
+                                    : '—';
+                                const modelTag = ev.is_gpt41 ? 'GPT-4.1' : (ev.ingestion_model || '—');
+                                summaryDiv.innerHTML = `<strong>${totalChapters}</strong> chapters · <strong>${ev.total_batches || '?'}</strong> batches · ETA <strong>${etaStr}</strong> · model <span style="font-family:var(--font-mono);">${modelTag}</span>`;
+                                (ev.chapters || []).forEach(ch => renderChapterHeader(ch));
+                                addMsg(`plan · ${totalChapters} chapters · ${ev.total_batches || '?'} batches · eta=${etaStr} · ctx=${ev.context_tokens || '?'}`);
+                            } else if (t === 'heuristic') {
+                                addMsg(`heuristic · ${ev.events_added || 0} pre-scan events · ${ev.elapsed_ms || 0}ms`);
+                            } else if (t === 'chapter_start') {
+                                const cid = ev.primary_chapter_id;
+                                renderChapterHeader({ chapter_id: cid, label: ev.chapter_label, kind: ev.kind });
+                                updateChapter(cid, 'status', 'extracting…');
+                                const pc = ev.pages ? ev.pages.length : '?';
+                                updateChapter(cid, 'meta', `pages=${pc} · est=${ev.est_seconds ? Math.round(ev.est_seconds)+'s' : '—'}${ev.split_note ? ' · '+ev.split_note : ''}`);
+                            } else if (t === 'chapter_events') {
+                                const evs = (ev.events_preview || []).map(p => ({
+                                    ts: p.timestamp, event_type: p.event_type, text: p.preview
+                                }));
+                                appendChapterEvents(ev.primary_chapter_id, evs);
+                                runningEvents += ev.events_added || 0;
+                            } else if (t === 'chapter_done') {
+                                const cid = ev.primary_chapter_id;
+                                updateChapter(cid, 'status', ev.error ? `⚠ ${ev.error.substring(0,40)}` : `✓ ${ev.elapsed_ms}ms`);
+                                doneChapters += 1;
+                                const pct = totalChapters ? Math.min(100, (doneChapters/totalChapters)*100) : 0;
+                                fillDiv.style.width = pct.toFixed(1) + '%';
+                                const elapsed = Math.round((Date.now()-startedAt)/1000);
+                                const remaining = totalChapters && doneChapters ? Math.round(elapsed*(totalChapters-doneChapters)/doneChapters) : null;
+                                const remStr = remaining != null ? ` · ~${remaining}s remaining` : '';
+                                summaryDiv.innerHTML = `<strong>${doneChapters}/${totalChapters}</strong> chapters · <strong>${runningEvents}</strong> events${remStr}`;
+                            } else if (t === 'done') {
+                                addMsg(`done · events=${ev.llm_events_total || ev.events || runningEvents} batches=${ev.batches || '?'}`);
+                            } else if (t === 'persisted') {
+                                fillDiv.style.width = '100%';
+                                summaryDiv.innerHTML = `<strong>✅ Persisted</strong> · ${ev.graph_events} graph events · ${ev.graph_edges} edges · ${ev.events_stored} SQL rows` + (ev.ocr_pending_pages && ev.ocr_pending_pages.length ? ` · ${ev.ocr_pending_pages.length} OCR-pending` : '');
+                                addMsg(`persisted · graph=${ev.graph_events} edges=${ev.graph_edges} ocr_pending=${(ev.ocr_pending_pages||[]).length}`);
+                            } else if (t === 'error') {
+                                addMsg(`ERROR [${ev.stage || '?'}] ${ev.message || ''}`);
+                                summaryDiv.textContent = 'Ingestion error — see log below.';
+                            }
                         }
                     }
-                    addMsg('Loading updated timeline events…');
+
+                    addMsg('Reloading timeline…');
                     await loadTimelineEvents();
                     await loadDashboardYourTimeline();
                 } catch (e) {
                     addMsg('Error: ' + e.message);
+                    summaryDiv.textContent = 'Network error.';
                 } finally {
                     btn.disabled = false;
                 }

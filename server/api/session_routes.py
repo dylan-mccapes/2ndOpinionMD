@@ -762,6 +762,144 @@ async def timeline_import_pdf(
     }
 
 
+# --- POST /api/timeline/import-pdf-stream (JWT auth, Server-Sent Events) -------
+
+@timeline_router.post("/import-pdf-stream")
+async def timeline_import_pdf_stream(
+    request: Request,
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "Premium PDF extraction: pass true, 1, yes, or on to use OpenAI GPT-4.1. "
+            "Otherwise the local Ollama model (INGESTION_MODEL) is used."
+        ),
+    ),
+    current_user: Any = Depends(get_user_for_timeline_status),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """
+    SSE variant of ``POST /api/timeline/import-pdf``.
+
+    The client receives a ``text/event-stream`` with one JSON payload per
+    chapter as the LLM extracts it. Frames emitted (in order):
+
+      * ``ready``           — timeline_id + ingestion_model + file meta
+      * ``stage``           — regex timeline rows persisted to SQL
+      * ``plan``            — full chapter plan + ETA
+      * ``heuristic``       — regex pre-scan stats
+      * ``chapter_start``   — before each LLM batch
+      * ``chapter_events``  — events extracted from the current batch
+      * ``chapter_done``    — per-batch elapsed + running totals
+      * ``done``            — final summarizer stats
+      * ``persisted``       — Postgres write confirmation + graph counts
+      * ``error``           — terminal error (stream closes after)
+
+    Each frame is dispatched as ``event: <type>\\ndata: <json>\\n\\n``.
+    """
+    import json as _json
+
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
+
+    user_id = str(current_user.id) if hasattr(current_user, "id") else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
+    timeline_id = await get_timeline_id_for_operator(db, operator_id)
+    if not timeline_id:
+        new_tid = uuid.uuid4()
+        operator_uuid = uuid.UUID(operator_id)
+        await db.execute(
+            text(
+                "INSERT INTO patient_timelines (timeline_id, patient_operator_id, timeline_name, anonymization_consent) "
+                "VALUES (:tid, :oid, :name, :consent)"
+            ),
+            {"tid": new_tid, "oid": operator_uuid, "name": "Patient Timeline", "consent": False},
+        )
+        await db.commit()
+        timeline_id = str(new_tid)
+    else:
+        timeline_id = str(timeline_id)
+
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
+
+    if len(contents) > 500 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 500MB)")
+
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
+    from server.timeline.ingest import (
+        extract_pdf_pages_from_bytes,
+        stream_ingest_extracted_pdf_pages,
+    )
+
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1", "true", "yes", "on",
+    )
+    ingest_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
+    pool = getattr(request.app.state, "pool", None)
+
+    async def _event_stream():
+        def _sse(event_type: str, payload: Dict[str, Any]) -> bytes:
+            body = _json.dumps(payload, default=str, separators=(",", ":"))
+            return f"event: {event_type}\ndata: {body}\n\n".encode("utf-8")
+
+        try:
+            yield _sse("ready", {
+                "type": "ready",
+                "timeline_id": str(timeline_id),
+                "patient_id": str(timeline_id),
+                "ingestion_model": ingest_model,
+                "filename": file.filename,
+                "bytes": len(contents),
+            })
+
+            try:
+                pages, total_pages = await extract_pdf_pages_from_bytes(
+                    contents, str(timeline_id), password
+                )
+            except ValueError as e:
+                yield _sse("error", {"type": "error", "stage": "extract", "message": str(e)})
+                return
+
+            yield _sse("stage", {
+                "type": "stage",
+                "stage": "pdf_extracted",
+                "total_pages": total_pages,
+                "pages_with_text": len(pages),
+            })
+
+            async for frame in stream_ingest_extracted_pdf_pages(
+                db=db,
+                patient_id=str(timeline_id),
+                pages=pages,
+                total_pages=total_pages,
+                pool=pool,
+                source_filename=file.filename or "uploaded.pdf",
+                enable_timeline_rows=True,
+                ingestion_model=ingest_model,
+            ):
+                event_type = str(frame.get("type") or "message")
+                yield _sse(event_type, frame)
+        except Exception as e:
+            logger.exception("timeline_import_pdf_stream failed")
+            yield _sse("error", {"type": "error", "stage": "fatal", "message": str(e)})
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 # --- Lightweight vault upload + mock PTV (session Bearer, Epistemic index.html) ---
 
 _MAX_ARTIFACT_BYTES = 8 * 1024 * 1024

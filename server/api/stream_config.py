@@ -2509,6 +2509,42 @@ INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
     os.getenv("INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE", "12000")
 )
 
+# ─── eoh-llama3.1:8b (local) ingestion budget ─────────────────────────────────
+# The Modelfile pins num_ctx=32768 for eoh-llama3.1:8b. Earlier we ran the PDF
+# batcher with only 16k ctx / 5 pages per batch because the eventual output
+# budget on small models is what starves first. Now that the ingest pipeline is
+# chapter-aware (whole encounters per batch) we drive by token budget, not page
+# count, and we mirror the GPT-4.1 split:
+#
+#   input tokens  = 60% of num_ctx          → INGESTION_OLLAMA_INPUT_FILL_RATIO
+#   output tokens = 30% of num_ctx          → INGESTION_OLLAMA_OUTPUT_FILL_RATIO
+#   prompt/system =  ~10% margin
+#
+# At the default 32k context that maps to roughly 78 KB of page text in and
+# ~9.8 K output tokens per batch — easily enough headroom for a 2-page visit
+# note or a dense lab result chapter. `OLLAMA_MAX_PAGES_PER_BATCH` stays as a
+# safety net only; the chapter packer is the real batching authority.
+INGESTION_OLLAMA_CONTEXT_TOKENS = int(os.getenv("INGESTION_OLLAMA_CONTEXT_TOKENS", "32768"))
+INGESTION_OLLAMA_INPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_INPUT_FILL_RATIO", "0.60"))
+INGESTION_OLLAMA_OUTPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_OUTPUT_FILL_RATIO", "0.30"))
+INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE = int(
+    os.getenv("INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE", "1200")
+)
+
+
+def ingestion_ollama_max_output_tokens(num_ctx: Optional[int] = None) -> int:
+    """Derived `num_predict` budget for Ollama ingest based on the output fill ratio."""
+    ctx = int(num_ctx) if num_ctx else INGESTION_OLLAMA_CONTEXT_TOKENS
+    return max(2048, int(ctx * INGESTION_OLLAMA_OUTPUT_FILL_RATIO))
+
+
+def ingestion_ollama_max_input_chars(num_ctx: Optional[int] = None) -> int:
+    """Approx char budget for a single Ollama ingest batch (60% of num_ctx × 4)."""
+    ctx = int(num_ctx) if num_ctx else INGESTION_OLLAMA_CONTEXT_TOKENS
+    in_tok = max(1024, int(ctx * INGESTION_OLLAMA_INPUT_FILL_RATIO - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE))
+    return in_tok * 4  # rough chars-per-token estimate
+
+
 # Ollama OpenAI-compatible base (must end with /v1). PDF ingest + run_eohd_timeline_pdf use this.
 # Env: OLLAMA_BASE_URL — e.g. http://192.168.0.245:11434/v1
 # Pair with INGESTION_MODEL (default eoh-llama3.1:8b — must match `ollama list` name) and

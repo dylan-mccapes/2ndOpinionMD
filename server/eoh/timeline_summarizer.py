@@ -15,7 +15,7 @@ import re
 import hashlib
 import anyio
 from datetime import datetime, timedelta, date, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from collections import Counter, defaultdict
 
@@ -2891,26 +2891,44 @@ def _ingestion_is_full_gpt41(model: Optional[str]) -> bool:
 def _ollama_num_ctx_default() -> int:
     """
     Ollama KV cache size (options.num_ctx) for PDF batch extraction.
-    Lower values often give more stable JSON from 8B models and less VRAM churn.
-    Override: OLLAMA_NUM_CTX (default 16384; was 32768).
+
+    Default matches ``eoh-llama3.1:8b.Modelfile`` (``PARAMETER num_ctx 32768``).
+    Override: ``OLLAMA_NUM_CTX`` or ``INGESTION_OLLAMA_CONTEXT_TOKENS``.
     """
-    return max(2048, int(os.getenv("OLLAMA_NUM_CTX", "16384")))
+    from server.api.stream_config import INGESTION_OLLAMA_CONTEXT_TOKENS
+
+    raw = os.getenv("OLLAMA_NUM_CTX")
+    if raw:
+        return max(2048, int(raw))
+    return max(2048, int(INGESTION_OLLAMA_CONTEXT_TOKENS))
 
 
 def _ollama_max_predict_tokens(ollama_num_ctx: Optional[int]) -> int:
     """
-    Max new tokens per PDF extraction batch (num_predict / max_tokens).
-    Override: OLLAMA_MAX_PREDICT (default 6144). Capped relative to num_ctx.
+    Max new tokens per PDF extraction batch (``num_predict``).
+
+    Derived from the 30% output fill ratio in ``stream_config`` so it scales with
+    ``num_ctx``. ``OLLAMA_MAX_PREDICT`` is still respected as an explicit override.
     """
+    from server.api.stream_config import ingestion_ollama_max_output_tokens
+
     ctx = ollama_num_ctx if ollama_num_ctx is not None else _ollama_num_ctx_default()
-    env_cap = max(1024, int(os.getenv("OLLAMA_MAX_PREDICT", "6144")))
-    # Stay within ~40% of context so prompt + output fit reliably
-    return min(env_cap, max(2048, (ctx * 2) // 5))
+    env_override = os.getenv("OLLAMA_MAX_PREDICT")
+    if env_override:
+        return max(1024, int(env_override))
+    return ingestion_ollama_max_output_tokens(ctx)
 
 
 def _ollama_max_pages_per_batch() -> int:
-    """Hard cap on pages per Ollama extraction batch. Default 5."""
-    return max(1, min(12, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
+    """
+    Safety ceiling on pages per Ollama extraction batch.
+
+    With chapter-aware batching the real limit is the input-token budget
+    (``INGESTION_OLLAMA_INPUT_FILL_RATIO`` × ``num_ctx``). This cap exists only
+    to keep pathological chapters (a 200-page administrative-forms run) from
+    being dispatched as a single call.
+    """
+    return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "40"))))
 
 
 def _ollama_output_tokens_per_page_estimate() -> int:
@@ -3946,12 +3964,18 @@ async def populate_vision_from_extracted_pages(
             * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
         )
     else:
-        _small_output_reserve = max(4096, _ctx_tokens // 2)
-        _small_system_reserve = max(512, _ctx_tokens // 16)
-        _batch_max_chars = int(
-            (_ctx_tokens - _small_output_reserve - _small_system_reserve)
-            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        # Small-context local models (eoh-llama3.1:8b @ 32k): 60% of context for
+        # page text, 30% output, ~10% prompt/margin — mirrors the GPT-4.1 split.
+        from server.api.stream_config import (
+            INGESTION_OLLAMA_INPUT_FILL_RATIO,
+            INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
         )
+        _small_input_tokens = max(
+            1024,
+            int(_ctx_tokens * INGESTION_OLLAMA_INPUT_FILL_RATIO)
+            - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = _small_input_tokens * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
 
     _batch_max_chars = max(_batch_max_chars, 8_000)
 
@@ -3975,19 +3999,51 @@ async def populate_vision_from_extracted_pages(
     if _ctx_tokens >= 500_000:
         _max_pages_per_batch = None
 
-    batches = _iter_pdf_event_extraction_batches(
-        extraction_pages, max_chars=_batch_max_chars, max_pages=_max_pages_per_batch
+    # Chapter-aware batching: a PDF chapter = one Kaiser encounter (one clinical
+    # day's visit/lab/message) or one administrative summary section (problem
+    # list, current medications, immunizations). The packer keeps chapters
+    # intact where possible and only splits an oversize chapter (rare) into
+    # contiguous page runs that reference the same chapter_id.
+    from server.timeline.pdf_sectionizer import (
+        sectionize_pages,
+        pack_chapters_into_batches,
+        estimate_batch_seconds,
     )
+
+    _chapters = sectionize_pages(extraction_pages)
+    _chapter_batches = pack_chapters_into_batches(
+        _chapters,
+        max_chars=_batch_max_chars,
+        max_pages_per_batch=_max_pages_per_batch,
+        per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+    )
+    batches: List[List[Tuple[int, str]]] = [cb.pages for cb in _chapter_batches]
+    _primary_chapter_ids: List[str] = [cb.primary_chapter_id for cb in _chapter_batches]
+    _chapter_index: Dict[str, Dict[str, Any]] = {
+        ch.chapter_id: ch.to_dict() for ch in _chapters
+    }
+    _ocr_pending_pages: List[int] = []
+    for ch in _chapters:
+        if ch.ocr_pending_pages:
+            _ocr_pending_pages.extend(ch.ocr_pending_pages)
+
     oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
+    _eta_total = sum(
+        estimate_batch_seconds(len(cb.pages), cb.char_len, model=ingestion_model)
+        for cb in _chapter_batches
+    )
     logger.info(
-        "PDF event extraction [%s]: %d pages → %d batch(es); max ~%d input chars/batch "
-        "(%dK-token context; model=%s)",
+        "PDF event extraction [%s]: %d pages → %d chapter(s) → %d batch(es); "
+        "~%d input chars/batch cap (%dK-token ctx; model=%s); est total %.0fs; ocr_pending=%d",
         pid,
         len(extraction_pages),
+        len(_chapters),
         len(batches),
         _batch_max_chars,
         _ctx_tokens // 1024,
         ingestion_model,
+        _eta_total,
+        len(_ocr_pending_pages),
     )
 
     _concurrency = max(1, extraction_concurrency)
@@ -3998,13 +4054,15 @@ async def populate_vision_from_extracted_pages(
         b_idx: int, batch: List[Tuple[int, str]]
     ) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]], int, Optional[str]]:
         batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
+        primary_cid = _primary_chapter_ids[b_idx - 1] if b_idx - 1 < len(_primary_chapter_ids) else None
         logger.info(
-            "PDF event extraction batch %d/%d [%s]: %d pages, ~%d chars",
+            "PDF event extraction batch %d/%d [%s]: %d pages, ~%d chars, chapter=%s",
             b_idx,
             len(batches),
             pid,
             len(batch),
             batch_chars,
+            primary_cid,
         )
         batch_heur = (
             {pn: _heuristic_results[pn] for pn, _ in batch if pn in _heuristic_results}
@@ -4071,6 +4129,16 @@ async def populate_vision_from_extracted_pages(
         batch_event_count = sum(len(evts) for evts in page_to_events.values())
         _stat_total_events += batch_event_count
 
+        # Tag every event in this batch with its chapter_id so the graph,
+        # the Postgres timeline rows, and the SSE stream can group events by
+        # clinical encounter/summary section.
+        _batch_primary_cid = (
+            _primary_chapter_ids[b_idx - 1] if b_idx - 1 < len(_primary_chapter_ids) else None
+        )
+        _batch_chapter_meta = (
+            _chapter_index.get(_batch_primary_cid) if _batch_primary_cid else None
+        )
+
         for evts in page_to_events.values():
             for ev in evts:
                 eid = str(ev.get("event_id", ""))
@@ -4083,6 +4151,17 @@ async def populate_vision_from_extracted_pages(
                 elif eid.endswith("_batch_error"):
                     # legacy id from older runs / manual edits
                     _stat_extract_fail_events += 1
+                if _batch_primary_cid:
+                    ann = ev.setdefault("annotations", {})
+                    ann.setdefault("chapter_id", _batch_primary_cid)
+                    if _batch_chapter_meta:
+                        if _batch_chapter_meta.get("encounter_date"):
+                            ann.setdefault("encounter_date", _batch_chapter_meta["encounter_date"])
+                        if _batch_chapter_meta.get("encounter_type"):
+                            ann.setdefault("encounter_type", _batch_chapter_meta["encounter_type"])
+                        if _batch_chapter_meta.get("section_header"):
+                            ann.setdefault("section_header", _batch_chapter_meta["section_header"])
+                        ann.setdefault("chapter_kind", _batch_chapter_meta.get("kind"))
 
         for page_num, evts in page_to_events.items():
             page_date = _page_date_lookup.get(page_num)
@@ -4205,6 +4284,9 @@ async def populate_vision_from_extracted_pages(
     return {
         "heuristic_events_added": _heur_added,
         "batches": len(batches),
+        "chapters": len(_chapters),
+        "chapter_plan": [ch.to_dict() for ch in _chapters],
+        "ocr_pending_pages": list(_ocr_pending_pages),
         "llm_events_total": _stat_total_events,
         "extract_fail_events": _stat_extract_fail_events,
         "batch_empty_stubs": _stat_batch_empty_stubs,
@@ -4212,6 +4294,372 @@ async def populate_vision_from_extracted_pages(
         "timestamps_recovered": _stat_ts_recovered,
         "reclassified": n_reclassified,
         "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "enrichment_stats": enrichment_stats_list,
+        "ingestion_model": ingestion_model,
+    }
+
+
+async def stream_populate_vision_from_extracted_pages(
+    *,
+    vision: PatientTimelineVision,
+    extraction_pages: List[Tuple[int, str]],
+    ingestion_client: AsyncOpenAI,
+    ingestion_model: str,
+    ingestion_context_tokens: Optional[int] = None,
+) -> AsyncIterator[Dict[str, Any]]:
+    """
+    Streaming (async-generator) variant of ``populate_vision_from_extracted_pages``.
+
+    Emits a sequence of ``dict`` frames suitable for SSE:
+      * ``{"type": "plan", ...}``           — chapter plan + ETA + model meta
+      * ``{"type": "heuristic", ...}``      — regex pre-scan stats
+      * ``{"type": "chapter_start", ...}``  — before each LLM batch
+      * ``{"type": "chapter_events", ...}`` — events added from one batch
+      * ``{"type": "chapter_done", ...}``   — elapsed + accumulated totals
+      * ``{"type": "done", ...}``           — final stats after graph finalize
+      * ``{"type": "error", ...}``          — fatal failure (generator continues)
+
+    Each frame contains plain, JSON-serializable fields. The caller is
+    responsible for turning them into ``text/event-stream`` wire format.
+
+    Unlike the non-streaming sibling, this function processes batches
+    sequentially so the UI receives chapters in chronological order.
+    """
+    import time as _time_mod
+    from server.eoh.heuristic_page_extract import heuristic_extract_batch
+    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+    from server.timeline.pdf_sectionizer import (
+        sectionize_pages,
+        pack_chapters_into_batches,
+        estimate_batch_seconds,
+    )
+
+    pid = vision.patient_id
+
+    _base_url_full = str(getattr(ingestion_client, "_base_url", "") or "")
+    _is_ollama = (
+        "11434" in _base_url_full
+        or "localhost" in _base_url_full
+        or "127.0.0.1" in _base_url_full
+        or "ollama" in _base_url_full.lower()
+    )
+    _force_json_format: bool = not _is_ollama
+    _ollama_num_ctx: Optional[int] = None if _force_json_format else _ollama_num_ctx_default()
+    _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
+    _ollama_native_api: bool = _is_ollama and _is_local_ollama
+
+    # --- heuristic pre-scan (same skeleton as non-streaming sibling) ----------
+    _heur_t0 = _time_mod.perf_counter()
+    _heuristic_results = heuristic_extract_batch(extraction_pages)
+    _heur_elapsed_ms = int((_time_mod.perf_counter() - _heur_t0) * 1000)
+    _heur_added = 0
+    for pn, heur_result in sorted(_heuristic_results.items()):
+        if not heur_result.events:
+            continue
+        heur_event_dicts = []
+        for he in heur_result.events:
+            d = he.to_dict()
+            d["annotations"] = {"heuristic_source": he.source}
+            if he.drug_name:
+                d["drug_name"] = he.drug_name
+                d["annotations"]["drug_name"] = he.drug_name
+            if he.drug_dosage:
+                d["drug_dosage"] = he.drug_dosage
+                d["annotations"]["drug_dosage"] = he.drug_dosage
+            if he.drug_route:
+                d["drug_route"] = he.drug_route
+                d["annotations"]["drug_route"] = he.drug_route
+            if he.icd_code:
+                d["annotations"]["icd_code"] = he.icd_code
+            heur_event_dicts.append(d)
+        add_events_from_pdf_page(vision=vision, page_num=pn, events=heur_event_dicts)
+        _heur_added += len(heur_event_dicts)
+
+    _page_date_lookup: Dict[int, str] = {
+        pn: r.page_date for pn, r in _heuristic_results.items() if r.page_date
+    }
+
+    # --- plan ------------------------------------------------------------------
+    _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
+    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+
+    if _gpt41_ingest and _ctx_tokens >= 500_000:
+        _sys_r = max(
+            _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE,
+            INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = int(
+            (_ctx_tokens * INGESTION_GPT41_INPUT_FILL_RATIO - _sys_r)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    elif _ctx_tokens >= 500_000:
+        _batch_max_chars = int(
+            (
+                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+            )
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    else:
+        from server.api.stream_config import (
+            INGESTION_OLLAMA_INPUT_FILL_RATIO,
+            INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _small_input_tokens = max(
+            1024,
+            int(_ctx_tokens * INGESTION_OLLAMA_INPUT_FILL_RATIO)
+            - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = _small_input_tokens * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+    _batch_max_chars = max(_batch_max_chars, 8_000)
+
+    _max_pages_per_batch: Optional[int]
+    if _ctx_tokens >= 500_000:
+        _max_pages_per_batch = None
+    else:
+        _max_pages_per_batch = _ollama_max_pages_per_batch()
+
+    chapters = sectionize_pages(extraction_pages)
+    chapter_batches = pack_chapters_into_batches(
+        chapters,
+        max_chars=_batch_max_chars,
+        max_pages_per_batch=_max_pages_per_batch,
+        per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+    )
+    chapter_index: Dict[str, Dict[str, Any]] = {ch.chapter_id: ch.to_dict() for ch in chapters}
+    ocr_pending: List[int] = []
+    for ch in chapters:
+        if ch.ocr_pending_pages:
+            ocr_pending.extend(ch.ocr_pending_pages)
+
+    per_batch_eta = [
+        estimate_batch_seconds(len(b.pages), b.char_len, model=ingestion_model)
+        for b in chapter_batches
+    ]
+    total_eta = sum(per_batch_eta)
+
+    logger.info(
+        "PDF streaming extraction [%s]: %d pages → %d chapters → %d batches "
+        "(%dK-ctx; model=%s; total ETA ~%.0fs; ocr_pending=%d)",
+        pid,
+        len(extraction_pages),
+        len(chapters),
+        len(chapter_batches),
+        _ctx_tokens // 1024,
+        ingestion_model,
+        total_eta,
+        len(ocr_pending),
+    )
+
+    yield {
+        "type": "plan",
+        "patient_id": pid,
+        "ingestion_model": ingestion_model,
+        "is_gpt41": _gpt41_ingest,
+        "context_tokens": _ctx_tokens,
+        "total_pages": len(extraction_pages),
+        "total_chapters": len(chapters),
+        "total_batches": len(chapter_batches),
+        "total_eta_seconds": round(total_eta, 1),
+        "heuristic_events_added": _heur_added,
+        "ocr_pending_pages": ocr_pending,
+        "chapters": [ch.to_dict() for ch in chapters],
+        "batches": [
+            {
+                "batch_index": i,
+                "primary_chapter_id": b.primary_chapter_id,
+                "chapter_ids": list(b.chapter_ids),
+                "pages": [pn for pn, _ in b.pages],
+                "char_len": b.char_len,
+                "est_seconds": round(eta, 1),
+                "split_note": b.split_note,
+            }
+            for i, (b, eta) in enumerate(zip(chapter_batches, per_batch_eta))
+        ],
+    }
+
+    yield {
+        "type": "heuristic",
+        "patient_id": pid,
+        "events_added": _heur_added,
+        "elapsed_ms": _heur_elapsed_ms,
+        "pages_with_date": len(_page_date_lookup),
+    }
+
+    # --- iterate batches sequentially -----------------------------------------
+    _stat_total_events = 0
+    _stat_extract_fail_events = 0
+    _stat_batch_empty_stubs = 0
+    _stat_generic_stub_events = 0
+    _stat_ts_recovered = 0
+    enrichment_stats_list: List[Dict[str, Any]] = []
+
+    for i, (batch, eta) in enumerate(zip(chapter_batches, per_batch_eta)):
+        primary_cid = batch.primary_chapter_id
+        chapter_meta = chapter_index.get(primary_cid, {})
+
+        yield {
+            "type": "chapter_start",
+            "batch_index": i,
+            "total_batches": len(chapter_batches),
+            "primary_chapter_id": primary_cid,
+            "chapter_ids": list(batch.chapter_ids),
+            "chapter_label": chapter_meta.get("label"),
+            "pages": [pn for pn, _ in batch.pages],
+            "char_len": batch.char_len,
+            "est_seconds": round(eta, 1),
+            "split_note": batch.split_note,
+        }
+
+        batch_heur = {pn: _heuristic_results[pn] for pn, _ in batch.pages if pn in _heuristic_results}
+        t0 = _time_mod.perf_counter()
+        err: Optional[str] = None
+        try:
+            page_to_events = await _extract_events_from_pages_batch(
+                ingestion_client,
+                batch.pages,
+                model=ingestion_model,
+                force_json_format=_force_json_format,
+                ollama_num_ctx=_ollama_num_ctx,
+                ollama_native_api=_ollama_native_api,
+                heuristic_results=batch_heur,
+            )
+        except Exception as _ex:
+            logger.warning(
+                "PDF streaming batch %d/%d [%s] failed: %s",
+                i + 1, len(chapter_batches), pid, _ex,
+            )
+            page_to_events = {}
+            err = str(_ex)
+
+        elapsed_ms = int((_time_mod.perf_counter() - t0) * 1000)
+
+        if not page_to_events:
+            page_to_events = {
+                pn: [
+                    {
+                        "event_type": "page",
+                        "timestamp": "unknown",
+                        "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
+                        "event_id": f"pdf_p{pn:04d}_batch_empty",
+                    }
+                ]
+                for pn, txt in batch.pages
+            }
+
+        _sanitize_timestamps_batch(page_to_events)
+        batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        _stat_total_events += batch_event_count
+
+        for evts in page_to_events.values():
+            for ev in evts:
+                eid = str(ev.get("event_id", ""))
+                if eid.endswith("_extract_fail"):
+                    _stat_extract_fail_events += 1
+                elif eid.endswith("_batch_empty"):
+                    _stat_batch_empty_stubs += 1
+                elif eid.endswith("_generic"):
+                    _stat_generic_stub_events += 1
+                # Tag with chapter context
+                ann = ev.setdefault("annotations", {})
+                ann.setdefault("chapter_id", primary_cid)
+                if chapter_meta.get("encounter_date"):
+                    ann.setdefault("encounter_date", chapter_meta["encounter_date"])
+                if chapter_meta.get("encounter_type"):
+                    ann.setdefault("encounter_type", chapter_meta["encounter_type"])
+                if chapter_meta.get("section_header"):
+                    ann.setdefault("section_header", chapter_meta["section_header"])
+                ann.setdefault("chapter_kind", chapter_meta.get("kind"))
+
+        for page_num, evts in page_to_events.items():
+            page_date = _page_date_lookup.get(page_num)
+            if not page_date:
+                continue
+            for ev in evts:
+                ts = ev.get("timestamp", "")
+                if ts.lower() in ("unknown", "", "n/a", "none"):
+                    from server.utils.parse_date import extract_date_from_text
+
+                    preview_date = extract_date_from_text(ev.get("preview", ""))
+                    if preview_date:
+                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    else:
+                        ev["timestamp"] = page_date
+                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                    _stat_ts_recovered += 1
+
+        events_before_graph = len(vision.events)
+        new_event_snapshots: List[Dict[str, Any]] = []
+        for page_num in sorted(page_to_events.keys()):
+            add_events_from_pdf_page(
+                vision=vision, page_num=page_num, events=page_to_events[page_num]
+            )
+            for ev in page_to_events[page_num]:
+                ev_view = {
+                    "page": page_num,
+                    "event_type": ev.get("event_type"),
+                    "timestamp": ev.get("timestamp"),
+                    "preview": (ev.get("preview") or "")[:280],
+                    "drug_name": ev.get("drug_name"),
+                    "event_id": ev.get("event_id"),
+                }
+                new_event_snapshots.append(ev_view)
+        added_this_batch = len(vision.events) - events_before_graph
+
+        enrichment_stats_list.append(
+            {
+                "batch_index": i,
+                "primary_chapter_id": primary_cid,
+                "pages": [pn for pn, _ in batch.pages],
+                "events_extracted": batch_event_count,
+                "events_added": added_this_batch,
+                "elapsed_ms": elapsed_ms,
+                "error": err,
+            }
+        )
+
+        yield {
+            "type": "chapter_events",
+            "batch_index": i,
+            "primary_chapter_id": primary_cid,
+            "chapter_label": chapter_meta.get("label"),
+            "events_extracted": batch_event_count,
+            "events_added": added_this_batch,
+            "events_preview": new_event_snapshots[:40],
+            "elapsed_ms": elapsed_ms,
+        }
+        yield {
+            "type": "chapter_done",
+            "batch_index": i,
+            "primary_chapter_id": primary_cid,
+            "elapsed_ms": elapsed_ms,
+            "error": err,
+            "total_graph_events": len(vision.events),
+            "total_graph_edges": vision.count_edges(),
+        }
+
+    _infer_temporal_connascence(vision, window_days=7)
+    n_reclassified = _reclassify_event_types(vision)
+    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+
+    yield {
+        "type": "done",
+        "patient_id": pid,
+        "chapters": len(chapters),
+        "batches": len(chapter_batches),
+        "llm_events_total": _stat_total_events,
+        "heuristic_events_added": _heur_added,
+        "extract_fail_events": _stat_extract_fail_events,
+        "batch_empty_stubs": _stat_batch_empty_stubs,
+        "generic_stub_events": _stat_generic_stub_events,
+        "timestamps_recovered": _stat_ts_recovered,
+        "reclassified": n_reclassified,
+        "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "total_graph_events": len(vision.events),
+        "total_graph_edges": vision.count_edges(),
+        "ocr_pending_pages": ocr_pending,
         "enrichment_stats": enrichment_stats_list,
         "ingestion_model": ingestion_model,
     }

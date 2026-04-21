@@ -988,6 +988,37 @@ async def ingest_extracted_pdf_pages(
                 },
             )
 
+    # Pre-compute the chapter plan so each regex timeline row, each graph event,
+    # and the OCR-pending queue all share one chapter_id. The sectionizer is
+    # pure and cheap — doing it here once keeps the legacy non-streaming
+    # ingest_extracted_pdf_pages and the streaming sibling in sync.
+    from server.timeline.pdf_sectionizer import sectionize_pages
+
+    chapters = sectionize_pages(pages)
+    page_chapter_meta: Dict[int, Dict[str, Any]] = {}
+    ocr_pending_pages: List[int] = []
+    for ch in chapters:
+        meta_for_pages = {
+            "chapter_id": ch.chapter_id,
+            "chapter_kind": ch.kind,
+            "chapter_label": ch.label,
+        }
+        if ch.encounter_date:
+            meta_for_pages["encounter_date"] = ch.encounter_date
+        if ch.encounter_type:
+            meta_for_pages["encounter_type"] = ch.encounter_type
+        if ch.encounter_type_raw:
+            meta_for_pages["encounter_type_raw"] = ch.encounter_type_raw
+        if ch.section_header:
+            meta_for_pages["section_header"] = ch.section_header
+        for pn in ch.pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+        for pn in ch.ocr_pending_pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+            page_chapter_meta[pn]["needs_ocr"] = True
+            page_chapter_meta[pn]["ocr_status"] = "queued"
+            ocr_pending_pages.append(pn)
+
     if enable_timeline_rows:
         for pn, txt in pages:
             page_text = f"=== Page {pn} ===\n{txt}"
@@ -1000,6 +1031,12 @@ async def ingest_extracted_pdf_pages(
             for event in page_events:
                 event.meta = event.meta or {}
                 event.meta["page"] = pn
+                # Stamp chapter context so downstream queries can filter/group by
+                # clinical encounter (``WHERE meta->>'chapter_id' = ...``).
+                ch_meta = page_chapter_meta.get(pn)
+                if ch_meta:
+                    for k, v in ch_meta.items():
+                        event.meta.setdefault(k, v)
                 await engine.store_event(db, event)
                 events_stored += 1
 
@@ -1007,9 +1044,12 @@ async def ingest_extracted_pdf_pages(
                 logger.info("INGEST [%s] stored %d regex timeline rows so far…", patient_id, events_stored)
 
         logger.info(
-            "INGEST [%s] stored %d regex timeline rows (ehr.patient_timeline)",
+            "INGEST [%s] stored %d regex timeline rows over %d chapter(s) "
+            "(ehr.patient_timeline); ocr_pending=%d",
             patient_id,
             events_stored,
+            len(chapters),
+            len(ocr_pending_pages),
         )
 
     if enable_graph_enrichment and vision is not None:
@@ -1080,6 +1120,176 @@ async def ingest_extracted_pdf_pages(
         "vision": vision,
         "heuristic_events_added": heuristic_events_added,
         "llm_events_total": llm_events_total,
+        "chapters": [ch.to_dict() for ch in chapters],
+        "ocr_pending_pages": list(ocr_pending_pages),
+    }
+
+
+async def stream_ingest_extracted_pdf_pages(
+    db: AsyncSession,
+    patient_id: str,
+    pages: List[Tuple[int, str]],
+    total_pages: int,
+    *,
+    pool: Any = None,
+    source_filename: str = "uploaded.pdf",
+    enable_timeline_rows: bool = True,
+    ingestion_model: Optional[str] = None,
+):
+    """
+    Async-generator sibling of :func:`ingest_extracted_pdf_pages`.
+
+    Emits SSE-ready dict frames in the following order:
+
+        1. ``{"type": "stage", "stage": "regex_rows", ...}`` — regex timeline rows
+           stored, one frame per 500 rows + a final summary.
+        2. ``{"type": "plan", ...}`` through ``{"type": "done", ...}`` forwarded
+           from :func:`stream_populate_vision_from_extracted_pages`.
+        3. ``{"type": "persisted", ...}`` — final Postgres write confirmation
+           with graph event / edge counts and OCR queue size.
+
+    Chapter metadata (``chapter_id``, ``encounter_date``, ``encounter_type``,
+    ``section_header``, ``chapter_kind``) is stamped on every row and every
+    graph event so downstream queries can group by clinical encounter.
+    """
+    from server.api.stream_config import (
+        INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
+        INGESTION_GPT41_CONTEXT_TOKENS,
+        OLLAMA_BASE_URL,
+    )
+    from server.eoh.timeline_summarizer import stream_populate_vision_from_extracted_pages
+    from server.llm.llm_client import get_ollama_client
+    from server.timeline.pdf_sectionizer import sectionize_pages
+    from openai import AsyncOpenAI
+
+    effective_model = ingestion_model if ingestion_model is not None else _DEFAULT_INGESTION_MODEL
+    _use_openai = "gpt" in effective_model.lower()
+    ingestion_context_tokens: Optional[int] = None
+    if _use_openai:
+        ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
+    else:
+        _raw_ctx = os.getenv("INGESTION_CONTEXT_TOKENS", "32768").strip()
+        ingestion_context_tokens = int(_raw_ctx) if _raw_ctx else 32768
+
+    parser = DocumentParser()
+    engine = TimelineEngine()
+
+    # --- chapter plan (shared with non-streaming path) --------------------
+    chapters = sectionize_pages(pages)
+    page_chapter_meta: Dict[int, Dict[str, Any]] = {}
+    ocr_pending_pages: List[int] = []
+    for ch in chapters:
+        meta_for_pages = {
+            "chapter_id": ch.chapter_id,
+            "chapter_kind": ch.kind,
+            "chapter_label": ch.label,
+        }
+        if ch.encounter_date:
+            meta_for_pages["encounter_date"] = ch.encounter_date
+        if ch.encounter_type:
+            meta_for_pages["encounter_type"] = ch.encounter_type
+        if ch.encounter_type_raw:
+            meta_for_pages["encounter_type_raw"] = ch.encounter_type_raw
+        if ch.section_header:
+            meta_for_pages["section_header"] = ch.section_header
+        for pn in ch.pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+        for pn in ch.ocr_pending_pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+            page_chapter_meta[pn]["needs_ocr"] = True
+            page_chapter_meta[pn]["ocr_status"] = "queued"
+            ocr_pending_pages.append(pn)
+
+    # --- regex timeline rows (fast, synchronous over pages) ---------------
+    events_stored = 0
+    if enable_timeline_rows:
+        for pn, txt in pages:
+            page_text = f"=== Page {pn} ===\n{txt}"
+            page_events = parser.parse_document(
+                page_text,
+                patient_id,
+                source=EventSource.PATIENT_UPLOAD,
+                filename=source_filename,
+            )
+            for event in page_events:
+                event.meta = event.meta or {}
+                event.meta["page"] = pn
+                ch_meta = page_chapter_meta.get(pn)
+                if ch_meta:
+                    for k, v in ch_meta.items():
+                        event.meta.setdefault(k, v)
+                await engine.store_event(db, event)
+                events_stored += 1
+
+        await db.commit()
+        yield {
+            "type": "stage",
+            "stage": "regex_rows",
+            "events_stored": events_stored,
+            "chapters": len(chapters),
+            "ocr_pending": len(ocr_pending_pages),
+        }
+
+    # --- load / init PatientTimelineVision --------------------------------
+    if pool is not None:
+        from server.eoh.patient_timeline_vision import load_timeline_vision_pg
+        from server.eoh.ptv_journal_bridge import empty_user_vision
+
+        vision = await load_timeline_vision_pg(pool, patient_id)
+        if vision is None:
+            vision = empty_user_vision(patient_id)
+        vision.metadata = vision.metadata or {}
+        vision.metadata["last_pdf_ingest"] = {
+            "filename": source_filename,
+            "total_pages": total_pages,
+        }
+    else:
+        from server.eoh.patient_timeline_vision import PatientTimelineVision
+
+        vision = PatientTimelineVision(
+            patient_id=patient_id,
+            built_at=datetime.now().isoformat(),
+            session_only=False,
+            metadata={
+                "source": "pdf_ingestion",
+                "total_pages": total_pages,
+                "filename": source_filename,
+            },
+        )
+
+    # --- LLM extraction stream --------------------------------------------
+    if _use_openai:
+        ingestion_client = AsyncOpenAI()
+    else:
+        ingestion_client = get_ollama_client(base_url=OLLAMA_BASE_URL)
+
+    async for frame in stream_populate_vision_from_extracted_pages(
+        vision=vision,
+        extraction_pages=pages,
+        ingestion_client=ingestion_client,
+        ingestion_model=effective_model,
+        ingestion_context_tokens=ingestion_context_tokens,
+    ):
+        yield frame
+
+    # --- persist graph -----------------------------------------------------
+    if pool is not None:
+        from server.eoh.patient_timeline_vision import save_timeline_vision_pg
+
+        await save_timeline_vision_pg(pool, vision)
+    else:
+        from server.eoh.patient_timeline_vision import save_timeline_vision
+
+        save_timeline_vision(vision)
+
+    yield {
+        "type": "persisted",
+        "events_stored": events_stored,
+        "graph_events": len(vision.events),
+        "graph_edges": vision.count_edges(),
+        "chapters": len(chapters),
+        "ocr_pending_pages": list(ocr_pending_pages),
+        "ingestion_model": effective_model,
     }
 
 
