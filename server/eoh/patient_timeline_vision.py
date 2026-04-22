@@ -29,6 +29,26 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from server.utils.parse_date import parse_clinical_date
 
+# Graph / API preview length (timeline_summarizer prompts align on this cap).
+GRAPH_PREVIEW_MAX_CHARS = 240
+
+
+def normalize_graph_preview(text: str, max_len: int = GRAPH_PREVIEW_MAX_CHARS) -> str:
+    """
+    Collapse whitespace and cap preview length for stored graph events.
+
+    If text still exceeds ``max_len`` after collapsing spaces (e.g. model
+    over-ran the budget), keep the **suffix** so trailing dose lines, dates,
+    and medication clauses survive truncation better than a head cut.
+    """
+    if not text:
+        return ""
+    t = " ".join(str(text).split())
+    if len(t) <= max_len:
+        return t
+    return t[-max_len:]
+
+
 # ---------------------------------------------------------------------------
 # Edge-type priority for priority-weighted traversal.
 # Higher value = more clinically meaningful = follow first.
@@ -68,7 +88,7 @@ class TimelineEventVision:
     event_id: str  # Unique event identifier (e.g., "dx_001", "lab_2024-01-15_001")
     event_type: str  # diagnosis | lab | note | med | procedure | visit | flare
     timestamp: str  # ISO format timestamp
-    preview: str  # Human-readable preview/summary
+    preview: str  # Human-readable preview/summary (target ≤GRAPH_PREVIEW_MAX_CHARS)
     
     discovered_by: List[str] = field(default_factory=list)  # snapshot | pdf_page_15 | manual
     status: str = "included"  # included | excluded | uncertain
@@ -985,7 +1005,7 @@ def add_events_from_pdf_page(
         event_id = event.get("event_id") or f"pdf_p{page_num:04d}_e{idx:03d}"
         event_type = event.get("event_type", "unknown")
         timestamp = event.get("timestamp", "")
-        preview = event.get("preview", "")
+        preview = normalize_graph_preview(str(event.get("preview", "") or ""))
 
         # Start from any annotations the caller already stamped (chapter_id,
         # encounter_date, encounter_type, section_header, chapter_kind,

@@ -45,8 +45,10 @@ from server.timeline.embedding_cache import get_cached_query_embedding, put_cach
 
 # PatientTimelineVision for provenance tracking
 from server.eoh.patient_timeline_vision import (
+    GRAPH_PREVIEW_MAX_CHARS,
     PatientTimelineVision,
     TimelineEventVision,
+    normalize_graph_preview,
     seed_from_structured_probe_snapshot,
     add_events_from_pdf_page,
     load_timeline_vision,
@@ -580,12 +582,6 @@ def _lab_signal(lab_events: List[Dict[str, Any]], max_items: int = 20) -> Dict[s
 
     return {"n": len(lab_events), "high_signal": [fmt(e) for e in chosen]}
 
-def _small_excerpt(text: str, limit: int = 240) -> str:
-    if not text:
-        return ""
-    t = " ".join(text.split())
-    return t[:limit] + ("…" if len(t) > limit else "")
-
 def ann_library_for_llm() -> List[Dict[str, Any]]:
     # compact form for prompts / payloads
     out = []
@@ -1036,12 +1032,12 @@ def _safe_get_choice_content(resp: Any) -> str:
         return "{}"
 
 
-def _clean_note_preview(raw: str, max_chars: int) -> str:
+def _clean_note_preview(raw: str, max_chars: int = GRAPH_PREVIEW_MAX_CHARS) -> str:
     """
     Turn raw note_text into a compact, readable preview:
       - collapse whitespace
       - normalize a couple of common headers
-      - hard truncate
+      - cap length (suffix kept if over budget; same as graph previews)
     """
     import re
 
@@ -1055,10 +1051,7 @@ def _clean_note_preview(raw: str, max_chars: int) -> str:
     # Optional: normalize some patterns
     text = re.sub(r"^INDICATION:\s*", "Indication: ", text, flags=re.IGNORECASE)
 
-    if len(text) > max_chars:
-        text = text[:max_chars].rstrip() + " [truncated]"
-
-    return text
+    return normalize_graph_preview(text, max_len=max_chars)
 
 def _push_sample(bucket: list, ev: dict, *, max_items: int) -> None:
     if len(bucket) >= max_items:
@@ -1110,10 +1103,12 @@ def _push_sample(bucket: list, ev: dict, *, max_items: int) -> None:
         if not preview_text:
             # ultra-safe fallback: first line of note_text if present
             nt = (structured.get("note_text") or "").strip()
-            preview_text = nt.splitlines()[0][:240] if nt else ""
+            preview_text = normalize_graph_preview(nt.splitlines()[0]) if nt else ""
     else:
         # keep something stable for unknown types
         preview_text = (structured.get("text") or structured.get("summary") or "").strip()
+
+    preview_text = normalize_graph_preview(preview_text)
 
     payload = {
         "ts": ev.get("ts"),
@@ -1164,8 +1159,7 @@ def _format_structured_snapshot_for_context(
             if not txt:
                 txt = "[no preview available]"
 
-            if len(txt) > 280:
-                txt = txt[:280] + " [truncated]"
+            txt = normalize_graph_preview(txt)
 
             # Convert timestamp to string if it's a datetime object
             if hasattr(ts, 'isoformat'):
@@ -1532,7 +1526,8 @@ async def _build_structured_probe_snapshot(
                 preview = _preview_event(et, structured)
             except Exception:
                 preview = "[no preview available]"
-            
+            preview = normalize_graph_preview(preview)
+
             out.append(SnapshotEvent(
                 ts=str(r["ts"]),
                 event_type=et,
@@ -3392,7 +3387,7 @@ async def _extract_events_from_pages_batch(
           NEVER use "page" or a bare "note" — always pick a medically meaningful type.
           "administrative" is only for pages with no clinical content (release-of-info, consent forms, pure demographics).
         - `timestamp`: YYYY-MM-DD if present in text, else "unknown"
-        - `preview`: 2 sentences, ≤240 characters. Sentence 1 states WHAT (name/value/finding/drug+dose). Sentence 2 states WHY/CONTEXT (indication, change rationale, site, clinician) when the page states it; otherwise omit sentence 2. Never fabricate context.
+        - `preview`: 2 sentences, **≤240 characters total** (hard cap downstream). Sentence 1 states WHAT (name/value/finding/drug+dose). Sentence 2 states WHY/CONTEXT (indication, change rationale, site, clinician) when the page states it; otherwise omit sentence 2. Never fabricate context. If space is tight, shorten sentence 1 — do not exceed 240 characters.
         - `drug_name`: (medication events ONLY) the generic drug name exactly as written
           in the text, e.g. "prednisone", "pyridostigmine", "mycophenolate mofetil".
           REQUIRED for every medication event. Use generic name when brand also present.
@@ -3444,10 +3439,11 @@ async def _extract_events_from_pages_batch(
           NEVER use "page" or a bare "note" — always pick a medically meaningful type.
           "administrative" is only for pages with no clinical content (release-of-info forms, page boilerplate, pure demographics).
         - timestamp: YYYY-MM-DD if explicitly anchored on that page; else "unknown". Never invent dates.
-        - preview: 2–4 sentences when warranted, up to ~800 characters — include values, trends,
-          indication, clinician name or setting ONLY if stated in the page text. Minimum 2 sentences whenever the page supports it.
+        - preview: at most 2 sentences and **≤240 characters** total. State WHAT (finding, drug+dose, result)
+          and brief WHY/context **only** when the page states it. Never invent. If the page is dense,
+          put longer narrative in ``detail`` instead of stretching ``preview``.
         - detail: (optional) longer structured narrative for complex rows (differential, reasoning,
-          multi-step plans) — up to ~2000 characters when the page is dense; omit if preview suffices.
+          multi-step plans) — up to ~2000 characters when the page is dense; omit if preview alone suffices.
         - drug_name: (medication only) generic name as written; REQUIRED for every medication event.
         - drug_dosage: (medication only) dose, frequency, changes, as written.
         - drug_route: (medication only) oral|IV|IM|SC|topical|inhaled|other when known.
@@ -3650,11 +3646,10 @@ async def _extract_events_from_pages_batch(
             for e in evs:
                 if not isinstance(e, dict):
                     continue
-                _prev_cap = 2000 if _gpt41_extract else 400
                 ev_dict: Dict[str, Any] = {
                     "event_type": str(e.get("event_type", "note")),
                     "timestamp": str(e.get("timestamp", "unknown")),
-                    "preview": str(e.get("preview", ""))[:_prev_cap],
+                    "preview": normalize_graph_preview(str(e.get("preview", "") or "")),
                 }
                 _detail = e.get("detail")
                 if _detail and isinstance(_detail, str) and _detail.strip():
@@ -3679,7 +3674,11 @@ async def _extract_events_from_pages_batch(
                     {
                         "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": (txt[:200] if txt.strip() else "(no events extracted)"),
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt.strip()
+                            else "(no events extracted)"
+                        ),
                         "event_id": f"pdf_p{pn:04d}_generic",
                     }
                 ]
@@ -3724,7 +3723,7 @@ async def _extract_events_from_pages_batch(
                     out[pn] = [{
                         "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": txt[:200],
+                        "preview": normalize_graph_preview(txt),
                         "event_id": f"pdf_p{pn:04d}_extract_fail",
                     }]
             return out
@@ -3739,7 +3738,7 @@ async def _extract_events_from_pages_batch(
                 {
                     "event_type": "administrative",
                     "timestamp": "unknown",
-                    "preview": txt[:200],
+                    "preview": normalize_graph_preview(txt),
                     "event_id": f"pdf_p{pn:04d}_extract_fail",
                 }
             ]
@@ -3792,7 +3791,7 @@ async def _extract_events_from_page_text(
         3. For each event, extract:
            - `event_type`: One of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
            - `timestamp`: Date in YYYY-MM-DD format if available, otherwise "unknown"
-           - `preview`: A concise 1-2 sentence summary of the event (max 200 chars)
+           - `preview`: A concise 1-2 sentence summary of the event (**max 240 characters**)
            - `drug_name`: (medication events ONLY) the generic drug name exactly as it
              appears in the text, e.g. "prednisone", "pyridostigmine". Use the generic
              name when both generic and brand are present. REQUIRED; omit for non-medication events.
@@ -3875,12 +3874,16 @@ async def _extract_events_from_page_text(
             if "event_id" not in event:
                 event["event_id"] = f"pdf_p{page_num:04d}_e{idx:04d}"
 
+        for event in events:
+            if isinstance(event, dict):
+                event["preview"] = normalize_graph_preview(str(event.get("preview", "") or ""))
+
         # If no events extracted, create a generic page event
         if not events:
             events = [{
                 "event_type": "administrative",
                 "timestamp": "unknown",
-                "preview": page_text[:200],
+                "preview": normalize_graph_preview(page_text),
                 "event_id": f"pdf_p{page_num:04d}_generic",
             }]
 
@@ -3892,7 +3895,7 @@ async def _extract_events_from_page_text(
         return [{
             "event_type": "administrative",
             "timestamp": "unknown",
-            "preview": page_text[:200],
+            "preview": normalize_graph_preview(page_text),
             "event_id": f"pdf_p{page_num:04d}_fallback",
         }]
     except Exception as e:
@@ -3901,7 +3904,7 @@ async def _extract_events_from_page_text(
         return [{
             "event_type": "administrative",
             "timestamp": "unknown",
-            "preview": page_text[:200],
+            "preview": normalize_graph_preview(page_text),
             "event_id": f"pdf_p{page_num:04d}_error",
         }]
 
@@ -4168,7 +4171,11 @@ async def populate_vision_from_extracted_pages(
                     {
                         "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt and txt.strip()
+                            else "(batch empty)"
+                        ),
                         "event_id": f"pdf_p{pn:04d}_batch_empty",
                     }
                 ]
@@ -4680,7 +4687,11 @@ async def stream_populate_vision_from_extracted_pages(
                     {
                         "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": (txt[:200] if txt and txt.strip() else "(batch empty)"),
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt and txt.strip()
+                            else "(batch empty)"
+                        ),
                         "event_id": f"pdf_p{pn:04d}_batch_empty",
                     }
                 ]
@@ -4740,7 +4751,7 @@ async def stream_populate_vision_from_extracted_pages(
                     "page": page_num,
                     "event_type": ev.get("event_type"),
                     "timestamp": ev.get("timestamp"),
-                    "preview": (ev.get("preview") or "")[:280],
+                    "preview": normalize_graph_preview(str(ev.get("preview") or "")),
                     "drug_name": ev.get("drug_name"),
                     "event_id": ev.get("event_id"),
                 }
@@ -5850,7 +5861,7 @@ async def _infer_llm_connascence_batched(
                     "event_id": e.event_id,
                     "event_type": e.event_type,
                     "timestamp": e.timestamp,
-                    "preview": (e.preview or "")[:250],
+                    "preview": normalize_graph_preview(e.preview or ""),
                 }
                 for e in batch
             ]
@@ -6111,7 +6122,7 @@ def _compact_graph_for_reduce(
         for e in bucket:
             row = {
                 "ts": e.timestamp,
-                "preview": (e.preview or "")[:120],
+                "preview": normalize_graph_preview(e.preview or "", max_len=120),
             }
             if e.connascence:
                 row["connascence"] = {k: v for k, v in e.connascence.items()}

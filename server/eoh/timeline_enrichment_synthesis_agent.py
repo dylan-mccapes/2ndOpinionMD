@@ -16,7 +16,7 @@ import textwrap
 from typing import Any, Dict, List
 
 from server.api.stream_config import EOH_TIMELINE_SUMMARIZER_MODEL
-from server.eoh.patient_timeline_vision import PatientTimelineVision
+from server.eoh.patient_timeline_vision import PatientTimelineVision, normalize_graph_preview
 from server.eoh.timeline_summarizer import (
     _safe_get_choice_content,
     chat_completion_async,
@@ -145,7 +145,7 @@ async def synthesize_timeline_enrichment(
             "event_id": e.event_id,
             "event_type": e.event_type,
             "timestamp": e.timestamp,
-            "preview": e.preview[:200],
+            "preview": normalize_graph_preview(e.preview or "", max_len=200),
             "discovered_by": e.discovered_by,
         }
         event_str = json.dumps(event_dict)
