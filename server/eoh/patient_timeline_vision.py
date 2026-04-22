@@ -138,7 +138,7 @@ class TimelineEventVision:
             event_id=data.get("event_id", ""),
             event_type=data.get("event_type", "unknown"),
             timestamp=data.get("timestamp", ""),
-            preview=data.get("preview", ""),
+            preview=normalize_graph_preview(str(data.get("preview", "") or "")),
             discovered_by=discovered_by,
             status=data.get("status", "included"),
             connascence=connascence,
@@ -361,6 +361,8 @@ class PatientTimelineVision:
         annotations: Optional[Dict[str, Any]] = None,
     ) -> TimelineEventVision:
         """Add or update an event in the timeline vision."""
+        preview = normalize_graph_preview(str(preview or ""))
+
         if event_id in self.events:
             # Event already exists; add discovered_by
             event = self.events[event_id]

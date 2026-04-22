@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from server.eoh.patient_timeline_vision import (
     PatientTimelineVision,
     TimelineEventVision,
+    normalize_graph_preview,
 )
 from server.utils.parse_date import parse_clinical_date
 
@@ -158,7 +159,7 @@ def redact_vision(vision: PatientTimelineVision) -> PatientTimelineVision:
     out.metadata.pop("patient_phi", None)
     # Redact previews and card fields.
     for ev in out.events.values():
-        ev.preview = _redact_text(ev.preview)
+        ev.preview = normalize_graph_preview(_redact_text(ev.preview))
         card = (ev.annotations or {}).get("card")
         if isinstance(card, dict):
             card["title"] = _redact_text(card.get("title") or "")
