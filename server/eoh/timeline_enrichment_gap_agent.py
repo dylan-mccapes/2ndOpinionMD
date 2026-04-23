@@ -83,6 +83,14 @@ TIMELINE_ENRICHMENT_GAP_SYSTEM_PROMPT = textwrap.dedent("""
     - "MG diagnosis event links to AChR antibody lab (diagnostic connascence, strength 0.9)"
     - "Need TS query for 'pyridostigmine' to find medication response events"
     - "Event event_0123 has timestamp 'unknown' but context suggests 2023-05-15"
+
+    **PHI / PII BOUNDARY (non-negotiable):**
+    Never emit patient names, family-member names, provider/staff names,
+    medical record numbers, dates of birth, street addresses, phone
+    numbers, email addresses, or facility names in any text field you
+    produce (``reasoning``, ``issue``, ``fix``, etc.). Reference events
+    by ``event_id`` and describe clinical content only (event type,
+    code, date, body system).
 """)
 
 

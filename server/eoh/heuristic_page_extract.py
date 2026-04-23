@@ -9,6 +9,12 @@ Design:
     - Cheap: ~0.5ms per page on CPython
     - Conservative: prefers false negatives over false positives
     - Transparent: every extracted field carries a `source` tag
+    - PHI-aware: the Epic / Kaiser letterhead banner that repeats at every
+      page top (name, MRN, DOB, address, phone) is stripped from the page
+      text before any backward-context slice is taken, and a final
+      redaction pass is applied to every ``preview`` field as a
+      belt-and-suspenders guard. PHI must never flow into
+      ``ehr.patient_timeline`` or ``ehr.patient_graph_vision``.
 """
 
 from __future__ import annotations
@@ -215,14 +221,126 @@ def _preview_trim(text: str, limit: int = _HEURISTIC_PREVIEW_MAX) -> str:
 
     Prefers the last whitespace boundary at or before ``limit`` and appends
     an ellipsis if anything was cut.  Leaves short text untouched.
+    Every preview is passed through :func:`redact_preview_phi` first so that
+    banner text (name / MRN / DOB / address / phone) never reaches the graph.
     """
-    s = text.strip()
+    s = redact_preview_phi(text).strip()
     if len(s) <= limit:
         return s
     cut = s.rfind(" ", 0, limit)
-    if cut < limit - 40:  # fallback: hard cut if no space nearby
+    if cut < limit - 40:
         cut = limit
     return s[:cut].rstrip(" ,.;:-") + "\u2026"
+
+
+# ── PHI guards ───────────────────────────────────────────────────────────────
+#
+# The Epic / Kaiser "Release of Medical Information" letterhead repeats at the
+# top of nearly every page of the source PDF, carrying
+#   <street>, <city>, <state> <zip><phone><FullName>MRN: <mrn> DOB: <m/d/yyyy>Sex: <sex>
+# on one concatenated line (PDF text extraction strips the whitespace).  When
+# the ICD regex sees a code near the top of a page its backward-context
+# window includes that banner verbatim, which is how PHI ends up in event
+# previews.  ``_strip_phi_banner`` removes the banner from page text before
+# any downstream extractor runs, and ``redact_preview_phi`` is the final
+# guard on any text that reaches the graph.
+
+# Epic letterhead line, loose: everything between "Release of Medical
+# Information" (or similar) and the "Sex:" field that closes the banner.
+_EPIC_LETTERHEAD = re.compile(
+    r"(?:(?:Release\s+of\s+)?Medical\s+Information|Patient\s+Information)"
+    r".{0,400}?Sex\s*[:\-]\s*\w+",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# "NAME MRN: 123456 DOB: 1/2/1970 Sex: male" banner without the lead-in.
+_PATIENT_BANNER = re.compile(
+    r"(?:[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){1,3}\s*)?"
+    r"MRN\s*[:\-]?\s*[A-Za-z0-9\-]{4,20}\s*"
+    r"DOB\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}\s*"
+    r"Sex\s*[:\-]?\s*\w+",
+    re.IGNORECASE,
+)
+
+# Bare field-level PHI captures (for per-preview scrubbing).
+_PHI_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+    # MRN labelled, with optional whitespace / dashes.
+    (re.compile(r"MRN\s*[:#\-]?\s*[A-Za-z0-9\-]{4,20}", re.I),            "MRN: [REDACTED]"),
+    (re.compile(r"MR\s*#\s*[A-Za-z0-9\-]{4,20}",         re.I),            "MR #: [REDACTED]"),
+    # DOB labelled.
+    (re.compile(r"DOB\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}", re.I),          "DOB: [REDACTED]"),
+    (re.compile(r"(?:date\s+of\s+birth|born)\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}", re.I),
+                                                                          "DOB: [REDACTED]"),
+    # Phone, with or without separators, with or without word boundaries
+    # (PDF extraction often runs digits into adjacent tokens).
+    (re.compile(r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]\d{4}"),                 "[PHONE]"),
+    # Email.
+    (re.compile(r"[\w.+\-]+@[\w\-]+\.[A-Za-z]{2,8}"),                     "[EMAIL]"),
+    # ZIP+phone squash: "94598925-210-8834" -> 5 digits then phone.
+    (re.compile(r"\b\d{5}\d{3}-\d{3}-\d{4}\b"),                           "[ZIP][PHONE]"),
+    # US address with street suffix.
+    (re.compile(
+        r"\b\d+\s+[A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]+){0,4}\s+"
+        r"(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|"
+        r"Way|Pl|Place|Ct|Court|Hwy|Highway|Pkwy|Parkway)\b",
+        re.I),                                                            "[ADDRESS]"),
+    # Spanish-origin address (Via, Paseo, Calle, Camino) — no trailing suffix.
+    (re.compile(
+        r"\b\d+\s*[A-Z]?\s+(?:Via|Paseo|Calle|Camino|Avenida)"
+        r"\s+[A-Z][A-Za-z]+",
+        re.I),                                                            "[ADDRESS]"),
+    # City, ST ZIP (e.g. "Walnut Creek, CA 94598").
+    (re.compile(r"\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2},\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?"),
+                                                                          "[CITY_STATE_ZIP]"),
+    # "Patient: Firstname Lastname" / "Name: ..." triggers.
+    (re.compile(
+        r"\b(?:patient|name|attending|provider|signed\s+by|given\s+by|by)"
+        r"\s*[:\-]?\s*([A-Z][A-Za-z'\-]+\s+[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]*)?)",
+        re.I),                                                             r"\g<0>:[NAME]"),
+    # Name sitting immediately before an MRN/DOB field (common banner pattern
+    # after banner stripping has partially completed). Consume the name only;
+    # the MRN/DOB labels are handled by their own rules.
+    (re.compile(
+        r"[A-Z][a-z]+(?:\s+[A-Z]\.?|\s+[A-Z][a-z]+){1,3}"
+        r"(?=\s*(?:MRN|MR\s*#|DOB|Sex\s*[:\-]))", re.I),                  "[NAME]"),
+    # "Lastname, Firstname M [(credential)]" staff signature pattern.
+    (re.compile(
+        r"\b[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?,\s*"
+        r"[A-Z][A-Za-z'\-]+(?:\s+[A-Z]\.?)?\s*"
+        r"\((?:M\.?D\.?|D\.?O\.?|R\.?N\.?|L\.?V\.?N\.?|N\.?P\.?|"
+        r"P\.?A\.?|PharmD|PA-C|DPT|LCSW|MSW|APRN|FNP-[A-Z]+)\)"),           "[PROVIDER]"),
+]
+
+
+def _strip_phi_banner(text: str) -> str:
+    """Remove the Epic / Kaiser patient letterhead from page text.
+
+    Called once at the top of :func:`heuristic_page_extract` so that no
+    downstream extractor — including the ICD backward-context slice — ever
+    sees the banner. Replaces each match with a single space so char offsets
+    don't collapse adjacent tokens into one run-on word.
+    """
+    if not text:
+        return text
+    cleaned = _EPIC_LETTERHEAD.sub(" ", text)
+    cleaned = _PATIENT_BANNER.sub(" ", cleaned)
+    return cleaned
+
+
+def redact_preview_phi(text: str) -> str:
+    """Final PHI guard for any text that reaches the graph.
+
+    Idempotent and safe to apply twice. Applied inside :func:`_preview_trim`
+    so every ``HeuristicEvent.preview`` is scrubbed before serialization;
+    also safe to call from other ingest stages (enrichment merge, finalize)
+    if a preview is constructed outside this module.
+    """
+    if not text:
+        return text
+    out = text
+    for pat, repl in _PHI_PATTERNS:
+        out = pat.sub(repl, out)
+    return out
 
 
 @dataclass
@@ -570,6 +688,10 @@ def heuristic_page_extract(page_num: int, text: str) -> HeuristicPageResult:
 
     Pure Python. No LLM. ~0.5ms per page.
     """
+    # Strip the Epic / Kaiser letterhead banner so downstream context slices
+    # never include patient name / MRN / DOB / address / phone.
+    text = _strip_phi_banner(text)
+
     result = HeuristicPageResult(page_num=page_num)
 
     # Page-level context

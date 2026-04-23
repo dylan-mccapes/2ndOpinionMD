@@ -89,6 +89,15 @@ TIMELINE_ENRICHMENT_SYNTHESIS_SYSTEM_PROMPT = textwrap.dedent("""
     
     **Context Budget:**
     You have high context (90% cap). Use it for synthesis, not exhaustive enumeration.
+
+    **PHI / PII BOUNDARY (non-negotiable):**
+    Never emit patient names, family-member names, provider/staff names,
+    medical record numbers, dates of birth, street addresses, phone numbers,
+    email addresses, or facility names in any text field you produce
+    (``reasoning``, ``remaining_gaps``, ``enrichment_summary``, etc.).
+    Input text may include EHR letterhead banners — treat them as
+    out-of-band metadata and summarize clinical content only (event type,
+    code, date, body system).
 """)
 
 

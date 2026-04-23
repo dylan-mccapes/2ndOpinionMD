@@ -88,10 +88,6 @@ The UC emitted at **rounds 3 and 4** — two full semi-annual cycles before the 
 - **Graph-native.** `arc_flare_r05.cross_arc_edges` links the overt-flare arc to the study-epoch arcs at rounds 3 and 4 with `kind: "pre_flare_anticipation"` and `evidence_event_id` pointing to the anticipation UCs. The pre-flare signal is a first-class graph edge, not a footnote.
 - **Open-question bearing.** `arc_flare_r05.open_questions` contains: *"Earlier UC-anticipated rounds 3–4 suggest a pre-flare signal; would earlier escalation have prevented this event?"* — the system authors its own agenda for follow-up review.
 
-### 3.4 What this lets Kaleb say on stage
-
-*"Here is a five-year FORWARD-shaped patient trajectory. The uncertainty-carrier framework emitted a flare probability of 0.22 at round 3 and 0.37 at round 4 — two full semi-annual cycles before the overt flare at round 5. The carrier cites the evidence events, states its confidence, and — when it has nothing to go on — says so explicitly. This is what clinical decision support looks like when you mandate uncertainty carriers. The alternative — a single point prediction with no basis — suppresses exactly the information a clinician needs."*
-
 ---
 
 ## 4. P5 — the honest-uncertainty backup story
@@ -111,10 +107,6 @@ Patient does not complete questionnaires at rounds 4 and 6. The graph records tw
 ### 4.3 The governance line
 
 The UC width at round 7 is wider than the width at round 9 even though the point estimates are nearly identical — **because the information available is different**, and the framework refuses to paper over that difference. The basis line says so explicitly.
-
-### 4.4 What this lets Kaleb say on stage
-
-*"The system's job is not to maximize confidence. It is to communicate the confidence that the evidence supports. When a patient misses two questionnaires, the UC band widens and the basis line records the missingness. When the data returns, the band narrows. An output that pretends certainty it does not have is a patient-safety failure."*
 
 ---
 

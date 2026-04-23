@@ -3835,6 +3835,15 @@ async def _extract_events_from_page_text(
         - If date is ambiguous or partial, use "unknown".
         - For medication events, always include drug_name if a drug is named in the text.
         - Include drug_dosage and drug_route whenever the information is present.
+
+        **PHI / PII BOUNDARY (non-negotiable):**
+        Source page text frequently begins with the EHR's letterhead banner
+        (patient name, MRN, DOB, address, phone, facility, provider names).
+        Never copy those tokens into ``preview``. Previews describe the
+        clinical event only — what, code, date, body system. If a preview
+        would otherwise be empty without banner context, return a short
+        clinical descriptor derived from the event_type and any code
+        present (e.g. ``"Hypertension diagnosis [I10]"``).
     """)
 
     payload = {

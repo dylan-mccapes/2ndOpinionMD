@@ -41,6 +41,38 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# PHI-safe filename
+# ============================================================================
+#
+# Source filenames shared by sites frequently embed the patient's name
+# ("NormanEricRoberts_decrypted.pdf"). Those filenames must never be written
+# into ``vision.metadata.last_pdf_ingest.filename`` because that metadata is
+# returned to clients and persisted in ``ehr.patient_graph_vision``.
+# :func:`_sanitize_source_filename` detects the common CamelCase-name shape
+# and replaces it with ``patient_record``, preserving suffix markers
+# ("_decrypted", "_truncated") and the file extension for operational
+# debugging.
+
+_CAMEL_NAME_RUN = re.compile(
+    r"(?<![A-Za-z])(?:[A-Z][a-z]+){2,}(?![a-z])"
+)
+
+
+def _sanitize_source_filename(name: str) -> str:
+    """Return a PHI-stripped filename safe to persist in graph metadata."""
+    if not name:
+        return "patient_record.pdf"
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    scrubbed = _CAMEL_NAME_RUN.sub("patient_record", stem) or "patient_record"
+    if scrubbed == stem and any(token in stem.lower() for token in ("firstname", "lastname", "name")):
+        scrubbed = "patient_record"
+    return f"{scrubbed}.{ext}" if ext else scrubbed
+
+
 # ============================================================================
 # Inference Patterns for Structured Data Extraction
 # ============================================================================
@@ -977,7 +1009,7 @@ async def ingest_extracted_pdf_pages(
                 vision = empty_user_vision(patient_id)
             vision.metadata = vision.metadata or {}
             vision.metadata["last_pdf_ingest"] = {
-                "filename": source_filename,
+                "filename": _sanitize_source_filename(source_filename),
                 "total_pages": total_pages,
             }
         else:
@@ -1249,7 +1281,7 @@ async def stream_ingest_extracted_pdf_pages(
             vision = empty_user_vision(patient_id)
         vision.metadata = vision.metadata or {}
         vision.metadata["last_pdf_ingest"] = {
-            "filename": source_filename,
+            "filename": _sanitize_source_filename(source_filename),
             "total_pages": total_pages,
         }
     else:
