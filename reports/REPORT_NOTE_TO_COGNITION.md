@@ -14,7 +14,7 @@ Starting from a backend-only repo with 100+ API endpoints and a single static HT
 
 | PR | Phase | What Shipped |
 |---|---|---|
-| #186 | Readiness | `REPORT_READINESS.md` — 24 tasks, 30+ routing entries, 15 constraints extracted from HANDOFF + SpellBook |
+| #186 | Readiness | `reports/REPORT_READINESS.md` — 24 tasks, 30+ routing entries, 15 constraints extracted from HANDOFF + SpellBook |
 | #187 | 1 | Vite + React 18 + TypeScript + Tailwind scaffold, 13 routes, dark/light theme, auth context |
 | #188 | 2 | SSE streaming consumer (ASK + EoH), coding review with accept/reject, transparency panel, receipt cache |
 | #189 | 3 | ErrorBoundary, dynamic StatusBar with context, status propagation from all mode pages |

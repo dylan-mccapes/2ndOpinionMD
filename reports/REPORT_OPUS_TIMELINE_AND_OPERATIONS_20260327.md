@@ -80,7 +80,7 @@ If the credit path’s OpenAI retry throws, that chunk is also **skipped** (same
 
 ## Relation to other Claude work
 
-EoHD **live synthesis** experiments (evidence mapping, final report) have been documented with **Sonnet 4** in `receipts/REPORT_CLAUDE_SYNTHESIS_INTEGRATION_20260329.md`. That report is **not** Opus pricing or timeline map/reduce economics; this document is.
+EoHD **live synthesis** experiments (evidence mapping, final report) have been documented with **Sonnet 4** in `reports/REPORT_CLAUDE_SYNTHESIS_INTEGRATION_20260329.md`. That report is **not** Opus pricing or timeline map/reduce economics; this document is.
 
 ---
 

@@ -386,7 +386,7 @@
     "TRANSCRIPTION_PIPELINE_README.md": "TranscriptionMachine + TranscriptionSummarizer pipeline docs.",
     ".env.example": "All environment variables with comments.",
     "game_plans/GAME_PLAN_DOCTOR_PORTAL.md": "Ambient coding portal for doctor appointments (new).",
-    "game_plans/STRATEGY_GRAPH_TRAVERSAL.md": "Core 12 PTV graph traversal tools for agents (executable via server/graph_traversal/agent_tools.py)."
+    "reports/STRATEGY_GRAPH_TRAVERSAL.md": "Core 12 PTV graph traversal tools for agents (executable via server/graph_traversal/agent_tools.py)."
   },
 
   "devin_instructions": {

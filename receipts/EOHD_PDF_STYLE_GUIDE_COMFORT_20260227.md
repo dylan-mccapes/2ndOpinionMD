@@ -57,5 +57,5 @@ Use the script in comfort mode (recommended), or use Pandoc with:
 
 Example:
 
-`python3 eohd_pdf_agent.py --report-md receipts/REPORT_NORMAN_ERIC_ROBERTS_EOHD_20260227.md --receipt-md receipts/RECEIPT_EOHD_NORMAN_ERIC_ROBERTS_20260226.md --out-md receipts/EOHD_PACKET_NORMAN_ERIC_ROBERTS_COMFORT.md --out-pdf receipts/EOHD_PACKET_NORMAN_ERIC_ROBERTS_COMFORT.pdf --tone comfort`
+`python3 eohd_pdf_agent.py --report-md reports/REPORT_NORMAN_ERIC_ROBERTS_EOHD_20260227.md --receipt-md receipts/RECEIPT_EOHD_NORMAN_ERIC_ROBERTS_20260226.md --out-md receipts/EOHD_PACKET_NORMAN_ERIC_ROBERTS_COMFORT.md --out-pdf receipts/EOHD_PACKET_NORMAN_ERIC_ROBERTS_COMFORT.pdf --tone comfort`
 

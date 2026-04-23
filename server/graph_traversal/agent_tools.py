@@ -1,7 +1,7 @@
 """
 Agent-callable graph tools for Patient Timeline Vision (PTV).
 
-Maps the core 12 strategies in game_plans/STRATEGY_GRAPH_TRAVERSAL.md to
+Maps the core 12 strategies in reports/STRATEGY_GRAPH_TRAVERSAL.md to
 deterministic Python functions. Each tool returns JSON-serializable dicts with
 provenance fields for DerivationChain (M63).
 

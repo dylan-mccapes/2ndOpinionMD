@@ -100,7 +100,10 @@ data/*_ranked*.tsv
 # CHV/MIMIC build outputs & local artifacts
 backups/
 db_integrity_reports/
-reports/
+# Consolidated REPORT/STRATEGY markdown lives in /reports/*.md (tracked).
+# Makefile SQL integrity dumps (mk/98_backups.mk) — keep out of git:
+reports/integrity_*.txt
+reports/integrity_*.json
 models/
 nano
 failed_ids.txt

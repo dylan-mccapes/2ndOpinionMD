@@ -436,7 +436,7 @@ For a 4,223-page record in lite mode with Ollama ingestion:
 - `server/timeline/embedding_cache.py` — pgvector query embedding cache
 
 ### Strategy docs
-- `2ndOpinionMD-MVP/game_plans/STRATEGY_GRAPH_GUIDED_SUMMARIZATION_20260327.md` — graph-guided summarization roadmap
+- `reports/STRATEGY_GRAPH_GUIDED_SUMMARIZATION_20260327.md` — graph-guided summarization roadmap
 - `2ndOpinionMD-MVP/REPORT_PATIENT_TIMELINE_VISION_INGESTION_ENRICHMENT_20260327.md` — enrichment pipeline notes
 
 ---

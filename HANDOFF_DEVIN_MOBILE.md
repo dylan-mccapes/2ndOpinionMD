@@ -9,7 +9,7 @@
 
 ## First Task: Create REPORT_READINESS_MOBILE.md
 
-Before starting the build, create `REPORT_READINESS_MOBILE.md` in the 2ndOpinionMD-MVP repo root, structured like `REPORT_READINESS.md`.
+Before starting the build, create `reports/REPORT_READINESS_MOBILE.md` in the 2ndOpinionMD-MVP repo, structured like `reports/REPORT_READINESS.md`.
 
 ### Required Sections
 
@@ -43,7 +43,7 @@ Before starting the build, create `REPORT_READINESS_MOBILE.md` in the 2ndOpinion
 
 ### Reference Format
 
-Use `REPORT_READINESS.md` as the structural template. Adapt content for mobile: React Native, Expo, mobile_spec, prototype_scope_nate, style guide (reference only), design commandments (Nate's north star, not canonical).
+Use `reports/REPORT_READINESS.md` as the structural template. Adapt content for mobile: React Native, Expo, mobile_spec, prototype_scope_nate, style guide (reference only), design commandments (Nate's north star, not canonical).
 
 ---
 

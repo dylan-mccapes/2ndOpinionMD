@@ -225,6 +225,6 @@ The agentic probe harness, with its iterative tool selection, working set tracki
 | `sandbox/norman_graph_retrieval/tool_agent_harness.py` | Fixed-pipeline harness (flagship v1.1) |
 | `sandbox/norman_graph_retrieval/agentic_probe_harness.py` | Agentic probe harness (dynamic tool selection) |
 | `sandbox/norman_graph_retrieval/grok_20_queries.json` | 20 clinically meaningful evaluation queries |
-| `game_plans/STRATEGY_GRAPH_TRAVERSAL.md` | Strategy document (Core-12, primary pipeline) |
+| `reports/STRATEGY_GRAPH_TRAVERSAL.md` | Strategy document (Core-12, primary pipeline) |
 | `receipts/TOOL_ANGENT_HARNESS_NASCENT_RUN.sh` | Nascent run output + executive summary |
 | `receipts/RECEIPT_GRAPH_TRAVERSAL_TOOL_HARNESS_20260413.md` | Tool harness delivery receipt |

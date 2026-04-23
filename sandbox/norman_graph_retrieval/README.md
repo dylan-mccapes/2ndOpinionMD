@@ -89,7 +89,7 @@ python sandbox/norman_graph_retrieval/run.py --no-semantic    # keyword-only hyb
 python sandbox/norman_graph_retrieval/run.py --with-centrality  # add structural hubs (optional)
 ```
 
-The default run uses a **temporal slice** (recent window from the latest corpus date) after structural **graph_reduce**, then **sentence-transformers** hybrid on that corpus, then **multi-seed BFS** restricted to the same set — see `game_plans/STRATEGY_GRAPH_TRAVERSAL.md` v1.1.
+The default run uses a **temporal slice** (recent window from the latest corpus date) after structural **graph_reduce**, then **sentence-transformers** hybrid on that corpus, then **multi-seed BFS** restricted to the same set — see `reports/STRATEGY_GRAPH_TRAVERSAL.md` v1.1.
 
 Environment:
 
@@ -188,5 +188,5 @@ The harness **normalizes** common model mistakes: `tool` / `name`+`parameters` i
 
 ## See also
 
-- `game_plans/STRATEGY_GRAPH_TRAVERSAL.md` — core 12 strategy IDs.
+- `reports/STRATEGY_GRAPH_TRAVERSAL.md` — core 12 strategy IDs.
 - `server/graph_traversal/pe_adapter.py` — PTV → provenance-engine node conversion.
