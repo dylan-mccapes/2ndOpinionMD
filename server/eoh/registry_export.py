@@ -33,17 +33,29 @@ from server.eoh.patient_timeline_vision import (
     TimelineEventVision,
     normalize_graph_preview,
 )
+from server.eoh import code_mappings as _code_mappings
 from server.utils.parse_date import parse_clinical_date
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Tiny in-process code mapping — extension point for real RxNorm/LOINC/SNOMED.
+# Code mapping — delegates to server.eoh.code_mappings (single source of truth).
 # =============================================================================
-# This is intentionally minimal.  A later pass can replace ``code_mapping_hint``
-# with a call to an RxNorm service / LOINC cache / SNOMED lookup.
+# ``code_mapping_hint`` is re-exported here for API stability; the implementation
+# now lives in ``code_mappings`` so graph_finalize and registry_export share a
+# single canonical RxNorm / LOINC / SNOMED table.
 
+def code_mapping_hint(kind: str, name: str) -> Optional[Dict[str, str]]:
+    """Return ``{"system", "code", "display"}`` or ``None``.
+
+    Thin wrapper around :func:`server.eoh.code_mappings.code_mapping_hint`.
+    """
+    return _code_mappings.code_mapping_hint(kind, name)
+
+
+# Kept for backwards compatibility with any external callers that imported
+# the raw tables.  Prefer ``server.eoh.code_mappings`` for new code.
 _DRUG_TO_RXCUI: Dict[str, Tuple[str, str]] = {
     "methotrexate":     ("6851",  "RxNorm"),
     "prednisone":       ("8640",  "RxNorm"),
@@ -99,50 +111,60 @@ _PROC_TO_SNOMED: Dict[str, Tuple[str, str]] = {
 }
 
 
-def code_mapping_hint(kind: str, name: str) -> Optional[Dict[str, str]]:
-    """Return ``{"system": ..., "code": ..., "display": ...}`` or None.
-
-    Kinds: "drug", "lab", "procedure".  Unknown kind or name → None.
-    """
-    if not name:
-        return None
-    key = name.strip().lower()
-    if kind == "drug":
-        hit = _DRUG_TO_RXCUI.get(key)
-    elif kind == "lab":
-        hit = _LAB_TO_LOINC.get(key)
-    elif kind == "procedure":
-        hit = _PROC_TO_SNOMED.get(key)
-    else:
-        return None
-    if not hit:
-        return None
-    code, system = hit
-    return {"system": system, "code": code, "display": name}
-
-
 # =============================================================================
 # De-identification
 # =============================================================================
 
-# Conservative patterns.  We only strip what's unambiguously PHI.
-_PHONE_RX = re.compile(r"\b\d{3}[\s\.\-]\d{3}[\s\.\-]\d{4}\b")
-_EMAIL_RX = re.compile(r"[\w\.\-]+@[\w\.\-]+\.[a-z]{2,4}", re.I)
-_MRN_RX = re.compile(r"\bMRN\s*[:\-]?\s*[A-Z0-9\-]{4,20}", re.I)
-_DOB_RX = re.compile(r"\b(?:dob|born|date\s+of\s+birth)\b[^\n]{0,40}", re.I)
-_ADDRESS_RX = re.compile(r"\b\d+\s+[A-Z][a-zA-Z]+\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pl|Place|Ct|Court)\b")
-# Capitalized two-word names after common triggers.
-_NAME_AFTER_RX = re.compile(r"(?:patient|name|by|signed|attending|provider)\s*[:\-]?\s*([A-Z][A-Za-z'\-]+\s+[A-Z][A-Za-z'\-]+)")
+# Patterns below are intentionally aggressive.  EHR-extracted PDF text frequently
+# runs tokens together without whitespace (zip+phone, name+MRN, etc.), so we do
+# not require \b boundaries on either side of numeric PHI.
+_PHONE_RX   = re.compile(r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]\d{4}")
+_ZIP_PHONE  = re.compile(r"\b\d{5}\d{3}-\d{3}-\d{4}\b")
+_EMAIL_RX   = re.compile(r"[\w.+\-]+@[\w\-]+\.[A-Za-z]{2,8}")
+_MRN_RX     = re.compile(r"MRN\s*[:#\-]?\s*[A-Za-z0-9\-]{4,20}", re.I)
+_MR_HASH    = re.compile(r"MR\s*#\s*[A-Za-z0-9\-]{4,20}", re.I)
+_DOB_RX     = re.compile(r"\b(?:dob|born|date\s+of\s+birth)\b[^\n]{0,40}", re.I)
+_DOB_DATE   = re.compile(r"DOB\s*[:\-]?\s*\d{1,2}/\d{1,2}/\d{2,4}", re.I)
+_ADDRESS_US = re.compile(
+    r"\b\d+\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,4}\s+"
+    r"(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|"
+    r"Way|Pl|Place|Ct|Court|Hwy|Highway|Pkwy|Parkway)\b")
+_ADDRESS_ES = re.compile(
+    r"\b\d+\s*[A-Z]?\s+(?:Via|Paseo|Calle|Camino|Avenida)\s+[A-Z][A-Za-z]+")
+_CITY_ST_ZIP = re.compile(
+    r"\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2},\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?")
+_NAME_AFTER_RX = re.compile(
+    r"(?:patient|name|by|signed|attending|provider)\s*[:\-]?\s*"
+    r"([A-Z][A-Za-z'\-]+\s+[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]*)?)",
+    re.I)
+_PROVIDER_SIG = re.compile(
+    r"\b[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?,\s*"
+    r"[A-Z][A-Za-z'\-]+(?:\s+[A-Z]\.?)?\s*"
+    r"\((?:M\.?D\.?|D\.?O\.?|R\.?N\.?|L\.?V\.?N\.?|N\.?P\.?|P\.?A\.?|"
+    r"PharmD|PA-C|DPT|LCSW|MSW|APRN|FNP-[A-Z]+)\)")
 
 
 def _redact_text(text: str) -> str:
+    """Strip common PHI patterns from free-text fields.
+
+    Aggressive by design: false positives (e.g. an unrelated street-suffix
+    string) are preferred over false negatives, because this runs on fields
+    that leave the secure boundary (registry exports, shareable artifacts).
+    Idempotent — safe to apply multiple times.
+    """
     if not text:
         return text
+    text = _ZIP_PHONE.sub("[ZIP][PHONE]", text)
     text = _PHONE_RX.sub("[PHONE]", text)
     text = _EMAIL_RX.sub("[EMAIL]", text)
-    text = _MRN_RX.sub("MRN[REDACTED]", text)
+    text = _MR_HASH.sub("MR#: [REDACTED]", text)
+    text = _MRN_RX.sub("MRN: [REDACTED]", text)
+    text = _DOB_DATE.sub("DOB: [REDACTED]", text)
     text = _DOB_RX.sub("[DOB-REDACTED]", text)
-    text = _ADDRESS_RX.sub("[ADDRESS]", text)
+    text = _ADDRESS_US.sub("[ADDRESS]", text)
+    text = _ADDRESS_ES.sub("[ADDRESS]", text)
+    text = _CITY_ST_ZIP.sub("[CITY_STATE_ZIP]", text)
+    text = _PROVIDER_SIG.sub("[PROVIDER]", text)
     text = _NAME_AFTER_RX.sub(lambda m: m.group(0).replace(m.group(1), "[NAME]"), text)
     return text
 

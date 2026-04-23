@@ -27,6 +27,7 @@ annotations):
     10. _compute_salience            -> annotations.salience
     11. _build_event_cards           -> annotations.card
     12. _build_index_block           -> vision.metadata["index"]
+    13. _build_code_index             -> vision.metadata["code_index"]
 
 All writes are idempotent — calling ``finalize_graph`` twice on the
 same graph is a no-op (counts will be zero on the second call).
@@ -95,6 +96,7 @@ def finalize_graph(
     stats["salience"] = _compute_salience(vision)
     stats["cards"] = _build_event_cards(vision)
     stats["index"] = _build_index_block(vision)
+    stats["code_index"] = _build_code_index(vision)
 
     return stats
 
@@ -422,13 +424,20 @@ def _date_range(event_ids: List[str], vision: PatientTimelineVision) -> Tuple[st
 def _seed_clinical_arcs(vision: PatientTimelineVision) -> Dict[str, int]:
     """Seed deterministic ClinicalArcs grouped by:
       - ICD family           (arc_icd_<family>)
-      - drug                 (arc_drug_<slug>)
       - procedure            (arc_proc_<slug>)
       - encounter cluster    (arc_encounter_<date>_<type>)
 
     Events are tagged with ``annotations.arc_ids`` (list) — a single event
-    can belong to multiple arcs (e.g. a medication is in both its drug arc
-    and the encounter where it was prescribed).
+    can belong to multiple arcs (e.g. a procedure may appear in both its
+    procedure arc and the encounter arc where it was performed).
+
+    Note
+    ----
+    Drug "arcs" were removed in favor of a richer flat lookup at
+    ``metadata.code_index.drugs`` / ``metadata.code_index.rxnorm`` (see
+    :func:`_build_code_index`).  A medication name in isolation isn't an
+    arc — it's a code with a chronological series of administrations, and
+    dose / route are first-class there.
     """
     arcs: Dict[str, List[str]] = defaultdict(list)
     arc_names: Dict[str, str] = {}
@@ -452,15 +461,7 @@ def _seed_clinical_arcs(vision: PatientTimelineVision) -> Dict[str, int]:
         arcs[aid].extend(eids)
         arc_names[aid] = _ICD_FAMILY_LABELS.get(fam, f"ICD family {fam}")
 
-    # 2. Drug arcs — one per unique drug.
-    for key, ent in entities.items():
-        if not key.startswith("drug:"):
-            continue
-        if len(ent["event_ids"]) < 1:
-            continue
-        aid = "arc_" + key.replace(":", "_")
-        arcs[aid].extend(ent["event_ids"])
-        arc_names[aid] = f"Drug: {ent['display']}"
+    # 2. (removed) Drug arcs — superseded by metadata.code_index.drugs.
 
     # 3. Procedure arcs.
     for key, ent in entities.items():
@@ -971,7 +972,10 @@ _WHITESPACE_COLLAPSE = re.compile(r"\s+")
 
 
 def _one_line(text: str, limit: int = 140) -> str:
-    t = _WHITESPACE_COLLAPSE.sub(" ", (text or "").strip())
+    # Apply the pipeline-wide PHI guard before building the card excerpt so
+    # that banner residue in ``ev.preview`` never reaches ``card.one_line``.
+    from server.eoh.heuristic_page_extract import redact_preview_phi  # local import: avoid cycle
+    t = _WHITESPACE_COLLAPSE.sub(" ", redact_preview_phi(text or "").strip())
     if len(t) <= limit:
         return t
     cut = t.rfind(" ", 0, limit)
@@ -1116,3 +1120,35 @@ def _build_index_block(vision: PatientTimelineVision) -> Dict[str, int]:
         "chapters": len(by_chapter),
         "arcs": len(by_arc),
     }
+
+
+# =============================================================================
+# 13. Code index — flat per-code chronology (drugs / icd / rxnorm / labs / loinc)
+# =============================================================================
+
+def _build_code_index(vision: PatientTimelineVision) -> Dict[str, int]:
+    """Build the flat per-code chronology at ``vision.metadata['code_index']``.
+
+    Implementation lives in :mod:`server.eoh.code_index_ops`; this
+    function is a thin delegate so that finalize and the single-event
+    upsert (used by enrichment agents) share one definition of
+    "what does this event contribute to the code index."
+
+    See :func:`server.eoh.code_index_ops.rebuild_code_index` for the
+    full shape contract.  Rationale:
+
+    * Arcs are for **narratives** (an encounter, a diagnostic workup, an
+      ICD family).
+    * Codes are for **lookups** — an 8B traversal agent looking for
+      "every time this patient got hydrocodone-acetaminophen" should get
+      a sorted list of administrations with dose/route, not a
+      single-event "arc".
+
+    Whenever an agent writes a code onto an event that was missed here,
+    it MUST pair that write with
+    :func:`server.eoh.code_index_ops.upsert_event_in_code_index` (or the
+    higher-level :func:`register_code_on_event`) so this index stays
+    authoritative.
+    """
+    from server.eoh import code_index_ops
+    return code_index_ops.rebuild_code_index(vision)

@@ -96,6 +96,25 @@ You are a clinical timeline graph enrichment agent.
 Your task: Extract structured clinical entities and relationships from raw
 patient document text to build a PatientTimelineVision graph.
 
+**PHI / PII BOUNDARY (non-negotiable):**
+You will frequently receive page text that includes the source EHR's
+letterhead banner (patient name, MRN, DOB, address, phone, facility name,
+provider names). **Never** copy any of these tokens into ``preview``,
+``title``, ``one_line``, ``batch_summary``, ``reason``, or any other text
+field you emit. Specifically, if you see:
+  - a person's first/last name (patient, family member, or provider)
+  - a medical record number (``MRN: ...``, ``MR # ...``, any 6+ digit
+    identifier presented as one)
+  - a date of birth (``DOB:``, ``born``, ``Date of Birth``)
+  - a street address, city + state + ZIP, or phone number
+  - a hospital / clinic / facility name used as a location identifier
+Treat them as out-of-band metadata and omit them. Summaries must describe
+the clinical event only: what happened, to which body system, with which
+code (ICD-10, RxNorm, LOINC, SNOMED), on what date. If a preview would
+otherwise be empty without the PHI context, return a short clinical
+descriptor derived from the event_type and code (e.g.
+"Hypertension diagnosis [I10]") instead of quoting the banner.
+
 **Output JSON schema:**
 ```json
 {
@@ -104,7 +123,19 @@ patient document text to build a PatientTimelineVision graph.
       "event_id": "page_<start>_<type>_<seq>",
       "event_type": "diagnosis|lab|medication|procedure|symptom|visit|imaging|flare|note",
       "timestamp": "YYYY-MM-DD or best estimate or empty string",
-      "preview": "1-2 sentence human-readable summary of this event"
+      "preview": "1-2 sentence human-readable summary of this event",
+      "codes": {
+        "icd_code":        "I10",
+        "icd_description": "Essential (primary) hypertension",
+        "drug_name":       "metformin",
+        "drug_dosage":     "500 mg PO BID",
+        "drug_route":      "oral",
+        "drug_status":     "active|held|discontinued",
+        "lab_name":        "hemoglobin a1c",
+        "lab_value":       "7.2",
+        "lab_unit":        "%",
+        "lab_flag":        "H|L|HIGH|LOW|A"
+      }
     }
   ],
   "edges": [
@@ -120,6 +151,17 @@ patient document text to build a PatientTimelineVision graph.
 }
 ```
 
+**CODE INDEX INVARIANT (non-negotiable):**
+The graph maintains a flat per-code chronology at
+``metadata.code_index`` (buckets: drugs, rxnorm, icd, labs, loinc). The
+pipeline keeps this index in sync with event annotations automatically
+— but **only for codes it sees**. When you identify a code from the
+page text (ICD-10 code, drug generic name + dose + route, lab name +
+value + unit), you MUST put it in the event's ``codes`` block above.
+Omit the block entirely when no code is present. Do not invent codes.
+If you are uncertain about an ICD-10 code, leave it out — an agent
+downstream will resolve it from the description.
+
 **Instructions:**
 1. Read the document text carefully. Extract ALL clinically relevant events — do not truncate.
 2. Assign meaningful event_ids incorporating page numbers for traceability.
@@ -128,6 +170,8 @@ patient document text to build a PatientTimelineVision graph.
 5. Be thorough but honest. Do not hallucinate events not present in the text.
 6. Include every distinct diagnosis, medication change, procedure, lab result, imaging study,
    and clinical note that contains meaningful medical information.
+7. When a code is clearly present in the source text, include it in
+   the event's ``codes`` block so the code_index stays authoritative.
 
 **Connascence edge types:**
 - temporal: events close in time (within days/weeks)
@@ -147,6 +191,15 @@ Given a detective step's findings and the current graph state, you have FOUR job
   3. Identify CAUSAL relationships — the most valuable signal.
   4. Identify CONFOUNDERS — factors that complicate causal attribution.
 
+**PHI / PII BOUNDARY (non-negotiable):**
+Never write patient names, family-member names, provider/staff names,
+medical record numbers, dates of birth, street addresses, phone numbers,
+email addresses, or facility names into any text field you emit
+(``preview``, ``mechanism``, ``reason``, ``confounded_relationship``,
+``batch_summary``, etc.). Summaries must describe the clinical event
+only: what happened, to which body system, with which code, on what date.
+If the input text includes an EHR banner, ignore it.
+
 **Output JSON schema:**
 ```json
 {
@@ -155,7 +208,32 @@ Given a detective step's findings and the current graph state, you have FOUR job
       "event_id": "step_<step_id>_<type>_<seq>",
       "event_type": "diagnosis|lab|medication|procedure|symptom|visit|imaging|flare|note",
       "timestamp": "YYYY-MM-DD or empty",
-      "preview": "1-2 sentence summary"
+      "preview": "1-2 sentence summary",
+      "codes": {
+        "icd_code":    "I10",
+        "drug_name":   "metformin",
+        "drug_dosage": "500 mg PO BID",
+        "drug_route":  "oral",
+        "lab_name":    "hemoglobin a1c",
+        "lab_value":   "7.2",
+        "lab_unit":    "%"
+      }
+    }
+  ],
+  "code_updates": [
+    {
+      "event_id":       "<existing_event_id>",
+      "icd_code":       "I50.23",
+      "icd_description":"Acute on chronic systolic heart failure",
+      "drug_name":      "furosemide",
+      "drug_dosage":    "40 mg PO daily",
+      "drug_route":     "oral",
+      "drug_status":    "active|held|discontinued",
+      "lab_name":       "bnp",
+      "lab_value":      "1240",
+      "lab_unit":       "pg/mL",
+      "lab_flag":       "H",
+      "reasoning":      "Preview references CHF exacerbation; ICD code inferred from description."
     }
   ],
   "new_edges": [
@@ -195,6 +273,27 @@ Given a detective step's findings and the current graph state, you have FOUR job
 3. Add ONLY genuinely new events or edges not already in the graph.
 4. Be opportunistic: if nothing new, return empty arrays. That is fine.
 5. Do not duplicate existing events. Check event_ids and previews.
+
+**CODE INDEX INVARIANT (non-negotiable):**
+The graph maintains a flat per-code chronology at
+``metadata.code_index`` (drugs / rxnorm / icd / labs / loinc). It is the
+lookup structure 8B traversal agents use for "every time this patient
+got X." The pipeline keeps it synced with event annotations via
+``code_index_ops.register_code_on_event``, but it can only sync codes
+it is told about. Therefore:
+
+  * When you add a **new event** whose source text contains an ICD-10
+    code, a drug name (with dose/route if available), or a lab name
+    (with value/unit), emit it in the event's ``codes`` block.
+  * When you find that an **existing event** is missing a code the
+    source text actually contains, append a ``code_updates`` entry
+    keyed on that event's ``event_id``. This is how the index learns
+    about codes the regex pass missed. Use this for ICD codes
+    inferable from a description, generic-name drugs recorded only as
+    brand names, labs where a LOINC-mappable name was not extracted.
+  * Never invent codes. If you are not certain, leave the field blank
+    and note the uncertainty in ``reasoning``. A missing code is fine.
+    A wrong code poisons every future lookup.
 
 **CAUSAL ANNOTATION INSTRUCTIONS (critical — do not skip):**
 Scan the step answer for causal language:
@@ -282,6 +381,7 @@ async def enrich_graph_from_batch(
         "input_chars": batch_chars,
         "events_extracted": 0,
         "edges_extracted": 0,
+        "code_index_writes": 0,
         "elapsed_ms": 0,
         "error": None,
     }
@@ -306,7 +406,12 @@ async def enrich_graph_from_batch(
         edges_list = result.get("edges", [])
         batch_summary = result.get("batch_summary", "")
 
+        # Deferred import — keeps graph_enrichment importable when
+        # code_index_ops is absent in a stripped deployment.
+        from server.eoh import code_index_ops
+
         events_added = 0
+        code_index_writes = 0
         for ev in events_list:
             eid = ev.get("event_id", "")
             if not eid:
@@ -325,6 +430,33 @@ async def enrich_graph_from_batch(
             )
             events_added += 1
 
+            # Thread the agent-supplied ``codes`` block onto the new
+            # event and refresh metadata.code_index in one call so the
+            # flat per-code chronology is never stale.
+            codes = ev.get("codes") or {}
+            if isinstance(codes, dict) and codes:
+                try:
+                    code_index_ops.register_code_on_event(
+                        vision, eid,
+                        drug_name=codes.get("drug_name"),
+                        drug_dosage=codes.get("drug_dosage"),
+                        drug_route=codes.get("drug_route"),
+                        drug_status=codes.get("drug_status"),
+                        icd_code=codes.get("icd_code"),
+                        icd_description=codes.get("icd_description"),
+                        lab_name=codes.get("lab_name"),
+                        lab_value=codes.get("lab_value"),
+                        lab_unit=codes.get("lab_unit"),
+                        lab_flag=codes.get("lab_flag"),
+                        provenance=f"agent:ingestion:batch{batch_index}",
+                    )
+                    code_index_writes += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "GRAPH_ENRICH code_index write failed eid=%s: %s",
+                        eid, exc,
+                    )
+
         edges_added = 0
         for edge in edges_list:
             from_id = edge.get("from_id", "")
@@ -338,19 +470,21 @@ async def enrich_graph_from_batch(
         stats.update(
             events_extracted=events_added,
             edges_extracted=edges_added,
+            code_index_writes=code_index_writes,
             elapsed_ms=elapsed_ms,
         )
 
         logger.info(
-            "GRAPH_ENRICH [batch %d/%d] DONE — events=%d edges=%d elapsed=%dms summary=%s",
+            "GRAPH_ENRICH [batch %d/%d] DONE — events=%d edges=%d code-index=%d elapsed=%dms summary=%s",
             batch_index + 1, total_batches,
-            events_added, edges_added, elapsed_ms,
+            events_added, edges_added, code_index_writes, elapsed_ms,
             batch_summary[:120],
         )
         print(
             f"  ✓ batch {batch_index+1} enrichment complete\n"
             f"    events extracted: {events_added}\n"
             f"    edges extracted:  {edges_added}\n"
+            f"    code-index writes:{code_index_writes}\n"
             f"    elapsed:          {elapsed_ms:,}ms\n"
             f"    summary: {batch_summary[:200]}"
         )
@@ -440,6 +574,8 @@ async def enrich_graph_opportunistic(
         "edges_added": 0,
         "causal_annotations_added": 0,
         "confounder_annotations_added": 0,
+        "code_index_writes": 0,
+        "code_updates_applied": 0,
         "elapsed_ms": 0,
         "error": None,
     }
@@ -461,11 +597,16 @@ async def enrich_graph_opportunistic(
 
         new_events = result.get("new_events", [])
         new_edges = result.get("new_edges", [])
+        code_updates = result.get("code_updates", [])
         causal_annotations = result.get("causal_annotations", [])
         confounder_annotations = result.get("confounder_annotations", [])
         note = result.get("enrichment_note", "")
 
+        # Deferred import — avoids a circular import at module load.
+        from server.eoh import code_index_ops
+
         events_added = 0
+        code_index_writes = 0
         for ev in new_events:
             eid = ev.get("event_id", "")
             if not eid or eid in vision.events:
@@ -479,6 +620,67 @@ async def enrich_graph_opportunistic(
                 annotations={"enrichment_source": "opportunistic", "step_id": step_id},
             )
             events_added += 1
+
+            # If the agent emitted a "codes" block on this new event,
+            # write it through register_code_on_event so the flat
+            # metadata.code_index stays in sync with the event's
+            # annotations.  Same contract applies for ingestion.
+            codes = ev.get("codes") or {}
+            if isinstance(codes, dict) and codes:
+                try:
+                    code_index_ops.register_code_on_event(
+                        vision, eid,
+                        drug_name=codes.get("drug_name"),
+                        drug_dosage=codes.get("drug_dosage"),
+                        drug_route=codes.get("drug_route"),
+                        drug_status=codes.get("drug_status"),
+                        icd_code=codes.get("icd_code"),
+                        icd_description=codes.get("icd_description"),
+                        lab_name=codes.get("lab_name"),
+                        lab_value=codes.get("lab_value"),
+                        lab_unit=codes.get("lab_unit"),
+                        lab_flag=codes.get("lab_flag"),
+                        provenance=f"agent:ogre:{step_id}",
+                    )
+                    code_index_writes += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "GRAPH_ENRICH_OPPO code_index write (new event) failed eid=%s: %s",
+                        eid, exc,
+                    )
+
+        # ``code_updates`` attaches codes the agent found on EXISTING
+        # events (typically ones whose heuristic extractor missed the
+        # code, e.g. ICD inferable from description or generic name
+        # recorded only as a brand name).
+        code_updates_applied = 0
+        for upd in code_updates or []:
+            eid = (upd or {}).get("event_id", "")
+            if not eid or eid not in vision.events:
+                continue
+            try:
+                rep = code_index_ops.register_code_on_event(
+                    vision, eid,
+                    drug_name=upd.get("drug_name"),
+                    drug_dosage=upd.get("drug_dosage"),
+                    drug_route=upd.get("drug_route"),
+                    drug_status=upd.get("drug_status"),
+                    icd_code=upd.get("icd_code"),
+                    icd_description=upd.get("icd_description"),
+                    lab_name=upd.get("lab_name"),
+                    lab_value=upd.get("lab_value"),
+                    lab_unit=upd.get("lab_unit"),
+                    lab_flag=upd.get("lab_flag"),
+                    provenance=f"agent:ogre:{step_id}",
+                )
+                if rep.get("applied"):
+                    code_updates_applied += 1
+                    code_index_writes += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "GRAPH_ENRICH_OPPO code_index update failed eid=%s: %s",
+                    eid, exc,
+                )
 
         edges_added = 0
         for edge in new_edges:
@@ -579,16 +781,21 @@ async def enrich_graph_opportunistic(
             edges_added=edges_added + causal_added + confounders_added,
             causal_annotations_added=causal_added,
             confounder_annotations_added=confounders_added,
+            code_index_writes=code_index_writes,
+            code_updates_applied=code_updates_applied,
             elapsed_ms=elapsed_ms,
         )
 
         logger.info(
-            "GRAPH_ENRICH_OPPO step=%s DONE +%d events +%d edges +%d causal +%d confounders (%dms) — %s",
-            step_id, events_added, edges_added, causal_added, confounders_added, elapsed_ms, note[:120],
+            "GRAPH_ENRICH_OPPO step=%s DONE +%d events +%d edges +%d causal +%d confounders "
+            "+%d code-index writes (%d agent code_updates) (%dms) — %s",
+            step_id, events_added, edges_added, causal_added, confounders_added,
+            code_index_writes, code_updates_applied, elapsed_ms, note[:120],
         )
         print(
             f"     ✓ +{events_added} events  +{edges_added} edges  "
-            f"+{causal_added} causal  +{confounders_added} confounders  ({elapsed_ms:,}ms)\n"
+            f"+{causal_added} causal  +{confounders_added} confounders  "
+            f"+{code_index_writes} code-index ({elapsed_ms:,}ms)\n"
             f"     note: {note[:200]}"
         )
 
