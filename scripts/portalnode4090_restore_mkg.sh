@@ -22,23 +22,56 @@ set -euo pipefail
 : "${PGUSER:?set PGUSER}"
 : "${PGDATABASE:?set PGDATABASE}"
 
-if [[ -z "${DUMP_DIR:-}" ]]; then
-  _found="$(find "$HOME/forward_pilot_dump" /mnt/c/Users/*/forward_pilot_dump -maxdepth 3 \
-    -name '05b_rag_corpus_slice.copy.gz' -type f 2>/dev/null | head -1 || true)"
+# Return 0 and echo absolute dir if $1 is (or contains one child that is) the dump folder.
+_resolve_dump_dir() {
+  local d="${1:-}"
+  [[ -n "$d" && -d "$d" ]] || return 1
+  d="$(cd "$d" && pwd)"
+  if [[ -f "$d/05b_rag_corpus_slice.copy.gz" ]]; then
+    echo "$d"
+    return 0
+  fi
+  local sub
+  for sub in "$d"/*; do
+    [[ -d "$sub" && -f "$sub/05b_rag_corpus_slice.copy.gz" ]] || continue
+    echo "$(cd "$sub" && pwd)"
+    return 0
+  done
+  return 1
+}
+
+_auto_find_05b() {
+  # Typical layouts: …/forward_pilot_dump_<stamp>/05b*, …/forward_pilot_dump/<stamp>/05b*, Downloads, Desktop
+  find "$HOME/forward_pilot_dump" \
+    /mnt/c/Users/*/forward_pilot_dump \
+    /mnt/c/Users/*/Downloads \
+    /mnt/c/Users/*/Desktop \
+    -maxdepth 4 \
+    -name '05b_rag_corpus_slice.copy.gz' -type f 2>/dev/null | head -1
+}
+
+if [[ -n "${DUMP_DIR:-}" ]]; then
+  _resolved="$(_resolve_dump_dir "$DUMP_DIR" || true)"
+  if [[ -n "$_resolved" ]]; then
+    DUMP_DIR="$_resolved"
+  fi
+fi
+
+if [[ -z "${DUMP_DIR:-}" || ! -f "$DUMP_DIR/05b_rag_corpus_slice.copy.gz" ]]; then
+  _found="$(_auto_find_05b || true)"
   if [[ -n "$_found" ]]; then
     DUMP_DIR="$(cd "$(dirname "$_found")" && pwd)"
     echo "Using DUMP_DIR=$DUMP_DIR (auto-detected)"
   fi
 fi
 
-: "${DUMP_DIR:?set DUMP_DIR to the directory containing 01_*.sql.gz … 05b_*.copy.gz, or copy dumps into ~/forward_pilot_dump/<stamp>/}"
+: "${DUMP_DIR:?set DUMP_DIR to the folder that contains 05b_rag_corpus_slice.copy.gz}"
 
 if [[ ! -f "$DUMP_DIR/05b_rag_corpus_slice.copy.gz" ]]; then
-  echo "Missing $DUMP_DIR/05b_rag_corpus_slice.copy.gz" >&2
-  echo "If scp landed on Windows, copy into WSL first, e.g.:" >&2
-  echo "  mkdir -p ~/forward_pilot_dump && cp -r /mnt/c/Users/dylan/forward_pilot_dump/forward_pilot_dump_* ~/forward_pilot_dump/" >&2
-  echo "Or point DUMP_DIR at the Windows path (slower on /mnt/c/):" >&2
-  echo "  export DUMP_DIR=/mnt/c/Users/dylan/forward_pilot_dump/forward_pilot_dump_20260424T195608Z" >&2
+  echo "Missing 05b under: $DUMP_DIR" >&2
+  echo "Search your Windows profile for the slice (scp may have used a different folder name):" >&2
+  echo "  find /mnt/c/Users -maxdepth 8 -name '05b_rag_corpus_slice.copy.gz' 2>/dev/null" >&2
+  echo "Then: export DUMP_DIR=\"\$(dirname \"\$(find /mnt/c/Users -maxdepth 8 -name 05b_rag_corpus_slice.copy.gz 2>/dev/null | head -1)\")\"" >&2
   exit 1
 fi
 
