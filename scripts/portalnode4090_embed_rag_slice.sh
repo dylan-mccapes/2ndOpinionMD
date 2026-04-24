@@ -5,6 +5,8 @@
 # WSL2 on 4090 (from repo root on ext4 or /mnt/c clone):
 #   export SYNC_DATABASE_URL='postgresql://portalnode:PASSWORD@127.0.0.1:5432/portalnode'
 #   ./scripts/portalnode4090_embed_rag_slice.sh
+# If you already use psql restore env, this script also picks up DATABASE_URL or
+# PGUSER + PGDATABASE + PGPASSWORD + PGHOST (defaults host 127.0.0.1, port 5432).
 #
 # Ubuntu 24.04+ blocks system pip (PEP 668). Use .BeatingHeart, or run once:
 #   ./scripts/portalnode4090_bootstrap_venv_embed.sh && source .venv_embed/bin/activate
@@ -17,7 +19,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-: "${SYNC_DATABASE_URL:?set SYNC_DATABASE_URL=postgresql://portalnode:PASS@127.0.0.1:5432/portalnode}"
+if [[ -z "${SYNC_DATABASE_URL:-}" ]]; then
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    export SYNC_DATABASE_URL="$DATABASE_URL"
+  elif [[ -n "${PGUSER:-}" && -n "${PGDATABASE:-}" ]]; then
+    _h="${PGHOST:-127.0.0.1}"
+    _p="${PGPORT:-5432}"
+    if [[ -n "${PGPASSWORD:-}" ]]; then
+      export SYNC_DATABASE_URL="postgresql://${PGUSER}:${PGPASSWORD}@${_h}:${_p}/${PGDATABASE}"
+    else
+      export SYNC_DATABASE_URL="postgresql://${PGUSER}@${_h}:${_p}/${PGDATABASE}"
+    fi
+  fi
+fi
+if [[ -z "${SYNC_DATABASE_URL:-}" ]]; then
+  echo "Set SYNC_DATABASE_URL, or DATABASE_URL, or PGUSER+PGDATABASE (+ PGPASSWORD for TCP)." >&2
+  exit 1
+fi
 
 _activate_embed_venv() {
   if [[ -n "${VIRTUAL_ENV:-}" ]]; then

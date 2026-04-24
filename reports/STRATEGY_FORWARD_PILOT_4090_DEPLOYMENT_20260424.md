@@ -190,6 +190,7 @@ git pull
 ./scripts/portalnode4090_bootstrap_venv_embed.sh && source .venv_embed/bin/activate
 
 export SYNC_DATABASE_URL='postgresql://portalnode:PASSWORD@127.0.0.1:5432/portalnode'
+# Or reuse restore env: same PGUSER PGDATABASE PGPASSWORD PGHOST → embed script builds DSN.
 export LOCAL_EMBED_MODEL=BAAI/bge-base-en-v1.5   # default if unset
 # export LOCAL_EMBED_DEVICE=cuda                  # optional; auto-picks cuda if available
 
