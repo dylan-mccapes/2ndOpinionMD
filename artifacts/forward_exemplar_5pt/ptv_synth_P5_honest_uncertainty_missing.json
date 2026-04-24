@@ -1,0 +1,3242 @@
+{
+  "arcs": {
+    "arc_icd_M05": {
+      "name": "Rheumatoid arthritis (M05)",
+      "arc_id": "arc_icd_M05",
+      "status": "enriched",
+      "summary": "Seropositive RA; longitudinal PRO trajectory over five years captured via FORWARD semi-annual questionnaires.",
+      "event_ids": [
+        "P5_dx_ra"
+      ],
+      "date_range": [
+        "2020-01-11",
+        "2025-07-15"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m06": {
+      "name": "Study epoch month 6",
+      "arc_id": "arc_study_epoch_m06",
+      "status": "locked",
+      "summary": "FORWARD round 1 PROs.",
+      "event_ids": [
+        "P5_r00_haq2",
+        "P5_r00_vas_pain",
+        "P5_r00_vas_global",
+        "P5_r00_pas2",
+        "P5_r00_rdci"
+      ],
+      "date_range": [
+        "2021-01-10",
+        "2021-01-10"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m12": {
+      "name": "Study epoch month 12",
+      "arc_id": "arc_study_epoch_m12",
+      "status": "locked",
+      "summary": "FORWARD round 2 PROs.",
+      "event_ids": [
+        "P5_r01_haq2",
+        "P5_r01_vas_pain",
+        "P5_r01_vas_global",
+        "P5_r01_pas2"
+      ],
+      "date_range": [
+        "2021-07-12",
+        "2021-07-12"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m18": {
+      "name": "Study epoch month 18",
+      "arc_id": "arc_study_epoch_m18",
+      "status": "locked",
+      "summary": "FORWARD round 3 PROs.",
+      "event_ids": [
+        "P5_r02_haq2",
+        "P5_r02_vas_pain",
+        "P5_r02_vas_global",
+        "P5_r02_pas2",
+        "P5_r02_rdci"
+      ],
+      "date_range": [
+        "2022-01-11",
+        "2022-01-11"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m24": {
+      "name": "Study epoch month 24",
+      "arc_id": "arc_study_epoch_m24",
+      "status": "locked",
+      "summary": "FORWARD round 4 PROs.",
+      "event_ids": [
+        "P5_r03_haq2",
+        "P5_r03_vas_pain",
+        "P5_r03_vas_global",
+        "P5_r03_pas2"
+      ],
+      "date_range": [
+        "2022-07-13",
+        "2022-07-13"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m30": {
+      "name": "Study epoch month 30",
+      "arc_id": "arc_study_epoch_m30",
+      "status": "locked",
+      "summary": "FORWARD round 5 PROs (not completed).",
+      "event_ids": [
+        "P5_r04_missing"
+      ],
+      "date_range": [
+        "2023-01-12",
+        "2023-01-12"
+      ],
+      "open_questions": [
+        "Round not completed; UC width widened; consider outreach."
+      ],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m36": {
+      "name": "Study epoch month 36",
+      "arc_id": "arc_study_epoch_m36",
+      "status": "locked",
+      "summary": "FORWARD round 6 PROs.",
+      "event_ids": [
+        "P5_r05_haq2",
+        "P5_r05_vas_pain",
+        "P5_r05_vas_global",
+        "P5_r05_pas2"
+      ],
+      "date_range": [
+        "2023-07-14",
+        "2023-07-14"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m42": {
+      "name": "Study epoch month 42",
+      "arc_id": "arc_study_epoch_m42",
+      "status": "locked",
+      "summary": "FORWARD round 7 PROs (not completed).",
+      "event_ids": [
+        "P5_r06_missing"
+      ],
+      "date_range": [
+        "2024-01-13",
+        "2024-01-13"
+      ],
+      "open_questions": [
+        "Round not completed; UC width widened; consider outreach."
+      ],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m48": {
+      "name": "Study epoch month 48",
+      "arc_id": "arc_study_epoch_m48",
+      "status": "locked",
+      "summary": "FORWARD round 8 PROs.",
+      "event_ids": [
+        "P5_r07_haq2",
+        "P5_r07_vas_pain",
+        "P5_r07_vas_global",
+        "P5_r07_pas2"
+      ],
+      "date_range": [
+        "2024-07-14",
+        "2024-07-14"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m54": {
+      "name": "Study epoch month 54",
+      "arc_id": "arc_study_epoch_m54",
+      "status": "locked",
+      "summary": "FORWARD round 9 PROs.",
+      "event_ids": [
+        "P5_r08_haq2",
+        "P5_r08_vas_pain",
+        "P5_r08_vas_global",
+        "P5_r08_pas2",
+        "P5_r08_rdci"
+      ],
+      "date_range": [
+        "2025-01-13",
+        "2025-01-13"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_study_epoch_m60": {
+      "name": "Study epoch month 60",
+      "arc_id": "arc_study_epoch_m60",
+      "status": "locked",
+      "summary": "FORWARD round 10 PROs.",
+      "event_ids": [
+        "P5_r09_haq2",
+        "P5_r09_vas_pain",
+        "P5_r09_vas_global",
+        "P5_r09_pas2"
+      ],
+      "date_range": [
+        "2025-07-15",
+        "2025-07-15"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_therapy_methotrexate": {
+      "name": "Therapy course: Methotrexate",
+      "arc_id": "arc_therapy_methotrexate",
+      "status": "enriched",
+      "summary": "Methotrexate started round 1; ongoing through study window.",
+      "event_ids": [
+        "P5_med_methotrexate",
+        "P5_tepi_methotrexate"
+      ],
+      "date_range": [
+        "2021-01-10",
+        "2025-07-15"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_therapy_hydroxychloroquine": {
+      "name": "Therapy course: Hydroxychloroquine",
+      "arc_id": "arc_therapy_hydroxychloroquine",
+      "status": "enriched",
+      "summary": "Hydroxychloroquine started round 1; ongoing through study window.",
+      "event_ids": [
+        "P5_med_hydroxychloroquine",
+        "P5_tepi_hydroxychloroquine"
+      ],
+      "date_range": [
+        "2021-01-10",
+        "2025-07-15"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": []
+    },
+    "arc_therapy_prednisone": {
+      "name": "Therapy course: Prednisone",
+      "arc_id": "arc_therapy_prednisone",
+      "status": "enriched",
+      "summary": "Prednisone started round 8; stopped round 10 (switch).",
+      "event_ids": [
+        "P5_med_prednisone",
+        "P5_tepi_prednisone"
+      ],
+      "date_range": [
+        "2024-07-14",
+        "2025-07-15"
+      ],
+      "open_questions": [],
+      "cross_arc_edges": [
+        {
+          "peer_arc_id": "arc_flare_r07",
+          "kind": "initiated_in_response_to",
+          "strength": 1.0
+        }
+      ]
+    },
+    "arc_flare_r07": {
+      "name": "Flare window (round 8)",
+      "arc_id": "arc_flare_r07",
+      "status": "enriched",
+      "summary": "PRO-composite flare detected at round 8. HAQ-II and VAS-pain crossed MCID thresholds against patient baseline; treatment escalation recorded within the same epoch.",
+      "event_ids": [
+        "P5_flare_r07",
+        "P5_r07_haq2",
+        "P5_r07_vas_pain",
+        "P5_r07_vas_global",
+        "P5_r07_pas2",
+        "P5_uc_r07"
+      ],
+      "date_range": [
+        "2024-07-14",
+        "2024-07-14"
+      ],
+      "open_questions": [
+        "Missing rounds reduce confidence in the flare onset date; interpret with the UC width in mind."
+      ],
+      "cross_arc_edges": [
+        {
+          "peer_arc_id": "arc_therapy_prednisone",
+          "kind": "treated_by",
+          "strength": 1.0
+        }
+      ]
+    }
+  },
+  "events": {
+    "P5_dx_ra": {
+      "status": "included",
+      "preview": "RHEUMATOID ARTHRITIS, SEROPOSITIVE [M05.9]",
+      "event_id": "P5_dx_ra",
+      "timestamp": "2020-01-11",
+      "event_type": "diagnosis",
+      "annotations": {
+        "card": {
+          "ts": "2020-01-11",
+          "icd": "M05.9",
+          "drug": null,
+          "type": "diagnosis",
+          "title": "RHEUMATOID ARTHRITIS, SEROPOSITIVE [M05.9]",
+          "arc_ids": [
+            "arc_icd_M05"
+          ],
+          "one_line": "RHEUMATOID ARTHRITIS, SEROPOSITIVE [M05.9]",
+          "salience": 7.61,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 7.61,
+        "canonical_id": "ev_3f2055178e98bf7b",
+        "extracted_by": "synthetic_generator_v1",
+        "icd_code": "M05.9",
+        "entity_keys": [
+          "icd:m05_9"
+        ],
+        "arc_ids": [
+          "arc_icd_M05"
+        ],
+        "status_flags": [
+          "chronic"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r00_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.28",
+      "event_id": "P5_r00_haq2",
+      "timestamp": "2021-01-10",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.28",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "HAQ-II = 1.28",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_8892ea61621a65e7",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.28,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2021-01-10",
+        "round": 0,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:0"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r00_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 57.1",
+      "event_id": "P5_r00_vas_pain",
+      "timestamp": "2021-01-10",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 57.1",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "VAS Pain = 57.1",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_3478b46770e79e57",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 57.1,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2021-01-10",
+        "round": 0,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:0"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r00_haq2",
+          "P5_r00_vas_global",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r00_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 48.7",
+      "event_id": "P5_r00_vas_global",
+      "timestamp": "2021-01-10",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 48.7",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "VAS Patient Global = 48.7",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_5861b9b50c6d9563",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 48.7,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2021-01-10",
+        "round": 0,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:0"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r00_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 5.06",
+      "event_id": "P5_r00_pas2",
+      "timestamp": "2021-01-10",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 5.06",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "PAS-II = 5.06",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_a9b81b82da62f21b",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 5.06,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2021-01-10",
+        "round": 0,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:0"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r00_rdci": {
+      "status": "included",
+      "preview": "RDCI = 4",
+      "event_id": "P5_r00_rdci",
+      "timestamp": "2021-01-10",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "RDCI = 4",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "RDCI = 4",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_4f921d4296b3f9a7",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "RDCI",
+        "instrument_key": "rdci",
+        "raw_score": 4,
+        "mcid": null,
+        "units": "points",
+        "self_reported_at": "2021-01-10",
+        "round": 0,
+        "entity_keys": [
+          "instrument:rdci",
+          "round:0"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r01_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.27",
+      "event_id": "P5_r01_haq2",
+      "timestamp": "2021-07-12",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-07-12",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.27",
+          "arc_ids": [
+            "arc_study_epoch_m12"
+          ],
+          "one_line": "HAQ-II = 1.27",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_74cf070e5ca5f710",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.27,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2021-07-12",
+        "round": 1,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:1"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m12"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r01_vas_pain",
+          "P5_r01_vas_global",
+          "P5_r01_pas2"
+        ],
+        "temporal": [
+          "P5_r00_haq2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r01_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 58.8",
+      "event_id": "P5_r01_vas_pain",
+      "timestamp": "2021-07-12",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-07-12",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 58.8",
+          "arc_ids": [
+            "arc_study_epoch_m12"
+          ],
+          "one_line": "VAS Pain = 58.8",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_44786ae2e2e011a3",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 58.8,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2021-07-12",
+        "round": 1,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:1"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m12"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r01_haq2",
+          "P5_r01_vas_global",
+          "P5_r01_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r01_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 49.6",
+      "event_id": "P5_r01_vas_global",
+      "timestamp": "2021-07-12",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-07-12",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 49.6",
+          "arc_ids": [
+            "arc_study_epoch_m12"
+          ],
+          "one_line": "VAS Patient Global = 49.6",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_af0419c911327cd2",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 49.6,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2021-07-12",
+        "round": 1,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:1"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m12"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r01_haq2",
+          "P5_r01_vas_pain",
+          "P5_r01_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r01_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 4.93",
+      "event_id": "P5_r01_pas2",
+      "timestamp": "2021-07-12",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2021-07-12",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 4.93",
+          "arc_ids": [
+            "arc_study_epoch_m12"
+          ],
+          "one_line": "PAS-II = 4.93",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_7785c76cfe8e2410",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 4.93,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2021-07-12",
+        "round": 1,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:1"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m12"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r01_haq2",
+          "P5_r01_vas_pain",
+          "P5_r01_vas_global"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r02_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.29",
+      "event_id": "P5_r02_haq2",
+      "timestamp": "2022-01-11",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-01-11",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.29",
+          "arc_ids": [
+            "arc_study_epoch_m18"
+          ],
+          "one_line": "HAQ-II = 1.29",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_030239bfc68c82ea",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.29,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2022-01-11",
+        "round": 2,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:2"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m18"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r02_vas_pain",
+          "P5_r02_vas_global",
+          "P5_r02_pas2",
+          "P5_r02_rdci"
+        ],
+        "temporal": [
+          "P5_r01_haq2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r02_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 60.9",
+      "event_id": "P5_r02_vas_pain",
+      "timestamp": "2022-01-11",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-01-11",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 60.9",
+          "arc_ids": [
+            "arc_study_epoch_m18"
+          ],
+          "one_line": "VAS Pain = 60.9",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_3bd407aefd8292c5",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 60.9,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2022-01-11",
+        "round": 2,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:2"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m18"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r02_haq2",
+          "P5_r02_vas_global",
+          "P5_r02_pas2",
+          "P5_r02_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r02_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 49.0",
+      "event_id": "P5_r02_vas_global",
+      "timestamp": "2022-01-11",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-01-11",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 49.0",
+          "arc_ids": [
+            "arc_study_epoch_m18"
+          ],
+          "one_line": "VAS Patient Global = 49.0",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_fb23f41397059db6",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 49.0,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2022-01-11",
+        "round": 2,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:2"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m18"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r02_haq2",
+          "P5_r02_vas_pain",
+          "P5_r02_pas2",
+          "P5_r02_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r02_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 4.94",
+      "event_id": "P5_r02_pas2",
+      "timestamp": "2022-01-11",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-01-11",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 4.94",
+          "arc_ids": [
+            "arc_study_epoch_m18"
+          ],
+          "one_line": "PAS-II = 4.94",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_a5d4998d4ff5a2d1",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 4.94,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2022-01-11",
+        "round": 2,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:2"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m18"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r02_haq2",
+          "P5_r02_vas_pain",
+          "P5_r02_vas_global",
+          "P5_r02_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r02_rdci": {
+      "status": "included",
+      "preview": "RDCI = 4",
+      "event_id": "P5_r02_rdci",
+      "timestamp": "2022-01-11",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-01-11",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "RDCI = 4",
+          "arc_ids": [
+            "arc_study_epoch_m18"
+          ],
+          "one_line": "RDCI = 4",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_17f10baac7873599",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "RDCI",
+        "instrument_key": "rdci",
+        "raw_score": 4,
+        "mcid": null,
+        "units": "points",
+        "self_reported_at": "2022-01-11",
+        "round": 2,
+        "entity_keys": [
+          "instrument:rdci",
+          "round:2"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m18"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r02_haq2",
+          "P5_r02_vas_pain",
+          "P5_r02_vas_global",
+          "P5_r02_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r03_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.31",
+      "event_id": "P5_r03_haq2",
+      "timestamp": "2022-07-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-07-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.31",
+          "arc_ids": [
+            "arc_study_epoch_m24"
+          ],
+          "one_line": "HAQ-II = 1.31",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_144a196a4f82a91f",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.31,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2022-07-13",
+        "round": 3,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:3"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m24"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r03_vas_pain",
+          "P5_r03_vas_global",
+          "P5_r03_pas2"
+        ],
+        "temporal": [
+          "P5_r02_haq2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r03_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 62.4",
+      "event_id": "P5_r03_vas_pain",
+      "timestamp": "2022-07-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-07-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 62.4",
+          "arc_ids": [
+            "arc_study_epoch_m24"
+          ],
+          "one_line": "VAS Pain = 62.4",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_d5ecfcd3001570cd",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 62.4,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2022-07-13",
+        "round": 3,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:3"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m24"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r03_haq2",
+          "P5_r03_vas_global",
+          "P5_r03_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r03_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 51.0",
+      "event_id": "P5_r03_vas_global",
+      "timestamp": "2022-07-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-07-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 51.0",
+          "arc_ids": [
+            "arc_study_epoch_m24"
+          ],
+          "one_line": "VAS Patient Global = 51.0",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_b16f63e78b8847a4",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 51.0,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2022-07-13",
+        "round": 3,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:3"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m24"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r03_haq2",
+          "P5_r03_vas_pain",
+          "P5_r03_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r03_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 5.08",
+      "event_id": "P5_r03_pas2",
+      "timestamp": "2022-07-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2022-07-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 5.08",
+          "arc_ids": [
+            "arc_study_epoch_m24"
+          ],
+          "one_line": "PAS-II = 5.08",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_0b91b9f6bd83925b",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 5.08,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2022-07-13",
+        "round": 3,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:3"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m24"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r03_haq2",
+          "P5_r03_vas_pain",
+          "P5_r03_vas_global"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r04_missing": {
+      "status": "included",
+      "preview": "Questionnaire round 5: not completed",
+      "event_id": "P5_r04_missing",
+      "timestamp": "unknown",
+      "event_type": "administrative",
+      "annotations": {
+        "card": {
+          "ts": "unknown",
+          "icd": null,
+          "drug": null,
+          "type": "administrative",
+          "title": "Questionnaire round 5: not completed",
+          "arc_ids": [
+            "arc_study_epoch_m30"
+          ],
+          "one_line": "Questionnaire round 5: not completed",
+          "salience": 5.01,
+          "coverage": {
+            "has_code": true,
+            "has_date": false,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 5.01,
+        "canonical_id": "ev_f6941a97976eaee9",
+        "extracted_by": "synthetic_generator_v1",
+        "status_flags": [
+          "missing_questionnaire"
+        ],
+        "round": 4,
+        "entity_keys": [
+          "round:4"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m30"
+        ]
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r05_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.32",
+      "event_id": "P5_r05_haq2",
+      "timestamp": "2023-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2023-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.32",
+          "arc_ids": [
+            "arc_study_epoch_m36"
+          ],
+          "one_line": "HAQ-II = 1.32",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_0e875e6c4637f32b",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.32,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2023-07-14",
+        "round": 5,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:5"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m36"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r05_vas_pain",
+          "P5_r05_vas_global",
+          "P5_r05_pas2"
+        ],
+        "temporal": [
+          "P5_r04_missing"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r05_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 62.4",
+      "event_id": "P5_r05_vas_pain",
+      "timestamp": "2023-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2023-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 62.4",
+          "arc_ids": [
+            "arc_study_epoch_m36"
+          ],
+          "one_line": "VAS Pain = 62.4",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_87d17cb699d3743b",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 62.4,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2023-07-14",
+        "round": 5,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:5"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m36"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r05_haq2",
+          "P5_r05_vas_global",
+          "P5_r05_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r05_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 49.8",
+      "event_id": "P5_r05_vas_global",
+      "timestamp": "2023-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2023-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 49.8",
+          "arc_ids": [
+            "arc_study_epoch_m36"
+          ],
+          "one_line": "VAS Patient Global = 49.8",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_65a4488607b11ce4",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 49.8,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2023-07-14",
+        "round": 5,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:5"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m36"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r05_haq2",
+          "P5_r05_vas_pain",
+          "P5_r05_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r05_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 5.16",
+      "event_id": "P5_r05_pas2",
+      "timestamp": "2023-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2023-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 5.16",
+          "arc_ids": [
+            "arc_study_epoch_m36"
+          ],
+          "one_line": "PAS-II = 5.16",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_cae4f216196a40de",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 5.16,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2023-07-14",
+        "round": 5,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:5"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m36"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r05_haq2",
+          "P5_r05_vas_pain",
+          "P5_r05_vas_global"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r06_missing": {
+      "status": "included",
+      "preview": "Questionnaire round 7: not completed",
+      "event_id": "P5_r06_missing",
+      "timestamp": "unknown",
+      "event_type": "administrative",
+      "annotations": {
+        "card": {
+          "ts": "unknown",
+          "icd": null,
+          "drug": null,
+          "type": "administrative",
+          "title": "Questionnaire round 7: not completed",
+          "arc_ids": [
+            "arc_study_epoch_m42"
+          ],
+          "one_line": "Questionnaire round 7: not completed",
+          "salience": 5.01,
+          "coverage": {
+            "has_code": true,
+            "has_date": false,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 5.01,
+        "canonical_id": "ev_30f915306ce4f5e2",
+        "extracted_by": "synthetic_generator_v1",
+        "status_flags": [
+          "missing_questionnaire"
+        ],
+        "round": 6,
+        "entity_keys": [
+          "round:6"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m42"
+        ]
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r07_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.74",
+      "event_id": "P5_r07_haq2",
+      "timestamp": "2024-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.74",
+          "arc_ids": [
+            "arc_study_epoch_m48",
+            "arc_flare_r07"
+          ],
+          "one_line": "HAQ-II = 1.74",
+          "salience": 7.01,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 7.01,
+        "canonical_id": "ev_c6cbd66163142abe",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.74,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2024-07-14",
+        "round": 7,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:7"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m48",
+          "arc_flare_r07"
+        ],
+        "status_flags": [
+          "worsening"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ],
+        "temporal": [
+          "P5_r06_missing"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r07_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 86.1",
+      "event_id": "P5_r07_vas_pain",
+      "timestamp": "2024-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 86.1",
+          "arc_ids": [
+            "arc_study_epoch_m48",
+            "arc_flare_r07"
+          ],
+          "one_line": "VAS Pain = 86.1",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_a5def7e11c1b0dd6",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 86.1,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2024-07-14",
+        "round": 7,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:7"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m48",
+          "arc_flare_r07"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r07_haq2",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r07_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 72.7",
+      "event_id": "P5_r07_vas_global",
+      "timestamp": "2024-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 72.7",
+          "arc_ids": [
+            "arc_study_epoch_m48",
+            "arc_flare_r07"
+          ],
+          "one_line": "VAS Patient Global = 72.7",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_ea4b8b3eb37969c7",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 72.7,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2024-07-14",
+        "round": 7,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:7"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m48",
+          "arc_flare_r07"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r07_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 6.43",
+      "event_id": "P5_r07_pas2",
+      "timestamp": "2024-07-14",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 6.43",
+          "arc_ids": [
+            "arc_study_epoch_m48",
+            "arc_flare_r07"
+          ],
+          "one_line": "PAS-II = 6.43",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_c29795d8bd44e4f2",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 6.43,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2024-07-14",
+        "round": 7,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:7"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m48",
+          "arc_flare_r07"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r08_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.73",
+      "event_id": "P5_r08_haq2",
+      "timestamp": "2025-01-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-01-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.73",
+          "arc_ids": [
+            "arc_study_epoch_m54"
+          ],
+          "one_line": "HAQ-II = 1.73",
+          "salience": 7.01,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 7.01,
+        "canonical_id": "ev_f4095f278012ce90",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.73,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2025-01-13",
+        "round": 8,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:8"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m54"
+        ],
+        "status_flags": [
+          "worsening"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r08_vas_pain",
+          "P5_r08_vas_global",
+          "P5_r08_pas2",
+          "P5_r08_rdci"
+        ],
+        "temporal": [
+          "P5_r07_haq2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r08_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 87.9",
+      "event_id": "P5_r08_vas_pain",
+      "timestamp": "2025-01-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-01-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 87.9",
+          "arc_ids": [
+            "arc_study_epoch_m54"
+          ],
+          "one_line": "VAS Pain = 87.9",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_7f55763b90249710",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 87.9,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2025-01-13",
+        "round": 8,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:8"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m54"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r08_haq2",
+          "P5_r08_vas_global",
+          "P5_r08_pas2",
+          "P5_r08_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r08_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 74.7",
+      "event_id": "P5_r08_vas_global",
+      "timestamp": "2025-01-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-01-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 74.7",
+          "arc_ids": [
+            "arc_study_epoch_m54"
+          ],
+          "one_line": "VAS Patient Global = 74.7",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_61c813d9a3272053",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 74.7,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2025-01-13",
+        "round": 8,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:8"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m54"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r08_haq2",
+          "P5_r08_vas_pain",
+          "P5_r08_pas2",
+          "P5_r08_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r08_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 6.37",
+      "event_id": "P5_r08_pas2",
+      "timestamp": "2025-01-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-01-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 6.37",
+          "arc_ids": [
+            "arc_study_epoch_m54"
+          ],
+          "one_line": "PAS-II = 6.37",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_1aa14b289bf6d52c",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 6.37,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2025-01-13",
+        "round": 8,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:8"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m54"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r08_haq2",
+          "P5_r08_vas_pain",
+          "P5_r08_vas_global",
+          "P5_r08_rdci"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r08_rdci": {
+      "status": "included",
+      "preview": "RDCI = 4",
+      "event_id": "P5_r08_rdci",
+      "timestamp": "2025-01-13",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-01-13",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "RDCI = 4",
+          "arc_ids": [
+            "arc_study_epoch_m54"
+          ],
+          "one_line": "RDCI = 4",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_7363248675febca9",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "RDCI",
+        "instrument_key": "rdci",
+        "raw_score": 4,
+        "mcid": null,
+        "units": "points",
+        "self_reported_at": "2025-01-13",
+        "round": 8,
+        "entity_keys": [
+          "instrument:rdci",
+          "round:8"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m54"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r08_haq2",
+          "P5_r08_vas_pain",
+          "P5_r08_vas_global",
+          "P5_r08_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r09_haq2": {
+      "status": "included",
+      "preview": "HAQ-II = 1.72",
+      "event_id": "P5_r09_haq2",
+      "timestamp": "2025-07-15",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-07-15",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "HAQ-II = 1.72",
+          "arc_ids": [
+            "arc_study_epoch_m60"
+          ],
+          "one_line": "HAQ-II = 1.72",
+          "salience": 7.01,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 7.01,
+        "canonical_id": "ev_98d2b7efa09b467d",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "HAQ-II",
+        "instrument_key": "haq2",
+        "raw_score": 1.72,
+        "mcid": 0.22,
+        "units": "index",
+        "self_reported_at": "2025-07-15",
+        "round": 9,
+        "entity_keys": [
+          "instrument:haq2",
+          "round:9"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m60"
+        ],
+        "status_flags": [
+          "worsening"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r09_vas_pain",
+          "P5_r09_vas_global",
+          "P5_r09_pas2"
+        ],
+        "temporal": [
+          "P5_r08_haq2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r09_vas_pain": {
+      "status": "included",
+      "preview": "VAS Pain = 86.0",
+      "event_id": "P5_r09_vas_pain",
+      "timestamp": "2025-07-15",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-07-15",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Pain = 86.0",
+          "arc_ids": [
+            "arc_study_epoch_m60"
+          ],
+          "one_line": "VAS Pain = 86.0",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_db9bcf44cffa907c",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Pain",
+        "instrument_key": "vas_pain",
+        "raw_score": 86.0,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2025-07-15",
+        "round": 9,
+        "entity_keys": [
+          "instrument:vas_pain",
+          "round:9"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m60"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r09_haq2",
+          "P5_r09_vas_global",
+          "P5_r09_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r09_vas_global": {
+      "status": "included",
+      "preview": "VAS Patient Global = 72.1",
+      "event_id": "P5_r09_vas_global",
+      "timestamp": "2025-07-15",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-07-15",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "VAS Patient Global = 72.1",
+          "arc_ids": [
+            "arc_study_epoch_m60"
+          ],
+          "one_line": "VAS Patient Global = 72.1",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_1de30131ff98d683",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "VAS Patient Global",
+        "instrument_key": "vas_global",
+        "raw_score": 72.1,
+        "mcid": 20,
+        "units": "mm",
+        "self_reported_at": "2025-07-15",
+        "round": 9,
+        "entity_keys": [
+          "instrument:vas_global",
+          "round:9"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m60"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r09_haq2",
+          "P5_r09_vas_pain",
+          "P5_r09_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_r09_pas2": {
+      "status": "included",
+      "preview": "PAS-II = 6.44",
+      "event_id": "P5_r09_pas2",
+      "timestamp": "2025-07-15",
+      "event_type": "pro",
+      "annotations": {
+        "card": {
+          "ts": "2025-07-15",
+          "icd": null,
+          "drug": null,
+          "type": "pro",
+          "title": "PAS-II = 6.44",
+          "arc_ids": [
+            "arc_study_epoch_m60"
+          ],
+          "one_line": "PAS-II = 6.44",
+          "salience": 6.26,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": true,
+            "has_dose": false
+          }
+        },
+        "salience": 6.26,
+        "canonical_id": "ev_53f20c1d9af1fceb",
+        "extracted_by": "synthetic_generator_v1",
+        "instrument": "PAS-II",
+        "instrument_key": "pas2",
+        "raw_score": 6.44,
+        "mcid": 0.5,
+        "units": "index",
+        "self_reported_at": "2025-07-15",
+        "round": 9,
+        "entity_keys": [
+          "instrument:pas2",
+          "round:9"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m60"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "heuristic_source": "synthetic_generator"
+      },
+      "connascence": {
+        "same_encounter": [
+          "P5_r09_haq2",
+          "P5_r09_vas_pain",
+          "P5_r09_vas_global"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_med_methotrexate": {
+      "status": "included",
+      "preview": "Methotrexate 12.5 mg weekly",
+      "event_id": "P5_med_methotrexate",
+      "timestamp": "2021-01-10",
+      "event_type": "medication",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": "Methotrexate",
+          "type": "medication",
+          "title": "Methotrexate 12.5 mg weekly",
+          "arc_ids": [
+            "arc_therapy_methotrexate"
+          ],
+          "one_line": "Methotrexate 12.5 mg weekly",
+          "salience": 5.56,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": true
+          }
+        },
+        "salience": 5.56,
+        "canonical_id": "ev_1d4c0f98f1a625b5",
+        "extracted_by": "synthetic_generator_v1",
+        "drug_name": "Methotrexate",
+        "ingredient": "methotrexate",
+        "rxnorm_cui": "6851",
+        "dose_mg": 12.5,
+        "dose_unit": "mg",
+        "frequency": "weekly",
+        "start_date": "2021-01-10",
+        "stop_date": null,
+        "reason_for_stop": null,
+        "entity_keys": [
+          "rxnorm:6851",
+          "ingredient:methotrexate"
+        ],
+        "arc_ids": [
+          "arc_therapy_methotrexate"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "drug_norm_source": "synthetic_rxnav_snapshot"
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_tepi_methotrexate": {
+      "status": "included",
+      "preview": "Therapy episode: Methotrexate (ongoing)",
+      "event_id": "P5_tepi_methotrexate",
+      "timestamp": "2021-01-10",
+      "event_type": "therapy_episode",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "therapy_episode",
+          "title": "Therapy episode: Methotrexate (ongoing)",
+          "arc_ids": [
+            "arc_therapy_methotrexate"
+          ],
+          "one_line": "Therapy episode: Methotrexate (ongoing)",
+          "salience": 6.56,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 6.56,
+        "canonical_id": "ev_a4cf6f732b56b6ae",
+        "extracted_by": "synthetic_generator_v1",
+        "ingredient": "methotrexate",
+        "rxnorm_cui": "6851",
+        "start_date": "2021-01-10",
+        "stop_date": null,
+        "reason_for_stop": null,
+        "entity_keys": [
+          "rxnorm:6851",
+          "ingredient:methotrexate"
+        ],
+        "arc_ids": [
+          "arc_therapy_methotrexate"
+        ],
+        "status_flags": [
+          "continued"
+        ]
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_med_hydroxychloroquine": {
+      "status": "included",
+      "preview": "Hydroxychloroquine 200 mg bid",
+      "event_id": "P5_med_hydroxychloroquine",
+      "timestamp": "2021-01-10",
+      "event_type": "medication",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": "Hydroxychloroquine",
+          "type": "medication",
+          "title": "Hydroxychloroquine 200 mg bid",
+          "arc_ids": [
+            "arc_therapy_hydroxychloroquine"
+          ],
+          "one_line": "Hydroxychloroquine 200 mg bid",
+          "salience": 5.56,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": true
+          }
+        },
+        "salience": 5.56,
+        "canonical_id": "ev_0ed23810e794899c",
+        "extracted_by": "synthetic_generator_v1",
+        "drug_name": "Hydroxychloroquine",
+        "ingredient": "hydroxychloroquine",
+        "rxnorm_cui": "5521",
+        "dose_mg": 200,
+        "dose_unit": "mg",
+        "frequency": "bid",
+        "start_date": "2021-01-10",
+        "stop_date": null,
+        "reason_for_stop": null,
+        "entity_keys": [
+          "rxnorm:5521",
+          "ingredient:hydroxychloroquine"
+        ],
+        "arc_ids": [
+          "arc_therapy_hydroxychloroquine"
+        ],
+        "status_flags": [
+          "continued"
+        ],
+        "drug_norm_source": "synthetic_rxnav_snapshot"
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_tepi_hydroxychloroquine": {
+      "status": "included",
+      "preview": "Therapy episode: Hydroxychloroquine (ongoing)",
+      "event_id": "P5_tepi_hydroxychloroquine",
+      "timestamp": "2021-01-10",
+      "event_type": "therapy_episode",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "therapy_episode",
+          "title": "Therapy episode: Hydroxychloroquine (ongoing)",
+          "arc_ids": [
+            "arc_therapy_hydroxychloroquine"
+          ],
+          "one_line": "Therapy episode: Hydroxychloroquine (ongoing)",
+          "salience": 6.56,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 6.56,
+        "canonical_id": "ev_e0866a3b78a88dfc",
+        "extracted_by": "synthetic_generator_v1",
+        "ingredient": "hydroxychloroquine",
+        "rxnorm_cui": "5521",
+        "start_date": "2021-01-10",
+        "stop_date": null,
+        "reason_for_stop": null,
+        "entity_keys": [
+          "rxnorm:5521",
+          "ingredient:hydroxychloroquine"
+        ],
+        "arc_ids": [
+          "arc_therapy_hydroxychloroquine"
+        ],
+        "status_flags": [
+          "continued"
+        ]
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_med_prednisone": {
+      "status": "included",
+      "preview": "Prednisone 10 mg daily",
+      "event_id": "P5_med_prednisone",
+      "timestamp": "2024-07-14",
+      "event_type": "medication",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": "Prednisone",
+          "type": "medication",
+          "title": "Prednisone 10 mg daily",
+          "arc_ids": [
+            "arc_therapy_prednisone"
+          ],
+          "one_line": "Prednisone 10 mg daily",
+          "salience": 5.91,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": true
+          }
+        },
+        "salience": 5.91,
+        "canonical_id": "ev_f37ce7a7089de305",
+        "extracted_by": "synthetic_generator_v1",
+        "drug_name": "Prednisone",
+        "ingredient": "prednisone",
+        "rxnorm_cui": "8640",
+        "dose_mg": 10,
+        "dose_unit": "mg",
+        "frequency": "daily",
+        "start_date": "2024-07-14",
+        "stop_date": "2025-07-15",
+        "reason_for_stop": "switch",
+        "entity_keys": [
+          "rxnorm:8640",
+          "ingredient:prednisone"
+        ],
+        "arc_ids": [
+          "arc_therapy_prednisone"
+        ],
+        "status_flags": [
+          "stopped"
+        ],
+        "drug_norm_source": "synthetic_rxnav_snapshot"
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_tepi_prednisone": {
+      "status": "included",
+      "preview": "Therapy episode: Prednisone -> 2025-07-15",
+      "event_id": "P5_tepi_prednisone",
+      "timestamp": "2024-07-14",
+      "event_type": "therapy_episode",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "therapy_episode",
+          "title": "Therapy episode: Prednisone -> 2025-07-15",
+          "arc_ids": [
+            "arc_therapy_prednisone"
+          ],
+          "one_line": "Therapy episode: Prednisone -> 2025-07-15",
+          "salience": 6.91,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 6.91,
+        "canonical_id": "ev_676e7f4535db8f9e",
+        "extracted_by": "synthetic_generator_v1",
+        "ingredient": "prednisone",
+        "rxnorm_cui": "8640",
+        "start_date": "2024-07-14",
+        "stop_date": "2025-07-15",
+        "reason_for_stop": "switch",
+        "entity_keys": [
+          "rxnorm:8640",
+          "ingredient:prednisone"
+        ],
+        "arc_ids": [
+          "arc_therapy_prednisone"
+        ],
+        "status_flags": [
+          "stopped"
+        ]
+      },
+      "connascence": {},
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_flare_r07": {
+      "status": "included",
+      "preview": "PRO-composite flare, round 8",
+      "event_id": "P5_flare_r07",
+      "timestamp": "2024-07-14",
+      "event_type": "flare",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "flare",
+          "title": "PRO-composite flare, round 8",
+          "arc_ids": [
+            "arc_flare_r07"
+          ],
+          "one_line": "PRO-composite flare, round 8",
+          "salience": 10.31,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 10.31,
+        "canonical_id": "ev_d556c1d169ec3ae8",
+        "extracted_by": "synthetic_generator_v1",
+        "detector": "pro_composite_v1",
+        "definition": "worsening >= MCID on HAQ-II AND VAS pain, relative to patient baseline, with treatment-escalation anchor",
+        "round": 7,
+        "entity_keys": [
+          "round:7",
+          "flare:pro_composite"
+        ],
+        "arc_ids": [
+          "arc_flare_r07"
+        ],
+        "status_flags": [
+          "flare",
+          "acute"
+        ]
+      },
+      "connascence": {
+        "flare_window": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ],
+        "same_encounter": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_uc_r00": {
+      "status": "included",
+      "preview": "UC flare probability = 0.05 (90% band 0.02-0.15, confidence low)",
+      "event_id": "P5_uc_r00",
+      "timestamp": "2021-01-10",
+      "event_type": "derived_metric",
+      "annotations": {
+        "card": {
+          "ts": "2021-01-10",
+          "icd": null,
+          "drug": null,
+          "type": "derived_metric",
+          "title": "UC flare probability = 0.05 (90% band 0.02-0.15, confidence low)",
+          "arc_ids": [
+            "arc_study_epoch_m06"
+          ],
+          "one_line": "UC flare probability = 0.05 (90% band 0.02-0.15, confidence low)",
+          "salience": 7.21,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 7.21,
+        "canonical_id": "ev_2d67dd56486af199",
+        "extracted_by": "synthetic_generator_v1",
+        "kind": "uncertainty_carrier",
+        "metric": "flare_probability_90",
+        "point_estimate": 0.05,
+        "band_90": [
+          0.02,
+          0.15
+        ],
+        "basis": [
+          "baseline round; insufficient trajectory data"
+        ],
+        "confidence": "low",
+        "round": 0,
+        "anticipation": false,
+        "evidence_event_ids": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ],
+        "governance_ref": "SSRN 6554940 (Uncertainty Carriers)",
+        "entity_keys": [
+          "round:0",
+          "uc:flare_probability"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m06"
+        ],
+        "status_flags": []
+      },
+      "connascence": {
+        "temporal": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ],
+        "flare_window": []
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_uc_r07": {
+      "status": "included",
+      "preview": "UC flare probability = 0.67 (90% band 0.54-0.81, confidence moderate)",
+      "event_id": "P5_uc_r07",
+      "timestamp": "2024-07-14",
+      "event_type": "derived_metric",
+      "annotations": {
+        "card": {
+          "ts": "2024-07-14",
+          "icd": null,
+          "drug": null,
+          "type": "derived_metric",
+          "title": "UC flare probability = 0.67 (90% band 0.54-0.81, confidence moderate)",
+          "arc_ids": [
+            "arc_flare_r07",
+            "arc_study_epoch_m48"
+          ],
+          "one_line": "UC flare probability = 0.67 (90% band 0.54-0.81, confidence moderate)",
+          "salience": 8.71,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 8.71,
+        "canonical_id": "ev_d29074b55e6064b5",
+        "extracted_by": "synthetic_generator_v1",
+        "kind": "uncertainty_carrier",
+        "metric": "flare_probability_90",
+        "point_estimate": 0.67,
+        "band_90": [
+          0.535,
+          0.805
+        ],
+        "basis": [
+          "HAQ-II delta since baseline = 2.09 MCID units",
+          "VAS pain delta since baseline = 1.45 MCID units",
+          "rounds with missing data in last 3 rounds: 1",
+          "UC width widened due to missing recent questionnaire(s)"
+        ],
+        "confidence": "moderate",
+        "round": 7,
+        "anticipation": false,
+        "evidence_event_ids": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ],
+        "governance_ref": "SSRN 6554940 (Uncertainty Carriers)",
+        "entity_keys": [
+          "round:7",
+          "uc:flare_probability"
+        ],
+        "arc_ids": [
+          "arc_flare_r07",
+          "arc_study_epoch_m48"
+        ],
+        "status_flags": [
+          "flare"
+        ]
+      },
+      "connascence": {
+        "temporal": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ],
+        "flare_window": [
+          "P5_flare_r07"
+        ]
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    },
+    "P5_uc_r09": {
+      "status": "included",
+      "preview": "UC flare probability = 0.65 (90% band 0.56-0.75, confidence high)",
+      "event_id": "P5_uc_r09",
+      "timestamp": "2025-07-15",
+      "event_type": "derived_metric",
+      "annotations": {
+        "card": {
+          "ts": "2025-07-15",
+          "icd": null,
+          "drug": null,
+          "type": "derived_metric",
+          "title": "UC flare probability = 0.65 (90% band 0.56-0.75, confidence high)",
+          "arc_ids": [
+            "arc_study_epoch_m60"
+          ],
+          "one_line": "UC flare probability = 0.65 (90% band 0.56-0.75, confidence high)",
+          "salience": 7.21,
+          "coverage": {
+            "has_code": true,
+            "has_date": true,
+            "has_value": false,
+            "has_dose": false
+          }
+        },
+        "salience": 7.21,
+        "canonical_id": "ev_32b051e19e41475d",
+        "extracted_by": "synthetic_generator_v1",
+        "kind": "uncertainty_carrier",
+        "metric": "flare_probability_90",
+        "point_estimate": 0.653,
+        "band_90": [
+          0.558,
+          0.748
+        ],
+        "basis": [
+          "HAQ-II delta since baseline = 2.00 MCID units",
+          "VAS pain delta since baseline = 1.44 MCID units",
+          "rounds with missing data in last 3 rounds: 0"
+        ],
+        "confidence": "high",
+        "round": 9,
+        "anticipation": false,
+        "evidence_event_ids": [
+          "P5_r09_haq2",
+          "P5_r09_vas_pain",
+          "P5_r09_vas_global",
+          "P5_r09_pas2"
+        ],
+        "governance_ref": "SSRN 6554940 (Uncertainty Carriers)",
+        "entity_keys": [
+          "round:9",
+          "uc:flare_probability"
+        ],
+        "arc_ids": [
+          "arc_study_epoch_m60"
+        ],
+        "status_flags": []
+      },
+      "connascence": {
+        "temporal": [
+          "P5_r09_haq2",
+          "P5_r09_vas_pain",
+          "P5_r09_vas_global",
+          "P5_r09_pas2"
+        ],
+        "flare_window": []
+      },
+      "discovered_by": [
+        "gen_forward_exemplar.py@1.0.0"
+      ]
+    }
+  },
+  "built_at": "2026-04-22T16:33:00.641404+00:00",
+  "metadata": {
+    "synthetic": true,
+    "disclaimer": "SYNTHETIC demonstration cohort. All patient data are programmatically generated for illustration of the 2ndOpinionMD PatientTimelineVision schema and the Uncertainty-Carrier governance framework (SSRN 6554940). No real patient records were used, referenced, or derived from. Not for clinical decision-making. Intended use: conference presentation and FORWARD pilot shape review.",
+    "schema_version": "ptv.2.1-forward-exemplar",
+    "study_cohorts": [
+      "FORWARD_RA_2026_PILOT"
+    ],
+    "intended_use": "conference presentation and FORWARD pilot shape review",
+    "generator": {
+      "name": "gen_forward_exemplar.py",
+      "version": "1.0.0",
+      "seed": 505
+    },
+    "demographics": {
+      "sex": "M",
+      "age_at_baseline": 70,
+      "rdci_baseline": 4
+    },
+    "pro": {
+      "source": "forward_synthetic",
+      "forward": {
+        "patient_reported_outcomes_channel": true
+      },
+      "mirrored_journal_ids": [
+        "P5_r00_haq2",
+        "P5_r00_vas_pain",
+        "P5_r00_vas_global",
+        "P5_r00_pas2",
+        "P5_r00_rdci",
+        "P5_r01_haq2",
+        "P5_r01_vas_pain",
+        "P5_r01_vas_global",
+        "P5_r01_pas2",
+        "P5_r02_haq2",
+        "P5_r02_vas_pain",
+        "P5_r02_vas_global",
+        "P5_r02_pas2",
+        "P5_r02_rdci",
+        "P5_r03_haq2",
+        "P5_r03_vas_pain",
+        "P5_r03_vas_global",
+        "P5_r03_pas2",
+        "P5_r05_haq2",
+        "P5_r05_vas_pain",
+        "P5_r05_vas_global",
+        "P5_r05_pas2",
+        "P5_r07_haq2",
+        "P5_r07_vas_pain",
+        "P5_r07_vas_global",
+        "P5_r07_pas2",
+        "P5_r08_haq2",
+        "P5_r08_vas_pain",
+        "P5_r08_vas_global",
+        "P5_r08_pas2",
+        "P5_r08_rdci",
+        "P5_r09_haq2",
+        "P5_r09_vas_pain",
+        "P5_r09_vas_global",
+        "P5_r09_pas2"
+      ],
+      "instruments": [
+        "HAQ-II",
+        "VAS Pain",
+        "VAS Patient Global",
+        "PAS-II",
+        "RDCI"
+      ]
+    },
+    "phenotype_label": "hero: honest uncertainty with missing data",
+    "phenotype_headline": "Rounds 4 and 6 questionnaires missing; UC widths widen and basis cites insufficient data.",
+    "index": {
+      "by_arc": {
+        "arc_icd_M05": [
+          "P5_dx_ra"
+        ],
+        "arc_study_epoch_m06": [
+          "P5_r00_haq2",
+          "P5_r00_vas_pain",
+          "P5_r00_vas_global",
+          "P5_r00_pas2",
+          "P5_r00_rdci"
+        ],
+        "arc_study_epoch_m12": [
+          "P5_r01_haq2",
+          "P5_r01_vas_pain",
+          "P5_r01_vas_global",
+          "P5_r01_pas2"
+        ],
+        "arc_study_epoch_m18": [
+          "P5_r02_haq2",
+          "P5_r02_vas_pain",
+          "P5_r02_vas_global",
+          "P5_r02_pas2",
+          "P5_r02_rdci"
+        ],
+        "arc_study_epoch_m24": [
+          "P5_r03_haq2",
+          "P5_r03_vas_pain",
+          "P5_r03_vas_global",
+          "P5_r03_pas2"
+        ],
+        "arc_study_epoch_m30": [
+          "P5_r04_missing"
+        ],
+        "arc_study_epoch_m36": [
+          "P5_r05_haq2",
+          "P5_r05_vas_pain",
+          "P5_r05_vas_global",
+          "P5_r05_pas2"
+        ],
+        "arc_study_epoch_m42": [
+          "P5_r06_missing"
+        ],
+        "arc_study_epoch_m48": [
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2"
+        ],
+        "arc_study_epoch_m54": [
+          "P5_r08_haq2",
+          "P5_r08_vas_pain",
+          "P5_r08_vas_global",
+          "P5_r08_pas2",
+          "P5_r08_rdci"
+        ],
+        "arc_study_epoch_m60": [
+          "P5_r09_haq2",
+          "P5_r09_vas_pain",
+          "P5_r09_vas_global",
+          "P5_r09_pas2"
+        ],
+        "arc_therapy_methotrexate": [
+          "P5_med_methotrexate",
+          "P5_tepi_methotrexate"
+        ],
+        "arc_therapy_hydroxychloroquine": [
+          "P5_med_hydroxychloroquine",
+          "P5_tepi_hydroxychloroquine"
+        ],
+        "arc_therapy_prednisone": [
+          "P5_med_prednisone",
+          "P5_tepi_prednisone"
+        ],
+        "arc_flare_r07": [
+          "P5_flare_r07",
+          "P5_r07_haq2",
+          "P5_r07_vas_pain",
+          "P5_r07_vas_global",
+          "P5_r07_pas2",
+          "P5_uc_r07"
+        ]
+      }
+    }
+  },
+  "patient_id": "synth_p5_honest_uncertainty_missing",
+  "session_only": false
+}

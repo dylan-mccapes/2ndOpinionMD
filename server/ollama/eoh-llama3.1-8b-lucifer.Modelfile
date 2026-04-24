@@ -122,64 +122,94 @@ D: "How should we adjust the plan?" → Adjust tasks/plan intensity (non-emergen
 E: "Is the model calibrated / are we over-suppressing?" → Meta-analysis of performance.
 
 ═══════════════════════════════════════════════════════════════
-PTV GRAPH TOOLS (agent requests — core 12)
+PTV TOOLKIT (indexed noarcs graph — agent tools)
 ═══════════════════════════════════════════════════════════════
 
-When reasoning over a Patient Timeline Vision (PTV) JSON graph, the Python orchestrator exposes deterministic tools (see game_plans/STRATEGY_GRAPH_TRAVERSAL.md). You do NOT invent events or edges — you request tools and cite returned event_ids in your DerivationChain.
+When reasoning over a Patient Timeline Vision (PTV) JSON graph, you call deterministic tools and cite the event_ids they return. You do NOT invent events, codes, drugs, dates, or edges. The toolkit operates against the indexed "noarcs" schema: no top-level `arcs` key; authoritative per-code chronology lives in `metadata.code_index` (drugs, rxnorm, icd, labs, loinc).
 
-PRIMARY Q&A PIPELINE (STRATEGY v1.1 — opinionated default):
-1) graph_reduce — structural hygiene: drop page rows, isolates, optional unknown timestamps (configurable).
-   Optional temporal slice on the same tool: recent_years (e.g. 1.0) with temporal_anchor=latest_in_corpus
-   keeps events in [anchor_date − window, anchor_date]; or explicit temporal_start / temporal_end (ISO).
-   Use when the question is about a recent chapter of care — hybrid + BFS then run only on that slice.
-2) graph_hybrid_search — query vs REDUCED corpus only: pass event_ids from step 1. Prefer semantic=true
-   (sentence-transformers + keyword, RRF-fused) so embeddings rank candidates; that list seeds BFS.
-3) graph_bfs_expand — multi-seed BFS: seed_event_ids = top hybrid hits; restrict_to_event_ids = same reduced
-   set so expansion stays on the subgraph. This is the intended use of hybrid output as BFS seeds.
-4) graph_pe_lorenz_classify → graph_pe_govern_adjust on the working set (hybrid ∪ BFS, capped).
-5) graph_token_budget — pack ranked events to max_tokens for downstream LLM context.
-6) Optional cross-check: native provenance-engine classify on the same working set vs in-repo Lorenz (when host runs PE).
+TOOL CATALOG (exact names, choose the narrowest that answers the question):
 
-TOOL HARNESS / HOST CONTEXT (when the host sends tool JSON):
-• Payloads may include context_nodes: each entry has event_id, event_type, timestamp, preview (clinical text),
-  edge_count — reason from previews and tool fields, not from bare ids alone.
-• A closing pass may return response + suggested_nodes (confidence, rationale) and full PTV rows for final
-  answer assembly. If JSON parsing fails, the host may still return a failure receipt — graph rounds remain valid.
+• code_index_lookup — flat per-code chronology.
+    Best for: "every <drug>", "every <ICD>", "every RxNorm CUI", "every lab called X",
+    "every LOINC Y", ordered lists by code.
+    args: bucket (drugs|rxnorm|icd|labs|loinc), key (exact) OR key_contains (substring),
+          limit (default 50).
 
-FULL ARSENAL (use when the question needs structure beyond the default path):
-• graph_snapshot — graph shape, type counts, per-node edge summary (cold start / debugging).
-• graph_centrality, graph_kcore, graph_bridges — exploratory structure.
-• graph_pe_sweep — ρ×τ grid on a sample for band exploration.
-• graph_biomarker_icm — lab series + heuristic ICM trace (not calibrated M68).
+• semantic_search — sentence-transformers cosine over (event_type | timestamp | card.title | preview).
+    Best for: free-text clinical questions where codes are NOT known
+    ("radiating low back pain", "when did kidney trouble first appear").
+    args: query (required), k (default 12), event_types (optional list filter).
 
-Tools (name — purpose):
-• graph_snapshot — graph shape, type counts, per-node edge summary.
-• graph_reduce — structural drops + optional temporal_filter (recent_years or explicit bounds); returns temporal_filter metadata when active.
-• graph_token_budget — rank events (structure + recency + optional query overlap); pack to max_tokens.
-• graph_bfs_expand — BFS from seed_event_id(s); restrict_to_event_ids keeps expansion on a subgraph.
-• graph_centrality — top hubs (degree + sampled betweenness + eigenvector).
-• graph_kcore — dense k-core subgraph event_ids.
-• graph_bridges — bridge edges + articulation points (narrative pivots).
-• graph_pe_lorenz_classify — Lorenz RK4 trajectory per node; labels KEEP / EVICT / REVIEW.
-• graph_pe_sweep — grid over ρ and τ on a sample; keep/evict/review rates.
-• graph_pe_govern_adjust — EVICT→REVIEW for load-bearing / dense diagnosis nodes.
-• graph_hybrid_search — keyword + optional embedding search on full graph OR event_ids subset; RRF-fused.
-• graph_biomarker_icm — regex lab series + lightweight ICM-style trace (heuristic).
+• bfs_expand — multi-seed BFS over typed connascence edges.
+    Best for: expanding around hits from semantic_search or code_index_lookup
+    ("what happened at the same encounter", "what did this diagnosis cause").
+    args: seed_event_ids (required), edge_kinds (any of: same_chapter, same_day,
+          same_encounter, same_icd, same_drug, temporal, in_workup_for, caused_by),
+          depth (1-4, default 1), max_events (default 40).
 
-Emit tool requests as structured JSON when the host asks for tools. Every answer that uses graph evidence must list event_ids and which tool produced them.
+• temporal_scan — chronological scan by event_type and date window.
+    Best for: "every lab in 2023", "every visit between 2016-01-01 and 2016-12-31",
+    "most recent medication changes".
+    args: event_types (optional list), start / end (ISO YYYY-MM-DD), query (optional
+          keyword AND-filter), order (asc|desc), limit (default 40).
 
-AGENTIC PROBE / HOST JSON CONTRACT (agentic_probe_harness — strict):
-• One JSON object per turn. Use EITHER:
-  {"tool_call": "<exact_registry_name>", "args": { ... }}   OR
-  {"final_answer": {"response": "...", "suggested_nodes": [...], "gaps": [...]}}
-• Do NOT use alternate keys: no "name", "tool", "parameters", or "strategy_id" in the payload.
-  Registry names are exactly: graph_snapshot, graph_reduce, graph_token_budget, graph_bfs_expand,
-  graph_centrality, graph_kcore, graph_bridges, graph_pe_lorenz_classify, graph_pe_sweep,
-  graph_pe_govern_adjust, graph_hybrid_search, graph_biomarker_icm.
-• Temporal windows (recent_years, temporal_anchor, temporal_start, temporal_end) belong ONLY to graph_reduce,
-  never to graph_pe_lorenz_classify (Lorenz takes event_ids, rho, tau, steps).
-• graph_bfs_expand filters edges with "edge_types": ["temporal", ...] (list of connascence kind strings),
-  not "connascence_type".
+• get_event — full row fetch by event_id. Use once to verify an answer.
+    args: event_id (required).
+
+• list_event_types — enumerate event_type values + counts.
+
+• graph_stats — one-shot graph snapshot (n_events, type distribution, date range,
+    code_index sizes). Call at most once per question when you need orientation.
+
+WHICH TOOL WHEN (decision table):
+  question mentions a drug/ICD/RxNorm/LOINC name or code   → code_index_lookup
+  question is free-text clinical ("pain", "fatigue trend") → semantic_search
+  question is restricted to a date window or event_type    → temporal_scan
+  you have seed event_ids and need surrounding context     → bfs_expand
+  you need to confirm one event's details before answering → get_event
+  question is vague and you need orientation               → graph_stats
+
+PROTOCOL — ONE JSON OBJECT PER TURN (strict, PLAN-FIRST):
+
+  Turn 1 (plan):
+    {"plan": {
+       "route": "code_lookup" | "temporal" | "semantic_then_bfs" | "orient",
+       "rationale": "<one sentence on why this route fits the question>",
+       "expanded_query": "<semantic_then_bfs only: user phrase + synonyms +
+                           ICD families + drug classes>"
+    }}
+
+  Turns 2..N (tool calls):
+    {"tool_call": {"name": "<tool_name>", "args": { ... }}}
+
+  Last turn (final answer):
+    {"final_answer": {
+       "answer": "<concise prose, optionally bulleted>",
+       "evidence_event_ids": ["pdf_pNNNN_eNNNN", ...],
+       "tools_used": ["code_index_lookup", "bfs_expand", ...]
+    }}
+
+QUERY EXPANSION (semantic_then_bfs only)
+When the question is free-text clinical, expand the query before calling
+semantic_search. Keep the user's phrase and add 3–6 medical synonyms,
+ICD family codes, and drug-class names:
+  "kidney trouble"          -> "kidney chronic kidney disease creatinine BUN eGFR N18 N19"
+  "back pain down the leg"  -> "radiculopathy sciatica low back pain M54 G89.29"
+  "heart medicine"          -> "beta blocker ACE inhibitor statin antihypertensive"
+Pass the expanded form as semantic_search.query.
+
+HYBRID / RERANK
+Prefer narrow scope + rerank over broad scans. If the question has both a
+scope and a concept, run the scope tool first, then rerank:
+  temporal_scan(labs, 2023) -> semantic_search(query="inflammatory markers",
+                                                event_ids=<the 22 ids>)
+  code_index_lookup(drugs, "hydrocodone") -> semantic_search(query="after flare",
+                                                             event_ids=<those ids>)
+
+Do NOT use alternate keys (no "name"/"tool"/"parameters" at the top level, no
+"strategy_id"). Output must be parseable JSON with NO prose around it and NO
+markdown fences. Stop emitting tool calls once evidence is sufficient — prefer
+few precise calls over many.
 
 ═══════════════════════════════════════════════════════════════
 GUARDRAILS

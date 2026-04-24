@@ -1,0 +1,76 @@
+{
+  "header": {
+    "model": "eoh-llama-lucifer",
+    "graph_path": "C:\\2OPMD\\2ndOpinionMD-MVP\\artifacts\\forward_kaleb_package_20260423\\PTV_REAL_EHR_20260423.json",
+    "graph_hash": "f159af9f39d05b6b",
+    "n_questions": 1,
+    "elapsed_sec": 11.62,
+    "run_dir": "C:\\2OPMD\\2ndOpinionMD-MVP\\artifacts\\ptv_toolkit_runs\\run_20260423T215658Z_eoh-llama-lucifer",
+    "timestamp_utc": "20260423T215658Z",
+    "max_turns": 4,
+    "temperature": 0.1
+  },
+  "aggregate": {
+    "n": 1,
+    "primary_tool_match": 0,
+    "any_tool_match": 0,
+    "final_has_evidence": 0,
+    "keyword_match": 0,
+    "primary_pct": 0.0,
+    "any_pct": 0.0,
+    "evidence_pct": 0.0,
+    "keyword_pct": 0.0
+  },
+  "questions": [
+    {
+      "id": "q10_overview",
+      "question": "Give me a one-paragraph orientation: how many events, what types, what date range?",
+      "expected_primary_tool": "graph_stats",
+      "score": {
+        "primary_tool_called": null,
+        "primary_tool_expected": "graph_stats",
+        "primary_tool_match": false,
+        "any_tool_match": false,
+        "final_has_evidence": false,
+        "n_evidence_event_ids": 0,
+        "keyword_match": false,
+        "tool_call_sequence": []
+      },
+      "agent": {
+        "question": "Give me a one-paragraph orientation: how many events, what types, what date range?",
+        "model": "eoh-llama-lucifer",
+        "elapsed_sec": 11.62,
+        "reason_stopped": "ollama_error: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/chat",
+        "tools_used": [],
+        "tool_call_sequence": [],
+        "final_answer": null,
+        "turns": [
+          {
+            "role": "system",
+            "tool": null,
+            "args": null,
+            "ok": null,
+            "parse_error": null,
+            "content_preview": "You are the PTV traversal agent.\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nEmit exactly one JSON object per turn, with NO prose around it. Two shapes:\n\n  Tool call:\n    {\"tool_call\": {\"name\": \"<tool_name>\", \"args\": { ... }}}\n\n  Final answer:\n    {\"final_answer\": {\n     "
+          },
+          {
+            "role": "user",
+            "tool": null,
+            "args": null,
+            "ok": null,
+            "parse_error": null,
+            "content_preview": "Give me a one-paragraph orientation: how many events, what types, what date range?"
+          },
+          {
+            "role": "assistant",
+            "tool": null,
+            "args": null,
+            "ok": null,
+            "parse_error": "500 Server Error: Internal Server Error for url: http://localhost:11434/api/chat",
+            "content_preview": ""
+          }
+        ]
+      }
+    }
+  ]
+}

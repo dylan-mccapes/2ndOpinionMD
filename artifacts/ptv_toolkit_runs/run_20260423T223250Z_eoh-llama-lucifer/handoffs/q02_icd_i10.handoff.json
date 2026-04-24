@@ -1,0 +1,669 @@
+{
+  "schema": "ptv_toolkit.handoff.v1",
+  "patient_id": "46860f06-e0a5-42d4-af9f-4dd8caa666f0",
+  "graph": {
+    "path": "C:\\2OPMD\\2ndOpinionMD-MVP\\artifacts\\forward_kaleb_package_20260423\\PTV_REAL_EHR_20260423.json",
+    "graph_hash": "f159af9f39d05b6b",
+    "n_events": 632,
+    "date_range": {
+      "start": "2004-06-10",
+      "end": "2025-12-05"
+    },
+    "code_index_summary": {
+      "drugs": 63,
+      "rxnorm": 48,
+      "icd": 73,
+      "labs": 6,
+      "loinc": 6
+    }
+  },
+  "probe": {
+    "question": "How many events in this chart carry the ICD-10 code I10, and when was it first and last recorded?",
+    "model": "eoh-llama-lucifer",
+    "elapsed_sec": 100.06,
+    "reason_stopped": "final_answer",
+    "plan": {
+      "route": "code_lookup",
+      "rationale": "Counting events with ICD-10 code I10, then finding first/last dates.",
+      "expanded_query": ""
+    },
+    "tools_used": [
+      "code_index_lookup",
+      "get_event",
+      "semantic_search",
+      "bfs_expand"
+    ],
+    "tool_call_sequence": [
+      "code_index_lookup",
+      "get_event",
+      "semantic_search",
+      "bfs_expand"
+    ],
+    "tool_trace": [
+      {
+        "tool": "code_index_lookup",
+        "args": {
+          "bucket": "icd",
+          "key_contains": "I10"
+        },
+        "ok": true,
+        "n_events_returned": 4,
+        "error": null
+      },
+      {
+        "tool": "get_event",
+        "args": {
+          "event_id": "pdf_p0091_e001"
+        },
+        "ok": true,
+        "n_events_returned": 22,
+        "error": null
+      },
+      {
+        "tool": "semantic_search",
+        "args": {
+          "query": "I10 hypertension",
+          "k": 12,
+          "event_types": [
+            "diagnosis"
+          ]
+        },
+        "ok": true,
+        "n_events_returned": 12,
+        "error": null
+      },
+      {
+        "tool": "bfs_expand",
+        "args": {
+          "seed_event_ids": [
+            "pdf_p0091_e001"
+          ],
+          "edge_kinds": [
+            "same_icd"
+          ],
+          "depth": 2,
+          "max_events": 40
+        },
+        "ok": true,
+        "n_events_returned": 4,
+        "error": null
+      }
+    ],
+    "final_answer": {
+      "answer": "The ICD-10 code I10 was first recorded on 2016-03-07 and last recorded on unknown. There are a total of 4 events with this code.",
+      "evidence_event_ids": [
+        "pdf_p0091_e001",
+        "pdf_p0006_e005",
+        "pdf_p0017_e004",
+        "pdf_p0091_e0004"
+      ],
+      "tools_used": [
+        "code_index_lookup",
+        "semantic_search",
+        "bfs_expand"
+      ]
+    }
+  },
+  "working_set": {
+    "event_ids": [
+      "pdf_p0091_e001",
+      "pdf_p0006_e005",
+      "pdf_p0091_e0004",
+      "pdf_p0017_e004",
+      "pdf_p0097_e000",
+      "pdf_p0091_e000",
+      "pdf_p0091_e005",
+      "pdf_p0091_e008",
+      "pdf_p0003_e003",
+      "pdf_p0004_e000",
+      "pdf_p0005_e0002",
+      "pdf_p0006_e0006",
+      "pdf_p0007_e001",
+      "pdf_p0017_e007",
+      "pdf_p0017_e008",
+      "pdf_p0017_e009",
+      "pdf_p0036_e0000",
+      "pdf_p0084_e000",
+      "pdf_p0084_e0000",
+      "pdf_p0085_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0087_e0001",
+      "pdf_p0088_e0000",
+      "pdf_p0089_e0000",
+      "pdf_p0091_e002",
+      "pdf_p0091_e003",
+      "pdf_p0091_e004",
+      "pdf_p0091_e006",
+      "pdf_p0091_e007"
+    ],
+    "n_total_seen": 30,
+    "n_included": 30,
+    "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+  },
+  "top_events": [
+    {
+      "event_id": "pdf_p0091_e001",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back\u2026",
+      "one_line": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA\u2026",
+      "icd": "I10",
+      "drug": null,
+      "salience": 4.8322,
+      "preview": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]",
+      "probe_weight": 13,
+      "probe_sources": [
+        "code_index_lookup",
+        "get_event",
+        "bfs_expand",
+        "final_answer"
+      ],
+      "card_title": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back\u2026",
+      "card_one_line": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA\u2026",
+      "status_flags": [
+        "chronic"
+      ]
+    },
+    {
+      "event_id": "pdf_p0006_e005",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "HTN (HYPERTENSION)",
+      "one_line": "HTN (HYPERTENSION) [I10]",
+      "icd": "I10",
+      "drug": null,
+      "salience": 3.6094,
+      "preview": "HTN (HYPERTENSION) [I10]",
+      "probe_weight": 8,
+      "probe_sources": [
+        "code_index_lookup",
+        "get_event",
+        "semantic_search",
+        "bfs_expand",
+        "final_answer"
+      ],
+      "card_title": "HTN (HYPERTENSION)",
+      "card_one_line": "HTN (HYPERTENSION) [I10]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0091_e0004",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "HTN [I10]",
+      "one_line": "HTN [I10]",
+      "icd": "I10",
+      "drug": null,
+      "salience": 5.1376,
+      "preview": "HTN [I10]",
+      "probe_weight": 8,
+      "probe_sources": [
+        "code_index_lookup",
+        "get_event",
+        "semantic_search",
+        "bfs_expand",
+        "final_answer"
+      ],
+      "card_title": "HTN [I10]",
+      "card_one_line": "HTN [I10]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0017_e004",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "Medical History DiagnosisDateCommentsSourceATRIAL\u2026",
+      "one_line": "Medical History DiagnosisDateCommentsSourceATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\u2014\u2014ProviderCOLON POLYP [K63.5] 11/2/2007\u2014ProviderGERD\u2026",
+      "icd": "I10",
+      "drug": null,
+      "salience": 3.4459,
+      "preview": "Medical History DiagnosisDateCommentsSourceATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\u2014\u2014ProviderCOLON POLYP [K63.5] 11/2/2007\u2014ProviderGERD (GASTROESOPHAGEAL REFLUX DISEASE) [K21.9] 6/10/2004\u2014ProviderGOUT\u2026",
+      "probe_weight": 7,
+      "probe_sources": [
+        "code_index_lookup",
+        "get_event",
+        "bfs_expand",
+        "final_answer"
+      ],
+      "card_title": "Medical History DiagnosisDateCommentsSourceATRIAL\u2026",
+      "card_one_line": "Medical History DiagnosisDateCommentsSourceATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\u2014\u2014ProviderCOLON POLYP [K63.5] 11/2/2007\u2014ProviderGERD\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0097_e000",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "1110Ordering provider: Chang, Michelle (M.D.)Authorized by\u2026",
+      "one_line": "1110Ordering provider: Chang, Michelle (M.D.)Authorized by: Chang, Michelle (M.D.) Ordering mode: StandardFrequency: 03/07/16 - 08/30/16\u2026",
+      "icd": "J45.909",
+      "drug": null,
+      "salience": 7.0291,
+      "preview": "1110Ordering provider: Chang, Michelle (M.D.)Authorized by: Chang, Michelle (M.D.) Ordering mode: StandardFrequency: 03/07/16 - 08/30/16 Class: Fill NowDiscontinued by: Pims, User 08/30/16\u2026",
+      "probe_weight": 3,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "1110Ordering provider: Chang, Michelle (M.D.)Authorized by\u2026",
+      "card_one_line": "1110Ordering provider: Chang, Michelle (M.D.)Authorized by: Chang, Michelle (M.D.) Ordering mode: StandardFrequency: 03/07/16 - 08/30/16\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0091_e000",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back\u2026",
+      "one_line": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]",
+      "icd": "E78.5",
+      "drug": null,
+      "salience": 6.2627,
+      "preview": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]",
+      "probe_weight": 2,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back\u2026",
+      "card_one_line": "Reason for Visit \uf0b7LOW BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]",
+      "status_flags": [
+        "chronic"
+      ]
+    },
+    {
+      "event_id": "pdf_p0091_e005",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW\u2026",
+      "one_line": "BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL\u2026",
+      "icd": "Z71.89",
+      "drug": null,
+      "salience": 4.9965,
+      "preview": "BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\uf0b7REACTIVE AIRWAY DISEASE\u2026",
+      "probe_weight": 2,
+      "probe_sources": [
+        "get_event",
+        "semantic_search"
+      ],
+      "card_title": "BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW\u2026",
+      "card_one_line": "BACK PAIN (RT hip pain/lower back pain. )\uf0b7\uf0b7\uf0b7\uf0b7\uf0b7CHRONIC LOW BACK PAIN (primary) [M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL\u2026",
+      "status_flags": [
+        "chronic"
+      ]
+    },
+    {
+      "event_id": "pdf_p0091_e008",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "",
+      "one_line": "[M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\uf0b7REACTIVE AIRWAY DISEASE [J45.909]\uf0b7GERD\u2026",
+      "icd": "L40.9",
+      "drug": null,
+      "salience": 5.0264,
+      "preview": "[M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\uf0b7REACTIVE AIRWAY DISEASE [J45.909]\uf0b7GERD [K21.9]\uf0b7ALCOHOL PREVENTION COUNSELING [Z71.89]\uf0b7TOBACCO SMOKER\u2026",
+      "probe_weight": 2,
+      "probe_sources": [
+        "get_event",
+        "semantic_search"
+      ],
+      "card_title": "",
+      "card_one_line": "[M54.5, G89.29]\uf0b7HYPERLIPIDEMIA [E78.5]\uf0b7HTN [I10]\uf0b7ATRIAL FIBRILLATION, PAROXYSMAL [I48.0]\uf0b7REACTIVE AIRWAY DISEASE [J45.909]\uf0b7GERD\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0003_e003",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "R90.89",
+      "one_line": "R90.89 [R90.89]",
+      "icd": "R90.89",
+      "drug": null,
+      "salience": 2.1931,
+      "preview": "R90.89 [R90.89]",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "R90.89",
+      "card_one_line": "R90.89 [R90.89]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0004_e000",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "ATHEROSCLEROSIS OF AORTA",
+      "one_line": "ATHEROSCLEROSIS OF AORTA [I70.0]",
+      "icd": "I70.0",
+      "drug": null,
+      "salience": 2.1931,
+      "preview": "ATHEROSCLEROSIS OF AORTA [I70.0]",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "ATHEROSCLEROSIS OF AORTA",
+      "card_one_line": "ATHEROSCLEROSIS OF AORTA [I70.0]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0005_e0002",
+      "event_type": "diagnosis",
+      "timestamp": "2016-03-07",
+      "title": "Chronic low back pain noted on examination.",
+      "one_line": "Chronic low back pain noted on examination.",
+      "icd": null,
+      "drug": null,
+      "salience": 4.6109,
+      "preview": "Chronic low back pain noted on examination.",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Chronic low back pain noted on examination.",
+      "card_one_line": "Chronic low back pain noted on examination.",
+      "status_flags": [
+        "chronic"
+      ]
+    },
+    {
+      "event_id": "pdf_p0006_e0006",
+      "event_type": "diagnosis",
+      "timestamp": "2004-06-10",
+      "title": "Hypertension noted on examination.",
+      "one_line": "Hypertension noted on examination.",
+      "icd": null,
+      "drug": null,
+      "salience": 3.0794,
+      "preview": "Hypertension noted on examination.",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "Hypertension noted on examination.",
+      "card_one_line": "Hypertension noted on examination.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0007_e001",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "HX OF NON ST ELEVATION MI",
+      "one_line": "HX OF NON ST ELEVATION MI [I25.2]",
+      "icd": "I25.2",
+      "drug": null,
+      "salience": 3.3486,
+      "preview": "HX OF NON ST ELEVATION MI [I25.2]",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "HX OF NON ST ELEVATION MI",
+      "card_one_line": "HX OF NON ST ELEVATION MI [I25.2]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0017_e007",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "(GASTROESOPHAGEAL REFLUX DISEASE)",
+      "one_line": "(GASTROESOPHAGEAL REFLUX DISEASE) [K21.9] 6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION)\u2026",
+      "icd": "K58.9",
+      "drug": null,
+      "salience": 3.2918,
+      "preview": "(GASTROESOPHAGEAL REFLUX DISEASE) [K21.9] 6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5] 6/10/2004\u2014ProviderHYPOKALEMIA [E87.6]\u2026",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "(GASTROESOPHAGEAL REFLUX DISEASE)",
+      "card_one_line": "(GASTROESOPHAGEAL REFLUX DISEASE) [K21.9] 6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION)\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0017_e008",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "6/10/2004\u2014ProviderGOUT",
+      "one_line": "6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5]\u2026",
+      "icd": "M51.36",
+      "drug": null,
+      "salience": 3.6972,
+      "preview": "6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5] 6/10/2004\u2014ProviderHYPOKALEMIA [E87.6] 12/18/2016\u2014ProviderIRRITABLE BOWEL SYNDROME\u2026",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "6/10/2004\u2014ProviderGOUT",
+      "card_one_line": "6/10/2004\u2014ProviderGOUT [M10.9] 6/4/2009\u2014ProviderHTN (HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5]\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0017_e009",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "(HYPERTENSION)",
+      "one_line": "(HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5] 6/10/2004\u2014ProviderHYPOKALEMIA [E87.6] 12/18/2016\u2014ProviderIRRITABLE BOWEL\u2026",
+      "icd": "J98.4",
+      "drug": null,
+      "salience": 3.6094,
+      "preview": "(HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5] 6/10/2004\u2014ProviderHYPOKALEMIA [E87.6] 12/18/2016\u2014ProviderIRRITABLE BOWEL SYNDROME, UNSPECIFIED [K58.9] 6/4/2007\u2014ProviderLUMBAR DISC\u2026",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "(HYPERTENSION)",
+      "card_one_line": "(HYPERTENSION) [I10]6/10/2004\u2014ProviderHYPERLIPIDEMIA [E78.5] 6/10/2004\u2014ProviderHYPOKALEMIA [E87.6] 12/18/2016\u2014ProviderIRRITABLE BOWEL\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0036_e0000",
+      "event_type": "diagnosis",
+      "timestamp": "unknown",
+      "title": "t Illness:[PATIENT] 77 Y male with HYPERTENSION\u2026",
+      "one_line": "t Illness:[PATIENT] 77 Y male with HYPERTENSION, h/o PE, HL, PTSD, CAD (cath in 7/2024 med Rx) with chest pain starting\u2026",
+      "icd": null,
+      "drug": null,
+      "salience": 1.6931,
+      "preview": "t Illness:[PATIENT] 77 Y male with HYPERTENSION, h/o PE, HL, PTSD, CAD (cath in 7/2024 med Rx) with chest pain starting yesterday. EMS ECG showed lateral STE. VAC ER showed resolution of STE with only",
+      "probe_weight": 1,
+      "probe_sources": [
+        "semantic_search"
+      ],
+      "card_title": "t Illness:[PATIENT] 77 Y male with HYPERTENSION\u2026",
+      "card_one_line": "t Illness:[PATIENT] 77 Y male with HYPERTENSION, h/o PE, HL, PTSD, CAD (cath in 7/2024 med Rx) with chest pain starting\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0084_e000",
+      "event_type": "diagnosis",
+      "timestamp": "2016-02-29",
+      "title": "Information[ADDRESS_REDACTED][CITY_REDACTED], CA\u2026",
+      "one_line": "Information[ADDRESS_REDACTED][CITY_STATE_ZIP_REDACTED][PHONE_REDACTED][PATIENT]MRN: [REDACTED] DOB: [REDACTED]Sex: male02/29/2016\u2026",
+      "icd": "Z79.899",
+      "drug": null,
+      "salience": 5.2958,
+      "preview": "Information[ADDRESS_REDACTED][CITY_STATE_ZIP_REDACTED][PHONE_REDACTED][PATIENT]MRN: [REDACTED] DOB: [REDACTED]Sex: male02/29/2016 - Ancillary Orders in AdministrationVisit Information Reason for\u2026",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Information[ADDRESS_REDACTED][CITY_REDACTED], CA\u2026",
+      "card_one_line": "Information[ADDRESS_REDACTED][CITY_STATE_ZIP_REDACTED][PHONE_REDACTED][PATIENT]MRN: [REDACTED] DOB: [REDACTED]Sex: male02/29/2016\u2026",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0084_e0000",
+      "event_type": "diagnosis",
+      "timestamp": "2016-02-29",
+      "title": "LONG TERM DRUG THERAPY [Z79.899]",
+      "one_line": "LONG TERM DRUG THERAPY [Z79.899]",
+      "icd": "Z79.899",
+      "drug": null,
+      "salience": 5.2612,
+      "preview": "LONG TERM DRUG THERAPY [Z79.899]",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "LONG TERM DRUG THERAPY [Z79.899]",
+      "card_one_line": "LONG TERM DRUG THERAPY [Z79.899]",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0085_e0000",
+      "event_type": "administrative",
+      "timestamp": "2016-03-02",
+      "title": "administrative",
+      "one_line": "",
+      "icd": null,
+      "drug": null,
+      "salience": 4.9965,
+      "preview": "",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "administrative",
+      "card_one_line": "",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0086_e0000",
+      "event_type": "clinical_note",
+      "timestamp": "2016-03-02",
+      "title": "Patient requested stronger dose of Norco or enough to tide\u2026",
+      "one_line": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 5.2377,
+      "preview": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Patient requested stronger dose of Norco or enough to tide\u2026",
+      "card_one_line": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0087_e0000",
+      "event_type": "administrative",
+      "timestamp": "2016-03-02",
+      "title": "administrative",
+      "one_line": "",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 5.0553,
+      "preview": "",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "administrative",
+      "card_one_line": "",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0087_e0001",
+      "event_type": "clinical_note",
+      "timestamp": "2016-03-04",
+      "title": "Dr. Chang asked patient to see her in clinic before\u2026",
+      "one_line": "Dr. Chang asked patient to see her in clinic before prescription can be authorized.",
+      "icd": null,
+      "drug": null,
+      "salience": 4.8067,
+      "preview": "Dr. Chang asked patient to see her in clinic before prescription can be authorized.",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Dr. Chang asked patient to see her in clinic before\u2026",
+      "card_one_line": "Dr. Chang asked patient to see her in clinic before prescription can be authorized.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0088_e0000",
+      "event_type": "administrative",
+      "timestamp": "2016-03-04",
+      "title": "Release of Medical Information form completed.",
+      "one_line": "Release of Medical Information form completed.",
+      "icd": null,
+      "drug": null,
+      "salience": 4.5553,
+      "preview": "Release of Medical Information form completed.",
+      "probe_weight": 1,
+      "probe_sources": [
+        "get_event"
+      ],
+      "card_title": "Release of Medical Information form completed.",
+      "card_one_line": "Release of Medical Information form completed.",
+      "status_flags": []
+    }
+  ],
+  "gap_agent_directives": {
+    "default_event_ids_for_bfs_expand": [
+      "pdf_p0091_e001",
+      "pdf_p0006_e005",
+      "pdf_p0091_e0004",
+      "pdf_p0017_e004",
+      "pdf_p0097_e000",
+      "pdf_p0091_e000",
+      "pdf_p0091_e005",
+      "pdf_p0091_e008",
+      "pdf_p0003_e003",
+      "pdf_p0004_e000",
+      "pdf_p0005_e0002",
+      "pdf_p0006_e0006",
+      "pdf_p0007_e001",
+      "pdf_p0017_e007",
+      "pdf_p0017_e008",
+      "pdf_p0017_e009",
+      "pdf_p0036_e0000",
+      "pdf_p0084_e000",
+      "pdf_p0084_e0000",
+      "pdf_p0085_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0087_e0001",
+      "pdf_p0088_e0000",
+      "pdf_p0089_e0000",
+      "pdf_p0091_e002",
+      "pdf_p0091_e003",
+      "pdf_p0091_e004",
+      "pdf_p0091_e006",
+      "pdf_p0091_e007"
+    ],
+    "default_event_ids_for_semantic_search": [
+      "pdf_p0091_e001",
+      "pdf_p0006_e005",
+      "pdf_p0091_e0004",
+      "pdf_p0017_e004",
+      "pdf_p0097_e000",
+      "pdf_p0091_e000",
+      "pdf_p0091_e005",
+      "pdf_p0091_e008",
+      "pdf_p0003_e003",
+      "pdf_p0004_e000",
+      "pdf_p0005_e0002",
+      "pdf_p0006_e0006",
+      "pdf_p0007_e001",
+      "pdf_p0017_e007",
+      "pdf_p0017_e008",
+      "pdf_p0017_e009",
+      "pdf_p0036_e0000",
+      "pdf_p0084_e000",
+      "pdf_p0084_e0000",
+      "pdf_p0085_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0087_e0001",
+      "pdf_p0088_e0000",
+      "pdf_p0089_e0000",
+      "pdf_p0091_e002",
+      "pdf_p0091_e003",
+      "pdf_p0091_e004",
+      "pdf_p0091_e006",
+      "pdf_p0091_e007"
+    ],
+    "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+  }
+}

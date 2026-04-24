@@ -1,0 +1,410 @@
+{
+  "schema": "ptv_toolkit.handoff.v1",
+  "patient_id": "46860f06-e0a5-42d4-af9f-4dd8caa666f0",
+  "graph": {
+    "path": "C:\\2OPMD\\2ndOpinionMD-MVP\\artifacts\\forward_kaleb_package_20260423\\PTV_REAL_EHR_20260423.json",
+    "graph_hash": "f159af9f39d05b6b",
+    "n_events": 632,
+    "date_range": {
+      "start": "2004-06-10",
+      "end": "2025-12-05"
+    },
+    "code_index_summary": {
+      "drugs": 63,
+      "rxnorm": 48,
+      "icd": 73,
+      "labs": 6,
+      "loinc": 6
+    }
+  },
+  "probe": {
+    "question": "Is RxNorm 857002 present in this graph? If so, how many events use it?",
+    "model": "eoh-llama-lucifer",
+    "elapsed_sec": 58.54,
+    "reason_stopped": "max_turns_reached",
+    "plan": {
+      "route": "code_lookup",
+      "rationale": "Determine if RxNorm code is present in graph before searching for related events.",
+      "expanded_query": ""
+    },
+    "tools_used": [
+      "code_index_lookup"
+    ],
+    "tool_call_sequence": [
+      "code_index_lookup"
+    ],
+    "tool_trace": [
+      {
+        "tool": "code_index_lookup",
+        "args": {
+          "bucket": "rxnorm",
+          "key": "857002"
+        },
+        "ok": true,
+        "n_events_returned": 16,
+        "error": null
+      }
+    ],
+    "final_answer": null
+  },
+  "working_set": {
+    "event_ids": [
+      "pdf_p0012_e0011",
+      "pdf_p0013_e0006",
+      "pdf_p0014_e0003",
+      "pdf_p0070_e0001",
+      "pdf_p0071_e0000",
+      "pdf_p0076_e0001",
+      "pdf_p0078_e0000",
+      "pdf_p0079_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0096_e0001",
+      "pdf_p0096_e0003",
+      "pdf_p0100_e0001",
+      "pdf_p0101_e0000",
+      "pdf_p0116_e0000",
+      "pdf_p0154_e0009"
+    ],
+    "n_total_seen": 16,
+    "n_included": 16,
+    "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+  },
+  "top_events": [
+    {
+      "event_id": "pdf_p0012_e0011",
+      "event_type": "medication",
+      "timestamp": "unknown",
+      "title": "HYDROcodone-Acetaminophen 5-325 mg",
+      "one_line": "Started HYDROcodone-Acetaminophen 5-325 mg Oral Tab for pain on 3/26/2025. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 3.5794,
+      "preview": "Started HYDROcodone-Acetaminophen 5-325 mg Oral Tab for pain on 3/26/2025. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "HYDROcodone-Acetaminophen 5-325 mg",
+      "card_one_line": "Started HYDROcodone-Acetaminophen 5-325 mg Oral Tab for pain on 3/26/2025. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0013_e0006",
+      "event_type": "immunization",
+      "timestamp": "unknown",
+      "title": "immunization",
+      "one_line": "",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 2.1931,
+      "preview": "",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "immunization",
+      "card_one_line": "",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0014_e0003",
+      "event_type": "medication",
+      "timestamp": "unknown",
+      "title": "HYDROcodone-Acetaminophen 5-325 mg",
+      "one_line": "HYDROcodone-Acetaminophen 5-325 mg oral tablet taken every 6 hours as needed for pain. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 4.5649,
+      "preview": "HYDROcodone-Acetaminophen 5-325 mg oral tablet taken every 6 hours as needed for pain. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "HYDROcodone-Acetaminophen 5-325 mg",
+      "card_one_line": "HYDROcodone-Acetaminophen 5-325 mg oral tablet taken every 6 hours as needed for pain. Entered by Schwarz, Kirsten Elisabeth (Pharm.D.).",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0070_e0001",
+      "event_type": "medication",
+      "timestamp": "2016-02-11",
+      "title": "hydrocodone-acetaminophen 5-325 mg Oral Tab",
+      "one_line": "Hydrocodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued.",
+      "icd": null,
+      "drug": "hydrocodone-acetaminophen",
+      "salience": 4.9965,
+      "preview": "Hydrocodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "hydrocodone-acetaminophen 5-325 mg Oral Tab",
+      "card_one_line": "Hydrocodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued.",
+      "status_flags": [
+        "stopped"
+      ]
+    },
+    {
+      "event_id": "pdf_p0071_e0000",
+      "event_type": "administrative",
+      "timestamp": "2016-02-11",
+      "title": "administrative",
+      "one_line": "",
+      "icd": null,
+      "drug": "hydrocodone-acetaminophen",
+      "salience": 4.6355,
+      "preview": "",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "administrative",
+      "card_one_line": "",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0076_e0001",
+      "event_type": "medication",
+      "timestamp": "2016-02-22",
+      "title": "Norco",
+      "one_line": "Patient requesting refill of Active prescription for Norco. Last fill date 02/12/2016.Orders pended for your consideration.",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 4.8673,
+      "preview": "Patient requesting refill of Active prescription for Norco. Last fill date 02/12/2016.Orders pended for your consideration.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "Norco",
+      "card_one_line": "Patient requesting refill of Active prescription for Norco. Last fill date 02/12/2016.Orders pended for your consideration.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0078_e0000",
+      "event_type": "medication",
+      "timestamp": "2016-02-26",
+      "title": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab",
+      "one_line": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued by Dr. Chang on 03/07/16.",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen (NORCO)",
+      "salience": 5.7136,
+      "preview": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued by Dr. Chang on 03/07/16.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab",
+      "card_one_line": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab discontinued by Dr. Chang on 03/07/16.",
+      "status_flags": [
+        "stopped"
+      ]
+    },
+    {
+      "event_id": "pdf_p0079_e0000",
+      "event_type": "medication",
+      "timestamp": "2016-02-26",
+      "title": "HYDROcodone-Acetaminophen 5-325 mg Oral Tab",
+      "one_line": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab authorized by Dr. Chang on 02/26/16.",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 5.2842,
+      "preview": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab authorized by Dr. Chang on 02/26/16.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "HYDROcodone-Acetaminophen 5-325 mg Oral Tab",
+      "card_one_line": "Prescription for HYDROcodone-Acetaminophen (NORCO) 5-325 mg Oral Tab authorized by Dr. Chang on 02/26/16.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0086_e0000",
+      "event_type": "clinical_note",
+      "timestamp": "2016-03-02",
+      "title": "Patient requested stronger dose of Norco or enough to tide\u2026",
+      "one_line": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 5.2377,
+      "preview": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "Patient requested stronger dose of Norco or enough to tide\u2026",
+      "card_one_line": "Patient requested stronger dose of Norco or enough to tide him over till appointment with Dr. Chang. He is experiencing disabling back pain.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0087_e0000",
+      "event_type": "administrative",
+      "timestamp": "2016-03-02",
+      "title": "administrative",
+      "one_line": "",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 5.0553,
+      "preview": "",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "administrative",
+      "card_one_line": "",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0096_e0001",
+      "event_type": "procedure",
+      "timestamp": "2016-03-07",
+      "title": "Administered PREVNAR 13 vaccine.",
+      "one_line": "Administered PREVNAR 13 vaccine.",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 5.8609,
+      "preview": "Administered PREVNAR 13 vaccine.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "Administered PREVNAR 13 vaccine.",
+      "card_one_line": "Administered PREVNAR 13 vaccine.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0096_e0003",
+      "event_type": "medication",
+      "timestamp": "2016-03-07",
+      "title": "Hydrocodone-Acetaminophen 5-325 mg Oral Tab",
+      "one_line": "Discontinued Ibuprofen (MOTRIN) 800 mg Oral Tab.",
+      "icd": null,
+      "drug": "Hydrocodone-Acetaminophen",
+      "salience": 5.3918,
+      "preview": "Discontinued Ibuprofen (MOTRIN) 800 mg Oral Tab.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "Hydrocodone-Acetaminophen 5-325 mg Oral Tab",
+      "card_one_line": "Discontinued Ibuprofen (MOTRIN) 800 mg Oral Tab.",
+      "status_flags": [
+        "stopped"
+      ]
+    },
+    {
+      "event_id": "pdf_p0100_e0001",
+      "event_type": "medication",
+      "timestamp": "2016-03-16",
+      "title": "norco 5-325 mg Oral Tab",
+      "one_line": "Taking NORCO 5-325 mg orally every 4 to 6 hours as needed for back pain.",
+      "icd": null,
+      "drug": "norco",
+      "salience": 5.2612,
+      "preview": "Taking NORCO 5-325 mg orally every 4 to 6 hours as needed for back pain.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "norco 5-325 mg Oral Tab",
+      "card_one_line": "Taking NORCO 5-325 mg orally every 4 to 6 hours as needed for back pain.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0101_e0000",
+      "event_type": "medication",
+      "timestamp": "2016-03-16",
+      "title": "hydrocodone-acetaminophen 5-325 mg",
+      "one_line": "Taking FLUoxetine 20 mg orally every morning.",
+      "icd": null,
+      "drug": "hydrocodone-acetaminophen",
+      "salience": 5.8918,
+      "preview": "Taking FLUoxetine 20 mg orally every morning.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "hydrocodone-acetaminophen 5-325 mg",
+      "card_one_line": "Taking FLUoxetine 20 mg orally every morning.",
+      "status_flags": []
+    },
+    {
+      "event_id": "pdf_p0116_e0000",
+      "event_type": "medication",
+      "timestamp": "2016-03-28",
+      "title": "Norco 5mg",
+      "one_line": "Prescribed Norco 5mg. for chronic low back pain. Requested by patient to last more than 20 days.",
+      "icd": null,
+      "drug": "Norco",
+      "salience": 5.5264,
+      "preview": "Prescribed Norco 5mg. for chronic low back pain. Requested by patient to last more than 20 days.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "Norco 5mg",
+      "card_one_line": "Prescribed Norco 5mg. for chronic low back pain. Requested by patient to last more than 20 days.",
+      "status_flags": [
+        "chronic"
+      ]
+    },
+    {
+      "event_id": "pdf_p0154_e0009",
+      "event_type": "medication",
+      "timestamp": "2016-05-09",
+      "title": "HYDROcodone-Acetaminophen 5-325 mg every 4-6 hours",
+      "one_line": "Started Losartan 100 mg daily.",
+      "icd": null,
+      "drug": "HYDROcodone-Acetaminophen",
+      "salience": 5.5264,
+      "preview": "Started Losartan 100 mg daily.",
+      "probe_weight": 2,
+      "probe_sources": [
+        "code_index_lookup"
+      ],
+      "card_title": "HYDROcodone-Acetaminophen 5-325 mg every 4-6 hours",
+      "card_one_line": "Started Losartan 100 mg daily.",
+      "status_flags": []
+    }
+  ],
+  "gap_agent_directives": {
+    "default_event_ids_for_bfs_expand": [
+      "pdf_p0012_e0011",
+      "pdf_p0013_e0006",
+      "pdf_p0014_e0003",
+      "pdf_p0070_e0001",
+      "pdf_p0071_e0000",
+      "pdf_p0076_e0001",
+      "pdf_p0078_e0000",
+      "pdf_p0079_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0096_e0001",
+      "pdf_p0096_e0003",
+      "pdf_p0100_e0001",
+      "pdf_p0101_e0000",
+      "pdf_p0116_e0000",
+      "pdf_p0154_e0009"
+    ],
+    "default_event_ids_for_semantic_search": [
+      "pdf_p0012_e0011",
+      "pdf_p0013_e0006",
+      "pdf_p0014_e0003",
+      "pdf_p0070_e0001",
+      "pdf_p0071_e0000",
+      "pdf_p0076_e0001",
+      "pdf_p0078_e0000",
+      "pdf_p0079_e0000",
+      "pdf_p0086_e0000",
+      "pdf_p0087_e0000",
+      "pdf_p0096_e0001",
+      "pdf_p0096_e0003",
+      "pdf_p0100_e0001",
+      "pdf_p0101_e0000",
+      "pdf_p0116_e0000",
+      "pdf_p0154_e0009"
+    ],
+    "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+  }
+}
