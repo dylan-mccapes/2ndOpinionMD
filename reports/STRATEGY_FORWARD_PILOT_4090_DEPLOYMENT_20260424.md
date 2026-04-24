@@ -130,64 +130,24 @@ Note: `acr_eular`, `diagrules`, `pubmd_rheum`, `pro_instruments` are not yet in 
 
 ### 3.4 The actual dump commands
 
+**Source of truth:** `scripts/mkg_dump_for_4090.sh` on the Mac origin. It writes `artifacts/forward_pilot_dump_<UTC>/` (override with `DUMP_ROOT=…`). Do not hand-copy older snippets from this report; they drifted.
+
+**Guidelines (04):** the script runs `pg_dump --no-owner --no-acl --schema=guidelines`, which is the correct shape: **entire `guidelines` schema, DDL plus table data** (VA/WHO/CDC/NICE tables, diagnostic rules, and so on—not schema-only). The gzip is on the order of tens of MB compressed; if `04_guidelines.sql.gz` is tiny, the dump failed or pointed at the wrong database.
+
 ```bash
-# ── Run on Mac (the origin) ────────────────────────────────────────────────
-DUMP_DIR="$HOME/tmp/forward_pilot_dump_$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$DUMP_DIR"
-export PGUSER=2ndopinionmd PGDATABASE=2ndopinionmd
+cd 2ndOpinionMD-MVP
+export PGUSER=2ndopinionmd PGDATABASE=2ndopinionmd PGHOST=localhost PGPORT=5432
+./scripts/mkg_dump_for_4090.sh
+# Optional: DUMP_ROOT=$HOME/tmp/my_pilot_dump ./scripts/mkg_dump_for_4090.sh
 
-# A. Auth + journal + timeline link tables (data + schema)
-pg_dump --data-only --schema=public \
-  -t public.users -t public.operators -t public.sessions \
-  -t public.patient_timelines -t public.timeline_access \
-  -t public.doctor_patient_invites -t public.journal_entries \
-  | gzip > "$DUMP_DIR/01_auth_seed.sql.gz"
-
-# B. Patient substrate (schema only — no data)
-pg_dump --schema-only --schema=ehr --schema=eoh --schema=b2b \
-  | gzip > "$DUMP_DIR/02_patient_substrate_schema.sql.gz"
-
-# C. Ontology crosswalks (data + schema)
-pg_dump --schema=ontology \
-  | gzip > "$DUMP_DIR/03_ontology.sql.gz"
-
-# D. Guidelines (data + schema)
-pg_dump --schema=guidelines \
-  | gzip > "$DUMP_DIR/04_guidelines.sql.gz"
-
-# E. MKG slice — schema (once) + filtered data (no embedding columns)
-pg_dump --schema-only -t public.rag_corpus -t public.rag_corpus_chunks \
-  | gzip > "$DUMP_DIR/05a_ragcorpus_schema.sql.gz"
-
-psql -c "COPY (
-  SELECT id, source, source_id, title, text, ts, meta
-  FROM public.rag_corpus
-  WHERE source IN (
-    'rxnorm','loinc','hpo','snomed','icd10cm','icd11','orphanet','chv',
-    'va_guidelines','acc_aha_valvular_2020','ada_dm_2024',
-    'kdigo_ckd_2021','kdigo_ckd_2024','kdigo_gn_ln_2021','kdigo_anemia_ckd_2023',
-    'gold_copd_2023','gold_copd_2024','gina_asthma_2023','cdc_opioid',
-    'eoh_canon_v6','eoh_2025','eoh_gold_2025'
-  )
-) TO STDOUT WITH (FORMAT binary)" \
-  | gzip > "$DUMP_DIR/05b_ragcorpus_slice.copy.gz"
-
-# F. One-line manifest with counts (for integrity check on the 4090)
-psql -tAc "SELECT source, count(*) FROM public.rag_corpus WHERE source IN (
-    'rxnorm','loinc','hpo','snomed','icd10cm','icd11','orphanet','chv',
-    'va_guidelines','acc_aha_valvular_2020','ada_dm_2024',
-    'kdigo_ckd_2021','kdigo_ckd_2024','kdigo_gn_ln_2021','kdigo_anemia_ckd_2023',
-    'gold_copd_2023','gold_copd_2024','gina_asthma_2023','cdc_opioid',
-    'eoh_canon_v6','eoh_2025','eoh_gold_2025'
-  ) GROUP BY source ORDER BY source" > "$DUMP_DIR/MANIFEST.txt"
-
-# Ship it over
-rsync -avP --stats "$DUMP_DIR/" dylan@192.168.0.245:/opt/portalnode/forward_pilot_dump/
+# Ship the new folder to the 4090 (scp/tar if rsync is unavailable on Windows OpenSSH)
 ```
 
 Total on-wire size: ~3.5 GB gzipped. At 100 Mbps LAN: ~5 min.
 
 ### 3.5 Restore on the 4090
+
+**Preferred:** `scripts/portalnode4090_restore_mkg.sh` after `portalnode4090_install_postgres.sh` (stub SQL, load order, and `05b` column list match `mkg_dump_for_4090.sh`). Manual order below is only a sketch.
 
 ```bash
 # ── Run on 4090 (dylan@192.168.0.245) ──────────────────────────────────────
@@ -196,19 +156,19 @@ sudo -u postgres createdb portalnode
 psql -U portalnode -d portalnode -c "CREATE EXTENSION IF NOT EXISTS vector;"
 psql -U portalnode -d portalnode -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
-# Restore in order (schemas first, data second)
+# Restore in order (schemas first, data second) — filenames from mkg_dump_for_4090.sh
 zcat $DUMP/02_patient_substrate_schema.sql.gz | psql -U portalnode -d portalnode
 zcat $DUMP/03_ontology.sql.gz                 | psql -U portalnode -d portalnode
 zcat $DUMP/04_guidelines.sql.gz               | psql -U portalnode -d portalnode
-zcat $DUMP/05a_ragcorpus_schema.sql.gz        | psql -U portalnode -d portalnode
+zcat $DUMP/05a_rag_corpus_schema.sql.gz       | psql -U portalnode -d portalnode
 zcat $DUMP/01_auth_seed.sql.gz                | psql -U portalnode -d portalnode
 
-# Restore the rag_corpus slice (COPY binary)
-zcat $DUMP/05b_ragcorpus_slice.copy.gz | psql -U portalnode -d portalnode \
-  -c "COPY public.rag_corpus(id, source, source_id, title, text, ts, meta) FROM STDIN WITH (FORMAT binary)"
+# Restore the rag_corpus slice (COPY binary; includes metadata column)
+zcat $DUMP/05b_rag_corpus_slice.copy.gz | psql -U portalnode -d portalnode \
+  -c "COPY public.rag_corpus(id, source, source_id, title, text, ts, meta, metadata) FROM STDIN WITH (FORMAT binary)"
 
-# Integrity check: compare MANIFEST.txt against on-4090 counts
-diff <(cat $DUMP/MANIFEST.txt) <(psql -U portalnode -d portalnode -tAc "
+# Integrity check: compare MANIFEST_slice_by_source.txt against on-4090 counts
+diff <(cat $DUMP/MANIFEST_slice_by_source.txt) <(psql -U portalnode -d portalnode -tAc "
   SELECT source, count(*) FROM public.rag_corpus GROUP BY source ORDER BY source")
 ```
 

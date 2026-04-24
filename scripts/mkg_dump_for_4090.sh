@@ -47,7 +47,7 @@ pg_dump --no-owner --no-acl --schema-only --schema=ehr --schema=eoh --schema=b2b
 # C + D — ontology + guidelines
 echo "==> 03_ontology.sql.gz (large — may take 10–30+ min, CPU + disk bound)…"
 pg_dump --no-owner --no-acl --schema=ontology | gzip > "$DUMP_ROOT/03_ontology.sql.gz"
-echo "==> 04_guidelines.sql.gz…"
+echo "==> 04_guidelines.sql.gz (full guidelines schema: DDL + table data, not schema-only)…"
 pg_dump --no-owner --no-acl --schema=guidelines | gzip > "$DUMP_ROOT/04_guidelines.sql.gz"
 
 # E — rag_corpus + chunks DDL only
