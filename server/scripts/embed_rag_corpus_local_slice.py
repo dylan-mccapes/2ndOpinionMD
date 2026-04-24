@@ -9,6 +9,7 @@ Usage (on 4090, from repo root inside WSL, venv active — Windows hosts: use WS
   python server/scripts/embed_rag_corpus_local_slice.py --batch-size 128
 
 Requires: sentence-transformers, psycopg[binary], pgvector (pip), torch with CUDA optional.
+On Ubuntu 24.04+ (PEP 668) use a venv: scripts/portalnode4090_bootstrap_venv_embed.sh then source .venv_embed/bin/activate.
 """
 from __future__ import annotations
 

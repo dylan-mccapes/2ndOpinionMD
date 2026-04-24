@@ -176,11 +176,18 @@ diff <(cat $DUMP/MANIFEST_slice_by_source.txt) <(psql -U portalnode -d portalnod
 
 **Model (§4):** **`BAAI/bge-base-en-v1.5`**, **768-d**, `vector(768)` on `public.rag_corpus.embedding_local`. The runner adds `embedding_local` / `embedding_local_model` / `embedding_local_at` if missing (`server/scripts/embed_rag_corpus_local_slice.py`).
 
-**WSL / Linux** (repo e.g. `/mnt/c/Users/dylan/2ndOpinionMD-MVP` or an ext4 checkout; venv `.BeatingHeart` optional but recommended):
+**WSL / Linux** (repo e.g. `/mnt/c/Users/dylan/2ndOpinionMD-MVP` or an ext4 checkout).
+
+**PEP 668 (Ubuntu 24.04+ / Debian):** do not `pip install` into system Python. Use either **`source .BeatingHeart/bin/activate`** if that venv already has deps, or a one-time **`./scripts/portalnode4090_bootstrap_venv_embed.sh`** then **`source .venv_embed/bin/activate`**.
 
 ```bash
 cd /mnt/c/Users/dylan/2ndOpinionMD-MVP   # or your checkout
-source .BeatingHeart/bin/activate        # if present
+git pull
+
+# Pick ONE venv path:
+#   source .BeatingHeart/bin/activate
+#   OR (first time on a clean box):
+./scripts/portalnode4090_bootstrap_venv_embed.sh && source .venv_embed/bin/activate
 
 export SYNC_DATABASE_URL='postgresql://portalnode:PASSWORD@127.0.0.1:5432/portalnode'
 export LOCAL_EMBED_MODEL=BAAI/bge-base-en-v1.5   # default if unset

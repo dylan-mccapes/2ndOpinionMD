@@ -19,7 +19,7 @@ Companion strategy: `reports/STRATEGY_FORWARD_PILOT_4090_DEPLOYMENT_20260424.md`
 | Unix socket | `/var/run/postgresql` — **peer** auth: OS username must equal `portalnode`; typical WSL user does not, so use **127.0.0.1** + password. |
 | `psql` / restore / embed | `export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=portalnode PGDATABASE=portalnode` + `PGPASSWORD` from secrets file. |
 
-Install / restore / embed: `scripts/portalnode4090_install_postgres.sh`, `scripts/portalnode4090_restore_mkg.sh`, `scripts/portalnode4090_embed_rag_slice.sh` (wraps `server/scripts/embed_rag_corpus_local_slice.py`, **BAAI/bge-base-en-v1.5** 768-d).
+Install / restore / embed: `scripts/portalnode4090_install_postgres.sh`, `scripts/portalnode4090_restore_mkg.sh`, `scripts/portalnode4090_embed_rag_slice.sh` (wraps `server/scripts/embed_rag_corpus_local_slice.py`, **BAAI/bge-base-en-v1.5** 768-d). On Ubuntu 24.04+ use **`scripts/portalnode4090_bootstrap_venv_embed.sh`** (PEP 668 — no system `pip install`).
 
 ---
 
