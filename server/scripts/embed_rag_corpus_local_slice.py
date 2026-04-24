@@ -130,7 +130,8 @@ def main() -> None:
 
     with psycopg.connect(dsn, row_factory=tuple_row) as conn:
         conn.execute("SET statement_timeout = 0;")
-        ensure_columns(conn.cursor())
+        with conn.cursor() as cur:
+            ensure_columns(cur)
         conn.commit()
 
         while True:

@@ -174,21 +174,27 @@ diff <(cat $DUMP/MANIFEST_slice_by_source.txt) <(psql -U portalnode -d portalnod
 
 ### 3.6 Embedding backfill (runs once, on 4090 GPU)
 
+**Model (§4):** **`BAAI/bge-base-en-v1.5`**, **768-d**, `vector(768)` on `public.rag_corpus.embedding_local`. The runner adds `embedding_local` / `embedding_local_model` / `embedding_local_at` if missing (`server/scripts/embed_rag_corpus_local_slice.py`).
+
+**WSL / Linux** (repo e.g. `/mnt/c/Users/dylan/2ndOpinionMD-MVP` or an ext4 checkout; venv `.BeatingHeart` optional but recommended):
+
 ```bash
-cd /opt/portalnode/2opmd_mvp
-source .BeatingHeart/bin/activate
+cd /mnt/c/Users/dylan/2ndOpinionMD-MVP   # or your checkout
+source .BeatingHeart/bin/activate        # if present
 
-# Apply schema migration from STRATEGY_MKG_LOCAL_EMBEDDINGS §3.1
-psql -U portalnode -d portalnode -f database/sql/2026xxxx_add_embedding_local.sql
+export SYNC_DATABASE_URL='postgresql://portalnode:PASSWORD@127.0.0.1:5432/portalnode'
+export LOCAL_EMBED_MODEL=BAAI/bge-base-en-v1.5   # default if unset
+# export LOCAL_EMBED_DEVICE=cuda                  # optional; auto-picks cuda if available
 
-# Embed the slice (in-process, batch 128)
-EMBED_BACKEND=local LOCAL_EMBED_MODEL=BAAI/bge-base-en-v1.5 \
-  python server/scripts/embed_rag_corpus_local.py \
-    --where "embedding_local IS NULL" \
-    --batch 128
+./scripts/portalnode4090_embed_rag_slice.sh
+# same as: python server/scripts/embed_rag_corpus_local_slice.py --batch-size 128
 ```
 
-Expected: 1.05 M rows × ~200 tok avg × 768 dim @ batch 128 on a single 4090 ≈ **4–8 minutes** of wall time, ~8 GB VRAM used during the pass (fits alongside 8B at q8_0).
+**Resume:** re-run the same command; only rows with `embedding_local IS NULL` are processed.
+
+**App wiring:** set **`EMBED_BACKEND=local`** (and DB pointing at this Postgres) so retrieval uses `embedding_local` for the pilot; see `STRATEGY_MKG_LOCAL_EMBEDDINGS_20260421.md` for product flags.
+
+Expected: ~1.05 M slice rows × ~200 tok avg × 768 dim @ batch 128 on a single 4090 ≈ **4–8 minutes** wall time, on the order of **~8 GB VRAM** during the pass (fits alongside an 8B LLM at q8_0).
 
 ---
 
