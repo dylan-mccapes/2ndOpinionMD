@@ -46,4 +46,4 @@ _run "$ROOT/database/sql/portalnode_stub_keep_embedding_on_update.sql"
 echo "==> $DUMP_DIR/05a_rag_corpus_schema.sql.gz"
 zcat "$DUMP_DIR/05a_rag_corpus_schema.sql.gz" | psql -v ON_ERROR_STOP=1
 
-echo "Done. Next: if 01_auth_seed never ran, apply it; then 05b_rag_corpus_slice.copy.gz COPY (see portalnode4090_restore_mkg.sh tail)."
+echo "Done. Next: zcat 01_auth_seed if that step never succeeded; then 05b COPY (see portalnode4090_restore_mkg.sh)."
