@@ -19,7 +19,7 @@ Companion strategy: `reports/STRATEGY_FORWARD_PILOT_4090_DEPLOYMENT_20260424.md`
 | Unix socket | `/var/run/postgresql` — **peer** auth: OS username must equal `portalnode`; typical WSL user does not, so use **127.0.0.1** + password. |
 | `psql` / restore / embed | `export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=portalnode PGDATABASE=portalnode` + `PGPASSWORD` from secrets file. |
 
-Install / restore / embed: `scripts/portalnode4090_install_postgres.sh`, `scripts/portalnode4090_restore_mkg.sh`, `scripts/portalnode4090_embed_rag_slice.sh` (wraps `server/scripts/embed_rag_corpus_local_slice.py`, **BAAI/bge-base-en-v1.5** 768-d). Embed accepts **`SYNC_DATABASE_URL`** or **`DATABASE_URL`** or **`PGUSER`+`PGDATABASE`+`PGPASSWORD`** (+ **`PGHOST`**). On Ubuntu 24.04+ use **`scripts/portalnode4090_bootstrap_venv_embed.sh`** (PEP 668 — no system `pip install`).
+Install / restore / embed: `scripts/portalnode4090_install_postgres.sh`, `scripts/portalnode4090_restore_mkg.sh`, `scripts/portalnode4090_embed_rag_slice.sh` (wraps `server/scripts/embed_rag_corpus_local_slice.py`, **BAAI/bge-base-en-v1.5** 768-d). Embed accepts **`SYNC_DATABASE_URL`** or **`DATABASE_URL`** or **`PGUSER`+`PGDATABASE`+`PGPASSWORD`** (+ **`PGHOST`**). On Ubuntu 24.04+ use **`scripts/portalnode4090_bootstrap_venv_embed.sh`** (PEP 668 — no system `pip install`). If **`pip install -r server/requirements.txt`** still tries to **build `psycopg2` from source** (`libpq-fe.h` missing), **`git pull`** (requirements use **`psycopg2-binary`** only) or install **`sudo apt-get install -y libpq-dev build-essential`**.
 
 ---
 

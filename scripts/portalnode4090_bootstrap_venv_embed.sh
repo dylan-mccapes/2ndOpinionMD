@@ -26,4 +26,6 @@ pip install -U pip wheel
 pip install 'sentence-transformers>=2.2' 'psycopg[binary]' torch
 
 echo "Done. Activate with:  source $ROOT/.venv_embed/bin/activate"
+echo "Tip: pip install -r server/requirements.txt needs libpq only if a package builds psycopg2 from source;"
+echo "      server/requirements.txt uses psycopg2-binary. For compile errors: sudo apt-get install -y libpq-dev build-essential"
 echo "Then run:            ./scripts/portalnode4090_embed_rag_slice.sh"

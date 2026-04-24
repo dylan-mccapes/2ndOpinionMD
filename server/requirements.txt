@@ -73,8 +73,8 @@ protobuf==6.32.1
 psutil==7.0.0
 psycopg>=3.2.10,<3.4
 psycopg-binary>=3.2.10,<3.4
-psycopg2==2.9.10
-psycopg2-binary==2.9.9
+# psycopg2 sdist needs libpq-dev; use binary wheel only (WSL / PEP 668 pilot installs).
+psycopg2-binary==2.9.10
 pyarrow==21.0.0
 pyarrow-hotfix==0.7
 pyasn1==0.6.1
