@@ -104,6 +104,17 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
 SQL
 
+# Password login from same host when WSL/SSH user ≠ DB role (peer only matches OS name).
+PG_HBA="/etc/postgresql/${PG_MAJOR}/main/pg_hba.conf"
+MARK="# PORTALNODE_SCRAM_LOCALHOST (added by portalnode4090_install_postgres.sh)"
+if [[ -f "$PG_HBA" ]] && ! grep -qF "$MARK" "$PG_HBA" 2>/dev/null; then
+  printf '\n%s\n' "$MARK" >>"$PG_HBA"
+  printf 'host\tall\t%s\t127.0.0.1/32\tscram-sha-256\n' "${DB_USER}" >>"$PG_HBA"
+  printf 'host\tall\t%s\t::1/128\tscram-sha-256\n' "${DB_USER}" >>"$PG_HBA"
+  systemctl reload "postgresql@${PG_MAJOR}-main" 2>/dev/null || systemctl reload postgresql
+  echo "Appended ${DB_USER} SCRAM rules to $PG_HBA and reloaded PostgreSQL."
+fi
+
 echo ""
 echo "PostgreSQL ${PG_MAJOR} + pgvector installed."
 echo "  Database: ${DB_NAME}"
@@ -115,7 +126,10 @@ else
   echo "  Password: (from PORTALNODE_DB_PASSWORD env)"
 fi
 echo ""
-echo "DSN (socket, same host as app):"
+echo "DSN (TCP — use from WSL when your Linux login ≠ ${DB_USER}, e.g. app + restore scripts):"
+echo "  postgresql://${DB_USER}:${PORTALNODE_DB_PASSWORD}@127.0.0.1:5432/${DB_NAME}"
+echo ""
+echo "DSN (Unix socket — only works if OS user matches ${DB_USER}, e.g. peer auth):"
 echo "  postgresql://${DB_USER}:${PORTALNODE_DB_PASSWORD}@/${DB_NAME}?host=/var/run/postgresql"
 echo ""
-echo "Optional: restrict TCP to localhost (default on Ubuntu). Peer auth for local user is typical; for password auth from Docker, edit pg_hba.conf."
+echo "listen_addresses must include localhost (Ubuntu default). pg_hba now has host … scram for ${DB_USER} on 127.0.0.1 if install script appended rules."

@@ -4,7 +4,7 @@
 Expects SYNC_DATABASE_URL or DATABASE_URL (postgresql://...).
 
 Usage (on 4090, from repo root inside WSL, venv active — Windows hosts: use WSL bash, not PowerShell):
-  export SYNC_DATABASE_URL='postgresql://portalnode:PASS@/portalnode?host=/var/run/postgresql'
+  export SYNC_DATABASE_URL='postgresql://portalnode:PASS@127.0.0.1:5432/portalnode'
   export LOCAL_EMBED_MODEL=BAAI/bge-base-en-v1.5
   python server/scripts/embed_rag_corpus_local_slice.py --batch-size 128
 

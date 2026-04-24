@@ -98,7 +98,8 @@ if ($Restore) {
         }
     }
     Write-Host "Restoring from $DumpDirWsl using $RestoreScriptWsl"
-    $inner = "export DUMP_DIR='$DumpDirWsl' PGHOST=/var/run/postgresql PGUSER=portalnode PGDATABASE=portalnode && bash '$RestoreScriptWsl'"
+    # TCP localhost: peer auth on Unix socket fails when WSL login ≠ portalnode
+    $inner = "export DUMP_DIR='$DumpDirWsl' PGHOST=127.0.0.1 PGPORT=5432 PGUSER=portalnode PGDATABASE=portalnode && bash '$RestoreScriptWsl'"
     Invoke-WslBash $inner
     exit 0
 }

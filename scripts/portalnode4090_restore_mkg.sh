@@ -9,10 +9,13 @@
 #
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
-#   export PGHOST=/var/run/postgresql PGUSER=portalnode PGDATABASE=portalnode
+#   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
 #   ./scripts/portalnode4090_restore_mkg.sh
 #
-# If you use a password for portalnode over TCP, set PGPASSWORD.
+# WSL / Ubuntu: Unix socket + role portalnode uses "peer" — the Linux login must be named
+# portalnode. If you are hilarious_marcupial (or anything else), use TCP + password:
+#   export PGHOST=127.0.0.1
+# This script auto-sets PGHOST=127.0.0.1 when PGPASSWORD is set and whoami != PGUSER.
 #
 # If you did NOT set DUMP_DIR: we look for 05b under WSL ~/forward_pilot_dump or under
 # /mnt/c/Users/*/forward_pilot_dump (where scp from Mac to Windows OpenSSH usually lands).
@@ -21,6 +24,15 @@ set -euo pipefail
 
 : "${PGUSER:?set PGUSER}"
 : "${PGDATABASE:?set PGDATABASE}"
+
+# Peer auth on /var/run/postgresql requires OS username == PGUSER. Use localhost TCP + SCRAM.
+if [[ -n "${PGPASSWORD:-}" ]] && [[ "$(id -un)" != "${PGUSER}" ]]; then
+  if [[ -z "${PGHOST:-}" || "${PGHOST}" == "/var/run/postgresql" ]]; then
+    export PGHOST=127.0.0.1
+    export PGPORT="${PGPORT:-5432}"
+    echo "Using PGHOST=$PGHOST (password auth); peer would fail for OS user $(id -un) → ${PGUSER}." >&2
+  fi
+fi
 
 # Return 0 and echo absolute dir if $1 is (or contains one child that is) the dump folder.
 _resolve_dump_dir() {
