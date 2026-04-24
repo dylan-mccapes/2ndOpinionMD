@@ -16,7 +16,7 @@ import textwrap
 from typing import Any, Dict, List
 
 from server.api.stream_config import EOH_TIMELINE_SUMMARIZER_MODEL
-from server.eoh.patient_timeline_vision import PatientTimelineVision
+from server.eoh.patient_timeline_vision import PatientTimelineVision, normalize_graph_preview
 from server.eoh.timeline_summarizer import (
     _safe_get_choice_content,
     chat_completion_async,
@@ -89,6 +89,15 @@ TIMELINE_ENRICHMENT_SYNTHESIS_SYSTEM_PROMPT = textwrap.dedent("""
     
     **Context Budget:**
     You have high context (90% cap). Use it for synthesis, not exhaustive enumeration.
+
+    **PHI / PII BOUNDARY (non-negotiable):**
+    Never emit patient names, family-member names, provider/staff names,
+    medical record numbers, dates of birth, street addresses, phone numbers,
+    email addresses, or facility names in any text field you produce
+    (``reasoning``, ``remaining_gaps``, ``enrichment_summary``, etc.).
+    Input text may include EHR letterhead banners — treat them as
+    out-of-band metadata and summarize clinical content only (event type,
+    code, date, body system).
 """)
 
 
@@ -145,7 +154,7 @@ async def synthesize_timeline_enrichment(
             "event_id": e.event_id,
             "event_type": e.event_type,
             "timestamp": e.timestamp,
-            "preview": e.preview[:200],
+            "preview": normalize_graph_preview(e.preview or "", max_len=200),
             "discovered_by": e.discovered_by,
         }
         event_str = json.dumps(event_dict)

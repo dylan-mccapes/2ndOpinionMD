@@ -128,8 +128,8 @@ def main() -> None:
         default=None,
         help=(
             "Model name for PDF event extraction and connascence passes. "
-            "With --llm-backend ollama, defaults to 'llama3.1:8b'. "
-            "With --llm-backend openai, defaults to INGESTION_MODEL env var."
+            "With --llm-backend ollama, defaults to INGESTION_MODEL or eoh-llama3.1:8b. "
+            "With --llm-backend openai, defaults to EOH_TIMELINE_SUMMARIZER_MODEL unless INGESTION_MODEL is set."
         ),
     )
     parser.add_argument(
@@ -140,8 +140,8 @@ def main() -> None:
             "Context window size (tokens) of the ingestion model, used to compute "
             "batch sizes for PDF event extraction. "
             "Defaults to 1,048,576 (GPT-4.1) for OpenAI backend. "
-            "For Ollama backends defaults to 32,768 (safe for 8B models with 128K "
-            "training context — keeps KV cache under ~2GB and leaves room for output). "
+            "For Ollama backends defaults to 16,384 (tighter KV; override with "
+            "--ingestion-context-tokens or INGESTION_CONTEXT_TOKENS). "
             "Override with the actual context size of any custom model."
         ),
     )
@@ -187,7 +187,7 @@ def main() -> None:
     log = logging.getLogger("run_eohd_timeline_pdf")
 
     from openai import AsyncOpenAI
-    from server.api.stream_config import INGESTION_MODEL, OLLAMA_BASE_URL, EOH_TIMELINE_SUMMARIZER_MODEL
+    from server.api.stream_config import OLLAMA_BASE_URL, EOH_TIMELINE_SUMMARIZER_MODEL
     from server.llm.llm_client import get_ollama_client
     from server.eoh.timeline_summarizer import summarize_timeline_from_pdf
 
@@ -208,9 +208,10 @@ def main() -> None:
     if args.ingestion_model:
         ingestion_model = args.ingestion_model
     elif backend in ("ollama", "ollama-full"):
-        ingestion_model = "llama3.1:8b"
+        ingestion_model = os.getenv("INGESTION_MODEL", "eoh-llama3.1:8b")
     else:
-        ingestion_model = INGESTION_MODEL
+        # OpenAI backend: default to premium GPT unless INGESTION_MODEL is explicitly set
+        ingestion_model = os.getenv("INGESTION_MODEL") or EOH_TIMELINE_SUMMARIZER_MODEL
 
     # Resolve ingestion context window.
     # Ollama 8B models have 128K training context but sustaining a full-context
@@ -219,7 +220,8 @@ def main() -> None:
     if args.ingestion_context_tokens is not None:
         ingestion_context_tokens = args.ingestion_context_tokens
     elif backend in ("ollama", "ollama-full"):
-        ingestion_context_tokens = 32_768
+        # Match timeline_summarizer Ollama defaults (smaller ctx → often better 8B JSON).
+        ingestion_context_tokens = 16_384
     else:
         ingestion_context_tokens = None  # uses GPT-4.1 1M default
 

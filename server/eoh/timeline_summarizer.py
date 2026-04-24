@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import math
@@ -15,7 +16,7 @@ import re
 import hashlib
 import anyio
 from datetime import datetime, timedelta, date, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from collections import Counter, defaultdict
 
@@ -23,6 +24,9 @@ from server.api.stream_config import (
     EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT,
     EOH_TIMELINE_SUMMARIZER_MODEL,
     INGESTION_MODEL,
+    INGESTION_GPT41_MAX_OUTPUT_TOKENS,
+    INGESTION_GPT41_INPUT_FILL_RATIO,
+    INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
     OLLAMA_BASE_URL,
     EOH_TIMELINE_GAP_MODEL,
     EOH_TIMELINE_RAG_SUMMARY_ENABLED,
@@ -41,8 +45,10 @@ from server.timeline.embedding_cache import get_cached_query_embedding, put_cach
 
 # PatientTimelineVision for provenance tracking
 from server.eoh.patient_timeline_vision import (
+    GRAPH_PREVIEW_MAX_CHARS,
     PatientTimelineVision,
     TimelineEventVision,
+    normalize_graph_preview,
     seed_from_structured_probe_snapshot,
     add_events_from_pdf_page,
     load_timeline_vision,
@@ -576,12 +582,6 @@ def _lab_signal(lab_events: List[Dict[str, Any]], max_items: int = 20) -> Dict[s
 
     return {"n": len(lab_events), "high_signal": [fmt(e) for e in chosen]}
 
-def _small_excerpt(text: str, limit: int = 240) -> str:
-    if not text:
-        return ""
-    t = " ".join(text.split())
-    return t[:limit] + ("…" if len(t) > limit else "")
-
 def ann_library_for_llm() -> List[Dict[str, Any]]:
     # compact form for prompts / payloads
     out = []
@@ -1032,12 +1032,12 @@ def _safe_get_choice_content(resp: Any) -> str:
         return "{}"
 
 
-def _clean_note_preview(raw: str, max_chars: int) -> str:
+def _clean_note_preview(raw: str, max_chars: int = GRAPH_PREVIEW_MAX_CHARS) -> str:
     """
     Turn raw note_text into a compact, readable preview:
       - collapse whitespace
       - normalize a couple of common headers
-      - hard truncate
+      - cap length (suffix kept if over budget; same as graph previews)
     """
     import re
 
@@ -1051,10 +1051,7 @@ def _clean_note_preview(raw: str, max_chars: int) -> str:
     # Optional: normalize some patterns
     text = re.sub(r"^INDICATION:\s*", "Indication: ", text, flags=re.IGNORECASE)
 
-    if len(text) > max_chars:
-        text = text[:max_chars].rstrip() + " [truncated]"
-
-    return text
+    return normalize_graph_preview(text, max_len=max_chars)
 
 def _push_sample(bucket: list, ev: dict, *, max_items: int) -> None:
     if len(bucket) >= max_items:
@@ -1106,10 +1103,12 @@ def _push_sample(bucket: list, ev: dict, *, max_items: int) -> None:
         if not preview_text:
             # ultra-safe fallback: first line of note_text if present
             nt = (structured.get("note_text") or "").strip()
-            preview_text = nt.splitlines()[0][:240] if nt else ""
+            preview_text = normalize_graph_preview(nt.splitlines()[0]) if nt else ""
     else:
         # keep something stable for unknown types
         preview_text = (structured.get("text") or structured.get("summary") or "").strip()
+
+    preview_text = normalize_graph_preview(preview_text)
 
     payload = {
         "ts": ev.get("ts"),
@@ -1160,8 +1159,7 @@ def _format_structured_snapshot_for_context(
             if not txt:
                 txt = "[no preview available]"
 
-            if len(txt) > 280:
-                txt = txt[:280] + " [truncated]"
+            txt = normalize_graph_preview(txt)
 
             # Convert timestamp to string if it's a datetime object
             if hasattr(ts, 'isoformat'):
@@ -1528,7 +1526,8 @@ async def _build_structured_probe_snapshot(
                 preview = _preview_event(et, structured)
             except Exception:
                 preview = "[no preview available]"
-            
+            preview = normalize_graph_preview(preview)
+
             out.append(SnapshotEvent(
                 ts=str(r["ts"]),
                 event_type=et,
@@ -2876,6 +2875,103 @@ _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE = 4
 # Per page: wrapper keys in JSON (~40) + small margin
 _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS = 64
 
+
+def _ingestion_is_full_gpt41(model: Optional[str]) -> bool:
+    """True for GPT-4.1 (not gpt-4.1-mini) — long prompt + 60% input / large completion budget."""
+    if not model:
+        return False
+    m = model.lower().strip()
+    return m.startswith("gpt-4.1") and not m.startswith("gpt-4.1-mini")
+
+
+def _ollama_num_ctx_default() -> int:
+    """
+    Ollama KV cache size (options.num_ctx) for PDF batch extraction.
+
+    Default matches ``eoh-llama3.1:8b.Modelfile`` (``PARAMETER num_ctx 32768``).
+    Override: ``OLLAMA_NUM_CTX`` or ``INGESTION_OLLAMA_CONTEXT_TOKENS``.
+    """
+    from server.api.stream_config import INGESTION_OLLAMA_CONTEXT_TOKENS
+
+    raw = os.getenv("OLLAMA_NUM_CTX")
+    if raw:
+        return max(2048, int(raw))
+    return max(2048, int(INGESTION_OLLAMA_CONTEXT_TOKENS))
+
+
+def _ollama_max_predict_tokens(ollama_num_ctx: Optional[int]) -> int:
+    """
+    Max new tokens per PDF extraction batch (``num_predict``).
+
+    Derived from the 30% output fill ratio in ``stream_config`` so it scales with
+    ``num_ctx``. ``OLLAMA_MAX_PREDICT`` is still respected as an explicit override.
+    """
+    from server.api.stream_config import ingestion_ollama_max_output_tokens
+
+    ctx = ollama_num_ctx if ollama_num_ctx is not None else _ollama_num_ctx_default()
+    env_override = os.getenv("OLLAMA_MAX_PREDICT")
+    if env_override:
+        return max(1024, int(env_override))
+    return ingestion_ollama_max_output_tokens(ctx)
+
+
+def _ollama_max_pages_per_batch() -> int:
+    """
+    Safety ceiling on pages per Ollama extraction batch.
+
+    Default **5** pages keeps eoh-llama JSON generation within a predictable
+    output budget per call (large summary chapters are split by
+    ``pack_chapters_into_batches``). Override with ``OLLAMA_MAX_PAGES_PER_BATCH``.
+
+    Chapter-aware batching still applies; this is a hard per-LLM-call page cap.
+    """
+    return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
+
+
+def _ingestion_max_pages_per_batch(
+    *,
+    ctx_tokens: int,
+    gpt41_ingest: bool,
+    is_ollama: bool,
+    ollama_num_ctx: Optional[int],
+) -> Optional[int]:
+    """Pages per ``pack_chapters_into_batches`` LLM batch.
+
+    - ``ctx_tokens >= 500_000``: ``None`` (only ``max_chars`` limits size).
+    - Else: ``min(OLLAMA_MAX_PAGES_PER_BATCH ceiling, output_tokens // per-page est)``
+      so streaming and non-streaming paths match and Ollama cannot pack 20+
+      pages when ``num_predict`` is ~10k.
+    """
+    _ollama_page_cap = _ollama_max_pages_per_batch()
+    _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
+    if ctx_tokens >= 500_000:
+        if gpt41_ingest:
+            _output_token_cap = INGESTION_GPT41_MAX_OUTPUT_TOKENS
+        else:
+            _output_token_cap = _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+    elif is_ollama and ollama_num_ctx is not None:
+        _output_token_cap = _ollama_max_predict_tokens(ollama_num_ctx)
+    else:
+        _output_token_cap = min(16384, max(4096, ctx_tokens // 2))
+    max_pages: Optional[int] = min(
+        _ollama_page_cap,
+        max(1, _output_token_cap // _ollama_tok_per_page),
+    )
+    if ctx_tokens >= 500_000:
+        max_pages = None
+    return max_pages
+
+
+def _ollama_output_tokens_per_page_estimate() -> int:
+    """
+    Used only to derive max pages per batch for small-context models.
+    Higher = assume more output per page = smaller batches.
+    Default 1200 pairs with default num_predict (~6144): ~5 pages/batch without
+    starving JSON. Raise via env if batches hit max_tokens / truncated JSON.
+    """
+    return max(800, int(os.getenv("OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE", "1200")))
+
+
 PDF_EVENT_BATCH_MAX_INPUT_CHARS: int = int(
     (
         _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
@@ -3287,9 +3383,11 @@ async def _extract_events_from_pages_batch(
         For EACH page, extract timeline events found ONLY in that page's text.
 
         Event rules (per event):
-        - `event_type`: one of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
+        - `event_type`: one of ["diagnosis", "medication", "lab", "procedure", "symptom", "clinical_note", "vital_signs", "imaging", "immunization", "administrative"]
+          NEVER use "page" or a bare "note" — always pick a medically meaningful type.
+          "administrative" is only for pages with no clinical content (release-of-info, consent forms, pure demographics).
         - `timestamp`: YYYY-MM-DD if present in text, else "unknown"
-        - `preview`: 1–2 sentences, max ~200 characters
+        - `preview`: 2 sentences, **≤240 characters total** (hard cap downstream). Sentence 1 states WHAT (name/value/finding/drug+dose). Sentence 2 states WHY/CONTEXT (indication, change rationale, site, clinician) when the page states it; otherwise omit sentence 2. Never fabricate context. If space is tight, shorten sentence 1 — do not exceed 240 characters.
         - `drug_name`: (medication events ONLY) the generic drug name exactly as written
           in the text, e.g. "prednisone", "pyridostigmine", "mycophenolate mofetil".
           REQUIRED for every medication event. Use generic name when brand also present.
@@ -3324,9 +3422,61 @@ async def _extract_events_from_pages_batch(
         Focus your output tokens on what the heuristics MISSED.
     """).strip()
 
+    # GPT-4.1 long-context path: maximize recall and clinical detail for the graph.
+    _SYSTEM_PROMPT_GPT41_HIGH_DETAIL = textwrap.dedent("""
+        You are an exhaustive clinical timeline extractor for a longitudinal patient record.
+        You receive multiple PDF pages as JSON with a "pages" array (each item: page_num, text,
+        and optionally pre_extracted heuristic hints).
+
+        GOAL: Emit AS MANY distinct, clinically meaningful events as the text supports — prefer
+        splitting separate findings, visits, medication changes, labs, imaging, procedures,
+        diagnoses, and symptoms into separate events rather than collapsing them.
+
+        For EACH page, extract ONLY what appears on that page. Never merge across pages.
+
+        Per event (use every applicable field; do not omit optional fields when the text supports them):
+        - event_type: one of diagnosis | medication | lab | procedure | symptom | clinical_note | vital_signs | imaging | immunization | administrative.
+          NEVER use "page" or a bare "note" — always pick a medically meaningful type.
+          "administrative" is only for pages with no clinical content (release-of-info forms, page boilerplate, pure demographics).
+        - timestamp: YYYY-MM-DD if explicitly anchored on that page; else "unknown". Never invent dates.
+        - preview: at most 2 sentences and **≤240 characters** total. State WHAT (finding, drug+dose, result)
+          and brief WHY/context **only** when the page states it. Never invent. If the page is dense,
+          put longer narrative in ``detail`` instead of stretching ``preview``.
+        - detail: (optional) longer structured narrative for complex rows (differential, reasoning,
+          multi-step plans) — up to ~2000 characters when the page is dense; omit if preview alone suffices.
+        - drug_name: (medication only) generic name as written; REQUIRED for every medication event.
+        - drug_dosage: (medication only) dose, frequency, changes, as written.
+        - drug_route: (medication only) oral|IV|IM|SC|topical|inhaled|other when known.
+
+        Quality rules:
+        - Capture labs with names and numeric results when present; procedures with laterality/site when stated.
+        - Immunizations and vaccinations are "procedure", not "lab".
+        - Do not hallucinate; empty administrative-only pages → "events": [].
+
+        Output MUST be a single JSON object:
+        {
+          "pages": [
+            { "page_num": <int>, "events": [
+                { "event_type": "...", "timestamp": "...", "preview": "...",
+                  "detail": "...", "drug_name": "...", "drug_dosage": "...", "drug_route": "..." },
+                ...
+            ] },
+            ...
+          ]
+        }
+
+        Include exactly one "pages" entry per input page_num in ascending order.
+        No markdown or commentary outside JSON.
+
+        When "pre_extracted" is present: fix misclassifications, enrich previews, and ADD everything
+        material the heuristics missed. Do NOT duplicate correctly captured heuristic events verbatim.
+    """).strip()
+
     # Compact prompt for Ollama / small models.
-    # Priority-ordered and brevity-constrained to fit within tight output budgets.
-    # preview capped at 80 chars. drug_name is MANDATORY for medication events.
+    # Priority-ordered and structured to fit within output budgets while
+    # still yielding medically informative previews.
+    # preview is a 2-sentence clinical summary (≤240 chars).
+    # drug_name is MANDATORY for medication events.
     _SYSTEM_PROMPT_OLLAMA = textwrap.dedent("""
         You are a medical event extractor. Extract events from each page of a patient record.
 
@@ -3334,36 +3484,45 @@ async def _extract_events_from_pages_batch(
         1. medication (ALWAYS emit; drug_name REQUIRED)
         2. diagnosis
         3. lab
-        4. procedure (includes vaccinations/immunizations)
+        4. procedure (includes vaccinations/immunizations, imaging, surgery)
         5. symptom
-        6. note (only if clinically significant)
+        6. clinical_note (visit notes, assessments, plans)
+        7. vital_signs (BP, HR, temp, weight, SpO2)
+        8. administrative (release-of-info, consent forms, boilerplate — ONLY if page has no clinical content)
 
         Fields per event:
-        - event_type: medication|diagnosis|lab|procedure|symptom|note
+        - event_type: medication|diagnosis|lab|procedure|symptom|clinical_note|vital_signs|imaging|immunization|administrative
         - timestamp: YYYY-MM-DD extracted from the page text, or "unknown" if no date is present. NEVER invent a date.
-        - preview: ≤80 chars, be brief
+        - preview: A 2-sentence clinical summary (≤240 chars). Sentence 1: WHAT happened (name, value, finding, drug + dose). Sentence 2: WHY / CONTEXT (indication, change rationale, site, ordering clinician, abnormal flag) when the page states it; otherwise omit sentence 2. Never fabricate context.
         - drug_name: REQUIRED for medication — generic name (e.g. "pyridostigmine"). NEVER omit.
         - drug_dosage: medication only, optional — dose as written (e.g. "60 mg daily")
         - drug_route: medication only, optional — oral|IV|IM|SC|topical|inhaled|other
 
         Output ONLY this JSON (no markdown, no explanation):
         {"pages":[{"page_num":<int>,"events":[
-          {"event_type":"medication","timestamp":"YYYY-MM-DD","preview":"Started pyridostigmine for MG","drug_name":"pyridostigmine","drug_dosage":"60 mg","drug_route":"oral"},
-          {"event_type":"diagnosis","timestamp":"YYYY-MM-DD","preview":"Myasthenia gravis confirmed"}
+          {"event_type":"medication","timestamp":"2023-05-15","preview":"Started pyridostigmine 60 mg TID for myasthenia gravis. Ordered by Dr. Chen (neurology) at follow-up.","drug_name":"pyridostigmine","drug_dosage":"60 mg TID","drug_route":"oral"},
+          {"event_type":"diagnosis","timestamp":"2023-05-15","preview":"Myasthenia gravis confirmed by positive AChR antibody and clinical exam. Recommended initiation of cholinesterase inhibitor therapy."}
         ]},{"page_num":<int>,"events":[]},...]}
 
         Rules:
         - One entry per input page_num, in order
-        - Empty page → "events": []
+        - If a page is truly empty or structurally blank → "events": []
+        - If a page is boilerplate (release-of-info, page footer, patient-demographics-only) emit ONE "administrative" event summarizing the form type. Do NOT emit "clinical_note" for non-clinical text.
+        - NEVER use the event_type "page" or "note" — always pick a medically meaningful type.
         - Do NOT merge events across pages
         - NEVER omit drug_name for any medication event
-        - Vaccinations and immunizations are type "procedure", NOT "lab"
+        - Vaccinations and immunizations are type "procedure" or "immunization", NOT "lab"
         - Timestamps must come from the actual page text — do not copy dates from these instructions
-        - If a page has "pre_extracted" data, focus on what it MISSED (symptoms, notes, procedures).
-          Do NOT re-emit events the heuristics already found correctly.
+        - If a page has "pre_extracted" data, correct misclassifications and ADD what was missed (symptoms, clinical_notes, procedures); do not duplicate correct heuristic events.
     """).strip()
 
-    system_prompt = _SYSTEM_PROMPT_OLLAMA if not force_json_format else _SYSTEM_PROMPT_FULL
+    _gpt41_extract = bool(force_json_format and _ingestion_is_full_gpt41(model))
+    if not force_json_format:
+        system_prompt = _SYSTEM_PROMPT_OLLAMA
+    elif _gpt41_extract:
+        system_prompt = _SYSTEM_PROMPT_GPT41_HIGH_DETAIL
+    else:
+        system_prompt = _SYSTEM_PROMPT_FULL
 
     # Build payload — include heuristic skeleton when available so the LLM
     # can correct/supplement rather than extracting from scratch.
@@ -3383,8 +3542,11 @@ async def _extract_events_from_pages_batch(
 
     try:
         if force_json_format:
-            # OpenAI large-context path: generous output budget, JSON enforced.
-            _max_tok = min(32768, _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE + 4096)
+            # OpenAI: GPT-4.1 uses env-tuned completion budget for large graph JSON.
+            if _gpt41_extract:
+                _max_tok = max(4096, min(INGESTION_GPT41_MAX_OUTPUT_TOKENS, 262_144))
+            else:
+                _max_tok = min(32768, _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE + 4096)
             call_kwargs: Dict[str, Any] = dict(
                 max_tokens=_max_tok,
                 temperature=0.1,
@@ -3406,7 +3568,7 @@ async def _extract_events_from_pages_batch(
             # rather than a cryptic JSONDecodeError inside the SDK's Pydantic
             # layer.  Only safe on localhost — remote Ollama (e.g. RTX 4090 over
             # LAN) has shown silent httpx.ReadError failures with this path.
-            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _max_tok = _ollama_max_predict_tokens(ollama_num_ctx)
             _ollama_url = str(client.base_url).rstrip("/")
             logger.info(
                 "Ollama native /api/chat: model=%s  num_ctx=%s  num_predict=%s  pages=%s",
@@ -3428,7 +3590,7 @@ async def _extract_events_from_pages_batch(
             # /v1/chat/completions WITHOUT response_format (grammar-constrained
             # mode is 5-10x slower).  Pass num_ctx and num_predict via
             # extra_body["options"] so Ollama respects our context budget.
-            _max_tok = min(16384, (ollama_num_ctx or 32768) // 2)
+            _max_tok = _ollama_max_predict_tokens(ollama_num_ctx)
             _extra: Optional[Dict[str, Any]] = None
             if ollama_num_ctx:
                 _extra = {"options": {"num_ctx": ollama_num_ctx, "num_predict": _max_tok}}
@@ -3487,8 +3649,11 @@ async def _extract_events_from_pages_batch(
                 ev_dict: Dict[str, Any] = {
                     "event_type": str(e.get("event_type", "note")),
                     "timestamp": str(e.get("timestamp", "unknown")),
-                    "preview": str(e.get("preview", ""))[:500],
+                    "preview": normalize_graph_preview(str(e.get("preview", "") or "")),
                 }
+                _detail = e.get("detail")
+                if _detail and isinstance(_detail, str) and _detail.strip():
+                    ev_dict.setdefault("annotations", {})["extraction_detail"] = _detail.strip()[:4000]
                 drug = e.get("drug_name")
                 if drug and isinstance(drug, str) and drug.strip():
                     ev_dict["drug_name"] = drug.strip()
@@ -3507,9 +3672,13 @@ async def _extract_events_from_pages_batch(
             if not out[pn]:
                 out[pn] = [
                     {
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": (txt[:200] if txt.strip() else "(no events extracted)"),
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt.strip()
+                            else "(no events extracted)"
+                        ),
                         "event_id": f"pdf_p{pn:04d}_generic",
                     }
                 ]
@@ -3533,10 +3702,17 @@ async def _extract_events_from_pages_batch(
             for pn, txt in pages:
                 try:
                     single_result = await _extract_events_from_pages_batch(
-                        client, [(pn, txt)], model=model,
+                        client,
+                        [(pn, txt)],
+                        model=model,
                         force_json_format=force_json_format,
                         ollama_num_ctx=ollama_num_ctx,
                         ollama_native_api=ollama_native_api,
+                        heuristic_results=(
+                            {pn: heuristic_results[pn]}
+                            if heuristic_results and pn in heuristic_results
+                            else None
+                        ),
                     )
                     out.update(single_result)
                 except Exception as e2:
@@ -3545,10 +3721,10 @@ async def _extract_events_from_pages_batch(
                         pn, type(e2).__name__,
                     )
                     out[pn] = [{
-                        "event_type": "page",
+                        "event_type": "administrative",
                         "timestamp": "unknown",
-                        "preview": txt[:200],
-                        "event_id": f"pdf_p{pn:04d}_batch_error",
+                        "preview": normalize_graph_preview(txt),
+                        "event_id": f"pdf_p{pn:04d}_extract_fail",
                     }]
             return out
 
@@ -3560,10 +3736,10 @@ async def _extract_events_from_pages_batch(
         return {
             pn: [
                 {
-                    "event_type": "page",
+                    "event_type": "administrative",
                     "timestamp": "unknown",
-                    "preview": txt[:200],
-                    "event_id": f"pdf_p{pn:04d}_batch_error",
+                    "preview": normalize_graph_preview(txt),
+                    "event_id": f"pdf_p{pn:04d}_extract_fail",
                 }
             ]
             for pn, txt in pages
@@ -3593,7 +3769,7 @@ async def _extract_events_from_page_text(
     if not page_text.strip():
         # Empty page: return generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
             "preview": "(empty page)",
             "event_id": f"pdf_p{page_num:04d}_empty",
@@ -3615,7 +3791,7 @@ async def _extract_events_from_page_text(
         3. For each event, extract:
            - `event_type`: One of ["diagnosis", "medication", "lab", "procedure", "symptom", "note"]
            - `timestamp`: Date in YYYY-MM-DD format if available, otherwise "unknown"
-           - `preview`: A concise 1-2 sentence summary of the event (max 200 chars)
+           - `preview`: A concise 1-2 sentence summary of the event (**max 240 characters**)
            - `drug_name`: (medication events ONLY) the generic drug name exactly as it
              appears in the text, e.g. "prednisone", "pyridostigmine". Use the generic
              name when both generic and brand are present. REQUIRED; omit for non-medication events.
@@ -3659,6 +3835,15 @@ async def _extract_events_from_page_text(
         - If date is ambiguous or partial, use "unknown".
         - For medication events, always include drug_name if a drug is named in the text.
         - Include drug_dosage and drug_route whenever the information is present.
+
+        **PHI / PII BOUNDARY (non-negotiable):**
+        Source page text frequently begins with the EHR's letterhead banner
+        (patient name, MRN, DOB, address, phone, facility, provider names).
+        Never copy those tokens into ``preview``. Previews describe the
+        clinical event only — what, code, date, body system. If a preview
+        would otherwise be empty without banner context, return a short
+        clinical descriptor derived from the event_type and any code
+        present (e.g. ``"Hypertension diagnosis [I10]"``).
     """)
 
     payload = {
@@ -3698,12 +3883,16 @@ async def _extract_events_from_page_text(
             if "event_id" not in event:
                 event["event_id"] = f"pdf_p{page_num:04d}_e{idx:04d}"
 
+        for event in events:
+            if isinstance(event, dict):
+                event["preview"] = normalize_graph_preview(str(event.get("preview", "") or ""))
+
         # If no events extracted, create a generic page event
         if not events:
             events = [{
-                "event_type": "page",
+                "event_type": "administrative",
                 "timestamp": "unknown",
-                "preview": page_text[:200],
+                "preview": normalize_graph_preview(page_text),
                 "event_id": f"pdf_p{page_num:04d}_generic",
             }]
 
@@ -3713,20 +3902,979 @@ async def _extract_events_from_page_text(
         logger.error(f"Failed to parse LLM event extraction output for page {page_num}: {e}")
         # Fallback: create a generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
-            "preview": page_text[:200],
+            "preview": normalize_graph_preview(page_text),
             "event_id": f"pdf_p{page_num:04d}_fallback",
         }]
     except Exception as e:
         logger.error(f"Event extraction failed for page {page_num}: {e}")
         # Fallback: create a generic page event
         return [{
-            "event_type": "page",
+            "event_type": "administrative",
             "timestamp": "unknown",
-            "preview": page_text[:200],
+            "preview": normalize_graph_preview(page_text),
             "event_id": f"pdf_p{page_num:04d}_error",
         }]
+
+
+async def populate_vision_from_extracted_pages(
+    *,
+    vision: PatientTimelineVision,
+    extraction_pages: List[Tuple[int, str]],
+    ingestion_client: AsyncOpenAI,
+    ingestion_model: str,
+    ingestion_context_tokens: Optional[int] = None,
+    extraction_concurrency: int = 1,
+) -> Dict[str, Any]:
+    """
+    Heuristic skeleton → batched per-page LLM extraction (with heuristic hints) →
+    timestamp recovery → single temporal connascence pass → type reclassification →
+    graph timestamp sanitize.
+
+    Same algorithm as ``run_eohd_timeline_pdf.py`` / the PDF branch of
+    ``summarize_timeline_from_pdf``. Mutates ``vision`` in place; does not write files.
+    """
+    import time as _time_mod
+    from server.eoh.heuristic_page_extract import heuristic_extract_batch
+
+    pid = vision.patient_id
+
+    _base_url_full = str(getattr(ingestion_client, "_base_url", "") or "")
+    _is_ollama = (
+        "11434" in _base_url_full
+        or "localhost" in _base_url_full
+        or "127.0.0.1" in _base_url_full
+        or "ollama" in _base_url_full.lower()
+    )
+    _force_json_format: bool = not _is_ollama
+    # Keep Ollama ``num_ctx`` aligned with ``ingestion_context_tokens`` (ingest
+    # layer) so batch char budgets and ``options.num_ctx`` are not split across
+    # two different env defaults (historically 16k vs 32k).
+    if _force_json_format:
+        _ollama_num_ctx: Optional[int] = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
+    _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
+    _ollama_native_api: bool = _is_ollama and _is_local_ollama
+
+    _heur_t0 = _time_mod.perf_counter()
+    _heuristic_results = heuristic_extract_batch(extraction_pages)
+    _heur_elapsed = _time_mod.perf_counter() - _heur_t0
+
+    _heur_events = sum(len(r.events) for r in _heuristic_results.values())
+    _heur_pages_with_date = sum(1 for r in _heuristic_results.values() if r.page_date)
+    logger.info(
+        "Heuristic pre-extraction [%s]: %d pages in %.0fms — %d events, %d/%d pages with encounter dates",
+        pid,
+        len(extraction_pages),
+        _heur_elapsed * 1000,
+        _heur_events,
+        _heur_pages_with_date,
+        len(extraction_pages),
+    )
+
+    _heur_added = 0
+    for pn, heur_result in sorted(_heuristic_results.items()):
+        if not heur_result.events:
+            continue
+        heur_event_dicts = []
+        for he in heur_result.events:
+            d = he.to_dict()
+            d["annotations"] = {"heuristic_source": he.source}
+            if he.drug_name:
+                d["drug_name"] = he.drug_name
+                d["annotations"]["drug_name"] = he.drug_name
+            if he.drug_dosage:
+                d["drug_dosage"] = he.drug_dosage
+                d["annotations"]["drug_dosage"] = he.drug_dosage
+            if he.drug_route:
+                d["drug_route"] = he.drug_route
+                d["annotations"]["drug_route"] = he.drug_route
+            if he.icd_code:
+                d["annotations"]["icd_code"] = he.icd_code
+            heur_event_dicts.append(d)
+        add_events_from_pdf_page(vision=vision, page_num=pn, events=heur_event_dicts)
+        _heur_added += len(heur_event_dicts)
+
+    logger.info("Heuristic events added to vision [%s]: %d (pre-LLM)", pid, _heur_added)
+
+    _page_date_lookup: Dict[int, str] = {
+        pn: r.page_date for pn, r in _heuristic_results.items() if r.page_date
+    }
+
+    _ctx_tokens = (
+        ingestion_context_tokens
+        if ingestion_context_tokens is not None
+        else (
+            _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+            if _force_json_format
+            else (_ollama_num_ctx or _ollama_num_ctx_default())
+        )
+    )
+
+    _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
+
+    if _gpt41_ingest and _ctx_tokens >= 500_000:
+        # ~60% of context for input page text; system reserve sized for the long GPT-4.1 prompt.
+        _sys_r = max(
+            _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE,
+            INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = int(
+            (_ctx_tokens * INGESTION_GPT41_INPUT_FILL_RATIO - _sys_r)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    elif _ctx_tokens >= 500_000:
+        _batch_max_chars = int(
+            (
+                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+            )
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    else:
+        # Small-context local models (eoh-llama3.1:8b @ 32k): 60% of context for
+        # page text, 30% output, ~10% prompt/margin — mirrors the GPT-4.1 split.
+        from server.api.stream_config import (
+            INGESTION_OLLAMA_INPUT_FILL_RATIO,
+            INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _small_input_tokens = max(
+            1024,
+            int(_ctx_tokens * INGESTION_OLLAMA_INPUT_FILL_RATIO)
+            - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = _small_input_tokens * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+
+    _batch_max_chars = max(_batch_max_chars, 8_000)
+
+    _max_pages_per_batch = _ingestion_max_pages_per_batch(
+        ctx_tokens=_ctx_tokens,
+        gpt41_ingest=_gpt41_ingest,
+        is_ollama=_is_ollama,
+        ollama_num_ctx=_ollama_num_ctx,
+    )
+
+    # Chapter-aware batching: a PDF chapter = one Kaiser encounter (one clinical
+    # day's visit/lab/message) or one administrative summary section (problem
+    # list, current medications, immunizations). The packer keeps chapters
+    # intact where possible and only splits an oversize chapter (rare) into
+    # contiguous page runs that reference the same chapter_id.
+    from server.timeline.pdf_sectionizer import (
+        sectionize_pages,
+        pack_chapters_into_batches,
+        estimate_batch_seconds,
+    )
+
+    _chapters = sectionize_pages(extraction_pages)
+    _chapter_batches = pack_chapters_into_batches(
+        _chapters,
+        max_chars=_batch_max_chars,
+        max_pages_per_batch=_max_pages_per_batch,
+        per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+    )
+    batches: List[List[Tuple[int, str]]] = [cb.pages for cb in _chapter_batches]
+    _primary_chapter_ids: List[str] = [cb.primary_chapter_id for cb in _chapter_batches]
+    _chapter_index: Dict[str, Dict[str, Any]] = {
+        ch.chapter_id: ch.to_dict() for ch in _chapters
+    }
+    _ocr_pending_pages: List[int] = []
+    for ch in _chapters:
+        if ch.ocr_pending_pages:
+            _ocr_pending_pages.extend(ch.ocr_pending_pages)
+
+    oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
+    _eta_total = sum(
+        estimate_batch_seconds(len(cb.pages), cb.char_len, model=ingestion_model)
+        for cb in _chapter_batches
+    )
+    logger.info(
+        "PDF event extraction [%s]: %d pages → %d chapter(s) → %d batch(es); "
+        "~%d input chars/batch cap (%dK-token ctx; model=%s); est total %.0fs; ocr_pending=%d",
+        pid,
+        len(extraction_pages),
+        len(_chapters),
+        len(batches),
+        _batch_max_chars,
+        _ctx_tokens // 1024,
+        ingestion_model,
+        _eta_total,
+        len(_ocr_pending_pages),
+    )
+
+    _concurrency = max(1, extraction_concurrency)
+    _sem = asyncio.Semaphore(_concurrency)
+    enrichment_stats_list: List[Dict[str, Any]] = []
+
+    async def _extract_one(
+        b_idx: int, batch: List[Tuple[int, str]]
+    ) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]], int, Optional[str]]:
+        batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
+        primary_cid = _primary_chapter_ids[b_idx - 1] if b_idx - 1 < len(_primary_chapter_ids) else None
+        logger.info(
+            "PDF event extraction batch %d/%d [%s]: %d pages, ~%d chars, chapter=%s",
+            b_idx,
+            len(batches),
+            pid,
+            len(batch),
+            batch_chars,
+            primary_cid,
+        )
+        batch_heur = (
+            {pn: _heuristic_results[pn] for pn, _ in batch if pn in _heuristic_results}
+            if _heuristic_results
+            else None
+        )
+
+        t0 = _time_mod.perf_counter()
+        err: Optional[str] = None
+        try:
+            async with _sem:
+                result = await _extract_events_from_pages_batch(
+                    ingestion_client,
+                    batch,
+                    model=ingestion_model,
+                    force_json_format=_force_json_format,
+                    ollama_num_ctx=_ollama_num_ctx,
+                    ollama_native_api=_ollama_native_api,
+                    heuristic_results=batch_heur,
+                )
+        except Exception as _ex:
+            logger.warning(
+                "PDF extraction batch %d/%d [%s] failed: %s", b_idx, len(batches), pid, _ex
+            )
+            result = {}
+            err = str(_ex)
+        elapsed_ms = int((_time_mod.perf_counter() - t0) * 1000)
+        return b_idx, batch, result, elapsed_ms, err
+
+    extraction_tasks = [_extract_one(i + 1, batch) for i, batch in enumerate(batches)]
+    all_results = await asyncio.gather(*extraction_tasks)
+
+    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+
+    _stat_total_events = 0
+    _stat_extract_fail_events = 0  # LLM/JSON failed after retries (*_extract_fail)
+    _stat_batch_empty_stubs = 0  # gather-level empty batch (*_batch_empty)
+    _stat_generic_stub_events = 0  # *_generic — model omitted page
+    _stat_ts_recovered = 0
+
+    for b_idx, batch, page_to_events, elapsed_ms, batch_err in sorted(all_results, key=lambda x: x[0]):
+        # Whole-batch failure used to return {} and silently skip pages — never add vision events.
+        if not page_to_events:
+            logger.warning(
+                "PDF batch %d/%d [%s]: empty extraction result (%s) — per-page stubs",
+                b_idx,
+                len(batches),
+                pid,
+                batch_err or "no error detail",
+            )
+            page_to_events = {
+                pn: [
+                    {
+                        "event_type": "administrative",
+                        "timestamp": "unknown",
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt and txt.strip()
+                            else "(batch empty)"
+                        ),
+                        "event_id": f"pdf_p{pn:04d}_batch_empty",
+                    }
+                ]
+                for pn, txt in batch
+            }
+
+        ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
+        batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        _stat_total_events += batch_event_count
+
+        # Tag every event in this batch with its chapter_id so the graph,
+        # the Postgres timeline rows, and the SSE stream can group events by
+        # clinical encounter/summary section.
+        _batch_primary_cid = (
+            _primary_chapter_ids[b_idx - 1] if b_idx - 1 < len(_primary_chapter_ids) else None
+        )
+        _batch_chapter_meta = (
+            _chapter_index.get(_batch_primary_cid) if _batch_primary_cid else None
+        )
+
+        for evts in page_to_events.values():
+            for ev in evts:
+                eid = str(ev.get("event_id", ""))
+                if eid.endswith("_extract_fail"):
+                    _stat_extract_fail_events += 1
+                elif eid.endswith("_batch_empty"):
+                    _stat_batch_empty_stubs += 1
+                elif eid.endswith("_generic"):
+                    _stat_generic_stub_events += 1
+                elif eid.endswith("_batch_error"):
+                    # legacy id from older runs / manual edits
+                    _stat_extract_fail_events += 1
+                if _batch_primary_cid:
+                    ann = ev.setdefault("annotations", {})
+                    ann.setdefault("chapter_id", _batch_primary_cid)
+                    if _batch_chapter_meta:
+                        if _batch_chapter_meta.get("encounter_date"):
+                            ann.setdefault("encounter_date", _batch_chapter_meta["encounter_date"])
+                        if _batch_chapter_meta.get("encounter_type"):
+                            ann.setdefault("encounter_type", _batch_chapter_meta["encounter_type"])
+                        if _batch_chapter_meta.get("section_header"):
+                            ann.setdefault("section_header", _batch_chapter_meta["section_header"])
+                        ann.setdefault("chapter_kind", _batch_chapter_meta.get("kind"))
+
+        for page_num, evts in page_to_events.items():
+            page_date = _page_date_lookup.get(page_num)
+            if not page_date:
+                continue
+            for ev in evts:
+                ts = ev.get("timestamp", "")
+                if ts.lower() in ("unknown", "", "n/a", "none"):
+                    from server.utils.parse_date import extract_date_from_text
+
+                    preview_date = extract_date_from_text(ev.get("preview", ""))
+                    if preview_date:
+                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    else:
+                        ev["timestamp"] = page_date
+                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                    _stat_ts_recovered += 1
+
+        pn_first = batch[0][0]
+        pn_last = batch[-1][0]
+        enrichment_stats_list.append(
+            {
+                "batch_index": b_idx - 1,
+                "page_range": f"{pn_first}-{pn_last}",
+                "input_chars": sum(len(t) for _, t in batch),
+                "events_extracted": batch_event_count,
+                "edges_extracted": 0,
+                "elapsed_ms": elapsed_ms,
+                "error": batch_err,
+            }
+        )
+
+        ts_samples: list[str] = []
+        for evts in page_to_events.values():
+            for ev in evts:
+                t = ev.get("timestamp", "")
+                if t and t != "unknown" and len(ts_samples) < 6:
+                    ts_samples.append(t)
+        _stub_ev = sum(
+            1
+            for evs in page_to_events.values()
+            for e in evs
+            if str(e.get("event_id", "")).endswith(
+                ("_extract_fail", "_batch_empty", "_generic")
+            )
+        )
+        _all_stub = _stub_ev == batch_event_count and batch_event_count > 0
+        log_msg = "Batch %d/%d [%s] extracted %d events across %d pages; samples: %s"
+        if _all_stub:
+            log_msg += " — stubs only (LLM/JSON did not produce events; dates often from heuristics)"
+        if ts_scrubbed:
+            log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
+        logger.info(
+            log_msg,
+            b_idx,
+            len(batches),
+            pid,
+            batch_event_count,
+            len(page_to_events),
+            ts_samples,
+        )
+
+        events_before_graph = len(vision.events)
+        for page_num in sorted(page_to_events.keys()):
+            add_events_from_pdf_page(
+                vision=vision, page_num=page_num, events=page_to_events[page_num]
+            )
+        added_this_batch = len(vision.events) - events_before_graph
+
+        logger.info(
+            "PatientTimelineVision [%s]: after batch %d/%d — total events=%d (+%d this batch); "
+            "edges=%d (unchanged until final connascence)",
+            pid,
+            b_idx,
+            len(batches),
+            len(vision.events),
+            added_this_batch,
+            vision.count_edges(),
+        )
+
+    _avg_batch_ms = sum(r[3] for r in all_results) / max(len(all_results), 1)
+    if _avg_batch_ms < 120 and len(batches) > 200:
+        logger.warning(
+            "[%s] Mean batch time %.0fms with %d batches — if using Ollama, check "
+            "OLLAMA_BASE_URL / model name; very fast batches often mean failed HTTP calls.",
+            pid,
+            _avg_batch_ms,
+            len(batches),
+        )
+
+    logger.info(
+        "═══ PDF extraction complete [%s]: %d batches, %d graph events added from LLM batches "
+        "(%d extract_fail, %d batch_empty, %d generic), %d timestamps recovered (heuristic/preview)",
+        pid,
+        len(batches),
+        _stat_total_events,
+        _stat_extract_fail_events,
+        _stat_batch_empty_stubs,
+        _stat_generic_stub_events,
+        _stat_ts_recovered,
+    )
+    if _stat_extract_fail_events + _stat_batch_empty_stubs >= max(1, _stat_total_events // 2):
+        logger.warning(
+            "[%s] Most LLM batch output was stubs — check Ollama is reachable (OLLAMA_BASE_URL), "
+            "model exists (ollama list), and INGESTION_MODEL matches the tag.",
+            pid,
+        )
+
+    _infer_temporal_connascence(vision, window_days=7)
+
+    n_reclassified = _reclassify_event_types(vision)
+    if n_reclassified:
+        logger.info("[%s] PDF event type reclassification: %d events", pid, n_reclassified)
+
+    n_ts_recovered_preview = _recover_timestamps_from_preview(vision)
+    if n_ts_recovered_preview:
+        logger.info(
+            "[%s] PDF timestamp recovery (Noted on: regex): %d events",
+            pid, n_ts_recovered_preview,
+        )
+
+    _page_to_chapter = _build_page_to_chapter_index(_chapters)
+    n_ch_stamped = _backfill_chapter_annotations(vision, _chapter_index, _page_to_chapter)
+    if n_ch_stamped:
+        logger.info("[%s] PDF chapter back-stamp: %d events", pid, n_ch_stamped)
+
+    reduced_stats = _infer_reduced_graph_connascence(vision)
+    logger.info(
+        "[%s] PDF reduced-graph connascence: chapter=%d encounter=%d drug=%d icd=%d day=%d",
+        pid,
+        reduced_stats["same_chapter"],
+        reduced_stats["same_encounter"],
+        reduced_stats["same_drug"],
+        reduced_stats["same_icd"],
+        reduced_stats["same_day"],
+    )
+
+    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+    if n_ts_scrubbed:
+        logger.info("[%s] PDF timestamp sanity: %d scrubbed", pid, n_ts_scrubbed)
+
+    # Deterministic graph enrichment: canonical IDs, timestamp backfill,
+    # status flags, entities, arcs, causal edges, admin collapse, PROs,
+    # patient metadata, salience, cards, traversal index.  All passes are
+    # pure-Python and idempotent.
+    try:
+        from server.eoh.graph_finalize import finalize_graph
+        _pages_text_map = {pn: txt for pn, txt in extraction_pages}
+        finalize_stats = finalize_graph(
+            vision,
+            chapters=_chapters,
+            pages_text=_pages_text_map,
+        )
+        logger.info(
+            "[%s] PDF graph finalize: arcs=%d entities=%d cards=%d ts_backfilled=%d causal=(cb:%d,wu:%d) admin_collapsed=%d pros=%d",
+            pid,
+            finalize_stats.get("arcs", {}).get("arcs_total", 0),
+            finalize_stats.get("entities", {}).get("entity_count", 0),
+            finalize_stats.get("cards", {}).get("cards_built", 0),
+            (finalize_stats.get("timestamp_backfill", {}).get("from_chapter", 0)
+             + finalize_stats.get("timestamp_backfill", {}).get("from_encounter_ann", 0)),
+            finalize_stats.get("causal_edges", {}).get("caused_by", 0),
+            finalize_stats.get("causal_edges", {}).get("in_workup_for", 0),
+            finalize_stats.get("admin_collapse", {}).get("admin_chapters_collapsed", 0),
+            finalize_stats.get("pros", {}).get("pros_extracted", 0),
+        )
+    except Exception as e:
+        logger.warning("[%s] graph finalize pass failed (non-fatal): %s", pid, e)
+        finalize_stats = {"error": str(e)}
+
+    return {
+        "heuristic_events_added": _heur_added,
+        "batches": len(batches),
+        "chapters": len(_chapters),
+        "chapter_plan": [ch.to_dict() for ch in _chapters],
+        "ocr_pending_pages": list(_ocr_pending_pages),
+        "llm_events_total": _stat_total_events,
+        "reduced_graph_connascence": reduced_stats,
+        "timestamps_recovered_from_preview": n_ts_recovered_preview,
+        "extract_fail_events": _stat_extract_fail_events,
+        "batch_empty_stubs": _stat_batch_empty_stubs,
+        "generic_stub_events": _stat_generic_stub_events,
+        "timestamps_recovered": _stat_ts_recovered,
+        "reclassified": n_reclassified,
+        "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "enrichment_stats": enrichment_stats_list,
+        "ingestion_model": ingestion_model,
+        "finalize_stats": finalize_stats,
+    }
+
+
+async def stream_populate_vision_from_extracted_pages(
+    *,
+    vision: PatientTimelineVision,
+    extraction_pages: List[Tuple[int, str]],
+    ingestion_client: AsyncOpenAI,
+    ingestion_model: str,
+    ingestion_context_tokens: Optional[int] = None,
+) -> AsyncIterator[Dict[str, Any]]:
+    """
+    Streaming (async-generator) variant of ``populate_vision_from_extracted_pages``.
+
+    Emits a sequence of ``dict`` frames suitable for SSE:
+      * ``{"type": "plan", ...}``           — chapter plan + ETA + model meta
+      * ``{"type": "heuristic", ...}``      — regex pre-scan stats
+      * ``{"type": "chapter_start", ...}``  — before each LLM batch
+      * ``{"type": "chapter_events", ...}`` — events added from one batch
+      * ``{"type": "chapter_done", ...}``   — elapsed + accumulated totals
+      * ``{"type": "done", ...}``           — final stats after graph finalize
+      * ``{"type": "error", ...}``          — fatal failure (generator continues)
+
+    Each frame contains plain, JSON-serializable fields. The caller is
+    responsible for turning them into ``text/event-stream`` wire format.
+
+    Unlike the non-streaming sibling, this function processes batches
+    sequentially so the UI receives chapters in chronological order.
+    """
+    import time as _time_mod
+    from server.eoh.heuristic_page_extract import heuristic_extract_batch
+    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
+    from server.timeline.pdf_sectionizer import (
+        sectionize_pages,
+        pack_chapters_into_batches,
+        estimate_batch_seconds,
+    )
+
+    pid = vision.patient_id
+
+    _base_url_full = str(getattr(ingestion_client, "_base_url", "") or "")
+    _is_ollama = (
+        "11434" in _base_url_full
+        or "localhost" in _base_url_full
+        or "127.0.0.1" in _base_url_full
+        or "ollama" in _base_url_full.lower()
+    )
+    _force_json_format: bool = not _is_ollama
+    if _force_json_format:
+        _ollama_num_ctx = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
+    _is_local_ollama = "localhost" in _base_url_full or "127.0.0.1" in _base_url_full
+    _ollama_native_api: bool = _is_ollama and _is_local_ollama
+
+    # --- heuristic pre-scan (same skeleton as non-streaming sibling) ----------
+    _heur_t0 = _time_mod.perf_counter()
+    _heuristic_results = heuristic_extract_batch(extraction_pages)
+    _heur_elapsed_ms = int((_time_mod.perf_counter() - _heur_t0) * 1000)
+    _heur_added = 0
+    for pn, heur_result in sorted(_heuristic_results.items()):
+        if not heur_result.events:
+            continue
+        heur_event_dicts = []
+        for he in heur_result.events:
+            d = he.to_dict()
+            d["annotations"] = {"heuristic_source": he.source}
+            if he.drug_name:
+                d["drug_name"] = he.drug_name
+                d["annotations"]["drug_name"] = he.drug_name
+            if he.drug_dosage:
+                d["drug_dosage"] = he.drug_dosage
+                d["annotations"]["drug_dosage"] = he.drug_dosage
+            if he.drug_route:
+                d["drug_route"] = he.drug_route
+                d["annotations"]["drug_route"] = he.drug_route
+            if he.icd_code:
+                d["annotations"]["icd_code"] = he.icd_code
+            heur_event_dicts.append(d)
+        add_events_from_pdf_page(vision=vision, page_num=pn, events=heur_event_dicts)
+        _heur_added += len(heur_event_dicts)
+
+    _page_date_lookup: Dict[int, str] = {
+        pn: r.page_date for pn, r in _heuristic_results.items() if r.page_date
+    }
+
+    # --- plan ------------------------------------------------------------------
+    _gpt41_ingest = bool(_force_json_format and _ingestion_is_full_gpt41(ingestion_model))
+    _ctx_tokens = (
+        ingestion_context_tokens
+        if ingestion_context_tokens is not None
+        else (
+            _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
+            if _force_json_format
+            else (_ollama_num_ctx or _ollama_num_ctx_default())
+        )
+    )
+
+    if _gpt41_ingest and _ctx_tokens >= 500_000:
+        _sys_r = max(
+            _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE,
+            INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = int(
+            (_ctx_tokens * INGESTION_GPT41_INPUT_FILL_RATIO - _sys_r)
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    elif _ctx_tokens >= 500_000:
+        _batch_max_chars = int(
+            (
+                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
+                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
+                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
+            )
+            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+        )
+    else:
+        from server.api.stream_config import (
+            INGESTION_OLLAMA_INPUT_FILL_RATIO,
+            INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _small_input_tokens = max(
+            1024,
+            int(_ctx_tokens * INGESTION_OLLAMA_INPUT_FILL_RATIO)
+            - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE,
+        )
+        _batch_max_chars = _small_input_tokens * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
+    _batch_max_chars = max(_batch_max_chars, 8_000)
+
+    _max_pages_per_batch = _ingestion_max_pages_per_batch(
+        ctx_tokens=_ctx_tokens,
+        gpt41_ingest=_gpt41_ingest,
+        is_ollama=_is_ollama,
+        ollama_num_ctx=_ollama_num_ctx,
+    )
+
+    chapters = sectionize_pages(extraction_pages)
+    chapter_batches = pack_chapters_into_batches(
+        chapters,
+        max_chars=_batch_max_chars,
+        max_pages_per_batch=_max_pages_per_batch,
+        per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+    )
+    chapter_index: Dict[str, Dict[str, Any]] = {ch.chapter_id: ch.to_dict() for ch in chapters}
+    ocr_pending: List[int] = []
+    for ch in chapters:
+        if ch.ocr_pending_pages:
+            ocr_pending.extend(ch.ocr_pending_pages)
+
+    per_batch_eta = [
+        estimate_batch_seconds(len(b.pages), b.char_len, model=ingestion_model)
+        for b in chapter_batches
+    ]
+    total_eta = sum(per_batch_eta)
+
+    logger.info(
+        "PDF streaming extraction [%s]: %d pages → %d chapters → %d batches "
+        "(%dK-ctx; model=%s; total ETA ~%.0fs; ocr_pending=%d)",
+        pid,
+        len(extraction_pages),
+        len(chapters),
+        len(chapter_batches),
+        _ctx_tokens // 1024,
+        ingestion_model,
+        total_eta,
+        len(ocr_pending),
+    )
+
+    yield {
+        "type": "plan",
+        "patient_id": pid,
+        "ingestion_model": ingestion_model,
+        "is_gpt41": _gpt41_ingest,
+        "context_tokens": _ctx_tokens,
+        "total_pages": len(extraction_pages),
+        "total_chapters": len(chapters),
+        "total_batches": len(chapter_batches),
+        "total_eta_seconds": round(total_eta, 1),
+        "heuristic_events_added": _heur_added,
+        "ocr_pending_pages": ocr_pending,
+        "chapters": [ch.to_dict() for ch in chapters],
+        "batches": [
+            {
+                "batch_index": i,
+                "primary_chapter_id": b.primary_chapter_id,
+                "chapter_ids": list(b.chapter_ids),
+                "pages": [pn for pn, _ in b.pages],
+                "char_len": b.char_len,
+                "est_seconds": round(eta, 1),
+                "split_note": b.split_note,
+            }
+            for i, (b, eta) in enumerate(zip(chapter_batches, per_batch_eta))
+        ],
+    }
+
+    yield {
+        "type": "heuristic",
+        "patient_id": pid,
+        "events_added": _heur_added,
+        "elapsed_ms": _heur_elapsed_ms,
+        "pages_with_date": len(_page_date_lookup),
+    }
+
+    # Build and emit an early "regex skeleton" graph before any LLM batch work.
+    # This gives the UI a fast, clinically structured baseline (chapterized +
+    # temporal connascence over regex/heuristic events) instead of appearing
+    # frozen while waiting for chapter 1 extraction to complete.
+    _skel_t0 = _time_mod.perf_counter()
+    _infer_temporal_connascence(vision, window_days=7)
+    _skel_elapsed_ms = int((_time_mod.perf_counter() - _skel_t0) * 1000)
+    yield {
+        "type": "skeleton_ready",
+        "patient_id": pid,
+        "total_pages": len(extraction_pages),
+        "total_chapters": len(chapters),
+        "regex_heuristic_events": len(vision.events),
+        "temporal_edges": vision.count_edges(),
+        "elapsed_ms": _skel_elapsed_ms,
+        "message": "Regex skeleton ready (chapterized + temporal connascence). Continuing LLM enrichment...",
+    }
+
+    # --- iterate batches sequentially -----------------------------------------
+    _stat_total_events = 0
+    _stat_extract_fail_events = 0
+    _stat_batch_empty_stubs = 0
+    _stat_generic_stub_events = 0
+    _stat_ts_recovered = 0
+    enrichment_stats_list: List[Dict[str, Any]] = []
+
+    for i, (batch, eta) in enumerate(zip(chapter_batches, per_batch_eta)):
+        primary_cid = batch.primary_chapter_id
+        chapter_meta = chapter_index.get(primary_cid, {})
+
+        yield {
+            "type": "chapter_start",
+            "batch_index": i,
+            "total_batches": len(chapter_batches),
+            "primary_chapter_id": primary_cid,
+            "chapter_ids": list(batch.chapter_ids),
+            "chapter_label": chapter_meta.get("label"),
+            "pages": [pn for pn, _ in batch.pages],
+            "char_len": batch.char_len,
+            "est_seconds": round(eta, 1),
+            "split_note": batch.split_note,
+        }
+
+        batch_heur = {pn: _heuristic_results[pn] for pn, _ in batch.pages if pn in _heuristic_results}
+        t0 = _time_mod.perf_counter()
+        err: Optional[str] = None
+        try:
+            page_to_events = await _extract_events_from_pages_batch(
+                ingestion_client,
+                batch.pages,
+                model=ingestion_model,
+                force_json_format=_force_json_format,
+                ollama_num_ctx=_ollama_num_ctx,
+                ollama_native_api=_ollama_native_api,
+                heuristic_results=batch_heur,
+            )
+        except Exception as _ex:
+            logger.warning(
+                "PDF streaming batch %d/%d [%s] failed: %s",
+                i + 1, len(chapter_batches), pid, _ex,
+            )
+            page_to_events = {}
+            err = str(_ex)
+
+        elapsed_ms = int((_time_mod.perf_counter() - t0) * 1000)
+
+        if not page_to_events:
+            page_to_events = {
+                pn: [
+                    {
+                        "event_type": "administrative",
+                        "timestamp": "unknown",
+                        "preview": (
+                            normalize_graph_preview(txt)
+                            if txt and txt.strip()
+                            else "(batch empty)"
+                        ),
+                        "event_id": f"pdf_p{pn:04d}_batch_empty",
+                    }
+                ]
+                for pn, txt in batch.pages
+            }
+
+        _sanitize_timestamps_batch(page_to_events)
+        batch_event_count = sum(len(evts) for evts in page_to_events.values())
+        _stat_total_events += batch_event_count
+
+        for evts in page_to_events.values():
+            for ev in evts:
+                eid = str(ev.get("event_id", ""))
+                if eid.endswith("_extract_fail"):
+                    _stat_extract_fail_events += 1
+                elif eid.endswith("_batch_empty"):
+                    _stat_batch_empty_stubs += 1
+                elif eid.endswith("_generic"):
+                    _stat_generic_stub_events += 1
+                # Tag with chapter context
+                ann = ev.setdefault("annotations", {})
+                ann.setdefault("chapter_id", primary_cid)
+                if chapter_meta.get("encounter_date"):
+                    ann.setdefault("encounter_date", chapter_meta["encounter_date"])
+                if chapter_meta.get("encounter_type"):
+                    ann.setdefault("encounter_type", chapter_meta["encounter_type"])
+                if chapter_meta.get("section_header"):
+                    ann.setdefault("section_header", chapter_meta["section_header"])
+                ann.setdefault("chapter_kind", chapter_meta.get("kind"))
+
+        for page_num, evts in page_to_events.items():
+            page_date = _page_date_lookup.get(page_num)
+            if not page_date:
+                continue
+            for ev in evts:
+                ts = ev.get("timestamp", "")
+                if ts.lower() in ("unknown", "", "n/a", "none"):
+                    from server.utils.parse_date import extract_date_from_text
+
+                    preview_date = extract_date_from_text(ev.get("preview", ""))
+                    if preview_date:
+                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    else:
+                        ev["timestamp"] = page_date
+                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                    _stat_ts_recovered += 1
+
+        events_before_graph = len(vision.events)
+        new_event_snapshots: List[Dict[str, Any]] = []
+        for page_num in sorted(page_to_events.keys()):
+            add_events_from_pdf_page(
+                vision=vision, page_num=page_num, events=page_to_events[page_num]
+            )
+            for ev in page_to_events[page_num]:
+                ev_view = {
+                    "page": page_num,
+                    "event_type": ev.get("event_type"),
+                    "timestamp": ev.get("timestamp"),
+                    "preview": normalize_graph_preview(str(ev.get("preview") or "")),
+                    "drug_name": ev.get("drug_name"),
+                    "event_id": ev.get("event_id"),
+                }
+                new_event_snapshots.append(ev_view)
+        added_this_batch = len(vision.events) - events_before_graph
+
+        enrichment_stats_list.append(
+            {
+                "batch_index": i,
+                "primary_chapter_id": primary_cid,
+                "pages": [pn for pn, _ in batch.pages],
+                "events_extracted": batch_event_count,
+                "events_added": added_this_batch,
+                "elapsed_ms": elapsed_ms,
+                "error": err,
+            }
+        )
+
+        yield {
+            "type": "chapter_events",
+            "batch_index": i,
+            "primary_chapter_id": primary_cid,
+            "chapter_label": chapter_meta.get("label"),
+            "events_extracted": batch_event_count,
+            "events_added": added_this_batch,
+            "events_preview": new_event_snapshots[:40],
+            "elapsed_ms": elapsed_ms,
+        }
+        yield {
+            "type": "chapter_done",
+            "batch_index": i,
+            "primary_chapter_id": primary_cid,
+            "elapsed_ms": elapsed_ms,
+            "error": err,
+            "total_graph_events": len(vision.events),
+            "total_graph_edges": vision.count_edges(),
+        }
+
+    _infer_temporal_connascence(vision, window_days=7)
+    n_reclassified = _reclassify_event_types(vision)
+    n_ts_recovered_preview = _recover_timestamps_from_preview(vision)
+    page_to_chapter = _build_page_to_chapter_index(chapters)
+    n_ch_stamped = _backfill_chapter_annotations(vision, chapter_index, page_to_chapter)
+    reduced_stats = _infer_reduced_graph_connascence(vision)
+    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
+
+    logger.info(
+        "PDF streaming extraction [%s]: reduced-graph connascence "
+        "chapter=%d encounter=%d drug=%d icd=%d day=%d; "
+        "preview-ts recovered=%d; chapter back-stamped=%d",
+        pid,
+        reduced_stats["same_chapter"],
+        reduced_stats["same_encounter"],
+        reduced_stats["same_drug"],
+        reduced_stats["same_icd"],
+        reduced_stats["same_day"],
+        n_ts_recovered_preview,
+        n_ch_stamped,
+    )
+
+    # Deterministic graph enrichment (see graph_finalize.finalize_graph).
+    try:
+        from server.eoh.graph_finalize import finalize_graph
+        _pages_text_map = {pn: txt for pn, txt in extraction_pages}
+        finalize_stats = finalize_graph(
+            vision,
+            chapters=chapters,
+            pages_text=_pages_text_map,
+        )
+        logger.info(
+            "PDF streaming finalize [%s]: arcs=%d entities=%d cards=%d ts_backfilled=%d causal=(cb:%d,wu:%d) admin_collapsed=%d pros=%d",
+            pid,
+            finalize_stats.get("arcs", {}).get("arcs_total", 0),
+            finalize_stats.get("entities", {}).get("entity_count", 0),
+            finalize_stats.get("cards", {}).get("cards_built", 0),
+            (finalize_stats.get("timestamp_backfill", {}).get("from_chapter", 0)
+             + finalize_stats.get("timestamp_backfill", {}).get("from_encounter_ann", 0)),
+            finalize_stats.get("causal_edges", {}).get("caused_by", 0),
+            finalize_stats.get("causal_edges", {}).get("in_workup_for", 0),
+            finalize_stats.get("admin_collapse", {}).get("admin_chapters_collapsed", 0),
+            finalize_stats.get("pros", {}).get("pros_extracted", 0),
+        )
+        yield {
+            "type": "finalize",
+            "patient_id": pid,
+            "stats": finalize_stats,
+        }
+    except Exception as e:
+        logger.warning("[%s] streaming graph finalize failed (non-fatal): %s", pid, e)
+        finalize_stats = {"error": str(e)}
+
+    yield {
+        "type": "done",
+        "patient_id": pid,
+        "chapters": len(chapters),
+        "batches": len(chapter_batches),
+        "llm_events_total": _stat_total_events,
+        "heuristic_events_added": _heur_added,
+        "extract_fail_events": _stat_extract_fail_events,
+        "batch_empty_stubs": _stat_batch_empty_stubs,
+        "generic_stub_events": _stat_generic_stub_events,
+        "timestamps_recovered": _stat_ts_recovered,
+        "timestamps_recovered_from_preview": n_ts_recovered_preview,
+        "reclassified": n_reclassified,
+        "graph_timestamps_scrubbed": n_ts_scrubbed,
+        "chapter_backstamped": n_ch_stamped,
+        "reduced_graph_connascence": reduced_stats,
+        "total_graph_events": len(vision.events),
+        "total_graph_edges": vision.count_edges(),
+        "ocr_pending_pages": ocr_pending,
+        "enrichment_stats": enrichment_stats_list,
+        "ingestion_model": ingestion_model,
+        "finalize_stats": finalize_stats,
+    }
 
 
 async def summarize_timeline_from_pdf(
@@ -3821,11 +4969,15 @@ async def summarize_timeline_from_pdf(
         or "ollama" in _base_url_full.lower()
     )
     _force_json_format: bool = not _is_ollama
-    # For Ollama, explicitly set num_ctx.  65536 caused HTTP 500 on the M2 Ultra
-    # (KV cache ~8GB + model ~5GB = memory pressure on back-to-back batches).
-    # 32768 comfortably fits our batches (~6K input + 8K output = ~14K tokens)
-    # while keeping KV cache at ~4GB — stable for 71 sequential batches.
-    _ollama_num_ctx: Optional[int] = None if _force_json_format else 32768
+    # Ollama KV size (kept in sync with ``populate_vision`` when this param is set).
+    if _force_json_format:
+        _ollama_num_ctx = None
+    else:
+        _ollama_num_ctx = (
+            max(2048, int(ingestion_context_tokens))
+            if ingestion_context_tokens is not None
+            else _ollama_num_ctx_default()
+        )
     # Native /api/chat is only used for localhost Ollama (validated on M2 Ultra).
     # Remote Ollama (e.g. RTX 4090 at 192.168.x.x) uses the OpenAI-compat
     # /v1/chat/completions path with num_ctx/num_predict passed via extra_body
@@ -3845,16 +4997,18 @@ async def summarize_timeline_from_pdf(
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
     
     logger.info("Timeline PDF import (session-only): %s", pdf_file.name)
-    
-    # Step 1: Open and decrypt if needed
-    reader = PdfReader(str(pdf_file))
+
+    # Step 1: Read bytes and decrypt if needed
+    pdf_bytes = pdf_file.read_bytes()
+    from io import BytesIO
+    reader = PdfReader(BytesIO(pdf_bytes))
     was_encrypted = reader.is_encrypted
-    
+
     if was_encrypted:
         if password is None:
             logger.info("PDF is encrypted; prompting for password")
             password = getpass.getpass("Enter PDF decryption password: ")
-        
+
         try:
             if reader.decrypt(password) == 0:
                 raise ValueError("Incorrect password")
@@ -3862,24 +5016,89 @@ async def summarize_timeline_from_pdf(
         except Exception as e:
             raise ValueError(f"Failed to decrypt PDF: {e}")
         finally:
-            # Delete password from memory immediately
             if password:
                 del password
-    
-    # Step 2: Extract text and build PatientTimelineVision
-    logger.info("Extracting text from %d pages", len(reader.pages))
-    chunks = []
-    # Preserve real PDF page numbers (1-based) for provenance — only non-empty pages.
-    page_entries: List[Tuple[int, str]] = []
 
-    for idx, page in enumerate(reader.pages):
-        text = (page.extract_text() or "").strip()
-        text = text.replace("\x00", "")  # Clean NUL bytes
-        if text:
-            pdf_page = idx + 1
-            page_entries.append((pdf_page, text))
-            chunks.append(f"=== Page {pdf_page} ===\n{text}")
+    # Step 2: Resilient text extraction — pypdf first, pypdfium2 fallback.
+    #
+    # Some PDFs have broken xref/page-tree structures that crash pypdf at
+    # len(reader.pages) or page.extract_text() while still rendering fine
+    # in browsers.  We handle this in two tiers:
+    #   - Tier A (pypdf OK): per-page pypdf, pypdfium2 fallback on empty/error.
+    #   - Tier B (pypdf broken): full pypdfium2 extraction from one open doc.
+    # In both tiers the pypdfium2 document is opened ONCE to avoid O(n²) cost.
 
+    page_entries: List[Tuple[int, str]] = []  # (1-based page num, text)
+
+    # Try to walk pypdf's page tree — this is where TypeError surfaces.
+    pypdf_tree_ok = False
+    total_pdf_pages = 0
+    try:
+        total_pdf_pages = len(reader.pages)
+        pypdf_tree_ok = True
+        logger.info("Extracting text from %d pages (pypdf)", total_pdf_pages)
+    except Exception as tree_err:
+        logger.warning(
+            "pypdf page tree broken for %s (%s: %s) — switching to pypdfium2",
+            pdf_file.name, type(tree_err).__name__, tree_err,
+        )
+
+    # Open pypdfium2 once for the entire document.
+    _pdfium_doc = None
+    try:
+        import pypdfium2 as pdfium
+        _pdfium_doc = pdfium.PdfDocument(pdf_bytes)
+        if not pypdf_tree_ok:
+            total_pdf_pages = len(_pdfium_doc)
+            logger.info("Extracting text from %d pages (pypdfium2 full)", total_pdf_pages)
+    except ImportError:
+        _pdfium_doc = None
+        if not pypdf_tree_ok:
+            raise RuntimeError(
+                "pypdf page tree is broken and pypdfium2 is not installed. "
+                "Install it: pip install 'pypdfium2>=4.30'"
+            )
+    except Exception as pdfium_open_err:
+        logger.warning("pypdfium2 failed to open %s: %s", pdf_file.name, pdfium_open_err)
+        _pdfium_doc = None
+        if not pypdf_tree_ok:
+            raise
+
+    def _pdfium_text(idx: int) -> str:
+        if _pdfium_doc is None:
+            return ""
+        try:
+            p = _pdfium_doc[idx]
+            tp = p.get_textpage()
+            t = (tp.get_text_bounded() or "").strip().replace("\x00", "")
+            tp.close(); p.close()
+            return t
+        except Exception as e:
+            logger.warning("pypdfium2 failed on page %d: %s", idx + 1, e)
+            return ""
+
+    try:
+        if pypdf_tree_ok:
+            for idx, page in enumerate(reader.pages):
+                try:
+                    text = (page.extract_text() or "").strip().replace("\x00", "")
+                except Exception:
+                    text = ""
+                if not text:
+                    text = _pdfium_text(idx)
+                if text:
+                    pdf_page = idx + 1
+                    page_entries.append((pdf_page, text))
+        else:
+            for idx in range(total_pdf_pages):
+                text = _pdfium_text(idx)
+                if text:
+                    page_entries.append((idx + 1, text))
+    finally:
+        if _pdfium_doc is not None:
+            _pdfium_doc.close()
+
+    chunks = [f"=== Page {pg} ===\n{txt}" for pg, txt in page_entries]
     timeline_text = "\n\n".join(chunks)
     logger.info(
         "Timeline PDF extracted: %d non-empty pages, %d chars",
@@ -3922,273 +5141,14 @@ async def summarize_timeline_from_pdf(
         len(page_entries),
     )
 
-    # ── Heuristic pre-extraction pass ─────────────────────────────────────
-    # Pure Python regex pass over all pages BEFORE the LLM touches anything.
-    # Extracts dates, ICD codes, medication patterns, lab orders, and section
-    # context. ~1 second for 4,000 pages. The LLM then corrects and supplements.
-    from server.eoh.heuristic_page_extract import (
-        heuristic_extract_batch,
-        HeuristicPageResult,
+    await populate_vision_from_extracted_pages(
+        vision=vision,
+        extraction_pages=extraction_pages,
+        ingestion_client=_ingestion_client,
+        ingestion_model=_ingestion_model,
+        ingestion_context_tokens=ingestion_context_tokens,
+        extraction_concurrency=extraction_concurrency,
     )
-
-    import time as _time
-    _heur_t0 = _time.perf_counter()
-    _heuristic_results = heuristic_extract_batch(extraction_pages)
-    _heur_elapsed = _time.perf_counter() - _heur_t0
-
-    _heur_events = sum(len(r.events) for r in _heuristic_results.values())
-    _heur_pages_with_date = sum(1 for r in _heuristic_results.values() if r.page_date)
-    logger.info(
-        "Heuristic pre-extraction: %d pages in %.0fms (%.2fms/page) — "
-        "%d events, %d/%d pages with encounter dates",
-        len(extraction_pages), _heur_elapsed * 1000,
-        _heur_elapsed / max(len(extraction_pages), 1) * 1000,
-        _heur_events, _heur_pages_with_date, len(extraction_pages),
-    )
-
-    # Add heuristic events to vision immediately — these are the "free" events
-    # that don't cost any LLM tokens.
-    _heur_added = 0
-    for pn, heur_result in sorted(_heuristic_results.items()):
-        if not heur_result.events:
-            continue
-        heur_event_dicts = []
-        for he in heur_result.events:
-            d = he.to_dict()
-            d["annotations"] = {"heuristic_source": he.source}
-            if he.drug_name:
-                d["drug_name"] = he.drug_name
-                d["annotations"]["drug_name"] = he.drug_name
-            if he.drug_dosage:
-                d["drug_dosage"] = he.drug_dosage
-                d["annotations"]["drug_dosage"] = he.drug_dosage
-            if he.drug_route:
-                d["drug_route"] = he.drug_route
-                d["annotations"]["drug_route"] = he.drug_route
-            if he.icd_code:
-                d["annotations"]["icd_code"] = he.icd_code
-            heur_event_dicts.append(d)
-        add_events_from_pdf_page(
-            vision=vision,
-            page_num=pn,
-            events=heur_event_dicts,
-        )
-        _heur_added += len(heur_event_dicts)
-
-    logger.info(
-        "Heuristic events added to vision: %d events (pre-LLM)",
-        _heur_added,
-    )
-
-    # Build page date lookup for timestamp recovery on LLM results
-    _page_date_lookup: Dict[int, str] = {
-        pn: r.page_date
-        for pn, r in _heuristic_results.items()
-        if r.page_date
-    }
-
-    # Batched LLM extraction: batch size scales with the ingestion model's
-    # context window.  For small local models (e.g. llama3.1:8b with 128K
-    # context) we must use far fewer input chars per batch so the KV cache
-    # stays manageable and the model has enough headroom to generate output.
-    _ctx_tokens = ingestion_context_tokens or _PDF_EXTRACTION_GPT41_MAX_CONTEXT_TOKENS
-
-    if _ctx_tokens >= 500_000:
-        # Large-context model (GPT-4.1 etc.): use fill ratio to limit input so
-        # the model has ample output headroom (~900K tokens free).
-        _batch_max_chars = int(
-            (
-                _ctx_tokens * _PDF_EXTRACTION_CONTEXT_FILL_RATIO
-                - _PDF_EXTRACTION_SYSTEM_PROMPT_TOKENS_RESERVE
-                - _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-            )
-            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
-        )
-    else:
-        # Small/medium context model (e.g. llama3.1:8b at 32K).
-        # Reserve output budget as 50% of context — must match the num_predict
-        # cap used in _extract_events_from_pages_batch (min(16384, ctx//2)).
-        # Previous 25% reserve caused constant truncation: batch input sized to
-        # ~90K chars (~22K tokens) left only ~8K tokens for output, but the
-        # model was allowed 16K output tokens, so every batch hit the limit.
-        # With 50% reserved, input shrinks to ~45% of context → ~35 pages/batch
-        # → ~8K output tokens needed, safely under the 16K cap.
-        _small_output_reserve = max(4096, _ctx_tokens // 2)   # 50% for output
-        _small_system_reserve = max(512,  _ctx_tokens // 16)  # ~6% for system
-        _batch_max_chars = int(
-            (_ctx_tokens - _small_output_reserve - _small_system_reserve)
-            * _PDF_EXTRACTION_CHARS_PER_TOKEN_ESTIMATE
-        )
-
-    _batch_max_chars = max(_batch_max_chars, 8_000)
-
-    # Cap pages per batch so the output token budget isn't exceeded.
-    # Dense clinical pages (labs, medication lists) can require 2000-3000 output
-    # tokens each.  Prior runs with a 10-page cap on llama3.1:8b produced 15
-    # fully-failed batches from output truncation.  Capping at 5 pages keeps the
-    # worst-case output under 15K tokens, safely inside the 16K num_predict limit.
-    _OLLAMA_MAX_PAGES_PER_BATCH = 5
-    _OUTPUT_TOKENS_PER_PAGE_ESTIMATE = 2400
-    _output_token_cap = (
-        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-        if _ctx_tokens >= 500_000
-        else min(16384, max(4096, _ctx_tokens // 2))
-    )
-    _max_pages_per_batch: Optional[int] = min(
-        _OLLAMA_MAX_PAGES_PER_BATCH,
-        max(3, _output_token_cap // _OUTPUT_TOKENS_PER_PAGE_ESTIMATE),
-    )
-    if _ctx_tokens >= 500_000:
-        _max_pages_per_batch = None  # GPT-4.1 has ample output budget
-
-    batches = _iter_pdf_event_extraction_batches(
-        extraction_pages, max_chars=_batch_max_chars, max_pages=_max_pages_per_batch,
-    )
-    oh = _PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS
-    _effective_output_reserve = (
-        _PDF_EXTRACTION_OUTPUT_TOKENS_RESERVE
-        if _ctx_tokens >= 500_000
-        else max(4096, _ctx_tokens // 2)
-    )
-    logger.info(
-        "PDF event extraction: %d pages → %d batch(es); max ~%d input chars/batch "
-        "(%dK-token context; ~%d output tokens/page)",
-        len(extraction_pages),
-        len(batches),
-        _batch_max_chars,
-        _ctx_tokens // 1024,
-        _effective_output_reserve // max(1, len(batches[0]) if batches else 1),
-    )
-
-    # Parallel batch extraction: run up to `extraction_concurrency` batches
-    # concurrently, then process results in page order before running connascence.
-    # concurrency=1 is identical to the previous sequential behaviour.
-    # concurrency=2-3 saturates a GPU with spare VRAM (e.g. RTX 4090 + 8b-q8).
-    _concurrency = max(1, extraction_concurrency)
-    _sem = asyncio.Semaphore(_concurrency)
-
-    async def _extract_one(b_idx: int, batch: List[Tuple[int, str]]) -> Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]:
-        batch_chars = sum(len(t) for _, t in batch) + len(batch) * oh
-        logger.info(
-            "PDF event extraction batch %d/%d: %d pages, ~%d chars in payload",
-            b_idx, len(batches), len(batch), batch_chars,
-        )
-        # Pass heuristic results for pages in this batch so the LLM prompt
-        # includes the pre-extracted skeleton.
-        batch_heur = {
-            pn: _heuristic_results[pn]
-            for pn, _ in batch
-            if pn in _heuristic_results
-        } if _heuristic_results else None
-
-        async with _sem:
-            result = await _extract_events_from_pages_batch(
-                _ingestion_client, batch, model=_ingestion_model,
-                force_json_format=_force_json_format,
-                ollama_num_ctx=_ollama_num_ctx,
-                ollama_native_api=_ollama_native_api,
-                heuristic_results=batch_heur,
-            )
-        return b_idx, batch, result
-
-    extraction_tasks = [
-        _extract_one(i + 1, batch) for i, batch in enumerate(batches)
-    ]
-    all_results: list[Tuple[int, List[Tuple[int, str]], Dict[int, List[Dict[str, Any]]]]] = \
-        await asyncio.gather(*extraction_tasks)
-
-    # Process results in original batch order so connascence sees events in
-    # temporal document order.  Run one final connascence pass at the end
-    # (more accurate than per-batch passes since it sees the full event set).
-    from server.eoh.patient_timeline_vision import _infer_temporal_connascence
-
-    _stat_total_events = 0
-    _stat_fallback_pages = 0
-
-    _stat_ts_recovered = 0
-
-    for b_idx, batch, page_to_events in sorted(all_results, key=lambda x: x[0]):
-        ts_scrubbed = _sanitize_timestamps_batch(page_to_events)
-        batch_event_count = sum(len(evts) for evts in page_to_events.values())
-        _stat_total_events += batch_event_count
-
-        for evts in page_to_events.values():
-            for ev in evts:
-                if ev.get("event_id", "").endswith("_batch_error"):
-                    _stat_fallback_pages += 1
-
-        # Timestamp recovery: apply heuristic page dates to LLM events
-        # that have unknown timestamps.
-        for page_num, evts in page_to_events.items():
-            page_date = _page_date_lookup.get(page_num)
-            if not page_date:
-                continue
-            for ev in evts:
-                ts = ev.get("timestamp", "")
-                if ts.lower() in ("unknown", "", "n/a", "none"):
-                    from server.utils.parse_date import extract_date_from_text
-                    preview_date = extract_date_from_text(ev.get("preview", ""))
-                    if preview_date:
-                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
-                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
-                    else:
-                        ev["timestamp"] = page_date
-                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
-                    _stat_ts_recovered += 1
-
-        ts_samples: list[str] = []
-        for evts in page_to_events.values():
-            for ev in evts:
-                t = ev.get("timestamp", "")
-                if t and t != "unknown" and len(ts_samples) < 6:
-                    ts_samples.append(t)
-        log_msg = (
-            "Batch %d/%d extracted %d events across %d pages; timestamp samples: %s"
-        )
-        if ts_scrubbed:
-            log_msg += f"; scrubbed {ts_scrubbed} prompt-bleed timestamp(s)"
-        logger.info(log_msg, b_idx, len(batches), batch_event_count, len(page_to_events), ts_samples)
-
-        edges_before = vision.count_edges()
-        for page_num in sorted(page_to_events.keys()):
-            add_events_from_pdf_page(
-                vision=vision,
-                page_num=page_num,
-                events=page_to_events[page_num],
-            )
-
-        logger.info(
-            "PatientTimelineVision: after batch %d/%d — total events=%d edges=%d (+%d this batch)",
-            b_idx, len(batches), len(vision.events), vision.count_edges(),
-            vision.count_edges() - edges_before,
-        )
-
-    logger.info(
-        "═══ PDF extraction complete: %d batches, %d total events, %d fallback pages "
-        "(pages where extraction failed and only raw text was preserved), "
-        "%d timestamps recovered from heuristic page dates",
-        len(batches), _stat_total_events, _stat_fallback_pages, _stat_ts_recovered,
-    )
-
-    # Single final connascence pass over the complete event set.
-    # More accurate than incremental per-batch passes and avoids redundant work.
-    _infer_temporal_connascence(vision, window_days=7)
-    
-    # Keyword-based type reclassification: upgrade "page"/"unknown"/"note" events
-    # that the LLM tagged generically (output-token budget prevents per-page detail).
-    n_reclassified = _reclassify_event_types(vision)
-    if n_reclassified:
-        logger.info(
-            "PDF event type reclassification: %d events upgraded from generic type",
-            n_reclassified,
-        )
-
-    n_ts_scrubbed = _sanitize_timestamps_graph(vision)
-    if n_ts_scrubbed:
-        logger.info(
-            "PDF timestamp sanity: %d prompt-bleed timestamps scrubbed from graph",
-            n_ts_scrubbed,
-        )
 
     # Save vision snapshot (session_only still true; path is for sharing / gap artifacts)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -4370,8 +5330,13 @@ def _sanitize_timestamps_graph(vision: "PatientTimelineVision") -> int:
 def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
     """
     Keyword-based post-processing pass: upgrade events whose event_type is
-    "page", "unknown", or "note" to a more specific clinical type based on
-    the content of their preview text.
+    ambiguous ("page", "note", "unknown", "administrative") to a more specific
+    clinical type based on preview text.
+
+    Also normalizes the legacy bucket names — any remaining "page" or bare
+    "note" becomes either a specific clinical type (preferred) or
+    "administrative" / "clinical_note" so the exported graph never ships with
+    an event_type that isn't medically meaningful.
 
     Returns the number of events reclassified.
     """
@@ -4432,20 +5397,52 @@ def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
         )),
     ]
 
-    RECLASSIFY_FROM = {"page", "unknown", "note"}
+    RECLASSIFY_FROM = {"page", "unknown", "note", "administrative"}
     reclassified = 0
+
+    _ADMIN_RE = re.compile(
+        r"\b(?:release of medical information|authorization to release|"
+        r"consent for|advance (?:care )?directive|living will|hipaa|"
+        r"power of attorney|demographic|registration|billing|insurance|"
+        r"page \d+ of \d+|continued\b)",
+        re.I,
+    )
 
     for event in vision.events.values():
         if event.event_type not in RECLASSIFY_FROM:
             continue
         text = (event.preview or "").lower()
         if not text:
+            # No text to classify. Demote legacy "page"/"unknown" to
+            # "administrative" so downstream analytics never sees "page".
+            if event.event_type in ("page", "unknown", "note"):
+                event.event_type = "administrative"
+                reclassified += 1
             continue
+        matched = False
         for new_type, pattern in _PATTERNS:
             if pattern.search(text):
                 event.event_type = new_type
+                matched = True
                 reclassified += 1
                 break
+        if matched:
+            continue
+        if _ADMIN_RE.search(text):
+            if event.event_type != "administrative":
+                event.event_type = "administrative"
+                reclassified += 1
+            continue
+        # Still ambiguous: if the preview looks like prose (≥40 chars and has
+        # some letters), treat it as a clinical_note rather than leaving it
+        # as "page"/"unknown"/bare "note".
+        if len(text) >= 40 and re.search(r"[a-z]{4,}", text):
+            if event.event_type != "clinical_note":
+                event.event_type = "clinical_note"
+                reclassified += 1
+        elif event.event_type in ("page", "unknown", "note"):
+            event.event_type = "administrative"
+            reclassified += 1
 
     _VACCINE_RE = re.compile(
         r"\b(?:vaccin|immuniz|inoculat|covid.{0,8}(?:dose|shot|booster)|"
@@ -4459,7 +5456,7 @@ def _reclassify_event_types(vision: "PatientTimelineVision") -> int:
             continue
         text = (event.preview or "").lower()
         if text and _VACCINE_RE.search(text):
-            event.event_type = "procedure"
+            event.event_type = "immunization"
             reclassified += 1
 
     return reclassified
@@ -4469,6 +5466,223 @@ def _parse_ts(ts_str: str) -> Optional["datetime"]:
     """Thin wrapper → canonical ``parse_clinical_date``."""
     from server.utils.parse_date import parse_clinical_date
     return parse_clinical_date(ts_str)
+
+
+# ---------------------------------------------------------------------------
+# Reduced-graph connascence passes
+# ---------------------------------------------------------------------------
+#
+# Strategy, not cleverness: each pass groups events by a clinically meaningful
+# key (chapter, encounter, same-drug, same-ICD, same-day) and emits pairwise
+# edges within each group. The algorithm is dumb pairwise-within-bucket; the
+# intelligence is in the choice of key. Large buckets collapse to a star
+# topology (one hub → N members) to avoid O(n²) edge bloat.
+#
+# Returns a dict of {pass_name: edges_added} for logging / SSE.
+# ---------------------------------------------------------------------------
+
+_ICD_CODE_RX = re.compile(r"\[([A-Z]\d{2}(?:\.[0-9A-Za-z]+)?)\]")
+_NOTED_ON_RX = re.compile(r"\bNoted\s+on[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})", re.I)
+_STAR_THRESHOLD = 8  # Buckets with > N events emit star edges instead of full clique.
+
+
+def _emit_bucket_edges(
+    vision: "PatientTimelineVision",
+    bucket_key: str,
+    members: List[str],
+    kind: str,
+) -> int:
+    """Emit connascence edges for a bucket of ≥2 event IDs.
+
+    Small buckets get a full clique. Large buckets collapse to a star around
+    the earliest-timestamped member (or the first member if no timestamps) to
+    keep edge counts bounded.
+    """
+    if len(members) < 2:
+        return 0
+
+    if len(members) > _STAR_THRESHOLD:
+        # Star topology — pick a hub (earliest real timestamp, then first).
+        def _sort_key(eid: str) -> Tuple[int, str]:
+            ev = vision.events.get(eid)
+            ts = (ev.timestamp if ev else "") or ""
+            if ts and ts.lower() not in ("unknown", "n/a", ""):
+                return (0, ts)
+            return (1, eid)
+
+        ordered = sorted(members, key=_sort_key)
+        hub, spokes = ordered[0], ordered[1:]
+        edges = 0
+        for spoke in spokes:
+            vision.add_edge(
+                source_event_id=hub,
+                target_event_id=spoke,
+                connascence_type=kind,
+                discovered_by=f"{kind}:star",
+                metadata={"group": bucket_key, "topology": "star"},
+            )
+            edges += 1
+        return edges
+
+    # Full clique for small buckets.
+    edges = 0
+    for a, b in itertools.combinations(sorted(members), 2):
+        vision.add_edge(
+            source_event_id=a,
+            target_event_id=b,
+            connascence_type=kind,
+            discovered_by=f"{kind}:clique",
+            metadata={"group": bucket_key},
+        )
+        edges += 1
+    return edges
+
+
+def _infer_reduced_graph_connascence(
+    vision: "PatientTimelineVision",
+) -> Dict[str, int]:
+    """Run all reduced-graph connascence passes. Strategic, not clever.
+
+    Each pass groups events by a clinically meaningful key and emits edges
+    within each group. Edges are distinct connascence kinds so the graph UI
+    can filter/weight them independently.
+
+    Passes:
+      - same_chapter       : annotations.chapter_id
+      - same_encounter     : annotations.encounter_date (fallback to chapter_id's encounter_date)
+      - same_drug          : annotations.drug_name.lower() — medication continuity
+      - same_icd           : [Ann.nn] ICD-10 code in preview — condition threads
+      - same_day           : timestamp[:10] — procedural bundles
+      - temporal_7d        : already emitted by ``_infer_temporal_connascence``
+                             earlier in the pipeline; not repeated here.
+    """
+    from collections import defaultdict
+
+    by_chapter: Dict[str, List[str]] = defaultdict(list)
+    by_encounter: Dict[str, List[str]] = defaultdict(list)
+    by_drug: Dict[str, List[str]] = defaultdict(list)
+    by_icd: Dict[str, List[str]] = defaultdict(list)
+    by_day: Dict[str, List[str]] = defaultdict(list)
+
+    for eid, ev in vision.events.items():
+        ann = ev.annotations or {}
+        ch = ann.get("chapter_id")
+        if ch:
+            by_chapter[str(ch)].append(eid)
+        enc = ann.get("encounter_date")
+        if enc:
+            by_encounter[str(enc)].append(eid)
+        if ev.event_type == "medication":
+            dn = ann.get("drug_name")
+            if dn and isinstance(dn, str):
+                by_drug[dn.strip().lower()].append(eid)
+        code = ann.get("icd_code")
+        if not code:
+            m = _ICD_CODE_RX.search(ev.preview or "")
+            if m:
+                code = m.group(1)
+        if code:
+            by_icd[str(code).upper()].append(eid)
+        ts = (ev.timestamp or "").strip()
+        if ts and ts.lower() not in ("unknown", "n/a"):
+            day = ts[:10]
+            if re.match(r"\d{4}-\d{2}-\d{2}$", day):
+                by_day[day].append(eid)
+
+    stats: Dict[str, int] = {
+        "same_chapter": 0,
+        "same_encounter": 0,
+        "same_drug": 0,
+        "same_icd": 0,
+        "same_day": 0,
+    }
+    for key, members in by_chapter.items():
+        stats["same_chapter"] += _emit_bucket_edges(vision, key, members, "same_chapter")
+    for key, members in by_encounter.items():
+        stats["same_encounter"] += _emit_bucket_edges(vision, key, members, "same_encounter")
+    for key, members in by_drug.items():
+        stats["same_drug"] += _emit_bucket_edges(vision, key, members, "same_drug")
+    for key, members in by_icd.items():
+        stats["same_icd"] += _emit_bucket_edges(vision, key, members, "same_icd")
+    for key, members in by_day.items():
+        stats["same_day"] += _emit_bucket_edges(vision, key, members, "same_day")
+
+    return stats
+
+
+def _backfill_chapter_annotations(
+    vision: "PatientTimelineVision",
+    chapter_index: Dict[str, Dict[str, Any]],
+    page_to_chapter: Dict[int, str],
+) -> int:
+    """Stamp chapter_id / encounter_* / chapter_kind / section_header on any
+    event that lacks them, using its ``annotations.pdf_page`` → chapter map.
+
+    Heuristic-only events (added during the regex skeleton phase) don't know
+    their chapter at insertion time; this pass closes the loop so reduced-graph
+    ``same_chapter`` / ``same_encounter`` connascence can find them.
+    """
+    stamped = 0
+    for ev in vision.events.values():
+        ann = ev.annotations
+        if ann.get("chapter_id"):
+            continue
+        pn = ann.get("pdf_page")
+        if not isinstance(pn, int):
+            continue
+        cid = page_to_chapter.get(pn)
+        if not cid:
+            continue
+        meta = chapter_index.get(cid) or {}
+        ann["chapter_id"] = cid
+        if meta.get("encounter_date"):
+            ann.setdefault("encounter_date", meta["encounter_date"])
+        if meta.get("encounter_type"):
+            ann.setdefault("encounter_type", meta["encounter_type"])
+        if meta.get("section_header"):
+            ann.setdefault("section_header", meta["section_header"])
+        if meta.get("kind"):
+            ann.setdefault("chapter_kind", meta["kind"])
+        stamped += 1
+    return stamped
+
+
+def _build_page_to_chapter_index(chapters: List[Any]) -> Dict[int, str]:
+    """Build a page_num → chapter_id lookup from a list of ``PdfChapter``."""
+    idx: Dict[int, str] = {}
+    for ch in chapters:
+        for pn in getattr(ch, "pages", None) or []:
+            if isinstance(pn, int):
+                idx[pn] = ch.chapter_id
+    return idx
+
+
+def _recover_timestamps_from_preview(vision: "PatientTimelineVision") -> int:
+    """Dumb post-pass regex: lift 'Noted on: MM/DD/YYYY' dates from preview text
+    into ``timestamp`` when the current timestamp is missing.
+
+    The Problem-List page of an EHR dump stamps onset dates inline (e.g.
+    ``"ANEMIA [D64.9] ... Noted on: 04/06/2017"``) but the LLM leaves the
+    event with ``timestamp: "unknown"`` because there is no top-level date on
+    the page. This post-pass reclaims those dates.
+    """
+    from server.utils.parse_date import parse_clinical_date
+
+    recovered = 0
+    for ev in vision.events.values():
+        ts = (ev.timestamp or "").strip().lower()
+        if ts and ts not in ("unknown", "n/a", ""):
+            continue
+        m = _NOTED_ON_RX.search(ev.preview or "")
+        if not m:
+            continue
+        dt = parse_clinical_date(m.group(1))
+        if not dt:
+            continue
+        ev.timestamp = dt.strftime("%Y-%m-%d")
+        ev.annotations.setdefault("timestamp_source", "noted_on_regex")
+        recovered += 1
+    return recovered
 
 
 async def _enrich_timeline_vision_connascence(
@@ -4656,7 +5870,7 @@ async def _infer_llm_connascence_batched(
                     "event_id": e.event_id,
                     "event_type": e.event_type,
                     "timestamp": e.timestamp,
-                    "preview": (e.preview or "")[:250],
+                    "preview": normalize_graph_preview(e.preview or ""),
                 }
                 for e in batch
             ]
@@ -4917,7 +6131,7 @@ def _compact_graph_for_reduce(
         for e in bucket:
             row = {
                 "ts": e.timestamp,
-                "preview": (e.preview or "")[:120],
+                "preview": normalize_graph_preview(e.preview or "", max_len=120),
             }
             if e.connascence:
                 row["connascence"] = {k: v for k, v in e.connascence.items()}

@@ -1,16 +1,32 @@
 #!/usr/bin/env python3
 """
-Ingest NormanEricRoberts_decrypted.pdf into ehr.patient_timeline
-with GPT-4.1 graph enrichment at every batch.
+Ingest a decrypted patient PDF into ``ehr.patient_timeline`` with GPT-4.1
+graph enrichment at every batch.
+
+Historically this script pointed at a file and patient_id that contained
+the patient's name ("NormanEricRoberts_decrypted.pdf" /
+``PATIENT_ID = "NORMAN_ROBERTS"``). That is a PHI leak: the filename is
+shown in ``metadata.last_pdf_ingest``, and the patient_id becomes the
+primary key in ``ehr.patient_timeline``. Both are now derived, not
+literal:
+
+  - ``PDF_PATH`` defaults to ``data/patient_timelines/source.pdf`` but
+    can be overridden with ``--pdf`` or the ``PATIENT_PDF`` env var.
+  - ``PATIENT_ID`` is a SHA-256 hash of the PDF bytes (first 16 hex
+    chars, prefixed with ``P-`` for readability) unless the caller
+    passes ``--patient-id`` explicitly. Never hard-code a name.
 
 Run from 2ndOpinionMD-MVP/:
-    python server/scripts/ingest_norman_pdf.py
+    python server/scripts/ingest_norman_pdf.py --pdf path/to/file.pdf
 
 Flags:
-    --no-enrich   Skip GPT-4.1 graph enrichment (fast mode, regex only)
+    --pdf PATH          Path to the decrypted patient PDF (overrides env)
+    --patient-id ID     Use this patient_id instead of hashing the PDF
+    --no-enrich         Skip GPT-4.1 graph enrichment (fast mode, regex only)
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -33,11 +49,19 @@ for name in (".pulse", ".env"):
         load_dotenv(p)
         break
 
-PDF_PATH = project_root / "data" / "patient_timelines" / "NormanEricRoberts_decrypted.pdf"
-PATIENT_ID = "NORMAN_ROBERTS"
+DEFAULT_PDF = project_root / "data" / "patient_timelines" / "source.pdf"
 
 
-async def main(enable_enrichment: bool = True):
+def _pdf_hash_id(pdf_bytes: bytes) -> str:
+    """Derive a non-identifying, deterministic patient_id from file bytes."""
+    return "P-" + hashlib.sha256(pdf_bytes).hexdigest()[:16]
+
+
+async def main(
+    enable_enrichment: bool = True,
+    pdf_path: Path | None = None,
+    patient_id: str | None = None,
+):
     from sqlalchemy import text as sa_text
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
     from server.timeline.ingest import run_ingest_from_pdf_bytes
@@ -54,28 +78,31 @@ async def main(enable_enrichment: bool = True):
     engine = create_async_engine(db_url)
     SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    if not PDF_PATH.exists():
-        print(f"PDF not found: {PDF_PATH}")
+    pdf_path = pdf_path or Path(os.getenv("PATIENT_PDF", str(DEFAULT_PDF)))
+    if not pdf_path.exists():
+        print(f"PDF not found: {pdf_path}")
         sys.exit(1)
 
-    pdf_bytes = PDF_PATH.read_bytes()
-    print(f"\nRead {len(pdf_bytes):,} bytes from {PDF_PATH.name}")
+    pdf_bytes = pdf_path.read_bytes()
+    resolved_patient_id = patient_id or _pdf_hash_id(pdf_bytes)
+    # Deliberately do not log the source filename — it may contain PHI.
+    print(f"\nRead {len(pdf_bytes):,} bytes (sha256/16 -> patient_id={resolved_patient_id})")
     print(f"Graph enrichment: {'ENABLED (GPT-4.1)' if enable_enrichment else 'DISABLED (regex only)'}")
 
     async with SessionLocal() as session:
         result = await session.execute(
             sa_text("DELETE FROM ehr.patient_timeline WHERE patient_id = :pid"),
-            {"pid": PATIENT_ID},
+            {"pid": resolved_patient_id},
         )
         deleted = result.rowcount
         await session.commit()
         if deleted:
-            print(f"Cleared {deleted} old timeline events for {PATIENT_ID}")
+            print(f"Cleared {deleted} old timeline events for {resolved_patient_id}")
 
         stats = await run_ingest_from_pdf_bytes(
             db=session,
             pdf_bytes=pdf_bytes,
-            patient_id=PATIENT_ID,
+            patient_id=resolved_patient_id,
             password=None,
             enable_graph_enrichment=enable_enrichment,
         )
@@ -127,7 +154,15 @@ async def main(enable_enrichment: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ingest Norman Roberts PDF with graph enrichment")
+    parser = argparse.ArgumentParser(description="Ingest a patient PDF with graph enrichment")
+    parser.add_argument("--pdf", type=Path, default=None,
+                        help="Path to the decrypted patient PDF (overrides $PATIENT_PDF)")
+    parser.add_argument("--patient-id", type=str, default=None,
+                        help="Use this patient_id instead of hashing the PDF bytes")
     parser.add_argument("--no-enrich", action="store_true", help="Skip GPT-4.1 graph enrichment")
     args = parser.parse_args()
-    asyncio.run(main(enable_enrichment=not args.no_enrich))
+    asyncio.run(main(
+        enable_enrichment=not args.no_enrich,
+        pdf_path=args.pdf,
+        patient_id=args.patient_id,
+    ))

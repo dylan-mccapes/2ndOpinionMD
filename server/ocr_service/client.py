@@ -97,19 +97,23 @@ class OcrForgeClient:
         dpi: int = 220,
         max_dimension: int = 4000,
         skip_empty: bool = False,
+        password: Optional[str] = None,
     ) -> Dict[int, str]:
         """OCR every page of a PDF. Returns {page_num: text}."""
         client = self._require_client()
         p = Path(pdf_path)
+        params: Dict[str, str] = {
+            "dpi": str(dpi),
+            "max_dimension": str(max_dimension),
+            "skip_empty": str(skip_empty).lower(),
+        }
+        if password:
+            params["password"] = password
         with p.open("rb") as f:
             r = await client.post(
                 "/ocr/pdf",
                 files={"file": (p.name, f, "application/pdf")},
-                params={
-                    "dpi": dpi,
-                    "max_dimension": max_dimension,
-                    "skip_empty": str(skip_empty).lower(),
-                },
+                params=params,
             )
         r.raise_for_status()
         payload = r.json()
@@ -125,6 +129,7 @@ class OcrForgeClient:
         dpi: int = 220,
         max_dimension: int = 4000,
         skip_empty: bool = False,
+        password: Optional[str] = None,
     ) -> Dict[int, str]:
         """OCR a subset of PDF pages. If `pages` is provided, it takes precedence.
 
@@ -142,6 +147,8 @@ class OcrForgeClient:
             data_fields["end_page"] = str(end_page)
         if pages:
             data_fields["pages_csv"] = ",".join(str(x) for x in pages)
+        if password:
+            data_fields["password"] = password
 
         with p.open("rb") as f:
             r = await client.post(
@@ -153,13 +160,22 @@ class OcrForgeClient:
         payload = r.json()
         return {int(k): v for k, v in (payload.get("pages") or {}).items()}
 
-    async def pdf_page_count(self, pdf_path: str) -> int:
+    async def pdf_page_count(
+        self,
+        pdf_path: str,
+        *,
+        password: Optional[str] = None,
+    ) -> int:
         client = self._require_client()
         p = Path(pdf_path)
+        data_fields: Dict[str, str] = {}
+        if password:
+            data_fields["password"] = password
         with p.open("rb") as f:
             r = await client.post(
                 "/ocr/pdf/page_count",
                 files={"file": (p.name, f, "application/pdf")},
+                data=data_fields or None,
             )
         r.raise_for_status()
         return int(r.json().get("page_count", 0))

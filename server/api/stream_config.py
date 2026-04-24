@@ -2492,13 +2492,69 @@ EOH_TIMELINE_SUMMARIZER_SYSTEM_PROMPT = textwrap.dedent(
 # graph enrichment opportunistic pass, and related high-context EoH timeline calls.
 EOH_TIMELINE_SUMMARIZER_MODEL = os.getenv("EOH_TIMELINE_SUMMARIZER_MODEL", "gpt-4.1")
 
-# PDF event extraction (_extract_events_from_pages_batch) and connascence LLM passes.
-# Swap to a local Ollama model (e.g. "llama3.1:8b") via the INGESTION_MODEL env var
-# or the --ingestion-model CLI flag to eliminate ingestion API costs.
-# Defaults to EOH_TIMELINE_SUMMARIZER_MODEL so existing behaviour is unchanged.
-INGESTION_MODEL = os.getenv("INGESTION_MODEL", EOH_TIMELINE_SUMMARIZER_MODEL)
+# PDF / PTV extraction (_extract_events_from_pages_batch, import-pdf pipeline).
+# Default: local Ollama (no API spend). Premium / high-context OpenAI: set
+# INGESTION_MODEL=gpt-4.1 (or gpt-4o, etc.). Larger local models: e.g. llama3.1:70b-instruct-q4_K_M.
+DEFAULT_INGESTION_MODEL = os.getenv("DEFAULT_INGESTION_MODEL", "eoh-llama3.1:8b")
+INGESTION_MODEL = os.getenv("INGESTION_MODEL", DEFAULT_INGESTION_MODEL)
 
-# Ollama inference server base URL. Used when --llm-backend ollama|ollama-full is set.
+# Optional UI/API toggle: premium PDF→graph extraction with GPT-4.1 (1M context).
+# Batching uses ~INGESTION_GPT41_INPUT_FILL_RATIO of the context window for page text;
+# completion budget is INGESTION_GPT41_MAX_OUTPUT_TOKENS (graph-sized JSON).
+INGESTION_GPT41_MODEL = os.getenv("INGESTION_GPT41_MODEL", "gpt-4.1")
+INGESTION_GPT41_CONTEXT_TOKENS = int(os.getenv("INGESTION_GPT41_CONTEXT_TOKENS", str(1_048_576)))
+INGESTION_GPT41_INPUT_FILL_RATIO = float(os.getenv("INGESTION_GPT41_INPUT_FILL_RATIO", "0.60"))
+INGESTION_GPT41_MAX_OUTPUT_TOKENS = int(os.getenv("INGESTION_GPT41_MAX_OUTPUT_TOKENS", "65536"))
+INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
+    os.getenv("INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE", "12000")
+)
+
+# ─── eoh-llama3.1:8b (local) ingestion budget ─────────────────────────────────
+# The Modelfile pins num_ctx=32768 for eoh-llama3.1:8b. Ingest uses the GPT-4.1
+# split in token space (input / output / system reserves) **and** a hard page
+# cap so one dense summary chapter cannot send 20+ pages to the 8B model in a
+# single JSON extraction call:
+#
+#   input tokens  = 60% of num_ctx          → INGESTION_OLLAMA_INPUT_FILL_RATIO
+#   output tokens = 30% of num_ctx          → INGESTION_OLLAMA_OUTPUT_FILL_RATIO
+#   prompt/system =  ~10% margin
+#
+# Default ``OLLAMA_MAX_PAGES_PER_BATCH`` is **5** (override via env). The
+# packer also intersects with ``num_predict // OLLAMA_OUTPUT_TOKENS_PER_PAGE_ESTIMATE``
+# so streaming and non-streaming batch sizing stay aligned.
+# Ollama ingest context (``options.num_ctx`` + batch char budget). ``OLLAMA_NUM_CTX``
+# overrides when unset elsewhere; ``INGESTION_CONTEXT_TOKENS`` (ingest.py) overrides
+# both packing and num_ctx when set for the PDF pipeline.
+INGESTION_OLLAMA_CONTEXT_TOKENS = int(os.getenv("INGESTION_OLLAMA_CONTEXT_TOKENS", "32768"))
+INGESTION_OLLAMA_INPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_INPUT_FILL_RATIO", "0.60"))
+INGESTION_OLLAMA_OUTPUT_FILL_RATIO = float(os.getenv("INGESTION_OLLAMA_OUTPUT_FILL_RATIO", "0.30"))
+INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE = int(
+    os.getenv("INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE", "1200")
+)
+
+
+def ingestion_ollama_max_output_tokens(num_ctx: Optional[int] = None) -> int:
+    """Derived `num_predict` budget for Ollama ingest based on the output fill ratio."""
+    ctx = int(num_ctx) if num_ctx else INGESTION_OLLAMA_CONTEXT_TOKENS
+    return max(2048, int(ctx * INGESTION_OLLAMA_OUTPUT_FILL_RATIO))
+
+
+def ingestion_ollama_max_input_chars(num_ctx: Optional[int] = None) -> int:
+    """Approx char budget for a single Ollama ingest batch (60% of num_ctx × 4)."""
+    ctx = int(num_ctx) if num_ctx else INGESTION_OLLAMA_CONTEXT_TOKENS
+    in_tok = max(1024, int(ctx * INGESTION_OLLAMA_INPUT_FILL_RATIO - INGESTION_OLLAMA_SYSTEM_PROMPT_TOKEN_RESERVE))
+    return in_tok * 4  # rough chars-per-token estimate
+
+
+# Ollama OpenAI-compatible base (must end with /v1). PDF ingest + run_eohd_timeline_pdf use this.
+# Env: OLLAMA_BASE_URL — e.g. http://192.168.0.245:11434/v1
+# Pair with INGESTION_MODEL (default eoh-llama3.1:8b — must match `ollama list` name) and
+# optional OLLAMA_NUM_CTX / OLLAMA_MAX_PREDICT.
+#
+# Quick checks from any host that can reach Ollama:
+#   curl -s "${OLLAMA_BASE_URL%/v1}/api/tags" | head
+#   curl -sS "$OLLAMA_BASE_URL/chat/completions" -H "Content-Type: application/json" -d \
+#     '{"model":"eoh-llama3.1:8b","messages":[{"role":"user","content":"Say OK"}],"max_tokens":8}'
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
 # Gap analysis, connascence LLM pass, and similar “precision second opinion” calls.

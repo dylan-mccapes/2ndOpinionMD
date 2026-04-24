@@ -29,6 +29,26 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from server.utils.parse_date import parse_clinical_date
 
+# Graph / API preview length (timeline_summarizer prompts align on this cap).
+GRAPH_PREVIEW_MAX_CHARS = 240
+
+
+def normalize_graph_preview(text: str, max_len: int = GRAPH_PREVIEW_MAX_CHARS) -> str:
+    """
+    Collapse whitespace and cap preview length for stored graph events.
+
+    If text still exceeds ``max_len`` after collapsing spaces (e.g. model
+    over-ran the budget), keep the **suffix** so trailing dose lines, dates,
+    and medication clauses survive truncation better than a head cut.
+    """
+    if not text:
+        return ""
+    t = " ".join(str(text).split())
+    if len(t) <= max_len:
+        return t
+    return t[-max_len:]
+
+
 # ---------------------------------------------------------------------------
 # Edge-type priority for priority-weighted traversal.
 # Higher value = more clinically meaningful = follow first.
@@ -68,7 +88,7 @@ class TimelineEventVision:
     event_id: str  # Unique event identifier (e.g., "dx_001", "lab_2024-01-15_001")
     event_type: str  # diagnosis | lab | note | med | procedure | visit | flare
     timestamp: str  # ISO format timestamp
-    preview: str  # Human-readable preview/summary
+    preview: str  # Human-readable preview/summary (target ≤GRAPH_PREVIEW_MAX_CHARS)
     
     discovered_by: List[str] = field(default_factory=list)  # snapshot | pdf_page_15 | manual
     status: str = "included"  # included | excluded | uncertain
@@ -118,7 +138,7 @@ class TimelineEventVision:
             event_id=data.get("event_id", ""),
             event_type=data.get("event_type", "unknown"),
             timestamp=data.get("timestamp", ""),
-            preview=data.get("preview", ""),
+            preview=normalize_graph_preview(str(data.get("preview", "") or "")),
             discovered_by=discovered_by,
             status=data.get("status", "included"),
             connascence=connascence,
@@ -341,6 +361,8 @@ class PatientTimelineVision:
         annotations: Optional[Dict[str, Any]] = None,
     ) -> TimelineEventVision:
         """Add or update an event in the timeline vision."""
+        preview = normalize_graph_preview(str(preview or ""))
+
         if event_id in self.events:
             # Event already exists; add discovered_by
             event = self.events[event_id]
@@ -980,25 +1002,32 @@ def add_events_from_pdf_page(
                 Each event: {event_type, timestamp, preview, event_id (optional)}
     """
     discovered_by = f"pdf_page_{page_num}"
-    
+
     for idx, event in enumerate(events):
         event_id = event.get("event_id") or f"pdf_p{page_num:04d}_e{idx:03d}"
         event_type = event.get("event_type", "unknown")
         timestamp = event.get("timestamp", "")
-        preview = event.get("preview", "")
-        
-        annotations: Dict[str, Any] = {"pdf_page": page_num}
+        preview = normalize_graph_preview(str(event.get("preview", "") or ""))
+
+        # Start from any annotations the caller already stamped (chapter_id,
+        # encounter_date, encounter_type, section_header, chapter_kind,
+        # icd_code, heuristic_source, timestamp_source, ...) so the graph
+        # retains all clinical context instead of re-creating a bare dict.
+        passthrough = event.get("annotations") or {}
+        annotations: Dict[str, Any] = dict(passthrough) if isinstance(passthrough, dict) else {}
+        annotations["pdf_page"] = page_num
+
         drug_name = event.get("drug_name")
         if drug_name and isinstance(drug_name, str) and drug_name.strip():
             annotations["drug_name"] = drug_name.strip()
-            annotations["drug_norm_source"] = "llm_extraction"
+            annotations.setdefault("drug_norm_source", "llm_extraction")
         drug_dosage = event.get("drug_dosage")
         if drug_dosage and isinstance(drug_dosage, str) and drug_dosage.strip():
             annotations["drug_dosage"] = drug_dosage.strip()
         drug_route = event.get("drug_route")
         if drug_route and isinstance(drug_route, str) and drug_route.strip():
             annotations["drug_route"] = drug_route.strip().lower()
-        
+
         vision.add_event(
             event_id=event_id,
             event_type=event_type,

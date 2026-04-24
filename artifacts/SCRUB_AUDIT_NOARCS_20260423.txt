@@ -1,0 +1,52 @@
+PTV PII scrub audit
+source   : ptv_46860f06-e0a5-42d4-af9f-4dd8caa666f0_indexed_20260423T202542Z_v1_noarcs_pretty.json
+scrubbed : ptv_46860f06-e0a5-42d4-af9f-4dd8caa666f0_indexed_20260423T202542Z_v1_noarcs_scrubbed_pretty.json
+size     : 3.22 MB -> 3.30 MB
+
+Replacement counts (by rule label):
+  address:street                      132
+  phone                               117
+  name:full                           106
+  address:city_state_zip              103
+  id:mrn_labeled                       84
+  dob:labeled                          76
+  city:bare                            31
+  name:first                           18
+  provider                             18
+  facility:kp                           7
+  dob:iso                               7
+  address:street_partial                6
+  facility:bare                         6
+  facility:named                        4
+  city:trailing                         4
+  name:honorific                        3
+  name:family_member                    1
+  name:lastname_firstname               1
+  id:mrn_mrhash                         1
+  name:squashed                         1
+  source_filename                       1
+  structural:patient_dob                1
+  structural:index_by_year              1
+
+Post-scrub leftover scan:
+  Norman                                0
+  Roberts                               0
+  NormanEricRoberts                     0
+  MRN 110005992681                      0
+  DOB 8/17/1947                         0
+  DOB 1947-08-17 (ISO)                  0
+  DOB year (1947)                       0
+  Phone 925-210-8834                    0
+  Phone 4-digit (8834)                  0
+  Via Monte                             0
+  Walnut Creek                          0
+  Walnut (bare)                         0
+  Kaiser                                0
+  Ken Roberts                           0
+  Wingo                                 0
+  Maldonado                             0
+  Burnett                               0
+  Santos, Christian                     0
+  Rojas Mendoza                         0
+
+RESULT: CLEAN

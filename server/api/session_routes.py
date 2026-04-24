@@ -84,7 +84,8 @@ async def get_or_create_operator(
     db: AsyncSession, user_id: str, operator_type: str = "patient", sovereignty_level: str = "full"
 ) -> str:
     """Get existing operator for user_id or create one. Returns operator_id (UUID str)."""
-    user_uuid = uuid.UUID(user_id)
+    # Accept asyncpg pgproto.UUID, stdlib uuid.UUID, or plain str
+    user_uuid = user_id if isinstance(user_id, uuid.UUID) else uuid.UUID(str(user_id))
     r = await db.execute(
         text("SELECT operator_id FROM operators WHERE user_id = :uid"),
         {"uid": user_uuid},
@@ -670,18 +671,27 @@ async def timeline_status(
 async def timeline_import_pdf(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None),
-    current_user: Any = Depends(get_current_user_postgres),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "Premium PDF extraction: pass true, 1, yes, or on to use OpenAI GPT-4.1 "
+            "(see INGESTION_GPT41_* in server/api/stream_config.py). Requires OPENAI_API_KEY. "
+            "Otherwise uses INGESTION_MODEL (default: local Ollama)."
+        ),
+    ),
+    current_user: Any = Depends(get_user_for_timeline_status),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """
     Accept PDF upload, extract text, ingest into ehr.patient_timeline.
-    Auth: JWT Bearer. Returns timeline_id, event_count, status.
+    Auth: session Bearer or JWT. Returns timeline_id, event_count, status.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
 
     # Resolve user -> operator -> timeline
-    user_id = getattr(current_user, "id", None) or str(current_user.id) if hasattr(current_user, "id") else None
+    # Stringify user_id — asyncpg returns pgproto.UUID objects which uuid.UUID() cannot accept directly
+    user_id = str(current_user.id) if hasattr(current_user, "id") else None
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
@@ -708,19 +718,30 @@ async def timeline_import_pdf(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
 
-    if len(contents) > 10 * 1024 * 1024:  # 10MB
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 10MB)")
+    if len(contents) > 500 * 1024 * 1024:  # 500MB ceiling — full patient record PDFs can exceed 200MB
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 500MB)")
 
     # Delegate to timeline ingest module
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
     from server.timeline.ingest import run_ingest_from_pdf_bytes
 
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    _ingest_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
+
     try:
-        event_count = await run_ingest_from_pdf_bytes(
+        ingest_result = await run_ingest_from_pdf_bytes(
             db=db,
             pdf_bytes=contents,
             patient_id=str(timeline_id),
             password=password,
+            ingestion_model=_ingest_model,
         )
+        event_count = int(ingest_result.get("events_stored", 0))
     except ImportError:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -739,6 +760,144 @@ async def timeline_import_pdf(
         "status": "ready",
         "message": "Timeline ingested successfully",
     }
+
+
+# --- POST /api/timeline/import-pdf-stream (JWT auth, Server-Sent Events) -------
+
+@timeline_router.post("/import-pdf-stream")
+async def timeline_import_pdf_stream(
+    request: Request,
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "Premium PDF extraction: pass true, 1, yes, or on to use OpenAI GPT-4.1. "
+            "Otherwise the local Ollama model (INGESTION_MODEL) is used."
+        ),
+    ),
+    current_user: Any = Depends(get_user_for_timeline_status),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """
+    SSE variant of ``POST /api/timeline/import-pdf``.
+
+    The client receives a ``text/event-stream`` with one JSON payload per
+    chapter as the LLM extracts it. Frames emitted (in order):
+
+      * ``ready``           — timeline_id + ingestion_model + file meta
+      * ``stage``           — regex timeline rows persisted to SQL
+      * ``plan``            — full chapter plan + ETA
+      * ``heuristic``       — regex pre-scan stats
+      * ``chapter_start``   — before each LLM batch
+      * ``chapter_events``  — events extracted from the current batch
+      * ``chapter_done``    — per-batch elapsed + running totals
+      * ``done``            — final summarizer stats
+      * ``persisted``       — Postgres write confirmation + graph counts
+      * ``error``           — terminal error (stream closes after)
+
+    Each frame is dispatched as ``event: <type>\\ndata: <json>\\n\\n``.
+    """
+    import json as _json
+
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF file required")
+
+    user_id = str(current_user.id) if hasattr(current_user, "id") else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    operator_id = await get_or_create_operator(db, user_id, operator_type="patient", sovereignty_level="full")
+    timeline_id = await get_timeline_id_for_operator(db, operator_id)
+    if not timeline_id:
+        new_tid = uuid.uuid4()
+        operator_uuid = uuid.UUID(operator_id)
+        await db.execute(
+            text(
+                "INSERT INTO patient_timelines (timeline_id, patient_operator_id, timeline_name, anonymization_consent) "
+                "VALUES (:tid, :oid, :name, :consent)"
+            ),
+            {"tid": new_tid, "oid": operator_uuid, "name": "Patient Timeline", "consent": False},
+        )
+        await db.commit()
+        timeline_id = str(new_tid)
+    else:
+        timeline_id = str(timeline_id)
+
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read file: {e}")
+
+    if len(contents) > 500 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 500MB)")
+
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
+    from server.timeline.ingest import (
+        extract_pdf_pages_from_bytes,
+        stream_ingest_extracted_pdf_pages,
+    )
+
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1", "true", "yes", "on",
+    )
+    ingest_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
+    pool = getattr(request.app.state, "pool", None)
+
+    async def _event_stream():
+        def _sse(event_type: str, payload: Dict[str, Any]) -> bytes:
+            body = _json.dumps(payload, default=str, separators=(",", ":"))
+            return f"event: {event_type}\ndata: {body}\n\n".encode("utf-8")
+
+        try:
+            yield _sse("ready", {
+                "type": "ready",
+                "timeline_id": str(timeline_id),
+                "patient_id": str(timeline_id),
+                "ingestion_model": ingest_model,
+                "filename": file.filename,
+                "bytes": len(contents),
+            })
+
+            try:
+                pages, total_pages = await extract_pdf_pages_from_bytes(
+                    contents, str(timeline_id), password
+                )
+            except ValueError as e:
+                yield _sse("error", {"type": "error", "stage": "extract", "message": str(e)})
+                return
+
+            yield _sse("stage", {
+                "type": "stage",
+                "stage": "pdf_extracted",
+                "total_pages": total_pages,
+                "pages_with_text": len(pages),
+            })
+
+            async for frame in stream_ingest_extracted_pdf_pages(
+                db=db,
+                patient_id=str(timeline_id),
+                pages=pages,
+                total_pages=total_pages,
+                pool=pool,
+                source_filename=file.filename or "uploaded.pdf",
+                enable_timeline_rows=True,
+                ingestion_model=ingest_model,
+            ):
+                event_type = str(frame.get("type") or "message")
+                yield _sse(event_type, frame)
+        except Exception as e:
+            logger.exception("timeline_import_pdf_stream failed")
+            yield _sse("error", {"type": "error", "stage": "fatal", "message": str(e)})
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # --- Lightweight vault upload + mock PTV (session Bearer, Epistemic index.html) ---
@@ -898,9 +1057,19 @@ async def timeline_artifacts_ingest(
     document_type: str = Form("other"),
     document_date: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
-    model: str = Form("eoh-llama3.1:8b"),
+    model: str = Form(
+        "eoh-llama3.1:8b",
+        description="Legacy infer path only (plaintext/CSV/JSON batches). PDFs use INGESTION_MODEL or GPT-4.1 when use_gpt41_ingestion is set.",
+    ),
     store_results: bool = Form(True),
     build_graph: bool = Form(True),
+    use_gpt41_ingestion: Optional[str] = Form(
+        None,
+        description=(
+            "For PDF files only: true/1/yes/on → OpenAI GPT-4.1 graph extraction (INGESTION_GPT41_MODEL). "
+            "Plaintext infer batches ignore this and use `model` + Ollama."
+        ),
+    ),
     user: User = Depends(get_vault_user_from_session),
     db: AsyncSession = Depends(get_session),
 ):
@@ -911,9 +1080,14 @@ async def timeline_artifacts_ingest(
     1. Sha256-checked against ``vision.metadata.artifacts`` — duplicate → skip.
     2. Stored as a Tier A ``patient_artifact`` node immediately so the vault
        list is always up to date.
-    3. If the mime/extension is PDF/text/JSON: run through eoh-llama 8B
-       (via the existing ``_infer_lock`` GPU single-flight).
-       Other formats stay as Tier A only.
+    3. **PDF:** same pipeline as ``POST /api/timeline/import-pdf`` —
+       ``ingest_extracted_pdf_pages`` / ``populate_vision_from_extracted_pages``
+       (regex ``ehr.patient_timeline`` rows + batched per-page LLM extraction).
+       Form field ``use_gpt41_ingestion=true`` switches extraction to OpenAI GPT-4.1
+       (see ``INGESTION_GPT41_*`` in ``stream_config``).
+    4. **Plaintext / CSV / JSON:** legacy infer-style 8B batches (JSON array)
+       via ``_infer_lock`` GPU single-flight.
+       Other binary formats stay as Tier A only.
 
     Returns an SSE stream with per-file progress events:
       artifact_accepted, (pdf_read | text_extracted), pre_scan_done,
@@ -922,29 +1096,20 @@ async def timeline_artifacts_ingest(
     from server.api.timeline_infer_routes import (
         _infer_lock,
         _infer_active,
-        _extract_pdf_pages,
-        _chunk_pages,
         _call_ollama_8b,
         _parse_extraction_response,
-        _INFER_SYSTEM_PROMPT,
         _DEFAULT_NUM_CTX,
         _BATCH_MAX_INPUT_CHARS,
         _OLLAMA_POOL_LIMITS,
         _OLLAMA_TIMEOUT,
     )
-    from server.eoh.event_dedup import (
-        artifact_sha256 as _sha256,
-        artifact_id_from_bytes,
-        canonical_event_id,
-        artifact_catalog_entry,
-    )
+    from server.eoh.event_dedup import artifact_sha256 as _sha256
     from server.eoh.ptv_journal_bridge import add_patient_artifact_event
     from server.eoh.patient_timeline_vision import (
         load_timeline_vision_pg,
         save_timeline_vision_pg,
         add_events_from_pdf_page,
         _infer_temporal_connascence,
-        PatientTimelineVision,
     )
     from server.utils.pii_scrub import scrub_pages, extract_patient_names_from_header, scrub_pii
 
@@ -978,6 +1143,16 @@ async def timeline_artifacts_ingest(
         })
 
     patient_id = str(user.id)
+
+    from server.api.stream_config import INGESTION_GPT41_MODEL, INGESTION_MODEL
+
+    _gpt41_on = use_gpt41_ingestion is not None and str(use_gpt41_ingestion).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    pdf_ingestion_model = INGESTION_GPT41_MODEL if _gpt41_on else INGESTION_MODEL
 
     async def _generate():
         import asyncio
@@ -1079,8 +1254,12 @@ async def timeline_artifacts_ingest(
 
                     if is_pdf:
                         yield _sse_bytes("status", {"phase": "pdf_extracting", "filename": fn})
+                        from server.timeline.ingest import extract_pdf_pages_from_bytes
+
                         try:
-                            pages = await loop.run_in_executor(None, _extract_pdf_pages, data, None)
+                            pages, pdf_total_pages = await extract_pdf_pages_from_bytes(
+                                data, patient_id, None
+                            )
                         except Exception as exc:
                             yield _sse_bytes("batch_error", {"filename": fn, "message": f"PDF extraction failed: {exc}"})
                             continue
@@ -1141,28 +1320,90 @@ async def timeline_artifacts_ingest(
                         except Exception as _emb_err:
                             logger.warning("artifact embedding failed (non-fatal): %s", _emb_err)
 
-                    # ── Heuristic pre-scan (PDF only) ─────────────────────
-                    prescan_events_total = 0
-                    prescan_by_page: dict = {}
                     if pages is not None:
+                        # PDF — same pipeline as POST /api/timeline/import-pdf
+                        # (regex ehr.patient_timeline rows + populate_vision_from_extracted_pages).
                         from server.eoh.heuristic_page_extract import heuristic_extract_batch
+                        from server.timeline.ingest import ingest_extracted_pdf_pages
+                        import time as _ingest_time
+
                         prescan_results = await loop.run_in_executor(None, heuristic_extract_batch, pages)
-                        prescan_by_page = prescan_results
-                        for pr in prescan_results.values():
-                            prescan_events_total += len(pr.events)
+                        prescan_events_total = sum(len(pr.events) for pr in prescan_results.values())
                         yield _sse_bytes("pre_scan_done", {
                             "filename": fn,
                             "events": prescan_events_total,
                         })
 
-                    # ── Batch text for 8B ─────────────────────────────────
-                    if pages is not None:
-                        from server.api.timeline_infer_routes import _chunk_pages
-                        batches = _chunk_pages(pages)
-                    else:
-                        # Text: one flat batch
-                        batches = [[(1, raw_text)]]
+                        batch_chars = sum(len(t) for _, t in pages)
+                        yield _sse_bytes(
+                            "batch_start",
+                            {"filename": fn, "batch": 1, "total": 1, "chars": batch_chars},
+                        )
+                        t_pipe = _ingest_time.perf_counter()
+                        try:
+                            stats = await ingest_extracted_pdf_pages(
+                                db,
+                                patient_id,
+                                pages,
+                                pdf_total_pages,
+                                pool=pool,
+                                source_filename=fn,
+                                enable_timeline_rows=store_results,
+                                enable_graph_enrichment=build_graph,
+                                ingestion_model=pdf_ingestion_model,
+                            )
+                        except Exception as exc:
+                            logger.exception("artifacts/ingest PDF import pipeline failed for %s", fn)
+                            yield _sse_bytes(
+                                "batch_error",
+                                {"filename": fn, "batch": 1, "message": str(exc)},
+                            )
+                            continue
+                        pipe_s = _ingest_time.perf_counter() - t_pipe
+                        n_llm = int(stats.get("llm_events_total") or 0)
+                        yield _sse_bytes(
+                            "batch_done",
+                            {
+                                "filename": fn,
+                                "batch": 1,
+                                "extracted": n_llm,
+                                "elapsed_ms": int(pipe_s * 1000),
+                            },
+                        )
+                        if build_graph:
+                            vision_now = await load_timeline_vision_pg(pool, patient_id)
+                            if vision_now is not None:
+                                yield _sse_bytes(
+                                    "graph_update",
+                                    {
+                                        "filename": fn,
+                                        "total_events": len(vision_now.events),
+                                        "total_edges": vision_now.count_edges(),
+                                    },
+                                )
+                            if vision_now is not None:
+                                for a in vision_now.metadata.get("artifacts", []):
+                                    if a.get("artifact_id") == art_id:
+                                        a["ingest_tier"] = "B"
+                                        a["events_extracted"] = n_llm
+                                        a["pages"] = pdf_total_pages
+                                await save_timeline_vision_pg(pool, vision_now)
 
+                        totals["extracted"] += n_llm
+                        yield _sse_bytes(
+                            "artifact_done",
+                            {
+                                "artifact_id": art_id,
+                                "filename": fn,
+                                "events_extracted": n_llm,
+                                "events_merged": n_llm,
+                                "elapsed_ms": int(pipe_s * 1000),
+                            },
+                        )
+                        continue
+
+                    # ── Plaintext / CSV / JSON — legacy infer-style 8B batches ─
+                    batches = [[(1, raw_text)]]
                     total_batches = len(batches)
                     events_this_file: List[dict] = []
                     total_elapsed = 0.0
@@ -1170,20 +1411,7 @@ async def timeline_artifacts_ingest(
                     import httpx as _httpx
                     async with _httpx.AsyncClient(limits=_OLLAMA_POOL_LIMITS, timeout=_OLLAMA_TIMEOUT) as http:
                         for bidx, batch in enumerate(batches, 1):
-                            if pages is not None:
-                                sections = []
-                                for pn, txt in batch:
-                                    sec = f"=== Page {pn} ===\n{txt}"
-                                    pr = prescan_by_page.get(pn)
-                                    if pr is not None:
-                                        from server.eoh.heuristic_page_extract import skeleton_for_llm
-                                        skel = skeleton_for_llm(pn, txt, pr)
-                                        if skel:
-                                            sec += f"\n\n--- PRE-SCAN SKELETON ---\n{skel}"
-                                    sections.append(sec)
-                                batch_text = "\n\n".join(sections)
-                            else:
-                                batch_text = raw_text[:_BATCH_MAX_INPUT_CHARS]
+                            batch_text = raw_text[:_BATCH_MAX_INPUT_CHARS]
 
                             yield _sse_bytes("batch_start", {"filename": fn, "batch": bidx, "total": total_batches, "chars": len(batch_text)})
 
@@ -1206,18 +1434,16 @@ async def timeline_artifacts_ingest(
                                     ev["_artifact_id"] = art_id
                                     ev["_filename"] = fn
 
-                                # Persist to ehr.patient_timeline (dedup-safe)
                                 if store_results:
                                     from server.api.timeline_infer_routes import _store_extracted_events
                                     await _store_extracted_events(db, patient_id, extracted, bidx, model, artifact_id=art_id)
 
-                                # Merge into PTV graph
                                 if build_graph:
                                     vision_now = await load_timeline_vision_pg(pool, patient_id)
                                     if vision_now is None:
                                         from server.eoh.ptv_journal_bridge import empty_user_vision
                                         vision_now = empty_user_vision(patient_id)
-                                    pn = batch[0][0] if pages is not None else bidx
+                                    pn = batch[0][0]
                                     add_events_from_pdf_page(vision_now, pn, extracted)
                                     await save_timeline_vision_pg(pool, vision_now)
                                     yield _sse_bytes("graph_update", {
@@ -1237,18 +1463,14 @@ async def timeline_artifacts_ingest(
                                 logger.exception("artifacts/ingest batch %d failed for %s", bidx, fn)
                                 yield _sse_bytes("batch_error", {"filename": fn, "batch": bidx, "message": str(exc)})
 
-                    # ── Final temporal connascence + update catalog ────────
                     if build_graph:
                         vision_final = await load_timeline_vision_pg(pool, patient_id)
                         if vision_final:
                             _infer_temporal_connascence(vision_final, window_days=7)
-                            # Update the artifact catalog entry with extraction counts
                             for a in vision_final.metadata.get("artifacts", []):
                                 if a.get("artifact_id") == art_id:
                                     a["ingest_tier"] = "B"
                                     a["events_extracted"] = len(events_this_file)
-                                    if pages:
-                                        a["pages"] = max(p for p, _ in pages)
                             await save_timeline_vision_pg(pool, vision_final)
 
                     n_extracted = len(events_this_file)

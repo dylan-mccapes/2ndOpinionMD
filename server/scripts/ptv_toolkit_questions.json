@@ -1,0 +1,83 @@
+[
+  {
+    "id": "q01_drug_hydrocodone",
+    "question": "List every hydrocodone-acetaminophen administration in this chart in chronological order. Report each event's date and dose.",
+    "expected_route": "code_lookup",
+    "expected_primary_tool": "code_index_lookup",
+    "expected_args_shape": {"bucket": "drugs"},
+    "must_have_any": ["hydrocodone-acetaminophen", "NORCO", "857002"]
+  },
+  {
+    "id": "q02_icd_i10",
+    "question": "How many events in this chart carry the ICD-10 code I10, and when was it first and last recorded?",
+    "expected_route": "code_lookup",
+    "expected_primary_tool": "code_index_lookup",
+    "expected_args_shape": {"bucket": "icd", "key": "I10"},
+    "must_have_any": ["I10", "2016-03-07"]
+  },
+  {
+    "id": "q03_labs_2016",
+    "question": "Give me every lab result recorded during 2016 in date order.",
+    "expected_route": "temporal",
+    "expected_primary_tool": "temporal_scan",
+    "expected_args_shape": {"event_types": ["lab"], "start": "2016-01-01", "end": "2016-12-31"},
+    "must_have_any": ["2016"]
+  },
+  {
+    "id": "q04_semantic_back_pain",
+    "question": "What does this patient's chart say about radiating low back pain?",
+    "expected_route": "semantic_then_bfs",
+    "expected_primary_tool": "semantic_search",
+    "expected_args_shape": {"query": null},
+    "must_have_any": ["back", "pain"]
+  },
+  {
+    "id": "q05_rxnorm_lookup",
+    "question": "Is RxNorm 857002 present in this graph? If so, how many events use it?",
+    "expected_route": "code_lookup",
+    "expected_primary_tool": "code_index_lookup",
+    "expected_args_shape": {"bucket": "rxnorm", "key": "857002"},
+    "must_have_any": ["857002"]
+  },
+  {
+    "id": "q06_diag_workup_bfs",
+    "question": "For the chronic low back pain diagnosis in this chart, what other events happen at the same encounter or are part of its workup?",
+    "expected_route": "semantic_then_bfs",
+    "expected_primary_tool": "bfs_expand",
+    "expected_args_shape": {"edge_kinds": ["same_encounter", "in_workup_for"]},
+    "allow_precursor_tools": ["semantic_search", "code_index_lookup"],
+    "must_have_any": ["back", "M54", "G89"]
+  },
+  {
+    "id": "q07_recent_meds",
+    "question": "Show me every medication event from 2016 in chronological order.",
+    "expected_route": "temporal",
+    "expected_primary_tool": "temporal_scan",
+    "expected_args_shape": {"event_types": ["medication"], "start": "2016-01-01", "end": "2016-12-31"},
+    "must_have_any": ["2016"]
+  },
+  {
+    "id": "q08_event_types",
+    "question": "What event_type values exist in this graph and how many events of each?",
+    "expected_route": "orient",
+    "expected_primary_tool": "list_event_types",
+    "expected_args_shape": {},
+    "must_have_any": ["diagnosis", "medication"]
+  },
+  {
+    "id": "q09_free_text_kidney",
+    "question": "Is there any sign of kidney trouble in this chart?",
+    "expected_route": "semantic_then_bfs",
+    "expected_primary_tool": "semantic_search",
+    "expected_args_shape": {"query": null},
+    "must_have_any": []
+  },
+  {
+    "id": "q10_overview",
+    "question": "Give me a one-paragraph orientation: how many events, what types, what date range?",
+    "expected_route": "orient",
+    "expected_primary_tool": "graph_stats",
+    "expected_args_shape": {},
+    "must_have_any": ["632", "events"]
+  }
+]

@@ -1,6 +1,6 @@
 ## RECEIPT — REPORT_NOTE_TO_COGNITION Review
 
-**Artifact:** `REPORT_NOTE_TO_COGNITION.md`  
+**Artifact:** `reports/REPORT_NOTE_TO_COGNITION.md`  
 **Date Reviewed:** 2026-02-21  
 **Classification:** Operator -> External (Cognition-facing narrative)  
 **Reviewer:** Codex

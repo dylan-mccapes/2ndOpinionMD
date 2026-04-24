@@ -49,7 +49,7 @@ This receipt captures both that opinion and the **fully wired, testable** path s
 
 - `sandbox/norman_graph_retrieval/scripts/RUN_TOOL_AGENT_HARNESS.sh` — venv + `pip install -r requirements-dev.txt` + `PYTHONPATH` + pass-through args.  
 - `sandbox/norman_graph_retrieval/README.md` — env, semantic deps, WSL/Ollama URL, harness flags.  
-- `game_plans/STRATEGY_GRAPH_TRAVERSAL.md` — v1.1 pipeline narrative (referenced during implementation).
+- `reports/STRATEGY_GRAPH_TRAVERSAL.md` — v1.1 pipeline narrative (referenced during implementation).
 
 ---
 

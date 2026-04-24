@@ -41,6 +41,38 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# PHI-safe filename
+# ============================================================================
+#
+# Source filenames shared by sites frequently embed the patient's name
+# ("NormanEricRoberts_decrypted.pdf"). Those filenames must never be written
+# into ``vision.metadata.last_pdf_ingest.filename`` because that metadata is
+# returned to clients and persisted in ``ehr.patient_graph_vision``.
+# :func:`_sanitize_source_filename` detects the common CamelCase-name shape
+# and replaces it with ``patient_record``, preserving suffix markers
+# ("_decrypted", "_truncated") and the file extension for operational
+# debugging.
+
+_CAMEL_NAME_RUN = re.compile(
+    r"(?<![A-Za-z])(?:[A-Z][a-z]+){2,}(?![a-z])"
+)
+
+
+def _sanitize_source_filename(name: str) -> str:
+    """Return a PHI-stripped filename safe to persist in graph metadata."""
+    if not name:
+        return "patient_record.pdf"
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    scrubbed = _CAMEL_NAME_RUN.sub("patient_record", stem) or "patient_record"
+    if scrubbed == stem and any(token in stem.lower() for token in ("firstname", "lastname", "name")):
+        scrubbed = "patient_record"
+    return f"{scrubbed}.{ext}" if ext else scrubbed
+
+
 # ============================================================================
 # Inference Patterns for Structured Data Extraction
 # ============================================================================
@@ -751,32 +783,15 @@ class DirectoryIngestor:
 # PDF Bytes Ingestion (for API upload) — dynamic batching + graph enrichment
 # ============================================================================
 
-async def run_ingest_from_pdf_bytes(
-    db: AsyncSession,
+
+def _extract_pdf_pages_sync(
     pdf_bytes: bytes,
     patient_id: str,
-    password: Optional[str] = None,
-    enable_graph_enrichment: bool = True,
-) -> Dict[str, Any]:
+    password: Optional[str],
+) -> Tuple[List[Tuple[int, str]], int]:
     """
-    Extract text from PDF bytes, parse into timeline events, store in
-    ehr.patient_timeline, and optionally run GPT-4.1 graph enrichment on
-    each batch.
-
-    Batches are sized to fill ~60% of GPT-4.1's context window so the
-    enrichment agent sees maximum clinical context per call.
-
-    Returns a stats dict:
-        {
-            "events_stored": int,
-            "total_pages": int,
-            "pages_with_text": int,
-            "batches": int,
-            "enrichment_stats": [...],
-            "vision": PatientTimelineVision (if enrichment enabled),
-        }
+    CPU-bound PDF text extraction (pypdf + pypdfium2). Run via asyncio.to_thread.
     """
-    import time as _time
     from io import BytesIO
 
     try:
@@ -784,20 +799,36 @@ async def run_ingest_from_pdf_bytes(
     except ImportError as e:
         raise ImportError("pypdf required for PDF ingestion") from e
 
-    t0 = _time.perf_counter()
-
-    # ------------------------------------------------------------------
-    # 1. Read PDF pages
-    # ------------------------------------------------------------------
     stream = BytesIO(pdf_bytes)
-    reader = PdfReader(stream)
-    if reader.is_encrypted:
-        if not password:
-            raise ValueError("PDF is encrypted; password required")
-        if reader.decrypt(password) == 0:
-            raise ValueError("Incorrect PDF password")
+    pypdf_tree_ok = False
+    total_pages: int = 0
+    reader = None
+    try:
+        reader = PdfReader(stream)
+        if reader.is_encrypted:
+            if not password:
+                raise ValueError("PDF is encrypted; password required")
+            if reader.decrypt(password) == 0:
+                raise ValueError("Incorrect PDF password")
+        total_pages = len(reader.pages)
+        pypdf_tree_ok = True
+    except ValueError:
+        raise
+    except Exception as init_err:
+        logger.warning(
+            "INGEST [%s] pypdf init/page-tree failed (%s: %s) — switching to full pypdfium2 extraction",
+            patient_id, type(init_err).__name__, init_err,
+        )
+        try:
+            import pypdfium2 as pdfium
+            _doc_tmp = pdfium.PdfDocument(pdf_bytes)
+            total_pages = len(_doc_tmp)
+            _doc_tmp.close()
+        except Exception as count_err:
+            raise ValueError(
+                f"PDF is unreadable by both pypdf and pypdfium2. pypdf: {init_err} | pypdfium2: {count_err}"
+            ) from count_err
 
-    total_pages = len(reader.pages)
     logger.info("INGEST [%s] PDF has %d total pages", patient_id, total_pages)
     print(f"\n{'='*70}")
     print(f"  PDF INGESTION — patient: {patient_id}")
@@ -805,15 +836,88 @@ async def run_ingest_from_pdf_bytes(
     print(f"{'='*70}")
 
     pages: List[Tuple[int, str]] = []
+    needs_ocr: List[int] = []
     chars_total = 0
-    for idx, page in enumerate(reader.pages):
-        t = (page.extract_text() or "").strip().replace("\x00", "")
-        if t:
-            pages.append((idx + 1, t))
-            chars_total += len(t)
+
+    _pdfium_doc = None
+    try:
+        import pypdfium2 as pdfium
+        _pdfium_doc = pdfium.PdfDocument(pdf_bytes)
+    except ImportError:
+        if not pypdf_tree_ok:
+            raise ImportError(
+                "pypdf page tree is broken and pypdfium2 is not installed. "
+                "Add pypdfium2>=4.30 to server/requirements.txt"
+            )
+        logger.warning("INGEST pypdfium2 not installed — pypdf-only extraction (some pages may be missed)")
+    except Exception as pdfium_open_err:
+        logger.warning("INGEST [%s] pypdfium2 failed to open document: %s", patient_id, pdfium_open_err)
+        if not pypdf_tree_ok:
+            raise
+
+    def _pdfium2_page_text(idx: int) -> str:
+        if _pdfium_doc is None:
+            return ""
+        try:
+            p = _pdfium_doc[idx]
+            tp = p.get_textpage()
+            t = (tp.get_text_bounded() or "").strip().replace("\x00", "")
+            tp.close()
+            p.close()
+            return t
+        except Exception as e:
+            logger.warning("INGEST [%s] pypdfium2 failed on page %d: %s", patient_id, idx + 1, e)
+            return ""
+
+    try:
+        if pypdf_tree_ok:
+            for idx, page in enumerate(reader.pages):
+                try:
+                    t = (page.extract_text() or "").strip().replace("\x00", "")
+                except Exception as pypdf_err:
+                    logger.warning(
+                        "INGEST [%s] pypdf failed on page %d: %s", patient_id, idx + 1, pypdf_err
+                    )
+                    t = ""
+
+                if not t:
+                    t = _pdfium2_page_text(idx)
+                    if t:
+                        logger.info(
+                            "INGEST [%s] pypdfium2 recovered page %d (%d chars)",
+                            patient_id, idx + 1, len(t),
+                        )
+
+                if t:
+                    pages.append((idx + 1, t))
+                    chars_total += len(t)
+                else:
+                    needs_ocr.append(idx + 1)
+        else:
+            logger.info("INGEST [%s] full pypdfium2 extraction over %d pages", patient_id, total_pages)
+            for idx in range(total_pages):
+                t = _pdfium2_page_text(idx)
+                if t:
+                    pages.append((idx + 1, t))
+                    chars_total += len(t)
+                else:
+                    needs_ocr.append(idx + 1)
+    finally:
+        if _pdfium_doc is not None:
+            _pdfium_doc.close()
 
     if not pages:
-        raise ValueError("No text could be extracted from PDF")
+        raise ValueError(
+            f"No text could be extracted from PDF "
+            f"({total_pages} total pages, {len(needs_ocr)} need OCR)"
+        )
+
+    if needs_ocr:
+        logger.info(
+            "INGEST [%s] %d page(s) yielded no text (OCR candidates): %s",
+            patient_id, len(needs_ocr), needs_ocr[:20],
+        )
+        print(f"  pages needing OCR: {len(needs_ocr)} — {needs_ocr[:10]}")
 
     logger.info(
         "INGEST [%s] %d/%d pages yielded text — %s total chars",
@@ -824,149 +928,494 @@ async def run_ingest_from_pdf_bytes(
         f"  total chars extracted: {chars_total:,}\n"
         f"  avg chars/page: {chars_total // max(len(pages), 1):,}"
     )
+    return pages, total_pages
 
-    # ------------------------------------------------------------------
-    # 2. Compute dynamic batches (60% of GPT-4.1 context)
-    # ------------------------------------------------------------------
-    from server.eoh.graph_enrichment import compute_batch_boundaries, BATCH_MAX_CHARS
 
-    batches = compute_batch_boundaries(pages, max_chars=BATCH_MAX_CHARS)
+async def extract_pdf_pages_from_bytes(
+    pdf_bytes: bytes,
+    patient_id: str,
+    password: Optional[str] = None,
+) -> Tuple[List[Tuple[int, str]], int]:
+    """Extract (page_num, text) tuples from PDF bytes without DB or LLM work."""
+    return await asyncio.to_thread(_extract_pdf_pages_sync, pdf_bytes, patient_id, password)
+
+
+async def ingest_extracted_pdf_pages(
+    db: AsyncSession,
+    patient_id: str,
+    pages: List[Tuple[int, str]],
+    total_pages: int,
+    *,
+    pool: Any = None,
+    source_filename: str = "uploaded.pdf",
+    enable_timeline_rows: bool = True,
+    enable_graph_enrichment: bool = True,
+    ingestion_model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Regex timeline rows + ``populate_vision_from_extracted_pages`` on already-extracted
+    PDF pages. When ``pool`` is set (vault / Epistemic flow), load and merge into
+    ``ehr.patient_graph_vision``; otherwise save JSONL to disk (JWT import-pdf flow).
+    """
+    from server.api.stream_config import (
+        INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
+        INGESTION_GPT41_CONTEXT_TOKENS,
+        INGESTION_OLLAMA_CONTEXT_TOKENS,
+        OLLAMA_BASE_URL,
+    )
+    from server.eoh.timeline_summarizer import populate_vision_from_extracted_pages
+    from server.llm.llm_client import get_ollama_client
+    from openai import AsyncOpenAI
+
+    effective_model = ingestion_model if ingestion_model is not None else _DEFAULT_INGESTION_MODEL
+    _use_openai = "gpt" in effective_model.lower()
+    ingestion_context_tokens: Optional[int] = None
+    if _use_openai:
+        ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
+    else:
+        # Same default as streaming ingest + ``INGESTION_OLLAMA_CONTEXT_TOKENS``
+        # (32k for eoh-llama3.1:8b). ``INGESTION_CONTEXT_TOKENS`` overrides both
+        # packing and Ollama ``num_ctx`` when passed through to the summarizer.
+        _raw_ctx = (os.getenv("INGESTION_CONTEXT_TOKENS") or "").strip()
+        ingestion_context_tokens = (
+            int(_raw_ctx) if _raw_ctx else int(INGESTION_OLLAMA_CONTEXT_TOKENS)
+        )
+
     logger.info(
-        "INGEST [%s] split into %d batches (target %s chars each, 60%% GPT-4.1 context)",
-        patient_id, len(batches), f"{BATCH_MAX_CHARS:,}",
+        "INGEST [%s] PTV pipeline model=%s (openai=%s ctx_tokens=%s)",
+        patient_id, effective_model, _use_openai, ingestion_context_tokens,
     )
     print(
-        f"  batch target: {BATCH_MAX_CHARS:,} chars (60% of GPT-4.1 1M-token context)\n"
-        f"  batches: {len(batches)}"
+        f"  PTV / extraction model: {effective_model}\n"
+        f"  (premium toggle or INGESTION_MODEL=gpt-4.1 — default env is local Ollama)"
     )
 
-    # ------------------------------------------------------------------
-    # 3. Process each batch: store events + enrich graph
-    # ------------------------------------------------------------------
     parser = DocumentParser()
     engine = TimelineEngine()
     events_stored = 0
     enrichment_stats_list: List[Dict[str, Any]] = []
     vision = None
+    vision_batches = 0
+    heuristic_events_added: Optional[int] = None
+    llm_events_total: Optional[int] = None
 
     if enable_graph_enrichment:
-        from server.eoh.patient_timeline_vision import PatientTimelineVision
-        vision = PatientTimelineVision(
-            patient_id=patient_id,
-            built_at=datetime.now().isoformat(),
-            session_only=False,
-            metadata={"source": "pdf_ingestion", "total_pages": total_pages},
-        )
+        if pool is not None:
+            from server.eoh.patient_timeline_vision import load_timeline_vision_pg
+            from server.eoh.ptv_journal_bridge import empty_user_vision
 
-    for batch_idx, batch_pages in enumerate(batches):
-        batch_page_nums = [p[0] for p in batch_pages]
-        page_range_str = f"{batch_page_nums[0]}-{batch_page_nums[-1]}"
-        batch_text = "\n\n".join(
-            f"=== Page {pn} ===\n{txt}" for pn, txt in batch_pages
-        )
-        batch_chars = len(batch_text)
+            vision = await load_timeline_vision_pg(pool, patient_id)
+            if vision is None:
+                vision = empty_user_vision(patient_id)
+            vision.metadata = vision.metadata or {}
+            vision.metadata["last_pdf_ingest"] = {
+                "filename": _sanitize_source_filename(source_filename),
+                "total_pages": total_pages,
+            }
+        else:
+            from server.eoh.patient_timeline_vision import PatientTimelineVision
 
-        logger.info(
-            "INGEST [%s] batch %d/%d — pages %s (%d pages, %s chars)",
-            patient_id, batch_idx + 1, len(batches),
-            page_range_str, len(batch_pages), f"{batch_chars:,}",
-        )
-        print(
-            f"\n  ── batch {batch_idx+1}/{len(batches)} ──\n"
-            f"     pages: {page_range_str}  ({len(batch_pages)} pages, {batch_chars:,} chars)"
-        )
+            vision = PatientTimelineVision(
+                patient_id=patient_id,
+                built_at=datetime.now().isoformat(),
+                session_only=False,
+                metadata={
+                    "source": "pdf_ingestion",
+                    "total_pages": total_pages,
+                    "filename": source_filename,
+                },
+            )
 
-        # 3a. Parse + store timeline events (regex-based, fast)
-        batch_events_stored = 0
-        for pn, txt in batch_pages:
+    # Pre-compute the chapter plan so each regex timeline row, each graph event,
+    # and the OCR-pending queue all share one chapter_id. The sectionizer is
+    # pure and cheap — doing it here once keeps the legacy non-streaming
+    # ingest_extracted_pdf_pages and the streaming sibling in sync.
+    from server.timeline.pdf_sectionizer import sectionize_pages
+
+    chapters = sectionize_pages(pages)
+    page_chapter_meta: Dict[int, Dict[str, Any]] = {}
+    ocr_pending_pages: List[int] = []
+    for ch in chapters:
+        meta_for_pages = {
+            "chapter_id": ch.chapter_id,
+            "chapter_kind": ch.kind,
+            "chapter_label": ch.label,
+        }
+        if ch.encounter_date:
+            meta_for_pages["encounter_date"] = ch.encounter_date
+        if ch.encounter_type:
+            meta_for_pages["encounter_type"] = ch.encounter_type
+        if ch.encounter_type_raw:
+            meta_for_pages["encounter_type_raw"] = ch.encounter_type_raw
+        if ch.section_header:
+            meta_for_pages["section_header"] = ch.section_header
+        for pn in ch.pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+        for pn in ch.ocr_pending_pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+            page_chapter_meta[pn]["needs_ocr"] = True
+            page_chapter_meta[pn]["ocr_status"] = "queued"
+            ocr_pending_pages.append(pn)
+
+    if enable_timeline_rows:
+        for pn, txt in pages:
             page_text = f"=== Page {pn} ===\n{txt}"
-            events = parser.parse_document(
+            page_events = parser.parse_document(
                 page_text,
                 patient_id,
                 source=EventSource.PATIENT_UPLOAD,
-                filename="uploaded.pdf",
+                filename=source_filename,
             )
-            for event in events:
+            for event in page_events:
                 event.meta = event.meta or {}
                 event.meta["page"] = pn
-                event.meta["batch_index"] = batch_idx
-                event.meta["page_range"] = page_range_str
+                # Stamp chapter context so downstream queries can filter/group by
+                # clinical encounter (``WHERE meta->>'chapter_id' = ...``).
+                ch_meta = page_chapter_meta.get(pn)
+                if ch_meta:
+                    for k, v in ch_meta.items():
+                        event.meta.setdefault(k, v)
                 await engine.store_event(db, event)
-                batch_events_stored += 1
+                events_stored += 1
 
-        events_stored += batch_events_stored
+            if events_stored % 500 == 0:
+                logger.info("INGEST [%s] stored %d regex timeline rows so far…", patient_id, events_stored)
+
         logger.info(
-            "INGEST [%s] batch %d stored %d timeline events (total so far: %d)",
-            patient_id, batch_idx + 1, batch_events_stored, events_stored,
+            "INGEST [%s] stored %d regex timeline rows over %d chapter(s) "
+            "(ehr.patient_timeline); ocr_pending=%d",
+            patient_id,
+            events_stored,
+            len(chapters),
+            len(ocr_pending_pages),
         )
-        print(f"     timeline events stored: {batch_events_stored} (running total: {events_stored})")
 
-        # 3b. Graph enrichment via GPT-4.1 (if enabled)
-        if enable_graph_enrichment and vision is not None:
-            from server.eoh.graph_enrichment import enrich_graph_from_batch
+    if enable_graph_enrichment and vision is not None:
+        if _use_openai:
+            ingestion_client = AsyncOpenAI()
+        else:
+            ingestion_client = get_ollama_client(base_url=OLLAMA_BASE_URL)
 
-            enrich_stats = await enrich_graph_from_batch(
-                batch_text=batch_text,
-                page_range=page_range_str,
-                patient_id=patient_id,
-                vision=vision,
-                batch_index=batch_idx,
-                total_batches=len(batches),
-            )
-            enrichment_stats_list.append(enrich_stats)
+        _conc = int(os.getenv("INGESTION_EXTRACTION_CONCURRENCY", "1"))
+        pop_stats = await populate_vision_from_extracted_pages(
+            vision=vision,
+            extraction_pages=pages,
+            ingestion_client=ingestion_client,
+            ingestion_model=effective_model,
+            ingestion_context_tokens=ingestion_context_tokens,
+            extraction_concurrency=max(1, _conc),
+        )
+        enrichment_stats_list = pop_stats.get("enrichment_stats") or []
+        vision_batches = int(pop_stats.get("batches") or 0)
+        heuristic_events_added = pop_stats.get("heuristic_events_added")
+        llm_events_total = pop_stats.get("llm_events_total")
+        logger.info(
+            "INGEST [%s] PTV populate done — heuristic=%s LLM_events=%s batches=%s edges=%s",
+            patient_id,
+            heuristic_events_added,
+            llm_events_total,
+            vision_batches,
+            vision.count_edges(),
+        )
+        print(
+            f"\n  PTV graph (run-script algorithm): {len(vision.events)} events, "
+            f"{vision.count_edges()} edges  |  LLM batches: {vision_batches}"
+        )
 
-            logger.info(
-                "INGEST [%s] graph state after batch %d: %d events, %d edges",
-                patient_id, batch_idx + 1,
-                len(vision.events), vision.count_edges(),
-            )
-            print(
-                f"     graph state: {len(vision.events)} events, "
-                f"{vision.count_edges()} edges"
-            )
-
-    # ------------------------------------------------------------------
-    # 4. Commit + save vision
-    # ------------------------------------------------------------------
     await db.commit()
 
     if vision is not None:
-        from server.eoh.patient_timeline_vision import (
-            _infer_temporal_connascence,
-            save_timeline_vision,
-        )
-        _infer_temporal_connascence(vision, window_days=7)
-        save_timeline_vision(vision)
-        logger.info(
-            "INGEST [%s] final graph: %d events, %d edges — saved to disk",
-            patient_id, len(vision.events), vision.count_edges(),
-        )
+        if pool is not None:
+            from server.eoh.patient_timeline_vision import save_timeline_vision_pg
 
-    elapsed_ms = int((_time.perf_counter() - t0) * 1000)
+            await save_timeline_vision_pg(pool, vision)
+            logger.info(
+                "INGEST [%s] final graph: %d events, %d edges — saved to Postgres",
+                patient_id, len(vision.events), vision.count_edges(),
+            )
+        else:
+            from server.eoh.patient_timeline_vision import save_timeline_vision
+
+            save_timeline_vision(vision)
+            logger.info(
+                "INGEST [%s] final graph: %d events, %d edges — saved to disk",
+                patient_id, len(vision.events), vision.count_edges(),
+            )
+
     logger.info(
-        "INGEST [%s] COMPLETE — %d events stored, %d batches, %dms",
-        patient_id, events_stored, len(batches), elapsed_ms,
-    )
-    print(
-        f"\n{'='*70}\n"
-        f"  INGESTION COMPLETE\n"
-        f"  events stored: {events_stored}\n"
-        f"  batches processed: {len(batches)}\n"
-        f"  graph events: {len(vision.events) if vision else 'N/A'}\n"
-        f"  graph edges: {vision.count_edges() if vision else 'N/A'}\n"
-        f"  elapsed: {elapsed_ms:,}ms\n"
-        f"{'='*70}"
+        "INGEST [%s] ingest_extracted_pdf_pages done — %d SQL rows, %d LLM batches",
+        patient_id,
+        events_stored,
+        vision_batches,
     )
 
     return {
         "events_stored": events_stored,
         "total_pages": total_pages,
         "pages_with_text": len(pages),
-        "batches": len(batches),
+        "batches": vision_batches,
         "enrichment_stats": enrichment_stats_list,
         "vision": vision,
-        "elapsed_ms": elapsed_ms,
+        "heuristic_events_added": heuristic_events_added,
+        "llm_events_total": llm_events_total,
+        "chapters": [ch.to_dict() for ch in chapters],
+        "ocr_pending_pages": list(ocr_pending_pages),
     }
+
+
+async def stream_ingest_extracted_pdf_pages(
+    db: AsyncSession,
+    patient_id: str,
+    pages: List[Tuple[int, str]],
+    total_pages: int,
+    *,
+    pool: Any = None,
+    source_filename: str = "uploaded.pdf",
+    enable_timeline_rows: bool = True,
+    ingestion_model: Optional[str] = None,
+):
+    """
+    Async-generator sibling of :func:`ingest_extracted_pdf_pages`.
+
+    Emits SSE-ready dict frames in the following order:
+
+        1. ``{"type": "stage", "stage": "regex_rows", ...}`` — regex timeline rows
+           stored, one frame per 500 rows + a final summary.
+        2. ``{"type": "plan", ...}`` through ``{"type": "done", ...}`` forwarded
+           from :func:`stream_populate_vision_from_extracted_pages`.
+        3. ``{"type": "persisted", ...}`` — final Postgres write confirmation
+           with graph event / edge counts and OCR queue size.
+
+    Chapter metadata (``chapter_id``, ``encounter_date``, ``encounter_type``,
+    ``section_header``, ``chapter_kind``) is stamped on every row and every
+    graph event so downstream queries can group by clinical encounter.
+    """
+    from server.api.stream_config import (
+        INGESTION_MODEL as _DEFAULT_INGESTION_MODEL,
+        INGESTION_GPT41_CONTEXT_TOKENS,
+        INGESTION_OLLAMA_CONTEXT_TOKENS,
+        OLLAMA_BASE_URL,
+    )
+    from server.eoh.timeline_summarizer import stream_populate_vision_from_extracted_pages
+    from server.llm.llm_client import get_ollama_client
+    from server.timeline.pdf_sectionizer import sectionize_pages
+    from openai import AsyncOpenAI
+
+    effective_model = ingestion_model if ingestion_model is not None else _DEFAULT_INGESTION_MODEL
+    _use_openai = "gpt" in effective_model.lower()
+    ingestion_context_tokens: Optional[int] = None
+    if _use_openai:
+        ingestion_context_tokens = INGESTION_GPT41_CONTEXT_TOKENS
+    else:
+        _raw_ctx = (os.getenv("INGESTION_CONTEXT_TOKENS") or "").strip()
+        ingestion_context_tokens = (
+            int(_raw_ctx) if _raw_ctx else int(INGESTION_OLLAMA_CONTEXT_TOKENS)
+        )
+
+    parser = DocumentParser()
+    engine = TimelineEngine()
+
+    # --- chapter plan (shared with non-streaming path) --------------------
+    chapters = sectionize_pages(pages)
+    page_chapter_meta: Dict[int, Dict[str, Any]] = {}
+    ocr_pending_pages: List[int] = []
+    for ch in chapters:
+        meta_for_pages = {
+            "chapter_id": ch.chapter_id,
+            "chapter_kind": ch.kind,
+            "chapter_label": ch.label,
+        }
+        if ch.encounter_date:
+            meta_for_pages["encounter_date"] = ch.encounter_date
+        if ch.encounter_type:
+            meta_for_pages["encounter_type"] = ch.encounter_type
+        if ch.encounter_type_raw:
+            meta_for_pages["encounter_type_raw"] = ch.encounter_type_raw
+        if ch.section_header:
+            meta_for_pages["section_header"] = ch.section_header
+        for pn in ch.pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+        for pn in ch.ocr_pending_pages:
+            page_chapter_meta[pn] = dict(meta_for_pages)
+            page_chapter_meta[pn]["needs_ocr"] = True
+            page_chapter_meta[pn]["ocr_status"] = "queued"
+            ocr_pending_pages.append(pn)
+
+    # --- regex timeline rows (fast, synchronous over pages) ---------------
+    events_stored = 0
+    if enable_timeline_rows:
+        for pn, txt in pages:
+            page_text = f"=== Page {pn} ===\n{txt}"
+            page_events = parser.parse_document(
+                page_text,
+                patient_id,
+                source=EventSource.PATIENT_UPLOAD,
+                filename=source_filename,
+            )
+            for event in page_events:
+                event.meta = event.meta or {}
+                event.meta["page"] = pn
+                ch_meta = page_chapter_meta.get(pn)
+                if ch_meta:
+                    for k, v in ch_meta.items():
+                        event.meta.setdefault(k, v)
+                await engine.store_event(db, event)
+                events_stored += 1
+
+        await db.commit()
+        yield {
+            "type": "stage",
+            "stage": "regex_rows",
+            "events_stored": events_stored,
+            "chapters": len(chapters),
+            "ocr_pending": len(ocr_pending_pages),
+        }
+
+    # --- load / init PatientTimelineVision --------------------------------
+    if pool is not None:
+        from server.eoh.patient_timeline_vision import load_timeline_vision_pg
+        from server.eoh.ptv_journal_bridge import empty_user_vision
+
+        vision = await load_timeline_vision_pg(pool, patient_id)
+        if vision is None:
+            vision = empty_user_vision(patient_id)
+        vision.metadata = vision.metadata or {}
+        vision.metadata["last_pdf_ingest"] = {
+            "filename": _sanitize_source_filename(source_filename),
+            "total_pages": total_pages,
+        }
+    else:
+        from server.eoh.patient_timeline_vision import PatientTimelineVision
+
+        vision = PatientTimelineVision(
+            patient_id=patient_id,
+            built_at=datetime.now().isoformat(),
+            session_only=False,
+            metadata={
+                "source": "pdf_ingestion",
+                "total_pages": total_pages,
+                "filename": source_filename,
+            },
+        )
+
+    # --- LLM extraction stream --------------------------------------------
+    if _use_openai:
+        ingestion_client = AsyncOpenAI()
+    else:
+        ingestion_client = get_ollama_client(base_url=OLLAMA_BASE_URL)
+
+    async for frame in stream_populate_vision_from_extracted_pages(
+        vision=vision,
+        extraction_pages=pages,
+        ingestion_client=ingestion_client,
+        ingestion_model=effective_model,
+        ingestion_context_tokens=ingestion_context_tokens,
+    ):
+        if frame.get("type") == "skeleton_ready":
+            # Persist the regex/heuristic baseline graph before long-running LLM
+            # extraction so clients can immediately query a chapterized skeleton.
+            if pool is not None:
+                from server.eoh.patient_timeline_vision import save_timeline_vision_pg
+
+                await save_timeline_vision_pg(pool, vision)
+            else:
+                from server.eoh.patient_timeline_vision import save_timeline_vision
+
+                save_timeline_vision(vision)
+            yield {
+                "type": "skeleton_persisted",
+                "patient_id": patient_id,
+                "graph_events": len(vision.events),
+                "graph_edges": vision.count_edges(),
+                "chapters": len(chapters),
+            }
+        yield frame
+
+    # --- persist graph -----------------------------------------------------
+    if pool is not None:
+        from server.eoh.patient_timeline_vision import save_timeline_vision_pg
+
+        await save_timeline_vision_pg(pool, vision)
+    else:
+        from server.eoh.patient_timeline_vision import save_timeline_vision
+
+        save_timeline_vision(vision)
+
+    yield {
+        "type": "persisted",
+        "events_stored": events_stored,
+        "graph_events": len(vision.events),
+        "graph_edges": vision.count_edges(),
+        "chapters": len(chapters),
+        "ocr_pending_pages": list(ocr_pending_pages),
+        "ingestion_model": effective_model,
+    }
+
+
+async def run_ingest_from_pdf_bytes(
+    db: AsyncSession,
+    pdf_bytes: bytes,
+    patient_id: str,
+    password: Optional[str] = None,
+    enable_graph_enrichment: bool = True,
+    ingestion_model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Extract text from PDF bytes, parse into timeline events, store in
+    ehr.patient_timeline, and optionally build PatientTimelineVision using
+    the same pipeline as ``run_eohd_timeline_pdf.py`` / ``populate_vision_from_extracted_pages``:
+    regex heuristics on every page, batched per-page LLM extraction (with heuristic
+    hints), timestamp recovery, one temporal connascence pass, type reclassification,
+    and graph timestamp sanitize.
+
+    Model: ``INGESTION_MODEL`` env (default ``eoh-llama3.1:8b`` via ``stream_config``).
+    Premium OpenAI extraction: ``INGESTION_MODEL=gpt-4.1``. Ollama tuning: ``INGESTION_CONTEXT_TOKENS`` / ``OLLAMA_NUM_CTX``.
+
+    Returns a stats dict:
+        {
+            "events_stored": int,
+            "total_pages": int,
+            "pages_with_text": int,
+            "batches": int,
+            "enrichment_stats": [...],
+            "vision": PatientTimelineVision (if enrichment enabled),
+            "elapsed_ms": int,
+        }
+    """
+    import time as _time
+
+    t0 = _time.perf_counter()
+    pages, total_pages = await extract_pdf_pages_from_bytes(pdf_bytes, patient_id, password)
+    result = await ingest_extracted_pdf_pages(
+        db,
+        patient_id,
+        pages,
+        total_pages,
+        pool=None,
+        source_filename="uploaded.pdf",
+        enable_timeline_rows=True,
+        enable_graph_enrichment=enable_graph_enrichment,
+        ingestion_model=ingestion_model,
+    )
+    result["elapsed_ms"] = int((_time.perf_counter() - t0) * 1000)
+    logger.info(
+        "INGEST [%s] COMPLETE — %d events stored, %d LLM batches, %dms",
+        patient_id,
+        result["events_stored"],
+        result["batches"],
+        result["elapsed_ms"],
+    )
+    print(
+        f"\n{'='*70}\n"
+        f"  INGESTION COMPLETE\n"
+        f"  events stored: {result['events_stored']}\n"
+        f"  LLM extraction batches: {result['batches']}\n"
+        f"  graph events: {len(result['vision'].events) if result.get('vision') else 'N/A'}\n"
+        f"  graph edges: {result['vision'].count_edges() if result.get('vision') else 'N/A'}\n"
+        f"  elapsed: {result['elapsed_ms']:,}ms\n"
+        f"{'='*70}"
+    )
+    return result
 
 
 # ============================================================================

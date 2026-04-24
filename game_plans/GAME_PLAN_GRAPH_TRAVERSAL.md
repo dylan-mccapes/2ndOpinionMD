@@ -1,7 +1,7 @@
 # GAME_PLAN: Graph Traversal Experiments — Norman PTV × eoh-llama-lucifer
 
 > **Location:** All `GAME_PLAN_*.md` and strategy artifacts live under `game_plans/`.  
-> **Agent surface (core 12):** `game_plans/STRATEGY_GRAPH_TRAVERSAL.md` + `server/graph_traversal/agent_tools.py`.
+> **Agent surface (core 12):** `reports/STRATEGY_GRAPH_TRAVERSAL.md` + `server/graph_traversal/agent_tools.py`.
 
 **Source graph**: `artifacts/timeline_ollama_20260329_1805/patient_timeline_vision_norman_eric_roberts_20260329_195915.json`  
 **Model**: `eoh-llama-lucifer` @ `http://localhost:11434`  

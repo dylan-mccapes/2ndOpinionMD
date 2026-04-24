@@ -1,0 +1,159 @@
+{
+  "patient_id": "norman_eric_roberts",
+  "session_at_utc": "2026-04-13T21:30:52.630723+00:00",
+  "total_queries": 3,
+  "reduced_corpus_size": 3705,
+  "probes": [
+    {
+      "query_id": "Q01",
+      "query": "What are the strongest temporal associations between elevated CRP/ESR and episodes of joint pain or morning stiffness over the entire timeline?",
+      "probe_type": "biomarker_symptom_correlation",
+      "tool_hints": [
+        "graph_reduce",
+        "graph_biomarker_icm",
+        "graph_hybrid_search",
+        "graph_bfs_expand"
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "step": "hybrid_search_seeds",
+          "tool": "graph_hybrid_search",
+          "args": {
+            "query": "What are the strongest temporal associations between elevated CRP/ESR and episodes of joint pain or morning stiffness over the entire timeline?",
+            "top_k": 20,
+            "semantic": true,
+            "event_ids": "[3705 reduced_ids]"
+          },
+          "result_summary": {
+            "seed_count": 20,
+            "keyword_hits": 20,
+            "semantic_hits": 0
+          }
+        }
+      ],
+      "tool_usage": {
+        "graph_hybrid_search": 1
+      },
+      "final_answer": null,
+      "suggested_nodes": [],
+      "suggested_nodes_with_full_context": [],
+      "gaps": [
+        "agent was disabled"
+      ],
+      "wall_time_s": 0.013,
+      "agent_rounds": 0,
+      "status": "seeds_only"
+    },
+    {
+      "query_id": "Q02",
+      "query": "Starting from the first documented abnormal ANA result, trace the full connected treatment and diagnosis chain forward.",
+      "probe_type": "seed_trace_forward",
+      "tool_hints": [
+        "graph_hybrid_search",
+        "graph_bfs_expand",
+        "graph_pe_lorenz_classify"
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "step": "hybrid_search_seeds",
+          "tool": "graph_hybrid_search",
+          "args": {
+            "query": "Starting from the first documented abnormal ANA result, trace the full connected treatment and diagnosis chain forward.",
+            "top_k": 20,
+            "semantic": true,
+            "event_ids": "[3705 reduced_ids]"
+          },
+          "result_summary": {
+            "seed_count": 20,
+            "keyword_hits": 20,
+            "semantic_hits": 0
+          }
+        }
+      ],
+      "tool_usage": {
+        "graph_hybrid_search": 1
+      },
+      "final_answer": null,
+      "suggested_nodes": [],
+      "suggested_nodes_with_full_context": [],
+      "gaps": [
+        "agent was disabled"
+      ],
+      "wall_time_s": 0.009,
+      "agent_rounds": 0,
+      "status": "seeds_only"
+    },
+    {
+      "query_id": "Q03",
+      "query": "Which medication changes (additions, dose increases, or switches) appear to have produced the clearest improvement in joint symptoms or CRP levels?",
+      "probe_type": "treatment_response",
+      "tool_hints": [
+        "graph_reduce",
+        "graph_hybrid_search",
+        "graph_bfs_expand",
+        "graph_biomarker_icm"
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "step": "hybrid_search_seeds",
+          "tool": "graph_hybrid_search",
+          "args": {
+            "query": "Which medication changes (additions, dose increases, or switches) appear to have produced the clearest improvement in joint symptoms or CRP levels?",
+            "top_k": 20,
+            "semantic": true,
+            "event_ids": "[3705 reduced_ids]"
+          },
+          "result_summary": {
+            "seed_count": 20,
+            "keyword_hits": 20,
+            "semantic_hits": 0
+          }
+        }
+      ],
+      "tool_usage": {
+        "graph_hybrid_search": 1
+      },
+      "final_answer": null,
+      "suggested_nodes": [],
+      "suggested_nodes_with_full_context": [],
+      "gaps": [
+        "agent was disabled"
+      ],
+      "wall_time_s": 0.011,
+      "agent_rounds": 0,
+      "status": "seeds_only"
+    }
+  ],
+  "gap_report": {
+    "total_queries": 3,
+    "queries_with_gaps": [],
+    "queries_with_empty_response": [
+      "Q01",
+      "Q02",
+      "Q03"
+    ],
+    "total_suggested_nodes": 0,
+    "high_confidence_nodes": 0,
+    "tool_coverage": {
+      "graph_hybrid_search": 3
+    },
+    "tools_never_used": [
+      "graph_bfs_expand",
+      "graph_biomarker_icm",
+      "graph_bridges",
+      "graph_centrality",
+      "graph_kcore",
+      "graph_pe_govern_adjust",
+      "graph_pe_lorenz_classify",
+      "graph_pe_sweep",
+      "graph_reduce",
+      "graph_snapshot",
+      "graph_token_budget"
+    ],
+    "gaps": []
+  },
+  "wall_time_s": 0.039
+}
