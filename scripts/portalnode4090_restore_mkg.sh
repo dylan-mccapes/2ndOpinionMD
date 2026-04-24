@@ -32,6 +32,9 @@
 # If replaying 05a alone errors with:  relation "rag_corpus" already exists — 05a is not idempotent.
 # Full reset + restore, or pilot-only: database/sql/portalnode4090_redrop_rag_corpus_schema_only.sql then stubs+05a+05b (not 01 if auth already loaded).
 #
+# If restore fails with:  function public._set_updated_at() does not exist
+# Generic Mac trigger helper for updated_at. Stub database/sql/portalnode_stub_set_updated_at.sql (before 02).
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
@@ -125,6 +128,8 @@ run_sql_gz() {
 
 echo "==> $ROOT/database/sql/portalnode_stub_text_mimic_for_4090.sql (MIMIC text stub for ehr.v_timeline_note_events)"
 psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_text_mimic_for_4090.sql"
+echo "==> $ROOT/database/sql/portalnode_stub_set_updated_at.sql (Mac generic updated_at trigger fn)"
+psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_set_updated_at.sql"
 
 run_sql_gz "$DUMP_DIR/02_patient_substrate_schema.sql.gz"
 run_sql_gz "$DUMP_DIR/03_ontology.sql.gz"
