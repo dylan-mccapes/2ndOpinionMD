@@ -16,7 +16,10 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-python3 -m venv "$ROOT/.venv_embed"
+if ! python3 -m venv "$ROOT/.venv_embed" 2>/dev/null; then
+  echo "python3 -m venv failed. On Ubuntu: sudo apt-get install -y python3-venv python3-full" >&2
+  exit 1
+fi
 # shellcheck source=/dev/null
 source "$ROOT/.venv_embed/bin/activate"
 pip install -U pip wheel
