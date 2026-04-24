@@ -26,6 +26,9 @@
 # If restore fails with:  function public.keep_embedding_on_update() does not exist
 # 05a may recreate triggers on rag_corpus that reference this Mac-only function. Stub before 05a.
 #
+# If restore fails with:  function public.rag_corpus_tsv_update() does not exist
+# BEFORE INSERT/UPDATE trigger on rag_corpus for ts. Stub database/sql/portalnode_stub_rag_corpus_tsv_update.sql (after simple_unaccent).
+#
 # If replaying 05a alone errors with:  relation "rag_corpus" already exists — 05a is not idempotent.
 # Full reset + restore, or pilot-only: database/sql/portalnode4090_redrop_rag_corpus_schema_only.sql then stubs+05a+05b (not 01 if auth already loaded).
 #
@@ -128,6 +131,8 @@ run_sql_gz "$DUMP_DIR/03_ontology.sql.gz"
 run_sql_gz "$DUMP_DIR/04_guidelines.sql.gz"
 echo "==> $ROOT/database/sql/portalnode_stub_simple_unaccent.sql (FTS config for rag_corpus GIN in 05a)"
 psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_simple_unaccent.sql"
+echo "==> $ROOT/database/sql/portalnode_stub_rag_corpus_tsv_update.sql (rag_corpus ts trigger fn for 05a)"
+psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_rag_corpus_tsv_update.sql"
 echo "==> $ROOT/database/sql/portalnode_stub_keep_embedding_on_update.sql (trigger fn referenced in 05a)"
 psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_keep_embedding_on_update.sql"
 run_sql_gz "$DUMP_DIR/05a_rag_corpus_schema.sql.gz"
