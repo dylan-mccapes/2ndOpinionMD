@@ -117,6 +117,8 @@ docker/certs-local/
 # --- Local EoH / infra artifacts (do NOT commit) ---
 docker_env_report/
 mkg_backup_*.dump
+# PortalNode / FORWARD pilot pg slice dumps (regenerate with scripts/mkg_dump_for_4090*.sh)
+artifacts/forward_pilot_dump_*/
 
 # Temp scratch dirs/files
 extracting
