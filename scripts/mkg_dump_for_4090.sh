@@ -48,9 +48,9 @@ pg_dump --no-owner --no-acl --schema=ontology | gzip > "$DUMP_ROOT/03_ontology.s
 echo "==> 04_guidelines.sql.gz (full guidelines schema: DDL + table data, not schema-only)…"
 pg_dump --no-owner --no-acl --schema=guidelines | gzip > "$DUMP_ROOT/04_guidelines.sql.gz"
 
-# E — rag_corpus + chunks DDL only
+# E — rag_corpus + chunks DDL only (--if-not-exists: slightly safer if someone re-pipes 05a on PG 9.5+)
 echo "==> 05a_rag_corpus_schema.sql.gz…"
-pg_dump --no-owner --no-acl --schema-only -t public.rag_corpus -t public.rag_corpus_chunks \
+pg_dump --no-owner --no-acl --schema-only --if-not-exists -t public.rag_corpus -t public.rag_corpus_chunks \
   | gzip > "$DUMP_ROOT/05a_rag_corpus_schema.sql.gz"
 
 # F — slice: text + tsvector + jsonb (no embedding columns → smaller, re-embed on 4090)

@@ -26,6 +26,9 @@
 # If restore fails with:  function public.keep_embedding_on_update() does not exist
 # 05a may recreate triggers on rag_corpus that reference this Mac-only function. Stub before 05a.
 #
+# If replaying 05a alone errors with:  relation "rag_corpus" already exists — 05a is not idempotent.
+# Full reset + restore, or pilot-only: database/sql/portalnode4090_redrop_rag_corpus_schema_only.sql then stubs+05a+05b (not 01 if auth already loaded).
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
