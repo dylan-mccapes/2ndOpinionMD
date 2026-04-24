@@ -32,7 +32,7 @@ echo "(Steps can run several minutes with little output; 03_ontology is usually 
 # A — small auth / public tables (data)
 # --disable-triggers: emit ALTER TABLE … DISABLE/ENABLE TRIGGER so restore tolerates circular FKs (e.g. users).
 echo "==> 01_auth_seed.sql.gz (public auth tables, data-only)…"
-pg_dump --data-only --disable-triggers --schema=public \
+pg_dump --no-owner --no-acl --data-only --disable-triggers --schema=public \
   -t public.users -t public.operators -t public.sessions \
   -t public.patient_timelines -t public.timeline_access \
   -t public.doctor_patient_invites -t public.journal_entries \
@@ -40,18 +40,18 @@ pg_dump --data-only --disable-triggers --schema=public \
 
 # B — patient substrate (empty)
 echo "==> 02_patient_substrate_schema.sql.gz…"
-pg_dump --schema-only --schema=ehr --schema=eoh --schema=b2b \
+pg_dump --no-owner --no-acl --schema-only --schema=ehr --schema=eoh --schema=b2b \
   | gzip > "$DUMP_ROOT/02_patient_substrate_schema.sql.gz"
 
 # C + D — ontology + guidelines
 echo "==> 03_ontology.sql.gz (large — may take 10–30+ min, CPU + disk bound)…"
-pg_dump --schema=ontology | gzip > "$DUMP_ROOT/03_ontology.sql.gz"
+pg_dump --no-owner --no-acl --schema=ontology | gzip > "$DUMP_ROOT/03_ontology.sql.gz"
 echo "==> 04_guidelines.sql.gz…"
-pg_dump --schema=guidelines | gzip > "$DUMP_ROOT/04_guidelines.sql.gz"
+pg_dump --no-owner --no-acl --schema=guidelines | gzip > "$DUMP_ROOT/04_guidelines.sql.gz"
 
 # E — rag_corpus + chunks DDL only
 echo "==> 05a_rag_corpus_schema.sql.gz…"
-pg_dump --schema-only -t public.rag_corpus -t public.rag_corpus_chunks \
+pg_dump --no-owner --no-acl --schema-only -t public.rag_corpus -t public.rag_corpus_chunks \
   | gzip > "$DUMP_ROOT/05a_rag_corpus_schema.sql.gz"
 
 # F — slice: text + tsvector + jsonb (no embedding columns → smaller, re-embed on 4090)

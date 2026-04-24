@@ -70,6 +70,7 @@ snapshots/
 # allow our versioned SQL
 !database/sql/*.sql
 !database/schemas/*.sql
+!scripts/portalnode_stub_mac_owner_role.sql
 
 # editor / temp
 *.swp

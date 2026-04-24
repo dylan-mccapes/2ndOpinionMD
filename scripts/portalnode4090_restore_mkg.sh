@@ -7,6 +7,11 @@
 #
 # Requires: PostgreSQL + pgvector (portalnode4090_install_postgres.sh).
 #
+# If restore fails with:  ERROR: role "2ndopinionmd" does not exist
+# your dump was built before pg_dump gained --no-owner. Either:
+#   (A) One-time stub (cluster-wide):  sudo -u postgres psql -d postgres -v ON_ERROR_STOP=1 -f scripts/portalnode_stub_mac_owner_role.sql
+#   (B) Re-run mkg_dump_for_4090.sh on the Mac (now uses --no-owner --no-acl) and re-copy 02–05a,01.
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
