@@ -30,7 +30,7 @@
 # BEFORE INSERT/UPDATE trigger on rag_corpus for ts. Stub database/sql/portalnode_stub_rag_corpus_tsv_update.sql (after simple_unaccent).
 #
 # If replaying 05a alone errors with:  relation "rag_corpus" already exists — 05a is not idempotent.
-# Full reset + restore, or pilot-only: database/sql/portalnode4090_redrop_rag_corpus_schema_only.sql then stubs+05a+05b (not 01 if auth already loaded).
+# Use scripts/portalnode4090_replay_05a.sh (same DUMP_DIR/PG*), or full reset + this script.
 #
 # If restore fails with:  function public._set_updated_at() does not exist
 # Generic Mac trigger helper for updated_at. Stub database/sql/portalnode_stub_set_updated_at.sql (before 02).
