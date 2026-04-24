@@ -38,7 +38,8 @@ pg_dump --no-owner --no-acl --data-only --disable-triggers --schema=public \
   -t public.doctor_patient_invites -t public.journal_entries \
   | gzip > "$DUMP_ROOT/01_auth_seed.sql.gz"
 
-# B — patient substrate (empty)
+# B — patient substrate (empty). Includes ehr.v_timeline_note_events → text.mimiciv_notes_resolved
+# (MIMIC not dumped). Restore on 4090 runs database/sql/portalnode_stub_text_mimic_for_4090.sql before 02.
 echo "==> 02_patient_substrate_schema.sql.gz…"
 pg_dump --no-owner --no-acl --schema-only --schema=ehr --schema=eoh --schema=b2b \
   | gzip > "$DUMP_ROOT/02_patient_substrate_schema.sql.gz"

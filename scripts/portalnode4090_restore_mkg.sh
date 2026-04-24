@@ -16,6 +16,10 @@
 # a previous run partially applied 02_*.sql.gz. Nuke the target DB, then restore:
 #   sudo bash scripts/portalnode4090_reset_mkg_target_db.sh
 #
+# If restore fails with:  relation "text.mimiciv_notes_resolved" does not exist
+# 02 includes ehr.v_timeline_note_events joining MIMIC tables not in the pilot dump.
+# This script applies database/sql/portalnode_stub_text_mimic_for_4090.sql before 02 automatically.
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
@@ -30,6 +34,8 @@
 # /mnt/c/Users/*/forward_pilot_dump (where scp from Mac to Windows OpenSSH usually lands).
 
 set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 
 : "${PGUSER:?set PGUSER}"
 : "${PGDATABASE:?set PGDATABASE}"
@@ -101,6 +107,9 @@ run_sql_gz() {
   echo "==> $f"
   zcat "$f" | psql -v ON_ERROR_STOP=1
 }
+
+echo "==> $ROOT/database/sql/portalnode_stub_text_mimic_for_4090.sql (MIMIC text stub for ehr.v_timeline_note_events)"
+psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_text_mimic_for_4090.sql"
 
 run_sql_gz "$DUMP_DIR/02_patient_substrate_schema.sql.gz"
 run_sql_gz "$DUMP_DIR/03_ontology.sql.gz"
