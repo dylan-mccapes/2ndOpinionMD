@@ -12,6 +12,10 @@
 #   (A) One-time stub (cluster-wide):  sudo -u postgres psql -d postgres -v ON_ERROR_STOP=1 -f scripts/portalnode_stub_mac_owner_role.sql
 #   (B) Re-run mkg_dump_for_4090.sh on the Mac (now uses --no-owner --no-acl) and re-copy 02–05a,01.
 #
+# If restore fails with:  ERROR: schema "b2b" already exists (or similar)
+# a previous run partially applied 02_*.sql.gz. Nuke the target DB, then restore:
+#   sudo bash scripts/portalnode4090_reset_mkg_target_db.sh
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'

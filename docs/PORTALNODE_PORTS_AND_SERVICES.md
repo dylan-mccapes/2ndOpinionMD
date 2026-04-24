@@ -77,6 +77,7 @@ Default shell on Windows OpenSSH: **PowerShell** — use `wsl -d Ubuntu -- …` 
 | `scp` to Windows | **No `rsync` on remote** — use `scp` / `tar`+`scp` |
 | Typical Windows drop | `C:\Users\dylan\forward_pilot_dump\` → WSL `/mnt/c/Users/dylan/forward_pilot_dump/` |
 | `role "2ndopinionmd" does not exist` on restore | Old dumps: run **`scripts/portalnode_stub_mac_owner_role.sql`** once as `postgres` (see file header). New dumps use `--no-owner` from `mkg_dump_for_4090.sh`. |
+| `schema "b2b" already exists` (or similar) on re-restore | Partial **`02_*.sql.gz`** from an earlier attempt. Run **`sudo bash scripts/portalnode4090_reset_mkg_target_db.sh`**, then restore again. |
 
 ---
 
