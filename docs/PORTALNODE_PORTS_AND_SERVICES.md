@@ -80,6 +80,7 @@ Default shell on Windows OpenSSH: **PowerShell** — use `wsl -d Ubuntu -- …` 
 | `schema "b2b" already exists` (or similar) on re-restore | Partial **`02_*.sql.gz`** from an earlier attempt. Run **`sudo bash scripts/portalnode4090_reset_mkg_target_db.sh`**, then restore again. |
 | `relation "text.mimiciv_notes_resolved" does not exist` on **`02_*.sql.gz`** | **`ehr.v_timeline_note_events`** joins MIMIC text not shipped in the pilot dump. Current **`portalnode4090_restore_mkg.sh`** creates **`database/sql/portalnode_stub_text_mimic_for_4090.sql`** before 02; pull latest and re-run restore (after DB reset if 02 partially applied). |
 | `text search configuration "public.simple_unaccent" does not exist` on **`05a_*.sql.gz`** | Mac FTS config missing on pilot. Restore runs **`database/sql/portalnode_stub_simple_unaccent.sql`** before 05a; **`portalnode4090_install_postgres.sh`** / reset also enable **`unaccent`**. Pull latest; **`CREATE EXTENSION unaccent`** as `postgres` if the DB predates that line, then re-run restore from 05a or full reset+restore. |
+| `function public.keep_embedding_on_update() does not exist` on **`05a_*.sql.gz`** | **`rag_corpus`** triggers from Mac reference this function; not shipped in slice dumps. Restore runs **`database/sql/portalnode_stub_keep_embedding_on_update.sql`** (no-op) before 05a. Pull latest; or apply that SQL manually then replay 05a. |
 
 ---
 

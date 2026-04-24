@@ -23,6 +23,9 @@
 # If restore fails with:  text search configuration "public.simple_unaccent" does not exist
 # 05a creates GIN indexes using that Mac-defined config. We apply database/sql/portalnode_stub_simple_unaccent.sql before 05a.
 #
+# If restore fails with:  function public.keep_embedding_on_update() does not exist
+# 05a may recreate triggers on rag_corpus that reference this Mac-only function. Stub before 05a.
+#
 # Usage:
 #   export DUMP_DIR=/opt/portalnode/forward_pilot_dump
 #   export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
@@ -122,6 +125,8 @@ run_sql_gz "$DUMP_DIR/03_ontology.sql.gz"
 run_sql_gz "$DUMP_DIR/04_guidelines.sql.gz"
 echo "==> $ROOT/database/sql/portalnode_stub_simple_unaccent.sql (FTS config for rag_corpus GIN in 05a)"
 psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_simple_unaccent.sql"
+echo "==> $ROOT/database/sql/portalnode_stub_keep_embedding_on_update.sql (trigger fn referenced in 05a)"
+psql -v ON_ERROR_STOP=1 -f "$ROOT/database/sql/portalnode_stub_keep_embedding_on_update.sql"
 run_sql_gz "$DUMP_DIR/05a_rag_corpus_schema.sql.gz"
 # Auth seed after rag_corpus DDL (matches STRATEGY_FORWARD_PILOT_4090_DEPLOYMENT load order).
 run_sql_gz "$DUMP_DIR/01_auth_seed.sql.gz"
