@@ -25,8 +25,11 @@ server/.pytest_cache/
 
 # ---------- Secrets ----------
 .env
+.env.portalnode
 *.env
 server/.env
+# Local-only copy of pilot DB password / DSN (see docs/PORTALNODE_SECRETS.local.md.example)
+docs/PORTALNODE_SECRETS.local.md
 server/secure/log_encryption.key
 server/**/log_encryption.key
 

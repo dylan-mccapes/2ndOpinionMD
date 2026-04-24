@@ -7,6 +7,7 @@
 **Status:** Proposal — ready for review and execution.
 
 **Companion docs (traceable):**
+- `docs/PORTALNODE_PORTS_AND_SERVICES.md` (ports, services, DSN patterns; secrets in gitignored `docs/PORTALNODE_SECRETS.local.md`)
 - `reports/REPORT_FORWARD_KALEB_MICHAUD_PREP_20260421.md` (why RA-first, FORWARD ceiling = PROs only)
 - `reports/REPORT_FORWARD_PILOT_DATA_REQUEST_20260422.md` (Data Request Specification — variables, cohort, format)
 - `reports/STRATEGY_MKG_LOCAL_EMBEDDINGS_20260421.md` (single pgvector table, two spaces; BGE-base primary — we're applying that plan now)
