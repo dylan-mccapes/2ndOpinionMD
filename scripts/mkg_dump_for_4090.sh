@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run on the Mac (origin MKG). Produces gzipped dumps for PortalNode-0 / 4090.
 # Does NOT dump full rag_corpus (MIMIC); ships ontology, guidelines, schema, auth seed, slice.
+# Total folder size is still ~0.9–1.1 GB mostly from 03_ontology.sql.gz; the rag slice (05b) is ~80–120 MB typical.
 #
 # Usage:
 #   cd 2ndOpinionMD-MVP
@@ -72,11 +73,13 @@ echo "==> MANIFEST_slice_by_source.txt (every listed source, count 0 if absent o
 psql -v ON_ERROR_STOP=1 -tA -F'|' -c "$(portalnode_rag_slice_manifest_sql "$LIST_FILE")" \
   >"$DUMP_ROOT/MANIFEST_slice_by_source.txt"
 
-du -sh "$DUMP_ROOT"
+echo "Per-artifact (most bytes are 03_ontology; 05b is only the rag_corpus slice from portalnode_rag_slice_sources.txt):"
+du -sh "$DUMP_ROOT"/* 2>/dev/null | sort -h
+echo -n "Total "; du -sh "$DUMP_ROOT"
 echo "Done. Copy to 4090:"
 echo "  # rsync needs rsync ON THE REMOTE HOST — Windows OpenSSH does not; use scp or tar:"
 echo "  scp -r \"$DUMP_ROOT\" \"dylan@192.168.0.245:C:/Users/dylan/forward_pilot_dump/\""
-echo "  # Optional single tarball (ephemeral; gitignored under artifacts/*.tgz):"
+echo "  # Optional single tarball (ephemeral; gitignored: artifacts/forward_pilot_dump_*.tgz):"
 echo "  ( cd \"$(dirname "$DUMP_ROOT")\" && tar czf \"$(basename "$DUMP_ROOT").tgz\" \"$(basename "$DUMP_ROOT")\" )"
 echo "  scp \"$(dirname "$DUMP_ROOT")/$(basename "$DUMP_ROOT").tgz\" \"dylan@192.168.0.245:C:/Users/dylan/Downloads/\""
-echo "Windows/WSL: copy the dump folder (or extract .tgz) to ext4 before restore; rm artifacts/*.tgz when done."
+echo "Windows/WSL: copy the dump folder (or extract .tgz) to ext4 before restore; rm artifacts/forward_pilot_dump_*.tgz when done."
