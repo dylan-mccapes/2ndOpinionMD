@@ -1,5 +1,7 @@
 # One rag_corpus.source per line (PortalNode / FORWARD pilot slice).
-# Keep MIMIC and other huge training shards OUT of this file.
+# mkg_dump_for_4090.sh / mkg_dump_for_4090_slice_only.sh dump ALL lines below into 05b
+# (plus MANIFEST_slice_by_source.txt with a row per line, count 0 if missing on origin).
+# CRLF and end-of-line # comments are OK. Keep MIMIC and other huge shards OUT of this file.
 # Aligned with server/api/stream_config.py guideline + ontology-style sources.
 
 # Ontologies & lexicons

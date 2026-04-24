@@ -20,11 +20,8 @@ mkdir -p "$DUMP_ROOT"
 : "${PGDATABASE:?set PGDATABASE}"
 
 LIST_FILE="$ROOT/scripts/portalnode_rag_slice_sources.txt"
-rag_slice_in_clause() {
-  grep -v '^#' "$LIST_FILE" | grep -v '^[[:space:]]*$' | while IFS= read -r line || [[ -n "$line" ]]; do
-    printf "'%s'," "$line"
-  done | sed 's/,$//'
-}
+# shellcheck source=portalnode_rag_slice_sources_lib.sh
+. "$ROOT/scripts/portalnode_rag_slice_sources_lib.sh"
 
 echo "Writing dumps to $DUMP_ROOT"
 echo "(Steps can run several minutes with little output; 03_ontology is usually the longest.)"
@@ -56,8 +53,8 @@ pg_dump --no-owner --no-acl --schema-only -t public.rag_corpus -t public.rag_cor
   | gzip > "$DUMP_ROOT/05a_rag_corpus_schema.sql.gz"
 
 # F — slice: text + tsvector + jsonb (no embedding columns → smaller, re-embed on 4090)
-echo "==> 05b_rag_corpus_slice.copy.gz (binary COPY — sources from scripts/portalnode_rag_slice_sources.txt)…"
-SLICE_IN=$(rag_slice_in_clause)
+echo "==> 05b_rag_corpus_slice.copy.gz (binary COPY — all sources in scripts/portalnode_rag_slice_sources.txt)…"
+SLICE_IN="$(portalnode_rag_slice_in_clause_from_file "$LIST_FILE")"
 #    ts is tsvector (FTS), not timestamptz.
 SQL_SLICE=$(cat <<EOSQL
 COPY (
@@ -71,19 +68,15 @@ EOSQL
 
 psql -v ON_ERROR_STOP=1 -c "$SQL_SLICE" | gzip > "$DUMP_ROOT/05b_rag_corpus_slice.copy.gz"
 
-echo "==> MANIFEST_slice_by_source.txt…"
-psql -v ON_ERROR_STOP=1 -tAc "
-  SELECT source, count(*)
-  FROM public.rag_corpus
-  WHERE source IN ($SLICE_IN)
-  GROUP BY source ORDER BY source;
-" > "$DUMP_ROOT/MANIFEST_slice_by_source.txt"
+echo "==> MANIFEST_slice_by_source.txt (every listed source, count 0 if absent on origin)…"
+psql -v ON_ERROR_STOP=1 -tA -F'|' -c "$(portalnode_rag_slice_manifest_sql "$LIST_FILE")" \
+  >"$DUMP_ROOT/MANIFEST_slice_by_source.txt"
 
 du -sh "$DUMP_ROOT"
 echo "Done. Copy to 4090:"
 echo "  # rsync needs rsync ON THE REMOTE HOST — Windows OpenSSH does not; use scp or tar:"
 echo "  scp -r \"$DUMP_ROOT\" \"dylan@192.168.0.245:C:/Users/dylan/forward_pilot_dump/\""
-echo "  # Or one file:"
+echo "  # Optional single tarball (ephemeral; gitignored under artifacts/*.tgz):"
 echo "  ( cd \"$(dirname "$DUMP_ROOT")\" && tar czf \"$(basename "$DUMP_ROOT").tgz\" \"$(basename "$DUMP_ROOT")\" )"
 echo "  scp \"$(dirname "$DUMP_ROOT")/$(basename "$DUMP_ROOT").tgz\" \"dylan@192.168.0.245:C:/Users/dylan/Downloads/\""
-echo "Windows/WSL: then copy from /mnt/c/Users/dylan/... into ~/forward_pilot_dump on ext4 before restore."
+echo "Windows/WSL: copy the dump folder (or extract .tgz) to ext4 before restore; rm artifacts/*.tgz when done."

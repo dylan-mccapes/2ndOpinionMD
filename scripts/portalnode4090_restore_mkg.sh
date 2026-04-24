@@ -36,6 +36,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+LIST_FILE="$ROOT/scripts/portalnode_rag_slice_sources.txt"
+# shellcheck source=portalnode_rag_slice_sources_lib.sh
+. "$ROOT/scripts/portalnode_rag_slice_sources_lib.sh"
 
 : "${PGUSER:?set PGUSER}"
 : "${PGDATABASE:?set PGDATABASE}"
@@ -124,11 +127,11 @@ echo "==> 05b_rag_corpus_slice.copy.gz (binary COPY)"
 zcat "$DUMP_DIR/05b_rag_corpus_slice.copy.gz" | psql -v ON_ERROR_STOP=1 -c \
   "COPY public.rag_corpus (id, source, source_id, title, text, ts, meta, metadata) FROM STDIN WITH (FORMAT binary)"
 
-echo "==> verify counts vs MANIFEST"
+echo "==> verify counts vs MANIFEST (must list every source in portalnode_rag_slice_sources.txt)"
 if [[ -f "$DUMP_DIR/MANIFEST_slice_by_source.txt" ]]; then
   diff -u "$DUMP_DIR/MANIFEST_slice_by_source.txt" \
-    <(psql -tAc "SELECT source, count(*) FROM public.rag_corpus GROUP BY source ORDER BY source;") \
-    || echo "(warn) manifest mismatch — inspect above"
+    <(psql -tA -F'|' -c "$(portalnode_rag_slice_manifest_sql "$LIST_FILE")") \
+    || echo "(warn) manifest mismatch — re-copy MANIFEST+05b from the same mkg_dump run, or rm stale MANIFEST"
 fi
 
 psql -tAc "SELECT count(*) AS rag_corpus_rows FROM public.rag_corpus;"
