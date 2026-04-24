@@ -98,8 +98,14 @@ if ($Restore) {
         }
     }
     Write-Host "Restoring from $DumpDirWsl using $RestoreScriptWsl"
-    # TCP localhost: peer auth on Unix socket fails when WSL login ≠ portalnode
-    $inner = "export DUMP_DIR='$DumpDirWsl' PGHOST=127.0.0.1 PGPORT=5432 PGUSER=portalnode PGDATABASE=portalnode && bash '$RestoreScriptWsl'"
+    # TCP localhost: SCRAM when WSL login ≠ portalnode — pass PGPASSWORD from Windows env (any chars) via base64.
+    $pwPrefix = ""
+    if (-not [string]::IsNullOrWhiteSpace($env:PGPASSWORD)) {
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:PGPASSWORD))
+        # Single-quoted so PowerShell does not treat $( as a subexpression; bash runs command substitution.
+        $pwPrefix = 'export PGPASSWORD=$(printf %s ''' + $b64 + ''' | base64 -d); '
+    }
+    $inner = "${pwPrefix}export DUMP_DIR='$DumpDirWsl' PGHOST=127.0.0.1 PGPORT=5432 PGUSER=portalnode PGDATABASE=portalnode && bash '$RestoreScriptWsl'"
     Invoke-WslBash $inner
     exit 0
 }
@@ -122,13 +128,11 @@ One command (after scp from Mac to ~/):
 scp from Windows PowerShell (paths are Windows-style):
   scp C:\Users\dylan\portalnode4090_install_postgres.sh dylan@192.168.0.245:C:\Users\dylan\
 
-Restore (defaults to /mnt/c/Users/<WindowsUser>/2ndOpinionMD-MVP/scripts/... if present):
-  .\portalnode4090_wsl.ps1 -Restore -WslDistro Ubuntu -DumpDirWsl $DumpDirWsl
+Restore (set Windows env PGPASSWORD first if portalnode uses SCRAM; defaults restore script path under /mnt/c/...):
+  `$env:PGPASSWORD = '…'; .\portalnode4090_wsl.ps1 -Restore -WslDistro Ubuntu -DumpDirWsl '/mnt/c/Users/dylan/forward_pilot_dump/forward_pilot_dump_20260424T205758Z'
 
-From an Ubuntu shell (repo on C: drive — your layout):
-  cd /mnt/c/Users/dylan/2ndOpinionMD-MVP
-  export DUMP_DIR=`$HOME/forward_pilot_dump
-  export PGHOST=/var/run/postgresql PGUSER=portalnode PGDATABASE=portalnode
-  export PGPASSWORD='...'
+From WSL bash (repo on /mnt/c; omit DUMP_DIR to auto-find 05b under `$HOME/forward_pilot_dump or /mnt/c/Users/*/forward_pilot_dump):
+  cd /mnt/c/Users/dylan/2ndOpinionMD-MVP && git pull
+  export PGUSER=portalnode PGDATABASE=portalnode PGPASSWORD='…'
   ./scripts/portalnode4090_restore_mkg.sh
 "@
