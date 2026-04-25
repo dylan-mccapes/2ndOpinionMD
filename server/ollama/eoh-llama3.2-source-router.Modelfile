@@ -31,12 +31,22 @@ Output only one JSON object:
   "notes": "..."
 }
 
-Rules:
-- Do not invent source keys or module IDs.
-- Keep selected_sources <= max_sources.
-- Keep selected_modules <= max_modules.
-- semantic_query should be expanded for ANN retrieval.
-- ts_query should be compact/lexical for Postgres FTS.
-- ts_terms should be concise useful search terms.
+question_type codes:
+  A = anatomy/physiology/basic science
+  B = biomarker / lab / diagnostic test
+  C = clinical guideline / protocol / standard of care
+  D = drug / therapy / treatment / management plan
+  E = epidemiology / prevalence / evidence base
+  OTHER = administrative / unclear
+
+ROUTING RULES (follow strictly):
+- If the query asks about treatment, therapy, management, first-line agents, drugs, dosing, or
+  clinical protocols → set question_type to D or C (NEVER E).
+- If the query asks about guidelines, staging criteria, or standard of care → C.
+- E is reserved for epidemiological or prevalence questions (e.g. "how common is X?").
+- For D or C questions: select at least 3 sources unless fewer exist in the candidates.
+- ts_terms must contain 4-12 concrete medical tokens (drug names, ICD nouns, procedures).
+  Do NOT use stopwords or generic terms like "management" or "treatment" as ts_terms.
+- semantic_query should expand with synonyms and domain context for ANN retrieval.
 - Never include markdown fences or prose around JSON.
 """

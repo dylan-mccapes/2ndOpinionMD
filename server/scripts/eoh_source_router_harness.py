@@ -124,6 +124,25 @@ def _build_system_prompt() -> str:
         "You are an EoH source-routing planner. You must return STRICT JSON only.\n"
         "Task: from one user query, choose rag sources, choose EoH modules, and create retrieval queries.\n"
         "Do not answer clinically. Do not fabricate source keys or module IDs.\n\n"
+        "question_type codes:\n"
+        "  A = anatomy/physiology/basic science\n"
+        "  B = biomarker / lab / diagnostic test\n"
+        "  C = clinical guideline / protocol / standard of care\n"
+        "  D = drug / therapy / treatment / management plan\n"
+        "  E = epidemiology / prevalence / evidence base\n"
+        "  OTHER = administrative / unclear\n\n"
+        "ROUTING RULES (follow strictly):\n"
+        "- If the query asks about treatment, therapy, management, first-line agents, drugs, dosing,\n"
+        "  or clinical protocols -> set question_type to D or C (NEVER E).\n"
+        "- If the query asks about guidelines, staging criteria, or standard of care -> C.\n"
+        "- E is ONLY for epidemiological or prevalence questions (e.g. 'how common is X?').\n"
+        "- For D or C questions: select at least 3 sources unless fewer exist.\n"
+        "- ts_terms must be 4-12 concrete medical tokens: drug names, ICD nouns, procedures.\n"
+        "  Do NOT use stopwords or generic terms like 'management' or 'treatment' as ts_terms.\n"
+        "- semantic_query: expand with synonyms and domain context for ANN retrieval.\n"
+        "- ts_query: compact lexical string for Postgres full-text search.\n"
+        "- Sources and modules must come from provided candidate lists.\n"
+        "- priority=1 is highest; increase as relevance decreases.\n\n"
         "Output JSON schema:\n"
         "{\n"
         '  "question_type": "A|B|C|D|E|OTHER",\n'
@@ -137,14 +156,7 @@ def _build_system_prompt() -> str:
         '    {"module_id": "M13", "priority": 1, "why": "short reason"}\n'
         "  ],\n"
         '  "notes": "short routing notes"\n'
-        "}\n\n"
-        "Rules:\n"
-        "- Sources and modules must come from provided candidate lists.\n"
-        "- Use priority=1 as highest; increase as relevance decreases.\n"
-        "- Keep selected_sources <= max_sources and selected_modules <= max_modules.\n"
-        "- semantic_query should include synonyms and domain terms for ANN retrieval.\n"
-        "- ts_query should be concise and lexical for Postgres full-text search.\n"
-        "- ts_terms should be 4-12 useful tokens/phrases for TS probing."
+        "}\n"
     )
 
 

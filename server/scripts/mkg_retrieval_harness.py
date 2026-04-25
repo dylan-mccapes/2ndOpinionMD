@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-MKG retrieval test harness: one user query → semantic (embedding_local) + TS (plainto_tsquery)
+MKG retrieval test harness: one user query → semantic (embedding_local) + TS (websearch_to_tsquery)
 against ``public.rag_corpus``, then optional synthesis with Ollama ``eoh-llama-lucifer``.
+
+TS lane uses ``websearch_to_tsquery`` for OR-style recall, with auto OR-expansion fallback
+when the raw query yields no rows.
 
 Semantic lane matches ``embed_rag_corpus_local_slice.py`` (768-d BGE, normalized embeddings).
 
@@ -27,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -134,33 +138,61 @@ def ann_local(
     return list(cur.fetchall())
 
 
+_TS_STOPWORDS = {
+    "with", "from", "that", "this", "have", "what", "does", "when", "where",
+    "should", "which", "their", "there", "about", "using", "type", "stage",
+    "after", "will", "would", "could", "first", "second", "third", "patient",
+    "patients", "clinical", "medical", "management", "treatment", "diagnosis",
+}
+
+
 def bm25_ts(cur, q: str, top_k: int, *, sources: Optional[List[str]]) -> List[Dict[str, Any]]:
-    if sources:
-        cur.execute(
-            """
-            SELECT id, source, source_id, title, text,
-                   ts_rank(ts, plainto_tsquery('english', %s)) AS score
-            FROM public.rag_corpus
-            WHERE ts @@ plainto_tsquery('english', %s)
-              AND source = ANY(%s)
-            ORDER BY score DESC
-            LIMIT %s
-            """,
-            (q, q, sources, top_k),
+    """TS retrieval with three-tier fallback for better recall.
+
+    Tier 1  - websearch_to_tsquery (OR-friendly, handles phrases)
+    Tier 2  - auto-extracted key terms joined with websearch OR syntax
+    Tier 3  - single highest-signal noun if tiers 1-2 yield nothing
+    """
+
+    def _exec(tsq_fn: str, tsq_arg: str) -> List[Dict[str, Any]]:
+        sql_base = (
+            f"SELECT id, source, source_id, title, text, "
+            f"ts_rank(ts, {tsq_fn}('english', %s)) AS score "
+            f"FROM public.rag_corpus "
+            f"WHERE ts @@ {tsq_fn}('english', %s)"
         )
-    else:
-        cur.execute(
-            """
-            SELECT id, source, source_id, title, text,
-                   ts_rank(ts, plainto_tsquery('english', %s)) AS score
-            FROM public.rag_corpus
-            WHERE ts @@ plainto_tsquery('english', %s)
-            ORDER BY score DESC
-            LIMIT %s
-            """,
-            (q, q, top_k),
-        )
-    return list(cur.fetchall())
+        if sources:
+            cur.execute(sql_base + " AND source = ANY(%s) ORDER BY score DESC LIMIT %s",
+                        (tsq_arg, tsq_arg, sources, top_k))
+        else:
+            cur.execute(sql_base + " ORDER BY score DESC LIMIT %s",
+                        (tsq_arg, tsq_arg, top_k))
+        return list(cur.fetchall())
+
+    # Tier 1: websearch_to_tsquery - OR-style matching over the full query
+    rows = _exec("websearch_to_tsquery", q)
+    if rows:
+        return rows
+
+    _log("🔤", "TS tier-1 miss; extracting key terms for OR-expansion")
+
+    # Extract significant tokens (>=4 chars, alpha only, not stopwords)
+    tokens = [re.sub(r"[^a-z]", "", w.lower()) for w in q.split()]
+    key = [t for t in tokens if len(t) >= 4 and t not in _TS_STOPWORDS and t.isalpha()]
+
+    # Tier 2: OR-join up to 8 key terms via websearch_to_tsquery
+    if key:
+        expanded = " OR ".join(key[:8])
+        rows = _exec("websearch_to_tsquery", expanded)
+        if rows:
+            return rows
+
+        # Tier 3: highest-signal single term (longest)
+        anchor = sorted(key, key=len, reverse=True)[0]
+        _log("🔤", f"TS tier-2 miss; trying single-term anchor: {anchor!r}")
+        rows = _exec("websearch_to_tsquery", anchor)
+
+    return rows
 
 
 def embed_query(model_name: str, text: str) -> Tuple[List[float], str]:
@@ -205,15 +237,27 @@ def run_llm(
         "id_overlap": overlap,
     }
     system = (
-        "You evaluate dual-lane retrieval from a medical knowledge graph table (rag_corpus). "
-        "You receive JSON with two ranked lists: dense semantic (BGE/local) and PostgreSQL FTS, "
-        "plus rag_source_reference: short descriptions of each rag_corpus.source value in the pilot slice. "
-        "Be concise. Output markdown with these headings exactly: "
+        "You are a clinical knowledge synthesis expert evaluating dual-lane retrieval from a medical "
+        "knowledge graph (rag_corpus). You receive JSON with two ranked lists: dense semantic "
+        "(BGE/local cosine) and PostgreSQL FTS (websearch_to_tsquery), plus rag_source_reference.\n\n"
+        "SYNTHESIS RULES (follow strictly):\n"
+        "1. SYNTHESIZE — do NOT copy or paraphrase hit text verbatim. Extract clinical meaning and "
+        "   integrate it into your own reasoning. A good summary states what the evidence implies, "
+        "   not just what it says.\n"
+        "2. Compare the two lanes: note where they agree, where they diverge, and what the divergence "
+        "   means for clinical confidence.\n"
+        "3. For treatment/management/planning queries, explicitly state first-line and alternative "
+        "   options, evidence grade, and any contraindications present in the hits.\n"
+        "4. If a lane returned no results, explain why (e.g., lexical mismatch) and what that gap "
+        "   implies for retrieval quality — do not silently skip it.\n"
+        "5. Only reference ids present in the JSON.\n\n"
+        "Output markdown with exactly these headings:\n"
         "## Summary\n## Overlap\n## Best semantic hit\n## Best TS hit\n## Query refinement\n"
-        "Do not invent rag ids; only reference ids present in the JSON."
+        "Keep total response under 600 words."
     )
     user = (
-        "Analyze this retrieval bundle for clinical relevance and complementarity.\n\n"
+        "Synthesize the clinical evidence in this dual-lane retrieval bundle. "
+        "Do not copy text — reason from it.\n\n"
         + json.dumps(bundle, indent=2, default=str)
     )
     t0 = time.monotonic()
