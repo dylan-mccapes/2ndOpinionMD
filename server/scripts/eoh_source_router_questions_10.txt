@@ -1,0 +1,11 @@
+# EoH source-router harness smoke set (10 queries)
+First-line therapy for T2DM with CKD considerations
+How should we route sources for anemia management in CKD with diabetes?
+What sources and modules should guide steroid-sparing plan for lupus nephritis?
+Route this question: worsening dyspnea in COPD with possible guideline escalation
+Which sources should we search for asthma step-up and adherence barriers?
+Query planning for opioid prescribing risk mitigation in chronic pain patient
+How to route evidence for rheumatoid arthritis flare vs infection overlap
+Source routing for ANCA-associated vasculitis with renal decline
+Route retrieval for psoriatic arthritis treatment options with CKD comorbidity
+What modules and sources should be prioritized for unexplained inflammatory markers trend

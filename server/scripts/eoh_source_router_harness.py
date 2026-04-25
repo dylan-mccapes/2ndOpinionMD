@@ -50,11 +50,22 @@ def _extract_json_object(raw: str) -> Dict[str, Any]:
     raise ValueError("No parseable JSON object in model response.")
 
 
-def _load_query(args: argparse.Namespace) -> str:
+def _load_queries(args: argparse.Namespace) -> List[str]:
+    if args.questions_file:
+        _log("📚", f"Reading questions file: {args.questions_file}")
+        out: List[str] = []
+        for raw in args.questions_file.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            out.append(line)
+        return out
     if args.query_file:
         _log("📄", f"Reading query file: {args.query_file}")
-        return args.query_file.read_text(encoding="utf-8").strip()
-    return (args.query or "").strip()
+        q = args.query_file.read_text(encoding="utf-8").strip()
+        return [q] if q else []
+    q = (args.query or "").strip()
+    return [q] if q else []
 
 
 def _load_source_candidates(args: argparse.Namespace) -> Dict[str, str]:
@@ -232,6 +243,11 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("query", nargs="?", help="User query to route")
     ap.add_argument("--query-file", type=Path, help="UTF-8 file containing query text")
     ap.add_argument(
+        "--questions-file",
+        type=Path,
+        help="UTF-8 file with one query per line (# comments and blank lines ignored)",
+    )
+    ap.add_argument(
         "--sources-file",
         type=Path,
         help="Optional source candidates file (one source per line). Defaults to portal pilot source list.",
@@ -246,21 +262,13 @@ def _parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
-def main() -> None:
-    args = _parse_args()
-    _log("🚀", "Starting EoH source-router harness")
-
-    query = _load_query(args)
-    if not query:
-        print("error: provide query or --query-file", file=sys.stderr)
-        sys.exit(2)
-    _log("❓", f"Query ready ({len(query)} chars)")
-
-    source_candidates = _load_source_candidates(args)
-    module_candidates = _module_candidates()
-    _log("📚", f"Loaded source candidates: {len(source_candidates)}")
-    _log("🧩", f"Loaded module candidates: {len(module_candidates)}")
-
+def _run_one_query(
+    *,
+    query: str,
+    args: argparse.Namespace,
+    source_candidates: Dict[str, str],
+    module_candidates: Dict[str, Dict[str, str]],
+) -> Dict[str, Any]:
     system = _build_system_prompt()
     user = _build_user_prompt(
         query=query,
@@ -307,6 +315,64 @@ def main() -> None:
             "module_candidates_count": len(module_candidates),
             "route_plan": clean,
         }
+    return out
+
+
+def main() -> None:
+    args = _parse_args()
+    _log("🚀", "Starting EoH source-router harness")
+
+    queries = _load_queries(args)
+    if not queries:
+        print("error: provide query, --query-file, or --questions-file", file=sys.stderr)
+        sys.exit(2)
+    _log("❓", f"Loaded {len(queries)} question(s)")
+
+    source_candidates = _load_source_candidates(args)
+    module_candidates = _module_candidates()
+    _log("📚", f"Loaded source candidates: {len(source_candidates)}")
+    _log("🧩", f"Loaded module candidates: {len(module_candidates)}")
+
+    if len(queries) == 1:
+        out = _run_one_query(
+            query=queries[0],
+            args=args,
+            source_candidates=source_candidates,
+            module_candidates=module_candidates,
+        )
+        text = json.dumps(out, indent=2, ensure_ascii=False)
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n", encoding="utf-8")
+            _log("💾", f"Wrote output file: {args.out}")
+        _log("🏁 Source-router harness complete")
+        return
+
+    _log("📚", "Batch mode enabled")
+    t0 = time.monotonic()
+    runs: List[Dict[str, Any]] = []
+    for i, q in enumerate(queries, start=1):
+        _log("➡️", f"Batch question {i}/{len(queries)}: {q[:90]}")
+        run = _run_one_query(
+            query=q,
+            args=args,
+            source_candidates=source_candidates,
+            module_candidates=module_candidates,
+        )
+        run["batch_index"] = i
+        runs.append(run)
+
+    out = {
+        "batch": {
+            "n_questions": len(queries),
+            "elapsed_sec": round(time.monotonic() - t0, 3),
+            "model": args.model,
+            "max_sources": max(1, args.max_sources),
+            "max_modules": max(1, args.max_modules),
+        },
+        "runs": runs,
+    }
 
     text = json.dumps(out, indent=2, ensure_ascii=False)
     print(text)
