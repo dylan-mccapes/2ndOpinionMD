@@ -220,8 +220,9 @@ def main() -> None:
     if args.ingestion_context_tokens is not None:
         ingestion_context_tokens = args.ingestion_context_tokens
     elif backend in ("ollama", "ollama-full"):
-        # Match timeline_summarizer Ollama defaults (smaller ctx → often better 8B JSON).
-        ingestion_context_tokens = 16_384
+        # Align with INGESTION_OLLAMA_CONTEXT_TOKENS / eoh-llama-lucifer.Modelfile (32K on 4090).
+        # Tight VRAM: pass --ingestion-context-tokens 16384 or set INGESTION_OLLAMA_CONTEXT_TOKENS.
+        ingestion_context_tokens = 32_768
     else:
         ingestion_context_tokens = None  # uses GPT-4.1 1M default
 

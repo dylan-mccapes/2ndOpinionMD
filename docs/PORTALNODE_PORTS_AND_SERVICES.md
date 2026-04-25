@@ -21,6 +21,21 @@ Companion strategy: `reports/STRATEGY_FORWARD_PILOT_4090_DEPLOYMENT_20260424.md`
 
 Install / restore / embed: `scripts/portalnode4090_install_postgres.sh`, `scripts/portalnode4090_restore_mkg.sh`, `scripts/portalnode4090_embed_rag_slice.sh` (wraps `server/scripts/embed_rag_corpus_local_slice.py`, **BAAI/bge-base-en-v1.5** 768-d). Embed accepts **`SYNC_DATABASE_URL`** or **`DATABASE_URL`** or **`PGUSER`+`PGDATABASE`+`PGPASSWORD`** (+ **`PGHOST`**). On Ubuntu 24.04+ use **`scripts/portalnode4090_bootstrap_venv_embed.sh`** (PEP 668 — no system `pip install`). If **`pip install -r server/requirements.txt`** still tries to **build `psycopg2` from source** (`libpq-fe.h` missing), **`git pull`** (requirements use **`psycopg2-binary`** only) or install **`sudo apt-get install -y libpq-dev build-essential`**.
 
+### This machine (Windows + WSL Ubuntu)
+
+Pilot Postgres is **Linux-only** (Ubuntu packages: PostgreSQL + `postgresql-*-pgvector`). On Windows, use **WSL2**; do not run the `.sh` installer in PowerShell.
+
+1. **WSL:** `wsl --install -d Ubuntu` (once), then open **Ubuntu** and `sudo apt-get update`.
+2. **Install cluster + role + DB** from the repo you already cloned (any drive letter, e.g. `C:\2OPMD\2ndOpinionMD-MVP`):
+   - **PowerShell:** `cd` to `...\2ndOpinionMD-MVP\scripts`, then  
+     `.\portalnode4090_wsl.ps1 -InstallFromRepo -WslDistro Ubuntu`  
+     Or **inside WSL:**  
+     `cd /mnt/c/2OPMD/2ndOpinionMD-MVP && sudo bash scripts/portalnode4090_install_postgres.sh`
+3. **Save the password** the installer prints (or set `PORTALNODE_DB_PASSWORD` before step 2). Copy **`docs/PORTALNODE_SECRETS.local.md.example`** → **`docs/PORTALNODE_SECRETS.local.md`** and fill **`SYNC_DATABASE_URL`** / **`PGPASSWORD`** (see table above: **127.0.0.1** + **portalnode** user).
+4. **Load data:** copy the Mac dump tree (with **`05b_rag_corpus_slice.copy.gz`**) onto this PC, then from WSL (or **`.\portalnode4090_wsl.ps1 -Restore`** with **`$env:PGPASSWORD`** set) run **`scripts/portalnode4090_restore_mkg.sh`** with **`DUMP_DIR`** pointing at that folder. **`portalnode4090_wsl.ps1 -Restore`** auto-resolves the restore script from this clone via **`wslpath`** (works for repos outside **`C:\Users\<you>\2ndOpinionMD-MVP`**).
+5. **Optional:** local **`embedding_local`** backfill: **`scripts/portalnode4090_bootstrap_venv_embed.sh`**, then **`scripts/portalnode4090_embed_rag_slice.sh`** (or run the Python module directly).
+6. **MKG + 8B harness (4090):** from repo root in WSL (venv + `PYTHONPATH`), **`bash scripts/portalnode4090_mkg_harness.sh "your clinical query"`** — sets **`OLLAMA_MODEL=eoh-llama`** and **`OLLAMA_NUM_CTX=32768`** (main q8_0 Modelfile). Rebuild after edits: **`ollama create eoh-llama -f server/ollama/eoh-llama3.1-8b.Modelfile`**. Local 4050 Lucifer stays **`eoh-llama-lucifer`** + 16K Modelfile.
+
 ---
 
 ## FastAPI (main app)
@@ -157,4 +172,4 @@ Copy `docs/PORTALNODE_SECRETS.local.md.example` → `docs/PORTALNODE_SECRETS.loc
 
 ---
 
-*Last updated: 2026-04-24 — embed progress monitoring + ports aligned with repo scripts.*
+*Last updated: 2026-04-24 — WSL `-InstallFromRepo`, restore path via `wslpath`, embed progress + ports.*

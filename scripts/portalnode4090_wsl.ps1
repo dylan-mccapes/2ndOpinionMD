@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Stage install script from Windows OpenSSH home into WSL, then install Postgres + pgvector — or restore MKG.
+  Install pilot Postgres + pgvector in WSL from the cloned repo (-InstallFromRepo), stage scp'd scripts (-Install), or restore MKG (-Restore).
 
 .DESCRIPTION
   When you `scp file dylan@WINDOWS_HOST:~/` the file lands under C:\Users\dylan\ (OpenSSH), NOT inside WSL.
@@ -10,6 +10,11 @@
   From Mac, use a Windows path for scp only if you run scp *from* Windows with a valid path, e.g.:
     scp C:\Users\dylan\portalnode4090_install_postgres.sh dylan@192.168.0.245:C:\Users\dylan\
   Or keep using the Mac and `scp ... dylan@HOST:~/` then run -StageInstallFromWindowsProfile -Install here.
+
+.EXAMPLE
+  # Same machine: repo on C:\ (any path); no scp — runs scripts/portalnode4090_install_postgres.sh inside WSL
+  cd C:\2OPMD\2ndOpinionMD-MVP\scripts
+  .\portalnode4090_wsl.ps1 -InstallFromRepo -WslDistro Ubuntu
 
 .EXAMPLE
   # After Mac: scp ... dylan@192.168.0.245:~/   (file is now C:\Users\dylan\portalnode4090_install_postgres.sh)
@@ -24,6 +29,8 @@ param(
     [string]$WslDistro = "Ubuntu",
     [string]$WslUser = "",
     [switch]$Install,
+    # Run scripts/portalnode4090_install_postgres.sh from this repo clone (no scp to ~/).
+    [switch]$InstallFromRepo,
     [switch]$Restore,
     [string]$DumpDirWsl = "",
     [string]$InstallScriptWsl = "",
@@ -71,11 +78,23 @@ if ($StageInstallFromWindowsProfile) {
     Write-Host "Staged OK."
 }
 
+if ($InstallFromRepo) {
+    $installWin = Join-Path -Path $PSScriptRoot -ChildPath "portalnode4090_install_postgres.sh"
+    if (-not (Test-Path -LiteralPath $installWin)) {
+        Write-Error "Not found: $installWin"
+        exit 1
+    }
+    $installUnix = (wsl -d $WslDistro -- wslpath -u ((Resolve-Path -LiteralPath $installWin).Path)).Trim()
+    Write-Host "Installing Postgres + pgvector in WSL ($WslDistro) from repo: $installUnix"
+    Invoke-WslBash "sudo bash '$installUnix'"
+    exit 0
+}
+
 if ($Install) {
     Write-Host "Installing Postgres + pgvector in WSL ($WslDistro) using: $InstallScriptWsl"
     wsl -d $WslDistro -- bash -lc "test -f '$InstallScriptWsl'"
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Script missing in WSL: $InstallScriptWsl`nRun -StageInstallFromWindowsProfile first (after scp from Mac to Windows OpenSSH home)."
+        Write-Error "Script missing in WSL: $InstallScriptWsl`nRun -InstallFromRepo (same clone on /mnt/c/...), or -StageInstallFromWindowsProfile (after scp from Mac to Windows OpenSSH home)."
         exit 1
     }
     Invoke-WslBash "sudo bash '$InstallScriptWsl'"
@@ -84,17 +103,23 @@ if ($Install) {
 
 if ($Restore) {
     if ([string]::IsNullOrWhiteSpace($RestoreScriptWsl)) {
-        # Typical Windows clone: C:\Users\<win>\2ndOpinionMD-MVP (see /mnt/c/Users/dylan/2ndOpinionMD-MVP in WSL)
-        $repoScriptsOnDrv = "/mnt/c/Users/$($env:USERNAME)/2ndOpinionMD-MVP/scripts/portalnode4090_restore_mkg.sh"
-        $repoScriptsInHome = "$wslHome/dev/provenance-engines/PortalVision/2ndOpinionMD-MVP/scripts/portalnode4090_restore_mkg.sh"
-        wsl -d $WslDistro -- bash -lc "test -f '$repoScriptsOnDrv'" | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            $RestoreScriptWsl = $repoScriptsOnDrv
+        $restoreWin = Join-Path -Path $PSScriptRoot -ChildPath "portalnode4090_restore_mkg.sh"
+        if (Test-Path -LiteralPath $restoreWin) {
+            $RestoreScriptWsl = (wsl -d $WslDistro -- wslpath -u ((Resolve-Path -LiteralPath $restoreWin).Path)).Trim()
         }
         else {
-            wsl -d $WslDistro -- bash -lc "test -f '$repoScriptsInHome'" | Out-Null
-            if ($LASTEXITCODE -eq 0) { $RestoreScriptWsl = $repoScriptsInHome }
-            else { $RestoreScriptWsl = $repoScriptsOnDrv }
+            # Typical Windows clone: C:\Users\<win>\2ndOpinionMD-MVP
+            $repoScriptsOnDrv = "/mnt/c/Users/$($env:USERNAME)/2ndOpinionMD-MVP/scripts/portalnode4090_restore_mkg.sh"
+            $repoScriptsInHome = "$wslHome/dev/provenance-engines/PortalVision/2ndOpinionMD-MVP/scripts/portalnode4090_restore_mkg.sh"
+            wsl -d $WslDistro -- bash -lc "test -f '$repoScriptsOnDrv'" | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $RestoreScriptWsl = $repoScriptsOnDrv
+            }
+            else {
+                wsl -d $WslDistro -- bash -lc "test -f '$repoScriptsInHome'" | Out-Null
+                if ($LASTEXITCODE -eq 0) { $RestoreScriptWsl = $repoScriptsInHome }
+                else { $RestoreScriptWsl = $repoScriptsOnDrv }
+            }
         }
     }
     Write-Host "Restoring from $DumpDirWsl using $RestoreScriptWsl"
@@ -111,7 +136,10 @@ if ($Restore) {
 }
 
 Write-Host @"
-No action. Use -StageInstallFromWindowsProfile and/or -Install, or -Restore.
+No action. Use one of:
+  -InstallFromRepo          (same machine: Postgres from this repo under $PSScriptRoot)
+  -StageInstallFromWindowsProfile -Install   (after scp install script to Windows profile)
+  -Restore
 
 Why `~/portalnode4090_install_postgres.sh` was missing in WSL:
   - scp to dylan@WINDOWS:~/ puts the file in C:\Users\dylan\ (OpenSSH home), not in \\wsl$\...\home\...
@@ -121,6 +149,10 @@ Quick fix (manual copy):
   wsl -d Ubuntu -- cp /mnt/c/Users/dylan/portalnode4090_install_postgres.sh ~/
   wsl -d Ubuntu -- chmod +x ~/portalnode4090_install_postgres.sh
   wsl -d Ubuntu -- bash -lc "sudo bash ~/portalnode4090_install_postgres.sh"
+
+Same Windows machine, repo already cloned (e.g. C:\2OPMD\2ndOpinionMD-MVP):
+  cd <repo>\scripts
+  .\portalnode4090_wsl.ps1 -InstallFromRepo -WslDistro Ubuntu
 
 One command (after scp from Mac to ~/):
   .\portalnode4090_wsl.ps1 -StageInstallFromWindowsProfile -Install -WslDistro Ubuntu

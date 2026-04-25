@@ -4,7 +4,9 @@
 # Target: Ubuntu — native Linux OR WSL2 (recommended on a Windows 4090 host).
 # If SSH lands in PowerShell, run this script *inside* WSL, not in Windows:
 #   wsl -d Ubuntu -- bash -lc "sudo bash ~/portalnode4090_install_postgres.sh"
-# Or use scripts/portalnode4090_wsl.ps1 -Install from PowerShell.
+# Or from PowerShell (repo clone on Windows):  cd <repo>\scripts
+#   .\portalnode4090_wsl.ps1 -InstallFromRepo -WslDistro Ubuntu
+# Or: scripts/portalnode4090_wsl.ps1 -Install after -StageInstallFromWindowsProfile.
 #
 # Pure Linux SSH:
 #   scp scripts/portalnode4090_install_postgres.sh dylan@HOST:~/

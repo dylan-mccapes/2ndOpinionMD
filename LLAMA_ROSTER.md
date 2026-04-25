@@ -51,12 +51,12 @@ Two Modelfile configurations exist in the repo:
 | **Model file size** | ~4.9 GB |
 | **VRAM (model weights)** | ~4.7 GB |
 | **VRAM (+ 16K context KV cache)** | ~5.5–6.0 GB |
-| **Context window** | 16,384 tokens (trimmed from 32K to fit 6 GB KV budget) |
+| **Context window** | 16,384 tokens (`PARAMETER num_ctx 16384`) — fits RTX 4050 6 GB |
 | **Temperature** | 0.2 |
 | **top_p** | 0.9 |
 | **Modelfile** | `server/ollama/eoh-llama3.1-8b-lucifer.Modelfile` |
 | **Ollama name** | `eoh-llama-lucifer` |
-| **Hardware** | RTX 4050 6 GB (fits entirely in VRAM) |
+| **Hardware** | RTX 4050 6 GB (local dev / PTV harness); full MKG source legend lives on **eoh-llama** (4090) Modelfile |
 
 **Observed performance (nascent run, Lucifer):**
 
@@ -108,7 +108,7 @@ Two Modelfile configurations exist in the repo:
 | | Lucifer (q4_K_M) | Full (q8_0) |
 |--|-------------------|-------------|
 | Fits on | 6 GB (4050) | 24 GB (4090) |
-| Context | 16K (trimmed) | 32K (native) |
+| Context | 16K (4050 local) | 32K (4090 timeline ingest) |
 | Inference speed | ~65 s/round on 4050 | ~10 s/round on 4090 |
 | Weight fidelity | 4-bit mixed, minor quality loss | 8-bit, near-lossless |
 | Use case | Dev/prototype | Production agent fleet |
@@ -195,8 +195,8 @@ Llama 3.1 70B ─── clinical reasoning agent (RISE — synthesis, final repo
 
 | Tier | Model | Quant | GPU | VRAM Used | Context | Role | Status |
 |------|-------|-------|-----|-----------|---------|------|--------|
-| **Dev** | 8B Lucifer | q4_K_M | 1x 4050 (6 GB) | ~5.5 GB | 16K | Prototype, harness testing, nascent runs | **Active** |
-| **Production Agent** | 8B | q8_0 | 1x 4090 (24 GB) | ~12 GB | 32K | Graph traversal fleet, agentic probes, bearer-token API | **Active** |
+| **Dev** | 8B Lucifer | q4_K_M | 1x 4050 (6 GB) | ~5.5 GB | 16K | Local PTV harness, operator probes | **Active** |
+| **4090 / prod** | 8B eoh-llama | q8_0 | 1x 4090 (24 GB) | ~12 GB | 32K | Timeline/PDF ingest, MKG source legend in Modelfile, graph fleet, API | **Active** |
 | **Production Reasoning** | 70B | q4_K_M | 2x 4090 (48 GB) | ~46 GB | 128K | Clinical synthesis, final reasoning | Planned |
 | **Edge (planned)** | 3.2 3B | q4_K_M | CPU or 4050 | ~3 GB | 8–128K | Extraction, triage | Planned |
 | **Edge (planned)** | 3.2 1B | q4_K_M | CPU | ~1 GB | 8–128K | Minimal extraction | Planned |
@@ -226,4 +226,5 @@ ollama list
 
 ## Version History
 
+- **2026-04-24** — **eoh-llama** (q8_0, 4090) Modelfile: timeline ingest framing, full PTV toolkit + MKG pilot `source` dictionary, 32K. **eoh-llama-lucifer** (4050): 16K, PTV toolkit, MKG pointer to Python + main Modelfile. `OLLAMA_NUM_CTX` defaults 16K in PTV agent / harness unless set (4090 `portalnode4090_mkg_harness.sh` forces 32K + `eoh-llama`).
 - **2026-04-13** — Initial roster. 8B Lucifer build tested end-to-end (nascent run, 9.5 min, 8 rounds). 8B q8_0 and 70B q4_K_M builds planned for RISE on-prem deployment.

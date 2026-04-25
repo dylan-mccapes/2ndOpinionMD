@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -191,11 +192,13 @@ def _ollama_chat(
     timeout: float,
     temperature: float,
 ) -> str:
+    # Default 16K matches eoh-llama-lucifer (4050). For eoh-llama on 4090 set OLLAMA_NUM_CTX=32768.
+    num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
-        "options": {"temperature": temperature},
+        "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
     r = requests.post(f"{url}/api/chat", json=payload, timeout=timeout)
     r.raise_for_status()

@@ -2510,7 +2510,9 @@ INGESTION_GPT41_SYSTEM_PROMPT_TOKEN_RESERVE = int(
 )
 
 # ─── eoh-llama3.1:8b (local) ingestion budget ─────────────────────────────────
-# The Modelfile pins num_ctx=32768 for eoh-llama3.1:8b. Ingest uses the GPT-4.1
+# eoh-llama3.1:8b.Modelfile (eoh-llama, 4090) uses PARAMETER num_ctx 32768.
+# eoh-llama-lucifer (4050) uses 16384 — set OLLAMA_NUM_CTX / INGESTION_OLLAMA_CONTEXT_TOKENS when calling Ollama.
+# Ingest uses the GPT-4.1
 # split in token space (input / output / system reserves) **and** a hard page
 # cap so one dense summary chapter cannot send 20+ pages to the 8B model in a
 # single JSON extraction call:
