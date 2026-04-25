@@ -149,17 +149,24 @@ _TS_STOPWORDS = {
 def bm25_ts(cur, q: str, top_k: int, *, sources: Optional[List[str]]) -> List[Dict[str, Any]]:
     """TS retrieval with three-tier fallback for better recall.
 
-    Tier 1  - websearch_to_tsquery (OR-friendly, handles phrases)
-    Tier 2  - auto-extracted key terms joined with websearch OR syntax
-    Tier 3  - single highest-signal noun if tiers 1-2 yield nothing
+    IMPORTANT: ts column is built by the rag_corpus_tsv_update trigger using
+    'public.simple_unaccent' (no stemming).  Queries MUST use the same config —
+    'english' config would stem terms (diabetes -> diabet) causing zero matches.
+
+    Tier 1  - websearch_to_tsquery/simple_unaccent on full query (OR-friendly)
+    Tier 2  - auto-extracted key terms OR-joined via websearch_to_tsquery
+    Tier 3  - single highest-signal noun anchor
     """
+    # Use the same FTS config the ts column was built with.
+    # simple_unaccent = pg_catalog.simple + unaccent dict (lowercase, strip accents, no stemming).
+    TS_CFG = "public.simple_unaccent"
 
     def _exec(tsq_fn: str, tsq_arg: str) -> List[Dict[str, Any]]:
         sql_base = (
             f"SELECT id, source, source_id, title, text, "
-            f"ts_rank(ts, {tsq_fn}('english', %s)) AS score "
+            f"ts_rank(ts, {tsq_fn}('{TS_CFG}', %s)) AS score "
             f"FROM public.rag_corpus "
-            f"WHERE ts @@ {tsq_fn}('english', %s)"
+            f"WHERE ts @@ {tsq_fn}('{TS_CFG}', %s)"
         )
         if sources:
             cur.execute(sql_base + " AND source = ANY(%s) ORDER BY score DESC LIMIT %s",
@@ -230,7 +237,7 @@ def run_llm(
     bundle = {
         "user_query": query,
         "semantic_lane": "embedding_local + BGE (cosine)",
-        "ts_lane": "plainto_tsquery('english', q) + ts_rank",
+        "ts_lane": "websearch_to_tsquery('public.simple_unaccent', q) + ts_rank",
         "rag_source_reference": source_reference,
         "semantic_hits": semantic_hits,
         "ts_hits": ts_hits,
