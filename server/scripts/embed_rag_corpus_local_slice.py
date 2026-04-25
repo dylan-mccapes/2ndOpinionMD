@@ -10,6 +10,9 @@ Usage (on 4090, from repo root inside WSL, venv active — Windows hosts: use WS
 
 Requires: sentence-transformers, psycopg[binary], pgvector (pip), torch with CUDA optional.
 On Ubuntu 24.04+ (PEP 668) use a venv: scripts/portalnode4090_bootstrap_venv_embed.sh then source .venv_embed/bin/activate.
+
+Progress from another shell (counts + last embedding_local_at): ./scripts/portalnode4090_embed_progress.sh
+See docs/PORTALNODE_PORTS_AND_SERVICES.md § "Local embed progress".
 """
 from __future__ import annotations
 

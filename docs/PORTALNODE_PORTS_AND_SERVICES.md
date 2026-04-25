@@ -87,6 +87,50 @@ Default shell on Windows OpenSSH: **PowerShell** — use `wsl -d Ubuntu -- …` 
 
 ---
 
+## Local embed progress (`embedding_local`)
+
+`server/scripts/embed_rag_corpus_local_slice.py` (via **`./scripts/portalnode4090_embed_rag_slice.sh`**) fills **`public.rag_corpus.embedding_local`** (768-d), **`embedding_local_model`**, and **`embedding_local_at`** per batch commit. While it runs, check progress **from another SSH session** on the same host:
+
+```bash
+export SYNC_DATABASE_URL='postgresql://portalnode:PASSWORD@127.0.0.1:5432/portalnode'
+./scripts/portalnode4090_embed_progress.sh
+```
+
+Or poll every 30 seconds:
+
+```bash
+watch -n 30 ./scripts/portalnode4090_embed_progress.sh
+```
+
+**Manual SQL** (same DB; `psql` URI or `PG*` vars):
+
+```sql
+-- Overall
+SELECT COUNT(*) AS total,
+       COUNT(embedding_local) AS embedded,
+       COUNT(*) - COUNT(embedding_local) AS remaining,
+       ROUND(100.0 * COUNT(embedding_local) / NULLIF(COUNT(*), 0), 2) AS pct_done
+FROM public.rag_corpus;
+
+-- Heartbeat: last committed batch
+SELECT MAX(embedding_local_at) AS last_embed_at_utc
+FROM public.rag_corpus
+WHERE embedding_local IS NOT NULL;
+
+-- Where work is left (by source)
+SELECT source,
+       COUNT(*) FILTER (WHERE embedding_local IS NULL) AS pending
+FROM public.rag_corpus
+GROUP BY 1
+HAVING COUNT(*) FILTER (WHERE embedding_local IS NULL) > 0
+ORDER BY pending DESC
+LIMIT 20;
+```
+
+The Python process also prints **`updated N rows (~X rows/s) last_id=...`** to stdout each batch — if it runs in **`tmux`/`screen`**, attach to that pane for a live line log.
+
+---
+
 ## Mac / production edge (reference)
 
 | Service | Notes |
@@ -113,4 +157,4 @@ Copy `docs/PORTALNODE_SECRETS.local.md.example` → `docs/PORTALNODE_SECRETS.loc
 
 ---
 
-*Last updated: 2026-04-24 — ports aligned with repo scripts and FORWARD pilot layout.*
+*Last updated: 2026-04-24 — embed progress monitoring + ports aligned with repo scripts.*
