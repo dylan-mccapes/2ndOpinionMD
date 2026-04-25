@@ -39,10 +39,15 @@ if str(ROOT) not in sys.path:
 from server.mkg.portalnode_pilot_sources import pilot_source_descriptions
 
 
+def _log(emoji: str, msg: str) -> None:
+    print(f"{emoji} {msg}", file=sys.stderr, flush=True)
+
+
 def _dsn() -> str:
     for k in ("SYNC_DATABASE_URL", "DATABASE_URL", "POSTGRES_URL"):
         v = os.environ.get(k)
         if v and v.strip():
+            _log("🔐", f"Using database URL from {k}")
             return v.strip()
     print("Set SYNC_DATABASE_URL or DATABASE_URL", file=sys.stderr)
     sys.exit(1)
@@ -56,6 +61,7 @@ def _ollama_chat(url: str, model: str, messages: List[Dict[str, str]], *, timeou
     import requests
 
     num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
+    _log("🤖", f"Calling Ollama model={model} num_ctx={num_ctx} timeout={timeout:.0f}s")
     payload = {
         "model": model,
         "messages": messages,
@@ -164,7 +170,9 @@ def embed_query(model_name: str, text: str) -> Tuple[List[float], str]:
     device = os.environ.get("LOCAL_EMBED_DEVICE")
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
+    _log("🧠", f"Loading embedding model={model_name} on device={device}")
     st = SentenceTransformer(model_name, device=device)
+    _log("📐", f"Embedding query ({len(text)} chars)")
     v = st.encode(
         [text],
         normalize_embeddings=True,
@@ -186,6 +194,7 @@ def run_llm(
     temperature: float,
     timeout: float,
 ) -> Dict[str, Any]:
+    _log("🧾", "Preparing retrieval bundle for LLM analysis")
     bundle = {
         "user_query": query,
         "semantic_lane": "embedding_local + BGE (cosine)",
@@ -242,37 +251,48 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    _log("🚀", "Starting MKG retrieval harness")
     import psycopg
     from psycopg.rows import dict_row
 
     if args.query_file:
+        _log("📄", f"Reading query from file: {args.query_file}")
         q = args.query_file.read_text(encoding="utf-8").strip()
     else:
         q = (args.query or "").strip()
     if not q:
         print("error: provide query as argv or use --query-file", file=sys.stderr)
         sys.exit(2)
+    _log("❓", f"Query ready ({len(q)} chars)")
 
     sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()] or None
+    if sources:
+        _log("🧰", f"Source filter enabled ({len(sources)}): {', '.join(sources)}")
+    else:
+        _log("🧰", "No source filter; searching full pilot slice")
 
     out: Dict[str, Any] = {"query": q, "top_k": args.top_k, "sources_filter": sources, "embed_model": args.embed_model}
     # Full PortalNode pilot allowlist (scripts/portalnode_rag_slice_sources.txt) → LLM-facing blurbs
     out["pilot_slice_source_reference"] = pilot_source_descriptions(sources=None)
+    _log("📚", f"Loaded pilot source dictionary ({len(out['pilot_slice_source_reference'])} keys)")
 
     t_embed = time.monotonic()
     vec, device = embed_query(args.embed_model, q)
     out["embed_device"] = device
     out["embed_sec"] = round(time.monotonic() - t_embed, 4)
+    _log("✅", f"Query embedding complete in {out['embed_sec']:.4f}s")
     lit = _vec_literal(vec)
 
     t_db = time.monotonic()
     dsn = _dsn()
+    _log("🗄️", f"Running semantic + TS retrieval (top_k={args.top_k})")
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
             sem_rows = ann_local(cur, lit, args.top_k, sources=sources)
             ts_rows = bm25_ts(cur, q, args.top_k, sources=sources)
     out["db_sec"] = round(time.monotonic() - t_db, 4)
+    _log("📊", f"DB retrieval done in {out['db_sec']:.4f}s (semantic={len(sem_rows)} ts={len(ts_rows)})")
 
     sem_compact = [_compact_hit(r, text_chars=args.text_chars) for r in sem_rows]
     ts_compact = [_compact_hit(r, text_chars=args.text_chars) for r in ts_rows]
@@ -280,10 +300,12 @@ def main() -> None:
     out["semantic_hits"] = sem_compact
     out["ts_hits"] = ts_compact
     out["overlap"] = overlap
+    _log("🔀", f"Overlap computed (both={len(overlap['both'])} jaccard={overlap['jaccard']:.3f})")
 
     if not args.no_llm:
         ref = pilot_source_descriptions(sources=None)
         try:
+            _log("🧪", "Running Ollama synthesis pass")
             out["llm"] = run_llm(
                 query=q,
                 semantic_hits=sem_compact,
@@ -295,14 +317,21 @@ def main() -> None:
                 temperature=args.temperature,
                 timeout=args.timeout,
             )
+            _log("📝", f"LLM synthesis done in {out['llm'].get('elapsed_sec', 0)}s")
         except Exception as exc:  # noqa: BLE001
             out["llm"] = {"error": str(exc)}
+            _log("⚠️", f"LLM synthesis failed: {exc}")
+    else:
+        _log("⏭️", "Skipping LLM synthesis (--no-llm)")
 
     text = json.dumps(out, indent=2, default=str)
+    _log("📦", f"Emitting JSON output ({len(text)} chars)")
     print(text)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text + "\n", encoding="utf-8")
+        _log("💾", f"Wrote output file: {args.out}")
+    _log("🏁", "Harness run complete")
 
 
 if __name__ == "__main__":
