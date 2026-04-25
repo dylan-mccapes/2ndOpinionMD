@@ -231,6 +231,11 @@ def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="MKG semantic + TS retrieval harness with optional eoh-llama-lucifer.")
     ap.add_argument("query", nargs="?", help="Natural-language query (or use --query-file)")
     ap.add_argument("--query-file", type=Path, help="UTF-8 file whose contents are the query")
+    ap.add_argument(
+        "--questions-file",
+        type=Path,
+        help="UTF-8 file with one query per line (# comments and blank lines ignored)",
+    )
     ap.add_argument("--top-k", type=int, default=10, help="Hits per lane")
     ap.add_argument(
         "--sources",
@@ -249,22 +254,13 @@ def _parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
-def main() -> None:
-    args = _parse_args()
-    _log("🚀", "Starting MKG retrieval harness")
-    import psycopg
-    from psycopg.rows import dict_row
-
-    if args.query_file:
-        _log("📄", f"Reading query from file: {args.query_file}")
-        q = args.query_file.read_text(encoding="utf-8").strip()
-    else:
-        q = (args.query or "").strip()
-    if not q:
-        print("error: provide query as argv or use --query-file", file=sys.stderr)
-        sys.exit(2)
-    _log("❓", f"Query ready ({len(q)} chars)")
-
+def _run_one_query(
+    *,
+    q: str,
+    args: argparse.Namespace,
+    psycopg,
+    dict_row,
+) -> Dict[str, Any]:
     sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()] or None
     if sources:
         _log("🧰", f"Source filter enabled ({len(sources)}): {', '.join(sources)}")
@@ -324,8 +320,72 @@ def main() -> None:
     else:
         _log("⏭️", "Skipping LLM synthesis (--no-llm)")
 
-    text = json.dumps(out, indent=2, default=str)
-    _log("📦", f"Emitting JSON output ({len(text)} chars)")
+    return out
+
+
+def _load_queries(args: argparse.Namespace) -> List[str]:
+    if args.questions_file:
+        _log("📚", f"Reading questions file: {args.questions_file}")
+        qs: List[str] = []
+        for raw in args.questions_file.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            qs.append(line)
+        return qs
+    if args.query_file:
+        _log("📄", f"Reading query from file: {args.query_file}")
+        q = args.query_file.read_text(encoding="utf-8").strip()
+        return [q] if q else []
+    q = (args.query or "").strip()
+    return [q] if q else []
+
+
+def main() -> None:
+    args = _parse_args()
+    _log("🚀", "Starting MKG retrieval harness")
+    import psycopg
+    from psycopg.rows import dict_row
+
+    queries = _load_queries(args)
+    if not queries:
+        print("error: provide query, --query-file, or --questions-file", file=sys.stderr)
+        sys.exit(2)
+    _log("❓", f"Loaded {len(queries)} question(s)")
+
+    if len(queries) == 1:
+        _log("🧪", "Single-query mode")
+        out = _run_one_query(q=queries[0], args=args, psycopg=psycopg, dict_row=dict_row)
+        text = json.dumps(out, indent=2, default=str)
+        _log("📦", f"Emitting JSON output ({len(text)} chars)")
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n", encoding="utf-8")
+            _log("💾", f"Wrote output file: {args.out}")
+        _log("🏁", "Harness run complete")
+        return
+
+    _log("📚", "Batch mode enabled")
+    started = time.monotonic()
+    runs: List[Dict[str, Any]] = []
+    for i, q in enumerate(queries, start=1):
+        _log("➡️", f"Batch question {i}/{len(queries)}: {q[:90]}")
+        run = _run_one_query(q=q, args=args, psycopg=psycopg, dict_row=dict_row)
+        run["batch_index"] = i
+        runs.append(run)
+
+    batch_out: Dict[str, Any] = {
+        "batch": {
+            "n_questions": len(queries),
+            "elapsed_sec": round(time.monotonic() - started, 3),
+            "model": args.model,
+            "embed_model": args.embed_model,
+        },
+        "runs": runs,
+    }
+    text = json.dumps(batch_out, indent=2, default=str)
+    _log("📦", f"Emitting batch JSON output ({len(text)} chars)")
     print(text)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
