@@ -77,14 +77,17 @@ DEFAULT_COHORT_DIR = ROOT / "artifacts" / "forward_kaleb_package_20260423" / "sy
 DEFAULT_QUESTIONS_FILE = ROOT / "server" / "scripts" / "forward_ptv_phenotype_questions.json"
 
 # Models
-DEFAULT_PROBE_MODEL = os.environ.get("FORWARD_PROBE_MODEL", "eoh-llama")
-DEFAULT_GAP_MODEL = os.environ.get("FORWARD_GAP_MODEL", "eoh-llama")
-DEFAULT_SYNTH_MODEL = os.environ.get("FORWARD_SYNTH_MODEL", "eoh-llama")
+# OLD baseline:
+# MODEL = "eoh-llama"
+MODEL = "eoh-qwen"
+DEFAULT_PROBE_MODEL = os.environ.get("FORWARD_PROBE_MODEL", MODEL)
+DEFAULT_GAP_MODEL = os.environ.get("FORWARD_GAP_MODEL", MODEL)
+DEFAULT_SYNTH_MODEL = os.environ.get("FORWARD_SYNTH_MODEL", MODEL)
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 
 # Stage E (MKG retrieval) defaults
 DEFAULT_MKG_SYNTH_MODEL = os.environ.get(
-    "FORWARD_MKG_SYNTH_MODEL", os.environ.get("OLLAMA_SYNTH_MODEL", "eoh-llama")
+    "FORWARD_MKG_SYNTH_MODEL", os.environ.get("OLLAMA_SYNTH_MODEL", MODEL)
 )
 DEFAULT_MKG_ROUTER_MODEL = os.environ.get(
     "EOH_SOURCE_ROUTER_MODEL", "eoh-llama3.2-source-router"
@@ -472,7 +475,11 @@ def _stage_mkg_synth(
             "overlap": result.get("overlap"),
             "llm": result.get("llm"),
         }
-        markdown = (slim.get("llm") or {}).get("markdown") or ""
+        llm_obj = slim.get("llm") or {}
+        if isinstance(llm_obj, dict) and llm_obj.get("mode") == "two_pass":
+            markdown = str(((llm_obj.get("synth_pass") or {}).get("markdown") or ""))
+        else:
+            markdown = str(llm_obj.get("markdown") or "")
         _log(
             "🌐",
             f"Stage E done in {elapsed}s overlap.both={len(slim.get('overlap', {}).get('both') or [])} "
@@ -589,7 +596,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "16384")),
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "131072")),
     )
     ap.add_argument(
         "--receipt-dir",
@@ -632,8 +639,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--mkg-synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "16384")),
-        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 16384).",
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "131072")),
+        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 131072).",
     )
     ap.add_argument(
         "--mkg-use-router",
@@ -687,7 +694,7 @@ def _parse_args() -> argparse.Namespace:
     )
     ap.add_argument(
         "--mkg-compress-model",
-        default=os.environ.get("FORWARD_MKG_COMPRESS_MODEL", "eoh-llama"),
+        default=os.environ.get("FORWARD_MKG_COMPRESS_MODEL", MODEL),
         help="Pass-1 compression model for Stage-E two-pass synth.",
     )
     ap.add_argument(
@@ -795,6 +802,23 @@ def _invoke_pdf(receipt_path: Path, reports_dir: Path) -> Optional[Path]:
     if not renderer.exists():
         _log("⚠️", f"PDF renderer not found: {renderer}")
         return None
+    # Guardrail: if reportlab is not installed in the active venv, skip PDF
+    # rendering gracefully instead of surfacing a full traceback from child python.
+    try:
+        dep_check = subprocess.run(
+            [sys.executable, "-c", "import reportlab"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if dep_check.returncode != 0:
+            _log("⚠️", "PDF render skipped: missing Python dependency 'reportlab'")
+            _log("⚠️", "Install with: pip install reportlab")
+            return None
+    except Exception as exc:  # noqa: BLE001
+        _log("⚠️", f"PDF dependency check failed: {exc}")
+        return None
+
     pdf_path = reports_dir / f"{receipt_path.stem}.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [

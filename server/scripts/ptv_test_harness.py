@@ -155,7 +155,7 @@ def cmd_extract_grade(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    model = args.model or "eoh-llama3.1:8b"
+    model = args.model or "eoh-qwen"
     patient_id = args.patient_id or pdf_path.stem.lower().replace(" ", "_")
 
     is_ollama = not model.startswith("gpt-") and not model.startswith("claude-")
@@ -440,13 +440,13 @@ def main() -> None:
                                help="Run extraction then grade")
     p_extract.add_argument("--pdf", required=True, help="Path to timeline PDF")
     p_extract.add_argument("--patient-id", help="Patient identifier")
-    p_extract.add_argument("--model", help="Model name (default: eoh-llama3.1:8b)")
+    p_extract.add_argument("--model", help="Model name (default: eoh-qwen)")
     p_extract.add_argument("--output-dir", required=True,
                            help="Artifact output directory")
     p_extract.add_argument("--ollama-url", help="Ollama base URL")
     p_extract.add_argument("--extraction-mode", choices=["lite", "full"],
                            default="full")
-    p_extract.add_argument("--context-tokens", type=int, default=32768)
+    p_extract.add_argument("--context-tokens", type=int, default=131072)
     p_extract.add_argument("--concurrency", type=int, default=1)
 
     # compare

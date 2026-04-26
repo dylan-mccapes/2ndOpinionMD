@@ -3,12 +3,12 @@
 # (MKG retrieval + overall synthesis grounded by the PTV summary).
 #
 # Pipeline per synthetic patient:
-#   Stage A — eoh-llama (8B q8_0)              probe: PTV toolkit on patient graph
-#   Stage B — eoh-llama (8B q8_0)              gap:   close what probe missed
+#   Stage A — eoh-qwen (Qwen3.6 35B)           probe: PTV toolkit on patient graph
+#   Stage B — eoh-qwen (Qwen3.6 35B)           gap:   close what probe missed
 #   Stage C — curation (Python)                merge probe + gap working sets
-#   Stage D — eoh-llama (8B q8_0)              PTV synthesis -> patient timeline summary
+#   Stage D — eoh-qwen (Qwen3.6 35B)           PTV synthesis -> patient timeline summary
 #   Stage E — mkg_retrieval_harness.run_query  router + ANN + per-term FTS, then
-#                                              eoh-llama overall synth that takes
+#                                              eoh-qwen overall synth that takes
 #                                              both the rag_corpus hits AND the Stage-D
 #                                              PTV summary as clinical_context.
 #
@@ -27,12 +27,12 @@
 #
 # Env knobs (all optional):
 #   OLLAMA_URL                 default http://127.0.0.1:11434 (set host IP from WSL)
-#   FORWARD_PROBE_MODEL        default eoh-llama
-#   FORWARD_GAP_MODEL          default eoh-llama
-#   FORWARD_SYNTH_MODEL        default eoh-llama       (Stage D)
-#   FORWARD_MKG_SYNTH_MODEL    default eoh-llama       (Stage E)
+#   FORWARD_PROBE_MODEL        default eoh-qwen
+#   FORWARD_GAP_MODEL          default eoh-qwen
+#   FORWARD_SYNTH_MODEL        default eoh-qwen        (Stage D)
+#   FORWARD_MKG_SYNTH_MODEL    default eoh-qwen        (Stage E)
 #   EOH_SOURCE_ROUTER_MODEL    default eoh-llama3.2-source-router
-#   OLLAMA_SYNTH_NUM_CTX       default 16384
+#   OLLAMA_SYNTH_NUM_CTX       default 131072
 #   OLLAMA_ROUTER_NUM_CTX      default 8192
 #   FORWARD_DISABLE_MKG=1      skip Stage E entirely (adds --no-mkg)
 #   FORWARD_MKG_RESTRICT_SOURCES=1
@@ -48,12 +48,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 cd "$ROOT"
 
 export OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
-export FORWARD_PROBE_MODEL="${FORWARD_PROBE_MODEL:-eoh-llama}"
-export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-llama}"
-export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-llama}"
-export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-llama}"
+export FORWARD_PROBE_MODEL="${FORWARD_PROBE_MODEL:-eoh-qwen}"
+export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-qwen}"
+export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-qwen}"
+export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-qwen}"
 export EOH_SOURCE_ROUTER_MODEL="${EOH_SOURCE_ROUTER_MODEL:-eoh-llama3.2-source-router}"
-export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-16384}"
+export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-131072}"
 export OLLAMA_ROUTER_NUM_CTX="${OLLAMA_ROUTER_NUM_CTX:-8192}"
 
 DISABLE_MKG="${FORWARD_DISABLE_MKG:-0}"
