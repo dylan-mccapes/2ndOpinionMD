@@ -113,17 +113,29 @@ def _build_user_prompt(
     module_candidates: Dict[str, Dict[str, str]],
     max_sources: int,
     max_modules: int,
+    clinical_context: Optional[str] = None,
 ) -> str:
-    payload = {
+    payload: Dict[str, Any] = {
         "query": query,
         "max_sources": max_sources,
         "max_modules": max_modules,
         "source_candidates": source_candidates,
         "module_candidates": module_candidates,
     }
-    return "Plan source/module routing for this query.\n\n" + json.dumps(
-        payload, ensure_ascii=True, indent=2
-    )
+    if clinical_context and clinical_context.strip():
+        # Hard cap so an over-long PTV summary cannot blow the router context.
+        ctx = clinical_context.strip()
+        if len(ctx) > 8000:
+            ctx = ctx[:8000] + "\n…[clinical_context truncated]"
+        payload["clinical_context"] = ctx
+        intro = (
+            "Plan source/module routing for this query. The clinical_context "
+            "block is a per-patient timeline summary you may use to bias source "
+            "and ts_term selection, but the query is still primary."
+        )
+    else:
+        intro = "Plan source/module routing for this query."
+    return intro + "\n\n" + json.dumps(payload, ensure_ascii=True, indent=2)
 
 
 def _module_candidates() -> Dict[str, Dict[str, str]]:
@@ -235,6 +247,7 @@ def plan_route(
     max_modules: int = 6,
     source_candidates: Optional[Dict[str, str]] = None,
     module_candidates: Optional[Dict[str, Dict[str, str]]] = None,
+    clinical_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the source-router model and return a normalized route plan.
 
@@ -256,6 +269,7 @@ def plan_route(
         module_candidates=modules,
         max_sources=max_sources,
         max_modules=max_modules,
+        clinical_context=clinical_context,
     )
 
     _log("🧭", f"Source-router model={model_name} num_ctx={ctx}")

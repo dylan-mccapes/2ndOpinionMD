@@ -68,10 +68,21 @@ def _vec_literal(vec: Sequence[float]) -> str:
     return "[" + ",".join(f"{float(x):.8f}" for x in vec) + "]"
 
 
-def _ollama_chat(url: str, model: str, messages: List[Dict[str, str]], *, timeout: float, temperature: float) -> str:
+def _ollama_chat(
+    url: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    *,
+    timeout: float,
+    temperature: float,
+    num_ctx: Optional[int] = None,
+) -> str:
     import requests
 
-    num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
+    if num_ctx is None:
+        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
+    else:
+        num_ctx = max(2048, int(num_ctx))
     _log("🤖", f"Calling Ollama model={model} num_ctx={num_ctx} timeout={timeout:.0f}s")
     payload = {
         "model": model,
@@ -292,6 +303,9 @@ def run_llm(
     temperature: float,
     timeout: float,
     route_plan: Optional[Dict[str, Any]] = None,
+    extra_context: Optional[Dict[str, Any]] = None,
+    extra_context_label: str = "patient_timeline_summary",
+    num_ctx: Optional[int] = None,
 ) -> Dict[str, Any]:
     _log("🧾", "Preparing retrieval bundle for LLM analysis")
     bundle: Dict[str, Any] = {
@@ -320,11 +334,28 @@ def run_llm(
             )
             if route_plan.get(k) is not None
         }
+    if extra_context:
+        # Hard cap so a long PTV summary cannot blow synthesis context.
+        ec = dict(extra_context)
+        for k, v in list(ec.items()):
+            if isinstance(v, str) and len(v) > 8000:
+                ec[k] = v[:8000] + "\n…[truncated]"
+        bundle[extra_context_label] = ec
+    has_extra = bool(extra_context)
     system = (
         "You are a clinical knowledge synthesis expert evaluating dual-lane retrieval from a medical "
         "knowledge graph (rag_corpus). You receive JSON with two ranked lists: dense semantic "
-        "(BGE/local cosine) and PostgreSQL FTS (websearch_to_tsquery), plus rag_source_reference.\n\n"
-        "SYNTHESIS RULES (follow strictly):\n"
+        "(BGE/local cosine) and PostgreSQL FTS (websearch_to_tsquery), plus rag_source_reference."
+        + (
+            f"\n\nThe payload also contains a `{extra_context_label}` block — a per-patient timeline "
+            "narrative produced by an upstream three-agent PTV pipeline (probe + gap + 70B PTV "
+            "synthesis). Use it as authoritative patient context: ground every claim that is "
+            "patient-specific in event_ids from that block, and ground every claim about "
+            "guidelines/evidence in rag_corpus hit ids. Reconcile any tension between them."
+            if has_extra
+            else ""
+        )
+        + "\n\nSYNTHESIS RULES (follow strictly):\n"
         "1. SYNTHESIZE — do NOT copy or paraphrase hit text verbatim. Extract clinical meaning and "
         "   integrate it into your own reasoning. A good summary states what the evidence implies, "
         "   not just what it says.\n"
@@ -336,8 +367,14 @@ def run_llm(
         "   implies for retrieval quality — do not silently skip it.\n"
         "5. Only reference ids present in the JSON.\n\n"
         "Output markdown with exactly these headings:\n"
-        "## Summary\n## Overlap\n## Best semantic hit\n## Best TS hit\n## Query refinement\n"
-        "Keep total response under 600 words."
+        + (
+            "## Patient context\n## Summary\n## Overlap\n## Best semantic hit\n## Best TS hit\n"
+            "## Patient-specific recommendation\n## Query refinement\n"
+            "Keep total response under 750 words."
+            if has_extra
+            else "## Summary\n## Overlap\n## Best semantic hit\n## Best TS hit\n## Query refinement\n"
+            "Keep total response under 600 words."
+        )
     )
     user = (
         "Synthesize the clinical evidence in this dual-lane retrieval bundle. "
@@ -351,8 +388,14 @@ def run_llm(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         timeout=timeout,
         temperature=temperature,
+        num_ctx=num_ctx,
     )
-    return {"model": model, "elapsed_sec": round(time.monotonic() - t0, 3), "markdown": text}
+    return {
+        "model": model,
+        "elapsed_sec": round(time.monotonic() - t0, 3),
+        "markdown": text,
+        "had_extra_context": has_extra,
+    }
 
 
 def _parse_args() -> argparse.Namespace:
@@ -420,49 +463,84 @@ def _parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
-def _run_one_query(
-    *,
+def run_query(
     q: str,
-    args: argparse.Namespace,
-    psycopg,
-    dict_row,
+    *,
+    psycopg=None,
+    dict_row=None,
+    top_k: int = 10,
+    user_sources: Optional[List[str]] = None,
+    embed_model: str = "BAAI/bge-base-en-v1.5",
+    text_chars: int = 480,
+    no_llm: bool = False,
+    ollama_url: str = "http://127.0.0.1:11434",
+    model: str = "eoh-llama-lucifer",
+    synth_model: Optional[str] = None,
+    synth_num_ctx: Optional[int] = None,
+    temperature: float = 0.15,
+    timeout: float = 180.0,
+    use_router: bool = False,
+    router_model: str = "eoh-llama3.2-source-router",
+    router_num_ctx: int = 8192,
+    router_max_sources: int = 8,
+    router_max_modules: int = 6,
+    router_restrict_sources: bool = False,
+    router_min_terms: int = 4,
+    clinical_context: Optional[str] = None,
+    extra_context: Optional[Dict[str, Any]] = None,
+    extra_context_label: str = "patient_timeline_summary",
 ) -> Dict[str, Any]:
-    user_sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()] or None
+    """Library entry point for the MKG retrieval pipeline.
+
+    This is what external callers (e.g. ``forward_ptv_3agent_harness``) should
+    use. It mirrors ``_run_one_query`` but takes explicit kwargs and supports
+    feeding an upstream ``clinical_context`` (e.g. the 70B PTV synthesis from
+    the 3-agent harness) into both the router (better source/term selection)
+    and the final 70B synthesis (so it can ground patient-specific claims in
+    event_ids while grounding evidence claims in rag_corpus hit ids).
+    """
+    if psycopg is None or dict_row is None:
+        import psycopg as _psycopg  # local import so module stays importable
+        from psycopg.rows import dict_row as _dict_row
+
+        psycopg = _psycopg
+        dict_row = _dict_row
+
     if user_sources:
+        user_sources = [s.strip().lower() for s in user_sources if str(s).strip()]
         _log("🧰", f"User source filter enabled ({len(user_sources)}): {', '.join(user_sources)}")
     else:
-        _log("🧰", "No --sources filter; searching full pilot slice")
+        user_sources = None
+        _log("🧰", "No source filter; searching full pilot slice")
 
     out: Dict[str, Any] = {
         "query": q,
-        "top_k": args.top_k,
+        "top_k": top_k,
         "sources_filter": user_sources,
-        "embed_model": args.embed_model,
+        "embed_model": embed_model,
     }
-    # Full PortalNode pilot allowlist (scripts/portalnode_rag_slice_sources.txt) → LLM-facing blurbs
     out["pilot_slice_source_reference"] = pilot_source_descriptions(sources=None)
     _log("📚", f"Loaded pilot source dictionary ({len(out['pilot_slice_source_reference'])} keys)")
 
-    # 1) Optional router pass (TS expansion + semantic rewrite + source plan)
     route_plan: Optional[Dict[str, Any]] = None
     embed_text = q
     ts_terms: List[str] = []
     effective_sources = user_sources
-    if args.use_router:
+    if use_router:
         from server.mkg.router_planner import plan_route
 
-        _log("🧭", f"Running source-router stage with {args.router_model}")
+        _log("🧭", f"Running source-router stage with {router_model}")
         route_plan = plan_route(
             q,
-            ollama_url=args.ollama_url,
-            model=args.router_model,
-            num_ctx=args.router_num_ctx,
-            timeout=args.timeout,
-            max_sources=max(1, args.router_max_sources),
-            max_modules=max(1, args.router_max_modules),
+            ollama_url=ollama_url,
+            model=router_model,
+            num_ctx=router_num_ctx,
+            timeout=timeout,
+            max_sources=max(1, router_max_sources),
+            max_modules=max(1, router_max_modules),
+            clinical_context=clinical_context,
         )
         out["router_plan"] = route_plan
-
         if route_plan.get("semantic_query"):
             embed_text = route_plan["semantic_query"]
         ts_terms = list(route_plan.get("ts_terms") or [])
@@ -471,8 +549,7 @@ def _run_one_query(
             f"Router done qtype={route_plan.get('question_type')} "
             f"ts_terms={len(ts_terms)} sources={len(route_plan.get('selected_sources') or [])}",
         )
-
-        if args.router_restrict_sources:
+        if router_restrict_sources:
             router_sources = [
                 str(r.get("source")).strip().lower()
                 for r in (route_plan.get("selected_sources") or [])
@@ -487,47 +564,46 @@ def _run_one_query(
                 _log("🧰", f"Router-restricted sources active ({len(effective_sources)})")
     out["effective_sources"] = effective_sources
 
-    # 2) Embedding (use router-rewritten query if available)
     if embed_text != q:
         _log("✍️", "Embedding router-rewritten semantic query")
     t_embed = time.monotonic()
-    vec, device = embed_query(args.embed_model, embed_text)
+    vec, device = embed_query(embed_model, embed_text)
     out["embed_device"] = device
     out["embed_text"] = embed_text
     out["embed_sec"] = round(time.monotonic() - t_embed, 4)
     _log("✅", f"Query embedding complete in {out['embed_sec']:.4f}s")
     lit = _vec_literal(vec)
 
-    # 3) Retrieval (semantic ANN + TS lane). TS lane uses per-term retrieval when terms exist.
     t_db = time.monotonic()
     dsn = _dsn()
-    _log("🗄️", f"Running semantic + TS retrieval (top_k={args.top_k})")
+    _log("🗄️", f"Running semantic + TS retrieval (top_k={top_k})")
     ts_strategy = "raw_query"
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
-            sem_rows = ann_local(cur, lit, args.top_k, sources=effective_sources)
-
+            sem_rows = ann_local(cur, lit, top_k, sources=effective_sources)
             ts_rows: List[Dict[str, Any]] = []
             if ts_terms:
-                ts_rows = bm25_ts_terms(cur, ts_terms, args.top_k, sources=effective_sources)
+                ts_rows = bm25_ts_terms(cur, ts_terms, top_k, sources=effective_sources)
                 ts_strategy = f"per_term ({len(ts_terms)} terms)"
-                if not ts_rows or len(ts_terms) < args.router_min_terms:
+                if not ts_rows or len(ts_terms) < router_min_terms:
                     _log("🔁", "Per-term TS empty/thin; merging raw-query fallback")
-                    raw_rows = bm25_ts(cur, q, args.top_k, sources=effective_sources)
+                    raw_rows = bm25_ts(cur, q, top_k, sources=effective_sources)
                     by_id: Dict[Any, Dict[str, Any]] = {r["id"]: r for r in ts_rows}
                     for r in raw_rows:
                         rid = r["id"]
-                        if rid not in by_id or float(r.get("score") or 0) > float(by_id[rid].get("score") or 0):
+                        if rid not in by_id or float(r.get("score") or 0) > float(
+                            by_id[rid].get("score") or 0
+                        ):
                             by_id[rid] = r
                     ts_rows = sorted(
                         by_id.values(),
                         key=lambda r: float(r.get("score") or 0.0),
                         reverse=True,
-                    )[: args.top_k]
+                    )[:top_k]
                     ts_strategy = f"per_term+raw_fallback ({len(ts_terms)} terms)"
             else:
-                ts_rows = bm25_ts(cur, q, args.top_k, sources=effective_sources)
+                ts_rows = bm25_ts(cur, q, top_k, sources=effective_sources)
     out["db_sec"] = round(time.monotonic() - t_db, 4)
     out["ts_strategy"] = ts_strategy
     out["ts_terms_used"] = ts_terms
@@ -536,18 +612,23 @@ def _run_one_query(
         f"DB done in {out['db_sec']:.4f}s (semantic={len(sem_rows)} ts={len(ts_rows)} via {ts_strategy})",
     )
 
-    sem_compact = [_compact_hit(r, text_chars=args.text_chars) for r in sem_rows]
-    ts_compact = [_compact_hit(r, text_chars=args.text_chars) for r in ts_rows]
+    sem_compact = [_compact_hit(r, text_chars=text_chars) for r in sem_rows]
+    ts_compact = [_compact_hit(r, text_chars=text_chars) for r in ts_rows]
     overlap = _overlap([h["id"] for h in sem_compact], [h["id"] for h in ts_compact])
     out["semantic_hits"] = sem_compact
     out["ts_hits"] = ts_compact
     out["overlap"] = overlap
     _log("🔀", f"Overlap computed (both={len(overlap['both'])} jaccard={overlap['jaccard']:.3f})")
 
-    if not args.no_llm:
+    # Stitch clinical_context into extra_context if caller passed only the raw string.
+    eff_extra = dict(extra_context) if extra_context else None
+    if clinical_context and not eff_extra:
+        eff_extra = {"summary_markdown": clinical_context}
+
+    if not no_llm:
         ref = pilot_source_descriptions(sources=None)
-        synth_model = args.synth_model or args.model
-        _log("🧪", f"Running Ollama synthesis pass model={synth_model}")
+        synth = synth_model or model
+        _log("🧪", f"Running Ollama synthesis pass model={synth}")
         try:
             out["llm"] = run_llm(
                 query=q,
@@ -555,20 +636,56 @@ def _run_one_query(
                 ts_hits=ts_compact,
                 overlap=overlap,
                 source_reference=ref,
-                ollama_url=args.ollama_url,
-                model=synth_model,
-                temperature=args.temperature,
-                timeout=args.timeout,
+                ollama_url=ollama_url,
+                model=synth,
+                temperature=temperature,
+                timeout=timeout,
                 route_plan=route_plan,
+                extra_context=eff_extra,
+                extra_context_label=extra_context_label,
+                num_ctx=synth_num_ctx,
             )
             _log("📝", f"LLM synthesis done in {out['llm'].get('elapsed_sec', 0)}s")
         except Exception as exc:  # noqa: BLE001
-            out["llm"] = {"error": str(exc), "model": synth_model}
+            out["llm"] = {"error": str(exc), "model": synth}
             _log("⚠️", f"LLM synthesis failed: {exc}")
     else:
-        _log("⏭️", "Skipping LLM synthesis (--no-llm)")
+        _log("⏭️", "Skipping LLM synthesis (no_llm=True)")
 
     return out
+
+
+def _run_one_query(
+    *,
+    q: str,
+    args: argparse.Namespace,
+    psycopg,
+    dict_row,
+) -> Dict[str, Any]:
+    """Thin CLI adapter that maps argparse args onto :func:`run_query`."""
+    user_sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()] or None
+    return run_query(
+        q,
+        psycopg=psycopg,
+        dict_row=dict_row,
+        top_k=args.top_k,
+        user_sources=user_sources,
+        embed_model=args.embed_model,
+        text_chars=args.text_chars,
+        no_llm=args.no_llm,
+        ollama_url=args.ollama_url,
+        model=args.model,
+        synth_model=args.synth_model,
+        temperature=args.temperature,
+        timeout=args.timeout,
+        use_router=args.use_router,
+        router_model=args.router_model,
+        router_num_ctx=args.router_num_ctx,
+        router_max_sources=args.router_max_sources,
+        router_max_modules=args.router_max_modules,
+        router_restrict_sources=args.router_restrict_sources,
+        router_min_terms=args.router_min_terms,
+    )
 
 
 def _load_queries(args: argparse.Namespace) -> List[str]:
