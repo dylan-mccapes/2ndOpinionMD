@@ -124,11 +124,11 @@ Two Modelfile configurations exist in the repo:
 | **Quantization** | q4_K_M (4-bit, mixed precision) |
 | **Model file size** | ~40 GB |
 | **VRAM (model weights)** | ~42 GB |
-| **VRAM (+ 32K context KV cache)** | ~46–50 GB |
-| **Context window** | 131,072 tokens (128K native) |
-| **Hardware** | 2 x RTX 4090 (48 GB combined, tensor parallel) |
-| **Modelfile** | Not yet created (planned: `server/ollama/eoh-llama3.1-70b.Modelfile`) |
-| **Ollama name** | `eoh-llama-70b` (planned) |
+| **VRAM (+ 16K context KV cache)** | ~44–46 GB |
+| **Context window** | 16,384 tokens (`PARAMETER num_ctx 16384`) — leaner ctx since 70B is synthesis-only |
+| **Hardware** | 2 x RTX 4090 (48 GB combined, tensor parallel) — currently runs with CPU offload elsewhere |
+| **Modelfile** | `server/ollama/eoh-llama3.1-70b.Modelfile` |
+| **Ollama name** | `eoh-llama:70b` (synthesis tag for `mkg_retrieval_harness.py --synth-model`) |
 
 **Expected performance (2x RTX 4090):**
 
@@ -145,6 +145,11 @@ Two Modelfile configurations exist in the repo:
 - Multi-probe cross-referencing (combine evidence from multiple 8B probes per patient)
 - Complex comparative queries ("before/after treatment X", multi-period trend analysis)
 - The "money shot" — final reduce step where quality matters most
+- **MKG harness final synthesis** — when `mkg_retrieval_harness.py` is run with
+  `--synth-model eoh-llama:70b` (or `MKG_SYNTH_MODEL=eoh-llama:70b` via the wrapper),
+  the dual-lane retrieval bundle and router_plan are handed off to the 70B build for
+  the markdown synthesis pass. The 8B model still does router-driven planning + ANN
+  scoring; the 70B handles only the final reasoning step.
 
 **Handoff budget (8B → 70B):**
 
@@ -214,9 +219,10 @@ ollama pull llama3.1:8b-instruct-q8_0
 ollama pull llama3.1:70b-instruct-q4_K_M
 
 # Create EoH-customized models (with SYSTEM prompt, parameters, guardrails)
-ollama create eoh-llama-lucifer -f server/ollama/eoh-llama3.1-8b-lucifer.Modelfile
-ollama create eoh-llama         -f server/ollama/eoh-llama3.1-8b.Modelfile
-# ollama create eoh-llama-70b   -f server/ollama/eoh-llama3.1-70b.Modelfile  # planned
+ollama create eoh-llama-lucifer            -f server/ollama/eoh-llama3.1-8b-lucifer.Modelfile
+ollama create eoh-llama                    -f server/ollama/eoh-llama3.1-8b.Modelfile
+ollama create eoh-llama3.2-source-router   -f server/ollama/eoh-llama3.2-source-router.Modelfile
+ollama create eoh-llama:70b                -f server/ollama/eoh-llama3.1-70b.Modelfile
 
 # Verify
 ollama list
@@ -226,5 +232,6 @@ ollama list
 
 ## Version History
 
+- **2026-04-25** — **eoh-llama:70b** Modelfile (`server/ollama/eoh-llama3.1-70b.Modelfile`) added: lean synthesis-only profile, 16K ctx. `mkg_retrieval_harness.py` now wires the **eoh-llama3.2-source-router** in front of retrieval (TS-term expansion + semantic_query rewrite mirrors `/ask_stream`'s `extract_qna_terms` -> `search_source_ts_for_terms`) and accepts `--synth-model` (or `MKG_SYNTH_MODEL` via `portalnode4090_mkg_harness.sh`) so the final markdown synthesis can be served by **eoh-llama:70b** while the 8B model continues to handle planning and ANN scoring.
 - **2026-04-24** — **eoh-llama** (q8_0, 4090) Modelfile: timeline ingest framing, full PTV toolkit + MKG pilot `source` dictionary, 32K. **eoh-llama-lucifer** (4050): 16K, PTV toolkit, MKG pointer to Python + main Modelfile. `OLLAMA_NUM_CTX` defaults 16K in PTV agent / harness unless set (4090 `portalnode4090_mkg_harness.sh` forces 32K + `eoh-llama`).
 - **2026-04-13** — Initial roster. 8B Lucifer build tested end-to-end (nascent run, 9.5 min, 8 rounds). 8B q8_0 and 70B q4_K_M builds planned for RISE on-prem deployment.
