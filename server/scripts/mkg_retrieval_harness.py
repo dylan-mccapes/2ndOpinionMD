@@ -398,6 +398,207 @@ def run_llm(
     }
 
 
+def _pick_fallback_evidence(
+    semantic_hits: List[Dict[str, Any]],
+    ts_hits: List[Dict[str, Any]],
+    *,
+    k: int,
+) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    for lane, hits in (("semantic", semantic_hits), ("ts", ts_hits)):
+        for h in hits:
+            merged.append(
+                {
+                    "lane": lane,
+                    "id": int(h.get("id")),
+                    "source": h.get("source"),
+                    "source_id": h.get("source_id"),
+                    "title": h.get("title"),
+                    "score": float(h.get("score") or 0.0),
+                    "rationale": "fallback top-scoring hit",
+                }
+            )
+    merged.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for ev in merged:
+        key = (ev["lane"], ev["id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ev)
+        if len(out) >= k:
+            break
+    return out
+
+
+def run_llm_two_pass(
+    *,
+    query: str,
+    semantic_hits: List[Dict[str, Any]],
+    ts_hits: List[Dict[str, Any]],
+    overlap: Dict[str, Any],
+    source_reference: Dict[str, str],
+    ollama_url: str,
+    compress_model: str,
+    synth_model: str,
+    temperature: float,
+    timeout: float,
+    route_plan: Optional[Dict[str, Any]] = None,
+    extra_context: Optional[Dict[str, Any]] = None,
+    extra_context_label: str = "patient_timeline_summary",
+    compress_num_ctx: Optional[int] = None,
+    synth_num_ctx: Optional[int] = None,
+    compress_evidence_k: int = 8,
+) -> Dict[str, Any]:
+    """Two-pass synthesis: compress (summary + top evidence) -> final synthesis."""
+    _log("🧩", f"Two-pass synth enabled (compress={compress_model} -> synth={synth_model})")
+    bundle: Dict[str, Any] = {
+        "user_query": query,
+        "semantic_hits": semantic_hits,
+        "ts_hits": ts_hits,
+        "id_overlap": overlap,
+    }
+    if route_plan:
+        bundle["router_plan"] = route_plan
+    if extra_context:
+        bundle[extra_context_label] = extra_context
+
+    pass1_system = (
+        "You are a clinical evidence compressor for RAG. You receive JSON with a user query and two "
+        "retrieval lanes (semantic + ts). Return STRICT JSON only with keys:\n"
+        "- summary: concise synthesis (<=220 words)\n"
+        "- top_evidence: list (max "
+        + str(max(1, compress_evidence_k))
+        + ") of objects: {lane, id, source, source_id, title, rationale}\n"
+        "Rules:\n"
+        "1) Evidence ids must exist in provided hits.\n"
+        "2) Prioritize diversity across sources and include the strongest contradictory/qualifying evidence.\n"
+        "3) No markdown. JSON only."
+    )
+    pass1_user = json.dumps(bundle, indent=2, default=str)
+    t1 = time.monotonic()
+    raw_pass1 = _ollama_chat(
+        ollama_url,
+        compress_model,
+        [{"role": "system", "content": pass1_system}, {"role": "user", "content": pass1_user}],
+        timeout=timeout,
+        temperature=temperature,
+        num_ctx=compress_num_ctx,
+    )
+    pass1_elapsed = round(time.monotonic() - t1, 3)
+
+    parsed: Dict[str, Any] = {}
+    parse_error: Optional[str] = None
+    try:
+        parsed = json.loads(raw_pass1)
+    except Exception:
+        m = re.search(r"\{[\s\S]*\}", raw_pass1)
+        if m:
+            try:
+                parsed = json.loads(m.group(0))
+            except Exception as exc:  # noqa: BLE001
+                parse_error = str(exc)
+        else:
+            parse_error = "no_json_object_found"
+
+    summary_text = str(parsed.get("summary") or "").strip()
+    selected = parsed.get("top_evidence") if isinstance(parsed.get("top_evidence"), list) else []
+
+    sem_by_id = {int(h["id"]): h for h in semantic_hits if h.get("id") is not None}
+    ts_by_id = {int(h["id"]): h for h in ts_hits if h.get("id") is not None}
+    selected_evidence: List[Dict[str, Any]] = []
+    reduced_sem: List[Dict[str, Any]] = []
+    reduced_ts: List[Dict[str, Any]] = []
+    seen_sel = set()
+
+    for item in selected:
+        try:
+            lane = str(item.get("lane") or "").strip().lower()
+            rid = int(item.get("id"))
+        except Exception:
+            continue
+        key = (lane, rid)
+        if key in seen_sel:
+            continue
+        hit = sem_by_id.get(rid) if lane == "semantic" else ts_by_id.get(rid) if lane == "ts" else None
+        if not hit:
+            continue
+        seen_sel.add(key)
+        selected_evidence.append(
+            {
+                "lane": lane,
+                "id": rid,
+                "source": hit.get("source"),
+                "source_id": hit.get("source_id"),
+                "title": hit.get("title"),
+                "score": float(hit.get("score") or 0.0),
+                "rationale": str(item.get("rationale") or "")[:220],
+            }
+        )
+        if lane == "semantic":
+            reduced_sem.append(hit)
+        elif lane == "ts":
+            reduced_ts.append(hit)
+        if len(selected_evidence) >= max(1, compress_evidence_k):
+            break
+
+    if not selected_evidence:
+        _log("⚠️", "Two-pass compressor returned no valid evidence; using score fallback")
+        selected_evidence = _pick_fallback_evidence(
+            semantic_hits,
+            ts_hits,
+            k=max(1, compress_evidence_k),
+        )
+        reduced_sem = [sem_by_id[e["id"]] for e in selected_evidence if e["lane"] == "semantic" and e["id"] in sem_by_id]
+        reduced_ts = [ts_by_id[e["id"]] for e in selected_evidence if e["lane"] == "ts" and e["id"] in ts_by_id]
+
+    if not summary_text:
+        summary_text = "Compression pass produced no summary text."
+
+    dossier = {
+        "summary": summary_text,
+        "top_evidence": selected_evidence,
+        "n_selected": len(selected_evidence),
+        "compress_model": compress_model,
+        "compress_elapsed_sec": pass1_elapsed,
+    }
+    merged_extra = dict(extra_context) if extra_context else {}
+    merged_extra["two_pass_dossier"] = dossier
+    merged_extra["two_pass_raw_summary"] = summary_text
+
+    reduced_overlap = _overlap([int(h["id"]) for h in reduced_sem], [int(h["id"]) for h in reduced_ts])
+    pass2 = run_llm(
+        query=query,
+        semantic_hits=reduced_sem,
+        ts_hits=reduced_ts,
+        overlap=reduced_overlap,
+        source_reference=source_reference,
+        ollama_url=ollama_url,
+        model=synth_model,
+        temperature=temperature,
+        timeout=timeout,
+        route_plan=route_plan,
+        extra_context=merged_extra,
+        extra_context_label=extra_context_label,
+        num_ctx=synth_num_ctx,
+    )
+    pass2["selected_evidence_count"] = len(selected_evidence)
+
+    return {
+        "mode": "two_pass",
+        "compress_pass": {
+            "model": compress_model,
+            "elapsed_sec": pass1_elapsed,
+            "summary": summary_text,
+            "top_evidence": selected_evidence,
+            "raw": raw_pass1,
+            "parse_error": parse_error,
+        },
+        "synth_pass": pass2,
+    }
+
+
 def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="MKG semantic + TS retrieval harness with optional eoh-llama-lucifer.")
     ap.add_argument("query", nargs="?", help="Natural-language query (or use --query-file)")
@@ -427,6 +628,28 @@ def _parse_args() -> argparse.Namespace:
         "--synth-model",
         default=os.environ.get("OLLAMA_SYNTH_MODEL"),
         help="Override Ollama model for the final synthesis step (e.g. eoh-llama:70b).",
+    )
+    ap.add_argument(
+        "--two-pass-synth",
+        action="store_true",
+        help="Run compression pass first (summary + top evidence), then final synthesis on compressed evidence.",
+    )
+    ap.add_argument(
+        "--compress-model",
+        default=os.environ.get("OLLAMA_COMPRESS_MODEL"),
+        help="Model for pass-1 compression (defaults to --model when unset).",
+    )
+    ap.add_argument(
+        "--compress-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "32768")),
+        help="num_ctx for pass-1 compression model (default 32768).",
+    )
+    ap.add_argument(
+        "--compress-evidence-k",
+        type=int,
+        default=8,
+        help="How many evidence items pass-1 should select for pass-2 synthesis.",
     )
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=180.0)
@@ -477,6 +700,10 @@ def run_query(
     model: str = "eoh-llama-lucifer",
     synth_model: Optional[str] = None,
     synth_num_ctx: Optional[int] = None,
+    two_pass_synth: bool = False,
+    compress_model: Optional[str] = None,
+    compress_num_ctx: Optional[int] = None,
+    compress_evidence_k: int = 8,
     temperature: float = 0.15,
     timeout: float = 180.0,
     use_router: bool = False,
@@ -628,24 +855,47 @@ def run_query(
     if not no_llm:
         ref = pilot_source_descriptions(sources=None)
         synth = synth_model or model
+        compress = compress_model or model
         _log("🧪", f"Running Ollama synthesis pass model={synth}")
         try:
-            out["llm"] = run_llm(
-                query=q,
-                semantic_hits=sem_compact,
-                ts_hits=ts_compact,
-                overlap=overlap,
-                source_reference=ref,
-                ollama_url=ollama_url,
-                model=synth,
-                temperature=temperature,
-                timeout=timeout,
-                route_plan=route_plan,
-                extra_context=eff_extra,
-                extra_context_label=extra_context_label,
-                num_ctx=synth_num_ctx,
-            )
-            _log("📝", f"LLM synthesis done in {out['llm'].get('elapsed_sec', 0)}s")
+            if two_pass_synth:
+                out["llm"] = run_llm_two_pass(
+                    query=q,
+                    semantic_hits=sem_compact,
+                    ts_hits=ts_compact,
+                    overlap=overlap,
+                    source_reference=ref,
+                    ollama_url=ollama_url,
+                    compress_model=compress,
+                    synth_model=synth,
+                    temperature=temperature,
+                    timeout=timeout,
+                    route_plan=route_plan,
+                    extra_context=eff_extra,
+                    extra_context_label=extra_context_label,
+                    compress_num_ctx=compress_num_ctx,
+                    synth_num_ctx=synth_num_ctx,
+                    compress_evidence_k=max(1, int(compress_evidence_k)),
+                )
+                synth_elapsed = ((out["llm"].get("synth_pass") or {}).get("elapsed_sec") or 0)
+                _log("📝", f"Two-pass synth done (pass2={synth_elapsed}s)")
+            else:
+                out["llm"] = run_llm(
+                    query=q,
+                    semantic_hits=sem_compact,
+                    ts_hits=ts_compact,
+                    overlap=overlap,
+                    source_reference=ref,
+                    ollama_url=ollama_url,
+                    model=synth,
+                    temperature=temperature,
+                    timeout=timeout,
+                    route_plan=route_plan,
+                    extra_context=eff_extra,
+                    extra_context_label=extra_context_label,
+                    num_ctx=synth_num_ctx,
+                )
+                _log("📝", f"LLM synthesis done in {out['llm'].get('elapsed_sec', 0)}s")
         except Exception as exc:  # noqa: BLE001
             out["llm"] = {"error": str(exc), "model": synth}
             _log("⚠️", f"LLM synthesis failed: {exc}")
@@ -676,6 +926,10 @@ def _run_one_query(
         ollama_url=args.ollama_url,
         model=args.model,
         synth_model=args.synth_model,
+        two_pass_synth=args.two_pass_synth,
+        compress_model=args.compress_model,
+        compress_num_ctx=args.compress_num_ctx,
+        compress_evidence_k=args.compress_evidence_k,
         temperature=args.temperature,
         timeout=args.timeout,
         use_router=args.use_router,
@@ -746,6 +1000,10 @@ def main() -> None:
             "elapsed_sec": round(time.monotonic() - started, 3),
             "model": args.model,
             "synth_model": args.synth_model or args.model,
+            "two_pass_synth": bool(args.two_pass_synth),
+            "compress_model": (args.compress_model or args.model) if args.two_pass_synth else None,
+            "compress_num_ctx": args.compress_num_ctx if args.two_pass_synth else None,
+            "compress_evidence_k": args.compress_evidence_k if args.two_pass_synth else None,
             "router_model": args.router_model if args.use_router else None,
             "use_router": bool(args.use_router),
             "router_restrict_sources": bool(args.router_restrict_sources),
