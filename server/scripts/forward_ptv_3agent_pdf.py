@@ -8,8 +8,8 @@ Layout per patient::
     3. Stage A — probe (model, tools, plan, answer, top events with weights)
     4. Stage B — gap (model, tools, plan, answer, gaps closed)
     5. Stage C — curated bundle (union working_set, top curated events)
-    6. Stage D — PTV synthesis markdown (from eoh-llama:70b)
-    7. Stage E — MKG overall synthesis (router plan, lane hits, 70B answer)
+    6. Stage D — PTV synthesis markdown
+    7. Stage E — MKG overall synthesis (router plan, lane hits, final answer)
     8. Page break
 
 The receipt path is taken from ``--receipt``; the PDF is written to ``--out``.
@@ -234,14 +234,14 @@ def _render_curated(bundle: Dict[str, Any], styles: Dict[str, ParagraphStyle]) -
     )
     if bundle.get("curated_events"):
         out.append(Spacer(1, 4))
-        out.append(Paragraph("Top curated events handed to 70B", styles["h3"]))
+        out.append(Paragraph("Top curated events handed to synthesis model", styles["h3"]))
         out.append(_events_table(bundle["curated_events"], max_rows=15))
     return out
 
 
 def _render_synthesis(synth: Dict[str, Any], styles: Dict[str, ParagraphStyle]) -> List[Any]:
     out: List[Any] = []
-    out.append(Paragraph("Stage D — PTV 70B synthesis", styles["h2"]))
+    out.append(Paragraph("Stage D — PTV synthesis", styles["h2"]))
     out.append(
         _kv_table(
             [
@@ -300,7 +300,7 @@ def _hits_table(hits: List[Dict[str, Any]], max_rows: int = 6) -> Table:
 
 def _render_mkg_overall(mkg: Dict[str, Any], styles: Dict[str, ParagraphStyle]) -> List[Any]:
     out: List[Any] = []
-    out.append(Paragraph("Stage E — MKG retrieval + 70B overall synthesis", styles["h2"]))
+    out.append(Paragraph("Stage E — MKG retrieval + overall synthesis", styles["h2"]))
 
     if not mkg or mkg.get("skipped"):
         reason = (mkg or {}).get("skipped") or "not run"
@@ -384,7 +384,7 @@ def _render_mkg_overall(mkg: Dict[str, Any], styles: Dict[str, ParagraphStyle]) 
 
     llm = mkg.get("llm") or {}
     out.append(Spacer(1, 6))
-    out.append(Paragraph("Overall 70B synthesis", styles["h3"]))
+    out.append(Paragraph("Overall synthesis", styles["h3"]))
     if llm.get("error"):
         out.append(Paragraph("<b>Synthesis error:</b> " + _escape(str(llm["error"])), styles["body"]))
     else:

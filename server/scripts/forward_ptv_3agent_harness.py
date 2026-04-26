@@ -18,16 +18,16 @@ a five-stage pipeline per patient + question:
       Combines Stage A and B working sets, top events, plans, and answers
       into a single curated bundle for the synthesis model.
 
-  Stage D — PTV synthesis (eoh-llama:70b)
+  Stage D — PTV synthesis (eoh-llama, 8B q8_0)
       Receives the curated bundle and produces the patient-level clinical
       narrative grounded in the cited event_ids only. This is the patient
       timeline summary.
 
-  Stage E — MKG retrieval + overall synthesis (eoh-llama:70b)
+  Stage E — MKG retrieval + overall synthesis (default eoh-llama, 8B q8_0)
       OPTIONAL. Calls ``server.scripts.mkg_retrieval_harness.run_query``
       with the original question PLUS the Stage-D markdown as
       ``clinical_context``. The router (eoh-llama3.2-source-router) sees the
-      patient context to bias source/term selection; the 70B synthesis sees
+      patient context to bias source/term selection; the synthesis model sees
       both the rag_corpus hits AND the PTV summary so it can ground patient-
       specific claims in event_ids while grounding evidence claims in
       rag_corpus hit ids. Disable with ``--no-mkg``.
@@ -79,12 +79,12 @@ DEFAULT_QUESTIONS_FILE = ROOT / "server" / "scripts" / "forward_ptv_phenotype_qu
 # Models
 DEFAULT_PROBE_MODEL = os.environ.get("FORWARD_PROBE_MODEL", "eoh-llama")
 DEFAULT_GAP_MODEL = os.environ.get("FORWARD_GAP_MODEL", "eoh-llama")
-DEFAULT_SYNTH_MODEL = os.environ.get("FORWARD_SYNTH_MODEL", "eoh-llama:70b")
+DEFAULT_SYNTH_MODEL = os.environ.get("FORWARD_SYNTH_MODEL", "eoh-llama")
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 
 # Stage E (MKG retrieval) defaults
 DEFAULT_MKG_SYNTH_MODEL = os.environ.get(
-    "FORWARD_MKG_SYNTH_MODEL", os.environ.get("OLLAMA_SYNTH_MODEL", "eoh-llama:70b")
+    "FORWARD_MKG_SYNTH_MODEL", os.environ.get("OLLAMA_SYNTH_MODEL", "eoh-llama")
 )
 DEFAULT_MKG_ROUTER_MODEL = os.environ.get(
     "EOH_SOURCE_ROUTER_MODEL", "eoh-llama3.2-source-router"
@@ -283,7 +283,7 @@ def _curate_bundle(
 
 
 _SYNTH_SYSTEM = (
-    "You are an Ethos-of-Health (EoH) clinical synthesis assistant (70B). "
+    "You are an Ethos-of-Health (EoH) clinical synthesis assistant. "
     "You are the final step in a three-agent FORWARD pilot pipeline: a probe "
     "agent and a gap agent already ran the PatientTimelineVision toolkit on a "
     "synthetic patient's longitudinal graph. You now receive a curated bundle "
@@ -364,7 +364,7 @@ def _stage_synth(
 
 
 # ---------------------------------------------------------------------------
-# Stage E — MKG retrieval + overall 70B synthesis with PTV summary as context
+# Stage E — MKG retrieval + overall synthesis with PTV summary as context
 # ---------------------------------------------------------------------------
 
 def _stage_mkg_synth(
@@ -412,7 +412,7 @@ def _stage_mkg_synth(
         "ptv_synthesis_markdown": ptv_synth_markdown,
         "provenance": (
             "Produced by the FORWARD 3-agent PTV pipeline (probe 8B + gap 8B "
-            "+ 70B PTV synthesis). All event_id citations refer to this "
+            "+ synthesis pass). All event_id citations refer to this "
             "patient's PTV graph; do not reuse them as rag_corpus ids."
         ),
     }
@@ -429,6 +429,10 @@ def _stage_mkg_synth(
             model=args.mkg_synth_model,  # used as fallback synth if synth_model is None
             synth_model=args.mkg_synth_model,
             synth_num_ctx=args.mkg_synth_num_ctx,
+            two_pass_synth=bool(args.mkg_two_pass_synth),
+            compress_model=args.mkg_compress_model,
+            compress_num_ctx=args.mkg_compress_num_ctx,
+            compress_evidence_k=max(1, int(args.mkg_compress_evidence_k)),
             temperature=args.temperature,
             timeout=args.timeout,
             use_router=args.mkg_use_router,
@@ -450,6 +454,8 @@ def _stage_mkg_synth(
             "router_model": args.mkg_router_model if args.mkg_use_router else None,
             "embed_model": args.mkg_embed_model,
             "use_router": bool(args.mkg_use_router),
+            "two_pass_synth": bool(args.mkg_two_pass_synth),
+            "compress_model": args.mkg_compress_model if args.mkg_two_pass_synth else None,
             "router_restrict_sources": bool(args.mkg_router_restrict_sources),
             "top_k": args.mkg_top_k,
             "user_sources": user_sources,
@@ -616,12 +622,12 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--no-mkg",
         action="store_true",
-        help="Skip Stage E (MKG retrieval + 70B overall synthesis with PTV summary as context).",
+        help="Skip Stage E (MKG retrieval + overall synthesis with PTV summary as context).",
     )
     ap.add_argument(
         "--mkg-synth-model",
         default=DEFAULT_MKG_SYNTH_MODEL,
-        help="Ollama model used for the Stage-E overall 70B synthesis.",
+        help="Ollama model used for Stage-E overall synthesis.",
     )
     ap.add_argument(
         "--mkg-synth-num-ctx",
@@ -665,6 +671,36 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=10,
         help="Top-K hits per lane for Stage-E retrieval.",
+    )
+    ap.add_argument(
+        "--mkg-two-pass-synth",
+        dest="mkg_two_pass_synth",
+        action="store_true",
+        default=True,
+        help="Enable Stage-E two-pass synth (compress summary + top evidence, then final synthesis).",
+    )
+    ap.add_argument(
+        "--mkg-single-pass-synth",
+        dest="mkg_two_pass_synth",
+        action="store_false",
+        help="Disable Stage-E two-pass synth and run single-pass synthesis.",
+    )
+    ap.add_argument(
+        "--mkg-compress-model",
+        default=os.environ.get("FORWARD_MKG_COMPRESS_MODEL", "eoh-llama"),
+        help="Pass-1 compression model for Stage-E two-pass synth.",
+    )
+    ap.add_argument(
+        "--mkg-compress-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "32768")),
+        help="num_ctx for Stage-E compression pass.",
+    )
+    ap.add_argument(
+        "--mkg-compress-evidence-k",
+        type=int,
+        default=8,
+        help="Evidence count selected by Stage-E compression pass.",
     )
     ap.add_argument(
         "--mkg-sources",
@@ -848,6 +884,10 @@ def main() -> None:
             "stage_e_enabled": not args.no_mkg,
             "mkg": None if args.no_mkg else {
                 "use_router": bool(args.mkg_use_router),
+                "two_pass_synth": bool(args.mkg_two_pass_synth),
+                "compress_model": args.mkg_compress_model if args.mkg_two_pass_synth else None,
+                "compress_num_ctx": args.mkg_compress_num_ctx if args.mkg_two_pass_synth else None,
+                "compress_evidence_k": args.mkg_compress_evidence_k if args.mkg_two_pass_synth else None,
                 "router_restrict_sources": bool(args.mkg_router_restrict_sources),
                 "router_num_ctx": args.mkg_router_num_ctx,
                 "synth_num_ctx": args.mkg_synth_num_ctx,
