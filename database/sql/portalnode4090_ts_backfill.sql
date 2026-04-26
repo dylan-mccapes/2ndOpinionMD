@@ -45,8 +45,6 @@ SET ts = to_tsvector(
 )
 WHERE ts IS NULL;
 
-GET DIAGNOSTICS -- psql does not support GET DIAGNOSTICS; use row-count display below.
-
 \echo '==> Post-backfill ts population check'
 SELECT
   count(*)          AS total_rows,
