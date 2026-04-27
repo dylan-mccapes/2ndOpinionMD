@@ -33,6 +33,7 @@
 #   FORWARD_GAP_MODEL          default eoh-qwen
 #   FORWARD_SYNTH_MODEL        default eoh-qwen        (Stage D)
 #   FORWARD_MKG_SYNTH_MODEL    default eoh-qwen        (Stage E)
+#   OLLAMA_AGENT_NUM_CTX       default 32768            (Stage A/B tool-calling)
 #   EOH_SOURCE_ROUTER_MODEL    default eoh-llama3.2-source-router
 #   OLLAMA_SYNTH_NUM_CTX       default 32768
 #   OLLAMA_ROUTER_NUM_CTX      default 8192
@@ -55,6 +56,7 @@ export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-qwen}"
 export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-qwen}"
 export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-qwen}"
 export FORWARD_MKG_COMPRESS_MODEL="${FORWARD_MKG_COMPRESS_MODEL:-eoh-qwen}"
+export OLLAMA_AGENT_NUM_CTX="${OLLAMA_AGENT_NUM_CTX:-32768}"
 export EOH_SOURCE_ROUTER_MODEL="${EOH_SOURCE_ROUTER_MODEL:-eoh-llama3.2-source-router}"
 export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-32768}"
 export OLLAMA_ROUTER_NUM_CTX="${OLLAMA_ROUTER_NUM_CTX:-8192}"

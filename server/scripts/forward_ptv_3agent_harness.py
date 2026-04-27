@@ -115,8 +115,9 @@ def _stage_probe(
     max_turns: int,
     temperature: float,
     timeout: float,
+    num_ctx: int,
 ) -> Dict[str, Any]:
-    _log("🛰️", f"Stage A (probe) model={model} max_turns={max_turns}")
+    _log("🛰️", f"Stage A (probe) model={model} max_turns={max_turns} num_ctx={num_ctx}")
     t0 = time.monotonic()
     log = run_agent(
         gh,
@@ -126,6 +127,7 @@ def _stage_probe(
         max_turns=max_turns,
         temperature=temperature,
         timeout=timeout,
+        num_ctx=num_ctx,
     )
     handoff = build_handoff(gh, log)
     out = {
@@ -193,8 +195,9 @@ def _stage_gap(
     max_turns: int,
     temperature: float,
     timeout: float,
+    num_ctx: int,
 ) -> Dict[str, Any]:
-    _log("🔎", f"Stage B (gap) model={model} max_turns={max_turns}")
+    _log("🔎", f"Stage B (gap) model={model} max_turns={max_turns} num_ctx={num_ctx}")
     gap_question = _build_gap_question(
         original_question=original_question,
         probe_handoff=probe_stage["handoff"],
@@ -208,6 +211,7 @@ def _stage_gap(
         max_turns=max_turns,
         temperature=temperature,
         timeout=timeout,
+        num_ctx=num_ctx,
     )
     handoff = build_handoff(gh, log)
     out = {
@@ -594,6 +598,12 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument(
+        "--agent-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "32768")),
+        help="num_ctx for Stage A/B tool-calling agents.",
+    )
+    ap.add_argument(
         "--synth-num-ctx",
         type=int,
         default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "32768")),
@@ -737,6 +747,7 @@ def _run_one_patient(
         max_turns=args.probe_max_turns,
         temperature=args.temperature,
         timeout=args.timeout,
+        num_ctx=args.agent_num_ctx,
     )
     gap = _stage_gap(
         gh=gh,
@@ -747,6 +758,7 @@ def _run_one_patient(
         max_turns=args.gap_max_turns,
         temperature=args.temperature,
         timeout=args.timeout,
+        num_ctx=args.agent_num_ctx,
     )
     bundle = _curate_bundle(
         original_question=question,
@@ -903,6 +915,7 @@ def main() -> None:
             "gap_max_turns": args.gap_max_turns,
             "temperature": args.temperature,
             "timeout": args.timeout,
+            "agent_num_ctx": args.agent_num_ctx,
             "synth_num_ctx": args.synth_num_ctx,
             "ollama_url": args.ollama_url,
             "stage_e_enabled": not args.no_mkg,
