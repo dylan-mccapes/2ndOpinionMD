@@ -47,7 +47,11 @@ if str(ROOT) not in sys.path:
 
 from server.mkg.router_planner import plan_route
 from server.ptv_toolkit.graph import load_graph
-from server.ptv_toolkit.registry import call_tool, tool_names
+from server.ptv_toolkit.registry import call_tool
+
+
+def _log(emoji: str, msg: str) -> None:
+    print(f"{emoji} {msg}", file=sys.stderr, flush=True)
 
 DEFAULT_GRAPH = (
     ROOT
@@ -96,6 +100,22 @@ def _extract_json(text: str) -> Optional[Dict[str, Any]]:
             return json.loads(m.group(0))
         except Exception:
             return None
+    return None
+
+
+def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """First top-level JSON object in text (handles prose before/after JSON)."""
+    dec = json.JSONDecoder()
+    s = text or ""
+    for i, ch in enumerate(s):
+        if ch != "{":
+            continue
+        try:
+            obj, _end = dec.raw_decode(s, i)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
     return None
 
 
@@ -152,6 +172,7 @@ def _mkg_retrieve_bundle(
 
     dsn = _mkg_dsn()
     if not dsn:
+        _log("🗄️", "MKG retrieve skipped: no SYNC_DATABASE_URL / DATABASE_URL")
         return {
             "ok": False,
             "error": "no_database_url",
@@ -161,6 +182,7 @@ def _mkg_retrieve_bundle(
     import psycopg
     from psycopg.rows import dict_row
 
+    _log("🧠", f"MKG embed+retrieve top_k={top_k} ts_terms={len(ts_terms or [])} sources={sources or 'all'}")
     vec, device = embed_query(embed_model, semantic_query or "")
     lit = _vec_literal(vec)
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -171,6 +193,7 @@ def _mkg_retrieve_bundle(
     sem_c = [_compact_hit(r, text_chars=text_chars) for r in sem_rows]
     ts_c = [_compact_hit(r, text_chars=text_chars) for r in ts_rows]
     overlap = _overlap([h["id"] for h in sem_c], [h["id"] for h in ts_c])
+    _log("📚", f"MKG done semantic_hits={len(sem_c)} ts_hits={len(ts_c)} jaccard={overlap.get('jaccard', 0):.3f}")
     return {
         "ok": True,
         "embed_device": device,
@@ -225,6 +248,7 @@ def _pick_graph_tool(
         ensure_ascii=False,
         indent=2,
     )
+    _log("🧭", f"Probe graph-pick model={model} num_ctx={num_ctx}")
     raw = _ollama_chat(
         url=ollama_url,
         model=model,
@@ -234,11 +258,13 @@ def _pick_graph_tool(
         timeout=timeout,
         num_ctx=num_ctx,
     )
-    parsed = _extract_json(raw) or {}
+    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
     name = str(parsed.get("graph_tool") or "").strip()
     args = parsed.get("graph_args") if isinstance(parsed.get("graph_args"), dict) else {}
     if name not in _GRAPH_TOOLS:
+        _log("⚠️", f"Graph pick parse miss len={len(raw)} — defaulting to semantic_search")
         return "semantic_search", {"query": question, "k": 12}
+    _log("🎯", f"Graph pick → {name} args_keys={list((args or {}).keys())}")
     return name, dict(args or {})
 
 
@@ -261,23 +287,25 @@ def _gap_phase(
         "You are the GAP agent for a hybrid PTV + MKG retrieval pipeline.\n"
         "You receive JSON: user question, probe MKG hits summary, probe PTV semantic result,\n"
         "and one graph tool outcome.\n\n"
-        "Return STRICT JSON only:\n"
+        "OUTPUT: Reply with a SINGLE JSON object only. No markdown fences, no prose before or after.\n"
+        "Schema:\n"
         "{\n"
-        '  "follow_ptv_semantic_query": null or string,\n'
+        '  "follow_ptv_semantic_query": null,\n'
         '  "follow_ts_terms": [],\n'
-        '  "follow_graph_tool": null or one of '
-        + json.dumps(_GRAPH_TOOLS)
-        + ",\n"
+        '  "follow_graph_tool": null,\n'
         '  "follow_graph_args": {},\n'
-        '  "gap_report": "markdown: what probe covered, what is missing, contradictions, next evidence needs"\n'
-        "}\n\n"
+        '  "gap_report": "required markdown string"\n'
+        "}\n"
+        f"follow_graph_tool must be null or one of: {', '.join(_GRAPH_TOOLS)}.\n\n"
         "Rules:\n"
         "- follow_ts_terms: at most TWO strings; use only if TS lane clearly missed key tokens.\n"
         "- follow_ptv_semantic_query: optional ONE extra PTV semantic query if probe PTV context is thin.\n"
-        "- follow_graph_tool: optional ONE extra graph tool (same catalog); omit if not needed.\n"
-        "- gap_report is required and should be concise (<= 400 words).\n"
+        "- follow_graph_tool: optional ONE extra graph tool; use null if not needed.\n"
+        "- gap_report is REQUIRED: what probe covered, gaps, contradictions, what evidence is still missing.\n"
+        "- Keep gap_report under 400 words.\n"
     )
     user = json.dumps({"user_question": question, "probe": probe_bundle}, default=str, indent=2)[:120000]
+    _log("🔎", f"Stage GAP model={model} num_ctx={num_ctx} user_json_chars={len(user)}")
     raw = _ollama_chat(
         url=ollama_url,
         model=model,
@@ -287,7 +315,11 @@ def _gap_phase(
         timeout=timeout,
         num_ctx=num_ctx,
     )
-    parsed = _extract_json(raw) or {}
+    _log("🔎", f"GAP raw response chars={len(raw)} preview={raw[:120]!r}…")
+
+    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    if not parsed:
+        _log("⚠️", "GAP JSON parse failed — using raw text as gap_report fallback")
     follow_sem = parsed.get("follow_ptv_semantic_query")
     follow_terms = parsed.get("follow_ts_terms") or []
     if not isinstance(follow_terms, list):
@@ -295,10 +327,15 @@ def _gap_phase(
     follow_terms = [str(t).strip() for t in follow_terms if str(t).strip()][:2]
     fg_tool = parsed.get("follow_graph_tool")
     fg_args = parsed.get("follow_graph_args") if isinstance(parsed.get("follow_graph_args"), dict) else {}
-    gap_report = str(parsed.get("gap_report") or "").strip() or "(no gap_report)"
+    gap_report = str(parsed.get("gap_report") or "").strip()
+    if not gap_report:
+        gap_report = (raw or "").strip() or "(no gap_report)"
+        if gap_report != "(no gap_report)":
+            gap_report = "[gap JSON unparsed — model prose below]\n\n" + gap_report[:12000]
 
     follow_mkg: Dict[str, Any] = {}
     if follow_terms:
+        _log("🔁", f"GAP follow-up MKG ts_terms={follow_terms!r}")
         sq = str(follow_sem or probe_bundle.get("router_plan", {}).get("semantic_query") or question)
         follow_mkg = _mkg_retrieve_bundle(
             semantic_query=sq,
@@ -311,14 +348,18 @@ def _gap_phase(
 
     follow_ptv = None
     if isinstance(follow_sem, str) and follow_sem.strip():
+        _log("🔁", "GAP follow-up PTV semantic_search")
         follow_ptv = call_tool("semantic_search", gh, {"query": follow_sem.strip(), "k": 12})
 
     follow_graph = None
     if fg_tool and str(fg_tool).strip() in _GRAPH_TOOLS:
+        _log("🔁", f"GAP follow-up graph tool={fg_tool!r}")
         follow_graph = call_tool(str(fg_tool).strip(), gh, dict(fg_args or {}))
 
+    _log("✅", f"GAP phase done gap_report_chars={len(gap_report)}")
     return {
         "raw_gap_json": parsed,
+        "raw_gap_text": raw[:20000],
         "gap_report": gap_report,
         "follow_ptv_semantic": follow_ptv,
         "follow_mkg": follow_mkg,
@@ -353,7 +394,8 @@ def _report_phase(
         "gap_context": gap_bundle,
     }
     user = json.dumps(payload, default=str, indent=2)[:120000]
-    return _ollama_chat(
+    _log("📝", f"Stage REPORT model={model} num_ctx={num_ctx} context_chars={len(user)}")
+    out = _ollama_chat(
         url=ollama_url,
         model=model,
         system=system,
@@ -362,6 +404,8 @@ def _report_phase(
         timeout=timeout,
         num_ctx=num_ctx,
     )
+    _log("✅", f"REPORT done out_chars={len(out or '')}")
+    return out
 
 
 def _run_probe(
@@ -378,9 +422,11 @@ def _run_probe(
     enable_mkg: bool,
     text_chars: int,
 ) -> Dict[str, Any]:
+    _log("🛰️", "Stage PROBE — graph_stats for router clinical_context")
     graph_stats = call_tool("graph_stats", gh, {})
     brief = json.dumps(graph_stats.get("result") or graph_stats, default=str)[:8000]
 
+    _log("🧭", "Stage PROBE — plan_route (semantic_query + ts_terms + sources)")
     route = plan_route(
         question,
         ollama_url=ollama_url,
@@ -391,6 +437,11 @@ def _run_probe(
         clinical_context=brief,
     )
     sources = _router_sources(route)
+    _log(
+        "🧭",
+        f"Router qtype={route.get('question_type')} ts_terms={len(route.get('ts_terms') or [])} "
+        f"sources={len(sources or [])}",
+    )
 
     mkg: Dict[str, Any] = {"skipped": True}
     if enable_mkg:
@@ -402,6 +453,8 @@ def _run_probe(
             sources=sources,
             text_chars=text_chars,
         )
+    else:
+        _log("⏭️", "Stage PROBE — MKG skipped (--no-mkg)")
 
     g_tool, g_args = _pick_graph_tool(
         question=question,
@@ -413,14 +466,21 @@ def _run_probe(
         timeout=timeout,
         num_ctx=probe_num_ctx,
     )
+    _log("🔧", f"Stage PROBE — graph tool call {g_tool}")
     graph_out = call_tool(g_tool, gh, g_args)
+    if not graph_out.get("ok"):
+        _log("⚠️", f"Graph tool error: {graph_out.get('error', graph_out)}")
 
+    _log("🔍", "Stage PROBE — PTV semantic_search (router semantic_query)")
     ptv_sem = call_tool(
         "semantic_search",
         gh,
         {"query": str(route.get("semantic_query") or question), "k": min(16, top_k + 2)},
     )
+    if not ptv_sem.get("ok"):
+        _log("⚠️", f"PTV semantic_search error: {ptv_sem.get('error', ptv_sem)}")
 
+    _log("✅", "Stage PROBE complete")
     return {
         "router_plan": route,
         "mkg": mkg,
@@ -473,6 +533,7 @@ def main() -> int:
             return 0
 
         try:
+            _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
             probe = _run_probe(
                 question=q,
                 gh=gh,
