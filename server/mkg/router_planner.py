@@ -88,7 +88,10 @@ def _build_system_prompt() -> str:
         "  drug classes, anatomic context, and guideline body names. Optimized for ANN retrieval.\n"
         "- ts_query: compact lexical OR-joined string for Postgres FTS.\n"
         "- Sources and modules must come from provided candidate lists.\n"
-        "- priority=1 is highest; increase as relevance decreases.\n\n"
+        "- priority=1 is highest; increase as relevance decreases.\n"
+        "- When patient_code_inventory is present, it lists codes on this patient's timeline\n"
+        "  (from metadata.code_index) with first/last dates — align ts_terms and semantic_query\n"
+        "  with drugs/diagnoses/labs the patient actually has; still retrieve external evidence.\n\n"
         "Output JSON schema:\n"
         "{\n"
         '  "question_type": "A|B|C|D|E|OTHER",\n'
@@ -114,6 +117,7 @@ def _build_user_prompt(
     max_sources: int,
     max_modules: int,
     clinical_context: Optional[str] = None,
+    patient_code_inventory: Optional[Any] = None,
 ) -> str:
     payload: Dict[str, Any] = {
         "query": query,
@@ -122,12 +126,29 @@ def _build_user_prompt(
         "source_candidates": source_candidates,
         "module_candidates": module_candidates,
     }
+    if patient_code_inventory is not None:
+        payload["patient_code_inventory"] = patient_code_inventory
     if clinical_context and clinical_context.strip():
         # Hard cap so an over-long PTV summary cannot blow the router context.
         ctx = clinical_context.strip()
         if len(ctx) > 8000:
             ctx = ctx[:8000] + "\n…[clinical_context truncated]"
         payload["clinical_context"] = ctx
+    if patient_code_inventory is not None and clinical_context and clinical_context.strip():
+        intro = (
+            "Plan source/module routing for this query. The clinical_context "
+            "block orients the PTV graph; patient_code_inventory lists indexed "
+            "codes on this patient's timeline with first/last dates — use both "
+            "to bias ts_terms and semantic_query toward documented entities; "
+            "the query is still primary for external retrieval."
+        )
+    elif patient_code_inventory is not None:
+        intro = (
+            "Plan source/module routing for this query. The patient_code_inventory "
+            "object lists indexed codes on this patient's timeline with first/last "
+            "dates — use it to bias ts_terms and semantic_query; the query is still primary."
+        )
+    elif clinical_context and clinical_context.strip():
         intro = (
             "Plan source/module routing for this query. The clinical_context "
             "block is a per-patient timeline summary you may use to bias source "
@@ -248,8 +269,13 @@ def plan_route(
     source_candidates: Optional[Dict[str, str]] = None,
     module_candidates: Optional[Dict[str, Dict[str, str]]] = None,
     clinical_context: Optional[str] = None,
+    patient_code_inventory: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Run the source-router model and return a normalized route plan.
+
+    ``patient_code_inventory`` is optional structured JSON (e.g. from
+    ``ptv_toolkit.code_inventory.build_patient_code_inventory``) so the router
+    can align ``ts_terms`` / ``semantic_query`` with codes on the patient timeline.
 
     On any failure, returns a degraded plan with ``error`` set and useful
     fallbacks (``ts_terms`` derived from the raw query) so the caller can
@@ -270,6 +296,7 @@ def plan_route(
         max_sources=max_sources,
         max_modules=max_modules,
         clinical_context=clinical_context,
+        patient_code_inventory=patient_code_inventory,
     )
 
     _log("🧭", f"Source-router model={model_name} num_ctx={ctx}")
