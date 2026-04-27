@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# NOTE: Testing 64K context with eoh-qwen. If Stage A becomes slow/empty, drop to 32768.
 # RTX-4090 / PortalNode: FORWARD 3-agent PTV harness with optional Stage E
 # (MKG retrieval + overall synthesis grounded by the PTV summary).
 #
@@ -52,8 +53,9 @@ export FORWARD_PROBE_MODEL="${FORWARD_PROBE_MODEL:-eoh-qwen}"
 export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-qwen}"
 export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-qwen}"
 export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-qwen}"
+export FORWARD_MKG_COMPRESS_MODEL="${FORWARD_MKG_COMPRESS_MODEL:-eoh-qwen}"
 export EOH_SOURCE_ROUTER_MODEL="${EOH_SOURCE_ROUTER_MODEL:-eoh-llama3.2-source-router}"
-export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-131072}"
+export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-65536}"
 export OLLAMA_ROUTER_NUM_CTX="${OLLAMA_ROUTER_NUM_CTX:-8192}"
 
 DISABLE_MKG="${FORWARD_DISABLE_MKG:-0}"

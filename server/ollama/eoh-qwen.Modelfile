@@ -1,0 +1,17 @@
+FROM qwen3.6:35b
+
+# eoh-qwen — 64K test version for single RTX 4090 + PTV harness
+PARAMETER num_ctx 65536
+PARAMETER num_gpu_layers 999
+PARAMETER num_thread 16
+PARAMETER num_batch 512
+
+# Clinical + agent-friendly settings
+PARAMETER temperature 0.25
+PARAMETER top_p 0.90
+PARAMETER repeat_penalty 1.08
+
+SYSTEM """
+You are a precise rheumatology clinical decision support assistant.
+You excel at tool use, structured reasoning, and producing clear, citation-rich summaries with excellent uncertainty calibration.
+"""

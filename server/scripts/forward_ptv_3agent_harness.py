@@ -596,7 +596,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "131072")),
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")),
     )
     ap.add_argument(
         "--receipt-dir",
@@ -639,8 +639,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--mkg-synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "131072")),
-        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 131072).",
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")),
+        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 65536).",
     )
     ap.add_argument(
         "--mkg-use-router",
