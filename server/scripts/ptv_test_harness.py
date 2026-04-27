@@ -155,7 +155,7 @@ def cmd_extract_grade(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    model = args.model or "eoh-qwen"
+    model = args.model or "eoh-llama"
     patient_id = args.patient_id or pdf_path.stem.lower().replace(" ", "_")
 
     is_ollama = not model.startswith("gpt-") and not model.startswith("claude-")
@@ -440,7 +440,7 @@ def main() -> None:
                                help="Run extraction then grade")
     p_extract.add_argument("--pdf", required=True, help="Path to timeline PDF")
     p_extract.add_argument("--patient-id", help="Patient identifier")
-    p_extract.add_argument("--model", help="Model name (default: eoh-qwen)")
+    p_extract.add_argument("--model", help="Model name (default: eoh-llama)")
     p_extract.add_argument("--output-dir", required=True,
                            help="Artifact output directory")
     p_extract.add_argument("--ollama-url", help="Ollama base URL")

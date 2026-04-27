@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# NOTE: Using 32K context with eoh-qwen for stability on single 4090.
-# 64K caused Stage A timeout (300s → empty output).
+# NOTE: Pilot uses eoh-llama (8B). Stage A/B num_ctx is OLLAMA_AGENT_NUM_CTX (default 32768).
 # RTX-4090 / PortalNode: FORWARD 3-agent PTV harness with optional Stage E
 # (MKG retrieval + overall synthesis grounded by the PTV summary).
 #
 # Pipeline per synthetic patient:
-#   Stage A — eoh-qwen (Qwen3.6 35B)           probe: PTV toolkit on patient graph
-#   Stage B — eoh-qwen (Qwen3.6 35B)           gap:   close what probe missed
+#   Stage A — eoh-llama (8B q8_0)              probe: PTV toolkit on patient graph
+#   Stage B — eoh-llama (8B q8_0)              gap:   close what probe missed
 #   Stage C — curation (Python)                merge probe + gap working sets
-#   Stage D — eoh-qwen (Qwen3.6 35B)           PTV synthesis -> patient timeline summary
+#   Stage D — eoh-llama (8B q8_0)              PTV synthesis -> patient timeline summary
 #   Stage E — mkg_retrieval_harness.run_query  router + ANN + per-term FTS, then
-#                                              eoh-qwen overall synth that takes
+#                                              eoh-llama overall synth that takes
 #                                              both the rag_corpus hits AND the Stage-D
 #                                              PTV summary as clinical_context.
 #
@@ -29,10 +28,10 @@
 #
 # Env knobs (all optional):
 #   OLLAMA_URL                 default http://127.0.0.1:11434 (set host IP from WSL)
-#   FORWARD_PROBE_MODEL        default eoh-qwen
-#   FORWARD_GAP_MODEL          default eoh-qwen
-#   FORWARD_SYNTH_MODEL        default eoh-qwen        (Stage D)
-#   FORWARD_MKG_SYNTH_MODEL    default eoh-qwen        (Stage E)
+#   FORWARD_PROBE_MODEL        default eoh-llama
+#   FORWARD_GAP_MODEL          default eoh-llama
+#   FORWARD_SYNTH_MODEL        default eoh-llama       (Stage D)
+#   FORWARD_MKG_SYNTH_MODEL    default eoh-llama       (Stage E)
 #   OLLAMA_AGENT_NUM_CTX       default 32768            (Stage A/B tool-calling)
 #   EOH_SOURCE_ROUTER_MODEL    default eoh-llama3.2-source-router
 #   OLLAMA_SYNTH_NUM_CTX       default 32768
@@ -51,11 +50,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 cd "$ROOT"
 
 export OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
-export FORWARD_PROBE_MODEL="${FORWARD_PROBE_MODEL:-eoh-qwen}"
-export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-qwen}"
-export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-qwen}"
-export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-qwen}"
-export FORWARD_MKG_COMPRESS_MODEL="${FORWARD_MKG_COMPRESS_MODEL:-eoh-qwen}"
+export FORWARD_PROBE_MODEL="${FORWARD_PROBE_MODEL:-eoh-llama}"
+export FORWARD_GAP_MODEL="${FORWARD_GAP_MODEL:-eoh-llama}"
+export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-llama}"
+export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-llama}"
+export FORWARD_MKG_COMPRESS_MODEL="${FORWARD_MKG_COMPRESS_MODEL:-eoh-llama}"
 export OLLAMA_AGENT_NUM_CTX="${OLLAMA_AGENT_NUM_CTX:-32768}"
 export EOH_SOURCE_ROUTER_MODEL="${EOH_SOURCE_ROUTER_MODEL:-eoh-llama3.2-source-router}"
 export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-32768}"

@@ -182,8 +182,7 @@ def main() -> int:
     ap.add_argument("--questions", default=str(
         ROOT / "server" / "scripts" / "ptv_toolkit_questions.json"
     ))
-    # MODEL = "eoh-llama-lucifer"  # old local baseline
-    ap.add_argument("--model", default="eoh-qwen")
+    ap.add_argument("--model", default="eoh-llama")
     ap.add_argument("--ollama-url", default="http://localhost:11434")
     ap.add_argument("--out-dir", default=str(ROOT / "artifacts" / "ptv_toolkit_runs"))
     ap.add_argument("--max-turns", type=int, default=6)

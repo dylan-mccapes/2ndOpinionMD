@@ -76,10 +76,9 @@ def _log(emoji: str, msg: str) -> None:
 DEFAULT_COHORT_DIR = ROOT / "artifacts" / "forward_kaleb_package_20260423" / "synthetic_pro_cohort"
 DEFAULT_QUESTIONS_FILE = ROOT / "server" / "scripts" / "forward_ptv_phenotype_questions.json"
 
-# Models
-# OLD baseline:
-# MODEL = "eoh-llama"
-MODEL = "eoh-qwen"
+# Models (4090 pilot: eoh-llama 8B q8_0)
+# MODEL = "eoh-qwen"  # experimental; not used for pilot
+MODEL = "eoh-llama"
 DEFAULT_PROBE_MODEL = os.environ.get("FORWARD_PROBE_MODEL", MODEL)
 DEFAULT_GAP_MODEL = os.environ.get("FORWARD_GAP_MODEL", MODEL)
 DEFAULT_SYNTH_MODEL = os.environ.get("FORWARD_SYNTH_MODEL", MODEL)
