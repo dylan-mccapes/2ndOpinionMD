@@ -446,7 +446,7 @@ def main() -> None:
     p_extract.add_argument("--ollama-url", help="Ollama base URL")
     p_extract.add_argument("--extraction-mode", choices=["lite", "full"],
                            default="full")
-    p_extract.add_argument("--context-tokens", type=int, default=65536)
+    p_extract.add_argument("--context-tokens", type=int, default=32768)
     p_extract.add_argument("--concurrency", type=int, default=1)
 
     # compare

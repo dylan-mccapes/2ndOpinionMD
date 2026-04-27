@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# NOTE: Testing 64K context with eoh-qwen. If Stage A becomes slow/empty, drop to 32768.
+# NOTE: Using 32K context with eoh-qwen for stability on single 4090.
+# 64K caused Stage A timeout (300s → empty output).
 # RTX-4090 / PortalNode: FORWARD 3-agent PTV harness with optional Stage E
 # (MKG retrieval + overall synthesis grounded by the PTV summary).
 #
@@ -33,7 +34,7 @@
 #   FORWARD_SYNTH_MODEL        default eoh-qwen        (Stage D)
 #   FORWARD_MKG_SYNTH_MODEL    default eoh-qwen        (Stage E)
 #   EOH_SOURCE_ROUTER_MODEL    default eoh-llama3.2-source-router
-#   OLLAMA_SYNTH_NUM_CTX       default 131072
+#   OLLAMA_SYNTH_NUM_CTX       default 32768
 #   OLLAMA_ROUTER_NUM_CTX      default 8192
 #   FORWARD_DISABLE_MKG=1      skip Stage E entirely (adds --no-mkg)
 #   FORWARD_MKG_RESTRICT_SOURCES=1
@@ -55,7 +56,7 @@ export FORWARD_SYNTH_MODEL="${FORWARD_SYNTH_MODEL:-eoh-qwen}"
 export FORWARD_MKG_SYNTH_MODEL="${FORWARD_MKG_SYNTH_MODEL:-eoh-qwen}"
 export FORWARD_MKG_COMPRESS_MODEL="${FORWARD_MKG_COMPRESS_MODEL:-eoh-qwen}"
 export EOH_SOURCE_ROUTER_MODEL="${EOH_SOURCE_ROUTER_MODEL:-eoh-llama3.2-source-router}"
-export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-65536}"
+export OLLAMA_SYNTH_NUM_CTX="${OLLAMA_SYNTH_NUM_CTX:-32768}"
 export OLLAMA_ROUTER_NUM_CTX="${OLLAMA_ROUTER_NUM_CTX:-8192}"
 
 DISABLE_MKG="${FORWARD_DISABLE_MKG:-0}"
