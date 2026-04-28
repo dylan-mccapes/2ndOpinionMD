@@ -352,7 +352,7 @@ def _eoh_module_route_prelude(
         },
         ensure_ascii=False,
         indent=2,
-    )[:240000]
+    )[:50000]
     _log("🧭", f"Stage EOH-PRELUDE model={model} num_ctx={num_ctx}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -641,7 +641,7 @@ def _retro_summarize(
         {"new_question": question, "candidate_turns": compact},
         ensure_ascii=False,
         indent=2,
-    )[:120000]
+    )[:50000]
     _log("🪞", f"Stage RETRO-REVIEW model={model} num_ctx={num_ctx} candidates={len(compact)}")
     try:
         raw = _ollama_chat(
@@ -791,7 +791,7 @@ def _gap_phase(
         },
         default=str,
         indent=2,
-    )[:240000]
+    )[:50000]
     _log("🔎", f"Stage GAP model={model} num_ctx={num_ctx} user_json_chars={len(user)}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -919,7 +919,7 @@ def _report_phase(
         "probe_context": probe_bundle,
         "gap_context": gap_bundle,
     }
-    user = json.dumps(payload, default=str, indent=2)[:320000]
+    user = json.dumps(payload, default=str, indent=2)[:50000]
     _log("📝", f"Stage REPORT model={model} num_ctx={num_ctx} context_chars={len(user)}")
     out = _ollama_chat(
         url=ollama_url,
@@ -1475,8 +1475,8 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("FORWARD_RETRO_MODEL", "eoh-llama"),
         help="Model for retro session summary review (default eoh-llama).",
     )
-    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "102400")))
-    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "102400")))
+    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "86016")))
+    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "86016")))
     ap.add_argument(
         "--retro-num-ctx",
         type=int,

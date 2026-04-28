@@ -23,7 +23,7 @@ Env (same as portal embed scripts):
   OLLAMA_URL — default http://127.0.0.1:11434
   OLLAMA_MODEL — default eoh-qwen3-14b
   OLLAMA_SYNTH_MODEL — optional override for the synthesis step (e.g. eoh-llama:70b)
-  OLLAMA_NUM_CTX — synthesis context size (default 102400)
+  OLLAMA_NUM_CTX — synthesis context size (default 86016)
   EOH_SOURCE_ROUTER_MODEL — default eoh-llama3.2-source-router
 
 Examples::
@@ -85,7 +85,7 @@ def _ollama_chat(
     import requests
 
     if num_ctx is None:
-        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "102400")))
+        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "86016")))
     else:
         num_ctx = max(2048, int(num_ctx))
     _log("🤖", f"Calling Ollama model={model} num_ctx={num_ctx} timeout={timeout:.0f}s")
@@ -403,7 +403,7 @@ def run_llm(
         "Synthesize the clinical evidence in this dual-lane retrieval bundle. "
         "Do not copy text — reason from it.\n\n"
         + json.dumps(bundle, indent=2, default=str)
-    )
+    )[:50000]
     t0 = time.monotonic()
     text = _ollama_chat(
         ollama_url,
@@ -499,7 +499,7 @@ def run_llm_two_pass(
         "2) Prioritize diversity across sources and include the strongest contradictory/qualifying evidence.\n"
         "3) No markdown. JSON only."
     )
-    pass1_user = json.dumps(bundle, indent=2, default=str)
+    pass1_user = json.dumps(bundle, indent=2, default=str)[:50000]
     t1 = time.monotonic()
     raw_pass1 = _ollama_chat(
         ollama_url,
@@ -655,7 +655,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_NUM_CTX", "102400")),
+        default=int(os.environ.get("OLLAMA_NUM_CTX", "86016")),
         help="Context window for final synthesis pass.",
     )
     ap.add_argument(
@@ -671,8 +671,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--compress-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "102400")),
-        help="num_ctx for pass-1 compression model (default 102400).",
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "86016")),
+        help="num_ctx for pass-1 compression model (default 86016).",
     )
     ap.add_argument(
         "--compress-evidence-k",
