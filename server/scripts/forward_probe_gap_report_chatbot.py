@@ -85,6 +85,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -1133,6 +1134,7 @@ def _run_full_turn(
     args: argparse.Namespace,
     print_reports: bool = True,
 ) -> Dict[str, Any]:
+    t0 = time.monotonic()
     q = (question or "").strip()
     _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
 
@@ -1238,6 +1240,7 @@ def _run_full_turn(
 
     if print_reports:
         _print_turn_outputs(q, probe, gap, report)
+    _log("⏱️", f"Turn done elapsed_sec={time.monotonic() - t0:.2f}")
 
     return {"question": q, "probe": probe, "gap": gap, "report": report, "stored": stored}
 
@@ -1351,6 +1354,7 @@ def _run_harness_mode(
     session: SessionLog,
     graph_path: Path,
 ) -> int:
+    t0 = time.monotonic()
     path = Path(args.harness_file).expanduser().resolve()
     if not path.is_file():
         print(f"error: harness file not found: {path}", file=sys.stderr)
@@ -1372,6 +1376,7 @@ def _run_harness_mode(
     copy_session = not bool(getattr(args, "harness_no_session_copy", False))
 
     for i, item in enumerate(items):
+        turn_t0 = time.monotonic()
         n_seeds = _append_harness_seed_turns(session, item.get("seed_session_turns_before") or [])
         print(
             f"[harness {i + 1}/{len(items)}] seeds={n_seeds} id={item.get('id', i)!r}",
@@ -1420,6 +1425,7 @@ def _run_harness_mode(
                 f"  ok references_prior={ref} graph_tool={(rec.get('probe') or {}).get('graph_tool')!r}",
                 flush=True,
             )
+        _log("⏱️", f"harness item {i + 1}/{len(items)} elapsed_sec={time.monotonic() - turn_t0:.2f}")
 
     any_err = any(isinstance(r, dict) and r.get("error") for r in rows)
     payload = {
@@ -1441,6 +1447,7 @@ def _run_harness_mode(
         f"session_copy={payload.get('session_jsonl_receipt') or payload.get('session_jsonl_live')}",
         flush=True,
     )
+    _log("⏱️", f"harness total elapsed_sec={time.monotonic() - t0:.2f}")
     return 0
 
 
@@ -1466,7 +1473,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "102400")))
     ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "102400")))
     ap.add_argument("--temperature", type=float, default=0.15)
-    ap.add_argument("--timeout", type=float, default=300.0)
+    ap.add_argument("--timeout", type=float, default=600.0)
     ap.add_argument("--top-k", type=int, default=12)
     ap.add_argument("--embed-model", default=os.environ.get("LOCAL_EMBED_MODEL", "BAAI/bge-base-en-v1.5"))
     ap.add_argument("--text-chars", type=int, default=1200)

@@ -681,7 +681,7 @@ def _parse_args() -> argparse.Namespace:
         help="How many evidence items pass-1 should select for pass-2 synthesis.",
     )
     ap.add_argument("--temperature", type=float, default=0.15)
-    ap.add_argument("--timeout", type=float, default=180.0)
+    ap.add_argument("--timeout", type=float, default=600.0)
     ap.add_argument("--out", type=Path, help="Write full JSON result here")
     # Router-driven query expansion
     ap.add_argument(
@@ -743,7 +743,7 @@ def run_query(
     compress_num_ctx: Optional[int] = None,
     compress_evidence_k: int = 8,
     temperature: float = 0.15,
-    timeout: float = 180.0,
+    timeout: float = 600.0,
     use_router: bool = False,
     router_model: str = "eoh-llama3.2-source-router",
     router_num_ctx: int = 8192,
@@ -755,6 +755,7 @@ def run_query(
     extra_context: Optional[Dict[str, Any]] = None,
     extra_context_label: str = "patient_timeline_summary",
 ) -> Dict[str, Any]:
+    t0 = time.monotonic()
     """Library entry point for the MKG retrieval pipeline.
 
     This is what external callers (e.g. ``forward_ptv_3agent_harness``) should
@@ -940,6 +941,8 @@ def run_query(
     else:
         _log("⏭️", "Skipping LLM synthesis (no_llm=True)")
 
+    out["elapsed_sec"] = round(time.monotonic() - t0, 3)
+    _log("⏱️", f"run_query done elapsed_sec={out['elapsed_sec']:.3f}")
     return out
 
 
@@ -1013,6 +1016,7 @@ def main() -> None:
 
     if len(queries) == 1:
         _log("🧪", "Single-query mode")
+        t_single = time.monotonic()
         out = _run_one_query(q=queries[0], args=args, psycopg=psycopg, dict_row=dict_row)
         text = json.dumps(out, indent=2, default=str)
         _log("📦", f"Emitting JSON output ({len(text)} chars)")
@@ -1021,6 +1025,7 @@ def main() -> None:
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(text + "\n", encoding="utf-8")
             _log("💾", f"Wrote output file: {args.out}")
+        _log("⏱️", f"single-query total elapsed_sec={time.monotonic() - t_single:.3f}")
         _log("🏁", "Harness run complete")
         return
 
@@ -1029,8 +1034,11 @@ def main() -> None:
     runs: List[Dict[str, Any]] = []
     for i, q in enumerate(queries, start=1):
         _log("➡️", f"Batch question {i}/{len(queries)}: {q[:90]}")
+        t_item = time.monotonic()
         run = _run_one_query(q=q, args=args, psycopg=psycopg, dict_row=dict_row)
         run["batch_index"] = i
+        run["batch_elapsed_sec"] = round(time.monotonic() - t_item, 3)
+        _log("⏱️", f"batch item {i}/{len(queries)} elapsed_sec={run['batch_elapsed_sec']:.3f}")
         runs.append(run)
 
     batch_out: Dict[str, Any] = {
