@@ -364,6 +364,7 @@ def _mkg_retrieve_bundle(
     ts_per_term_n = 0
     ts_or_added_n = 0
     used_or_fallback = False
+    source_expansion_mode = "none"
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
@@ -399,6 +400,47 @@ def _mkg_retrieve_bundle(
                 ts_or_added_n = max(0, len(merged) - ts_per_term_n)
                 ts_rows = merged
 
+            # Router source selection is treated as a soft preference (ask/eoh_stream style):
+            # if the selected source set is narrow, supplement from the full pilot slice and
+            # keep only top-scored rows after merge so we preserve precision while widening recall.
+            if sources and len(sources) < 6:
+                source_expansion_mode = "router_soft_plus_global_topscore"
+                sem_global = ann_local(cur, lit, top_k, sources=None)
+                sem_by_id: Dict[Any, Dict[str, Any]] = {}
+                for r in sem_rows + sem_global:
+                    rid = r["id"]
+                    cur_row = sem_by_id.get(rid)
+                    if cur_row is None or float(r.get("score") or 0.0) > float(cur_row.get("score") or 0.0):
+                        sem_by_id[rid] = dict(r)
+                sem_rows = sorted(
+                    sem_by_id.values(),
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )[:top_k]
+
+                if ts_terms:
+                    ts_global = bm25_ts_terms(cur, ts_terms, top_k, sources=None)
+                else:
+                    ts_global = []
+                if not ts_global and (semantic_query or "").strip():
+                    ts_global = bm25_ts(cur, semantic_query or "", top_k, sources=None)
+                ts_by_id: Dict[Any, Dict[str, Any]] = {}
+                for r in ts_rows + ts_global:
+                    rid = r["id"]
+                    cur_row = ts_by_id.get(rid)
+                    if cur_row is None or float(r.get("score") or 0.0) > float(cur_row.get("score") or 0.0):
+                        ts_by_id[rid] = dict(r)
+                ts_rows = sorted(
+                    ts_by_id.values(),
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )[:top_k]
+                _log(
+                    "🌐",
+                    f"Router sources were narrow ({len(sources)}); supplemented with global retrieval "
+                    f"then re-ranked to top_k={top_k}",
+                )
+
     sem_c = [_compact_hit(r, text_chars=text_chars) for r in sem_rows]
     ts_c = [_compact_hit(r, text_chars=text_chars) for r in ts_rows]
     overlap = _overlap([h["id"] for h in sem_c], [h["id"] for h in ts_c])
@@ -406,7 +448,7 @@ def _mkg_retrieve_bundle(
         "📚",
         f"MKG done semantic_hits={len(sem_c)} ts_hits={len(ts_c)} "
         f"(per_term={ts_per_term_n}, or_fallback={used_or_fallback}) "
-        f"jaccard={overlap.get('jaccard', 0):.3f}",
+        f"jaccard={overlap.get('jaccard', 0):.3f} source_expansion={source_expansion_mode}",
     )
     return {
         "ok": True,
@@ -418,6 +460,7 @@ def _mkg_retrieve_bundle(
         "ts_per_term_count": ts_per_term_n,
         "ts_or_fallback_used": used_or_fallback,
         "ts_or_fallback_added": ts_or_added_n,
+        "source_expansion_mode": source_expansion_mode,
     }
 
 
