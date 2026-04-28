@@ -351,7 +351,7 @@ def _eoh_module_route_prelude(
         },
         ensure_ascii=False,
         indent=2,
-    )[:120000]
+    )[:240000]
     _log("🧭", f"Stage EOH-PRELUDE model={model} num_ctx={num_ctx}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -640,7 +640,7 @@ def _retro_summarize(
         {"new_question": question, "candidate_turns": compact},
         ensure_ascii=False,
         indent=2,
-    )[:60000]
+    )[:120000]
     _log("🪞", f"Stage RETRO-REVIEW model={model} num_ctx={num_ctx} candidates={len(compact)}")
     try:
         raw = _ollama_chat(
@@ -790,7 +790,7 @@ def _gap_phase(
         },
         default=str,
         indent=2,
-    )[:120000]
+    )[:240000]
     _log("🔎", f"Stage GAP model={model} num_ctx={num_ctx} user_json_chars={len(user)}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -911,14 +911,14 @@ def _report_phase(
         "- Ground claims in supplied hit ids (MKG: id/source; PTV: event_ids from tool results).\n"
         "- Cite uncertainty where evidence is thin.\n"
         "- Do not describe internal pipeline stage names unless useful; focus on patient-relevant synthesis.\n"
-        "- Keep under 900 words unless the question requires detail.\n"
+        "- Keep under 1600 words unless the question requires detail.\n"
     )
     payload = {
         "user_question": question,
         "probe_context": probe_bundle,
         "gap_context": gap_bundle,
     }
-    user = json.dumps(payload, default=str, indent=2)[:120000]
+    user = json.dumps(payload, default=str, indent=2)[:320000]
     _log("📝", f"Stage REPORT model={model} num_ctx={num_ctx} context_chars={len(user)}")
     out = _ollama_chat(
         url=ollama_url,
@@ -1463,13 +1463,13 @@ def _parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--gap-model", default=os.environ.get("FORWARD_GAP_MODEL", "eoh-qwen3-14b"))
     ap.add_argument("--report-model", default=os.environ.get("FORWARD_SYNTH_MODEL", "eoh-qwen3-14b"))
-    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "32768")))
-    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "32768")))
+    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "102400")))
+    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "102400")))
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument("--top-k", type=int, default=12)
     ap.add_argument("--embed-model", default=os.environ.get("LOCAL_EMBED_MODEL", "BAAI/bge-base-en-v1.5"))
-    ap.add_argument("--text-chars", type=int, default=400)
+    ap.add_argument("--text-chars", type=int, default=1200)
     ap.add_argument("--no-mkg", action="store_true", help="Skip MKG DB retrieval (PTV + graph pick only).")
     ap.add_argument(
         "--no-gap-heuristic",

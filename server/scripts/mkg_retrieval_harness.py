@@ -639,7 +639,7 @@ def _parse_args() -> argparse.Namespace:
         help="Comma-separated rag_corpus.source filter (optional), e.g. icd10cm,loinc",
     )
     ap.add_argument("--embed-model", default=os.environ.get("LOCAL_EMBED_MODEL", "BAAI/bge-base-en-v1.5"))
-    ap.add_argument("--text-chars", type=int, default=480, help="Max chars of text per hit in LLM payload")
+    ap.add_argument("--text-chars", type=int, default=1200, help="Max chars of text per hit in LLM payload")
     ap.add_argument("--no-llm", action="store_true", help="Skip Ollama; print retrieval JSON only")
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
     ap.add_argument(
@@ -671,8 +671,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--compress-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "32768")),
-        help="num_ctx for pass-1 compression model (default 32768).",
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "102400")),
+        help="num_ctx for pass-1 compression model (default 102400).",
     )
     ap.add_argument(
         "--compress-evidence-k",
