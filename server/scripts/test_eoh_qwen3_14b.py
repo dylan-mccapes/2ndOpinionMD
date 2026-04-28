@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Direct streaming test for eoh-qwen3-14b (64K) on P1 synthetic graph."""
+"""Direct streaming test for eoh-qwen3-14b (128K default) on P1 synthetic graph."""
 from __future__ import annotations
 
 import json
@@ -31,6 +31,9 @@ QUESTION = (
     "treatment escalations or de-escalations, key medications around those times, and any "
     "notable areas of uncertainty."
 )
+DEFAULT_SEMANTIC_K = 32
+DEFAULT_CODE_INDEX_LIMIT = 200
+DEFAULT_TEMPORAL_LIMIT = 120
 
 
 def _log(emoji: str, msg: str) -> None:
@@ -47,10 +50,23 @@ def _build_context() -> Dict[str, Any]:
     gh = load_graph(DEFAULT_GRAPH)
     _log("📈", "Running graph_stats")
     stats = call_tool("graph_stats", gh, {})
-    _log("🔎", "Running semantic_search (k=16)")
-    sem = call_tool("semantic_search", gh, {"query": QUESTION, "k": 16})
+    semantic_k = int(os.environ.get("EOH_QWEN14B_SEMANTIC_K", str(DEFAULT_SEMANTIC_K)))
+    med_limit = int(os.environ.get("EOH_QWEN14B_CODE_INDEX_LIMIT", str(DEFAULT_CODE_INDEX_LIMIT)))
+    temporal_limit = int(os.environ.get("EOH_QWEN14B_TEMPORAL_LIMIT", str(DEFAULT_TEMPORAL_LIMIT)))
+    _log("🔎", f"Running semantic_search (k={semantic_k})")
+    sem = call_tool("semantic_search", gh, {"query": QUESTION, "k": semantic_k})
     _log("💊", "Running code_index_lookup for medications")
-    meds = call_tool("code_index_lookup", gh, {"bucket": "drugs", "list_keys": True, "limit": 50})
+    meds = call_tool(
+        "code_index_lookup",
+        gh,
+        {"bucket": "drugs", "list_keys": True, "limit": med_limit},
+    )
+    _log("🧾", f"Running temporal_scan for longitudinal events (limit={temporal_limit})")
+    timeline = call_tool(
+        "temporal_scan",
+        gh,
+        {"order": "asc", "limit": temporal_limit},
+    )
     return {
         "graph_path": str(DEFAULT_GRAPH),
         "graph_hash": gh.graph_hash,
@@ -59,15 +75,16 @@ def _build_context() -> Dict[str, Any]:
         "graph_stats": stats,
         "semantic_search": sem,
         "medication_index": meds,
+        "temporal_scan": timeline,
     }
 
 
 def main() -> int:
     model = os.environ.get("EOH_QWEN14B_MODEL", "eoh-qwen3-14b")
     ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
-    num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "65536"))
+    num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "131072"))
 
-    _log("🚀", "Starting direct eoh-qwen3-14b streaming test")
+    _log("🚀", "Starting direct eoh-qwen3-14b streaming test (high-context profile)")
     payload_context = _build_context()
     system = (
         "You are eoh-qwen3-14b in direct clinical test mode.\n"
@@ -99,7 +116,7 @@ def main() -> int:
     }
 
     _log("🤖", f"model={model} num_ctx={num_ctx} ollama_url={ollama_url} graph={DEFAULT_GRAPH.name}")
-    print(f"model={model} num_ctx={num_ctx} graph={DEFAULT_GRAPH.name}")
+    print(f"model={model} num_ctx={num_ctx} graph={DEFAULT_GRAPH.name} (semantic_k={os.environ.get('EOH_QWEN14B_SEMANTIC_K', str(DEFAULT_SEMANTIC_K))})")
     print("\n--- STREAM START (live chunks) ---\n")
 
     t0 = time.monotonic()
