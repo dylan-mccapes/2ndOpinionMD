@@ -1161,10 +1161,10 @@ def _run_full_turn(
                 matched_turns=matches,
                 session=session,
                 ollama_url=args.ollama_url,
-                model=args.gap_model,
+                model=args.retro_model,
                 temperature=args.temperature,
                 timeout=args.timeout,
-                num_ctx=args.gap_num_ctx,
+                num_ctx=args.retro_num_ctx,
                 text_chars=args.text_chars,
             )
             retro_bundle = {
@@ -1470,8 +1470,19 @@ def _parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--gap-model", default=os.environ.get("FORWARD_GAP_MODEL", "eoh-qwen3-14b"))
     ap.add_argument("--report-model", default=os.environ.get("FORWARD_SYNTH_MODEL", "eoh-qwen3-14b"))
+    ap.add_argument(
+        "--retro-model",
+        default=os.environ.get("FORWARD_RETRO_MODEL", "eoh-llama"),
+        help="Model for retro session summary review (default eoh-llama).",
+    )
     ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "102400")))
     ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "102400")))
+    ap.add_argument(
+        "--retro-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_RETRO_NUM_CTX", "32768")),
+        help="Context window for retro summary model (default 32768).",
+    )
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=600.0)
     ap.add_argument("--top-k", type=int, default=12)
@@ -1595,13 +1606,14 @@ def main() -> int:
     print(f"Loaded {path.name} events={len(gh.events)} hash={gh.graph_hash}")
     print(
         f"probe(router)={args.probe_model} graph_pick={args.graph_pick_model} "
-        f"gap={args.gap_model} report={args.report_model}"
+        f"retro={args.retro_model} gap={args.gap_model} report={args.report_model}"
     )
 
     session: Optional[SessionLog] = None
     if not args.no_session:
         models_meta = {
             "probe": args.probe_model,
+            "retro": args.retro_model,
             "gap": args.gap_model,
             "report": args.report_model,
             "embed": args.embed_model,
