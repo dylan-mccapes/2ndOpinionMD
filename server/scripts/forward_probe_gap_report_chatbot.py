@@ -58,6 +58,11 @@
   session id is ``harness_<UTC>`` when ``--session-id`` is omitted.
 - ``--harness-fresh`` deletes existing JSONL/meta for that session id before run.
 - Receipt JSON written to ``--harness-receipt`` or under ``receipts/`` by default.
+  The full session (every turn: questions, gap_report, final_report, retro,
+  router fields, graph tool) is always **copied** next to that JSON as
+  ``<receipt_stem>_session.jsonl`` and ``<receipt_stem>_session__meta.json`` so
+  the harness bundle is self-contained. Use ``--harness-no-session-copy`` to
+  skip copying (paths to the live session files are still recorded).
 
 Env: same DB/embed/Ollama as ``mkg_retrieval_harness`` (``SYNC_DATABASE_URL``,
 ``LOCAL_EMBED_MODEL``, ``OLLAMA_URL``). If no DSN, MKG lanes are skipped with a
@@ -78,6 +83,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1119,19 +1125,64 @@ def _harness_receipt_row(
     retro = probe.get("retro") or {}
     gate = retro.get("gate") or {}
     gap = rec.get("gap") or {}
+    stored = rec.get("stored") or {}
     return {
         "harness_id": item.get("id"),
         "question": rec.get("question"),
         "n_seed_turns": n_seeds,
         "retro_references_prior": gate.get("references_prior"),
         "retro_query": gate.get("retro_query"),
-        "retro_summary": (retro.get("retro_summary") or "")[:2000],
+        "retro_summary": (retro.get("retro_summary") or "")[:8000],
         "graph_tool": probe.get("graph_tool"),
         "mkg_jaccard": (probe.get("mkg") or {}).get("overlap", {}).get("jaccard"),
-        "turn_id": (rec.get("stored") or {}).get("turn_id") if rec.get("stored") else None,
-        "gap_report_preview": (gap.get("gap_report") or "")[:500],
-        "final_report_preview": (rec.get("report") or "")[:500],
+        "turn_id": stored.get("turn_id"),
+        "turn_index": stored.get("turn_index"),
+        "gap_report": gap.get("gap_report") or "",
+        "final_report": rec.get("report") or "",
     }
+
+
+def _harness_session_receipt_paths(receipt_path: Path) -> Tuple[Path, Path]:
+    stem = receipt_path.stem
+    parent = receipt_path.parent
+    return (
+        parent / f"{stem}_session.jsonl",
+        parent / f"{stem}_session__meta.json",
+    )
+
+
+def _merge_session_into_harness_receipt(
+    session: SessionLog,
+    receipt_path: Path,
+    *,
+    copy_files: bool,
+) -> Dict[str, Any]:
+    """Record live session paths; optionally copy JSONL + meta beside receipt_path."""
+    jsonl_live = session.jsonl_path.resolve()
+    meta_live = session.meta_path.resolve() if session.meta_path.is_file() else None
+    out: Dict[str, Any] = {
+        "session_log_schema": "chatbot_session.v1 (one JSON object per line: question, gap_report, final_report, retro, router_*, graph_tool, graph_args, …)",
+        "session_jsonl_live": str(jsonl_live),
+        "session_meta_live": str(meta_live) if meta_live else None,
+        "n_turns_in_session": session.n_turns(),
+        "session_jsonl_receipt": None,
+        "session_meta_receipt": None,
+    }
+    dest_jsonl, dest_meta = _harness_session_receipt_paths(receipt_path)
+    if copy_files:
+        if session.jsonl_path.is_file():
+            shutil.copy2(session.jsonl_path, dest_jsonl)
+            out["session_jsonl_receipt"] = str(dest_jsonl.resolve())
+        if session.meta_path.is_file():
+            shutil.copy2(session.meta_path, dest_meta)
+            out["session_meta_receipt"] = str(dest_meta.resolve())
+    _log(
+        "session",
+        f"harness receipt: turns={out['n_turns_in_session']} "
+        f"jsonl={'copy' if copy_files and out['session_jsonl_receipt'] else 'live'} "
+        f"{out.get('session_jsonl_receipt') or out['session_jsonl_live']}",
+    )
+    return out
 
 
 def _run_harness_mode(
@@ -1158,6 +1209,7 @@ def _run_harness_mode(
     rows: List[Dict[str, Any]] = []
     verbose = bool(getattr(args, "harness_verbose", False))
     continue_on_error = bool(getattr(args, "harness_continue_on_error", False))
+    copy_session = not bool(getattr(args, "harness_no_session_copy", False))
 
     for i, item in enumerate(items):
         n_seeds = _append_harness_seed_turns(session, item.get("seed_session_turns_before") or [])
@@ -1179,7 +1231,7 @@ def _run_harness_mode(
             print(f"  error: {exc}", file=sys.stderr, flush=True)
             if not continue_on_error:
                 payload = {
-                    "schema": "probe_gap_session_harness.v1",
+                    "schema": "probe_gap_session_harness.v2",
                     "ok": False,
                     "graph_path": str(graph_path),
                     "harness_file": str(path),
@@ -1187,6 +1239,11 @@ def _run_harness_mode(
                     "n_items": len(items),
                     "rows": rows,
                 }
+                payload.update(
+                    _merge_session_into_harness_receipt(
+                        session, receipt_path, copy_files=copy_session
+                    )
+                )
                 receipt_path.write_text(
                     json.dumps(payload, indent=2, ensure_ascii=False),
                     encoding="utf-8",
@@ -1204,18 +1261,26 @@ def _run_harness_mode(
                 flush=True,
             )
 
+    any_err = any(isinstance(r, dict) and r.get("error") for r in rows)
     payload = {
-        "schema": "probe_gap_session_harness.v1",
-        "ok": True,
+        "schema": "probe_gap_session_harness.v2",
+        "ok": not any_err,
         "graph_path": str(graph_path),
         "harness_file": str(path),
         "session_id": session.session_id,
         "n_items": len(items),
         "rows": rows,
     }
+    payload.update(
+        _merge_session_into_harness_receipt(session, receipt_path, copy_files=copy_session)
+    )
     receipt_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     _log("📝", f"harness receipt -> {receipt_path}")
-    print(f"harness done n={len(items)} receipt={receipt_path}")
+    print(
+        f"harness done n={len(items)} receipt={receipt_path} "
+        f"session_copy={payload.get('session_jsonl_receipt') or payload.get('session_jsonl_live')}",
+        flush=True,
+    )
     return 0
 
 
@@ -1325,6 +1390,14 @@ def _parse_args() -> argparse.Namespace:
         "--harness-continue-on-error",
         action="store_true",
         help="With --harness-file: continue after a failed question (default: stop and write partial receipt).",
+    )
+    ap.add_argument(
+        "--harness-no-session-copy",
+        action="store_true",
+        help=(
+            "With --harness-file: do not copy session JSONL/meta next to the receipt "
+            "(live paths are still recorded on the receipt JSON)."
+        ),
     )
     return ap.parse_args()
 
