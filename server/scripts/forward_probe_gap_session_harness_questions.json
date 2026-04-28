@@ -1,0 +1,72 @@
+[
+  {
+    "id": "h01",
+    "question": "Walk me through this patient's five-year FORWARD trajectory. Highlight any flares, treatment escalations or de-escalations, key medications around those times, and any notable areas of uncertainty."
+  },
+  {
+    "id": "h02",
+    "question": "During which periods was the patient most stable, and what medications were they on during those times?"
+  },
+  {
+    "id": "h03",
+    "question": "How did the patient's pain levels or functional scores change over the five years? Were there any clear improvements or worsening?"
+  },
+  {
+    "id": "h04",
+    "question": "How well did the patient respond to methotrexate? Were there any signs it wasn't enough on its own?"
+  },
+  {
+    "id": "h05",
+    "question": "What are the biggest gaps or uncertainties in this patient's record, and how do they affect our understanding of their disease course?"
+  },
+  {
+    "id": "h06",
+    "seed_session_turns_before": [
+      {
+        "question": "Summarize methotrexate dosing and monitoring for this synthetic RA patient.",
+        "gap_report": "Probe noted methotrexate 15 mg weekly with folic acid; no liver enzyme narrative in stub.",
+        "final_report": "Patient on methotrexate 15 mg weekly (event P1_med_methotrexate) with folic acid 1 mg daily; therapy episode P1_tepi_methotrexate ongoing from 2021-01-26.",
+        "synthetic_seed": true
+      },
+      {
+        "question": "When was hydroxychloroquine added relative to methotrexate?",
+        "gap_report": "HCQ started after MTX per medication timeline.",
+        "final_report": "Hydroxychloroquine 200 mg bid started 2021-07-28 (P1_med_hydroxychloroquine) after methotrexate initiation.",
+        "synthetic_seed": true
+      }
+    ],
+    "question": "Compared to what we discussed earlier in this session about methotrexate and hydroxychloroquine timing, does the record show any evidence the patient failed methotrexate before HCQ was added?"
+  },
+  {
+    "id": "h07",
+    "question": "List any PRO instruments that repeat every six months and whether RDCI appears in every round."
+  },
+  {
+    "id": "h08",
+    "seed_session_turns_before": [
+      {
+        "question": "What was the VAS Patient Global trend in the first two years?",
+        "gap_report": "VAS Patient Global declined from mid-50s toward high 40s in year one then lower in year two.",
+        "final_report": "VAS Patient Global approximately 54.3 at 2021-01-26, 49.1 at 2021-07-28, then 33.3 by 2023-01-28 — net improvement over two years.",
+        "synthetic_seed": true
+      }
+    ],
+    "question": "Following up on my previous question about VAS Patient Global in the first two years: how does that trajectory compare to HAQ-II scores in the same window?"
+  },
+  {
+    "id": "h09",
+    "question": "Please tell me about any confounders. Especially medications."
+  },
+  {
+    "id": "h10",
+    "seed_session_turns_before": [
+      {
+        "question": "What phenotype label is stamped on this synthetic cohort member?",
+        "gap_report": "metadata lists early MTX responder.",
+        "final_report": "Phenotype headline: early MTX responder; five-year improving trajectory per graph metadata.",
+        "synthetic_seed": true
+      }
+    ],
+    "question": "Given the phenotype summary we captured earlier in this session, does the five-year PRO trajectory still support labeling this patient as an early methotrexate responder?"
+  }
+]

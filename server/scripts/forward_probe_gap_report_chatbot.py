@@ -49,6 +49,16 @@
   any retro bundle. A sidecar ``__meta.json`` carries graph_hash + models.
   Resume by passing the same ``--session-id``. ``--no-session`` disables.
 
+**Session harness** (non-interactive multi-question run):
+
+- ``--harness-file`` JSON array of objects: required ``question``; optional
+  ``id`` and ``seed_session_turns_before`` (list of dicts appended as prior
+  turns so retro can run before each real question).
+- Requires session logging (incompatible with ``--no-session``). Default
+  session id is ``harness_<UTC>`` when ``--session-id`` is omitted.
+- ``--harness-fresh`` deletes existing JSONL/meta for that session id before run.
+- Receipt JSON written to ``--harness-receipt`` or under ``receipts/`` by default.
+
 Env: same DB/embed/Ollama as ``mkg_retrieval_harness`` (``SYNC_DATABASE_URL``,
 ``LOCAL_EMBED_MODEL``, ``OLLAMA_URL``). If no DSN, MKG lanes are skipped with a
 notice; PTV-only still works.
@@ -58,6 +68,9 @@ Examples::
     python server/scripts/forward_probe_gap_report_chatbot.py
     python server/scripts/forward_probe_gap_report_chatbot.py --graph path/to/ptv.json
     python server/scripts/forward_probe_gap_report_chatbot.py --no-mkg
+    python server/scripts/forward_probe_gap_report_chatbot.py \\
+        --harness-file server/scripts/forward_probe_gap_session_harness_questions.json \\
+        --harness-fresh
 """
 from __future__ import annotations
 
@@ -66,6 +79,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -95,6 +109,10 @@ DEFAULT_GRAPH = (
     / "forward_kaleb_package_20260423"
     / "synthetic_pro_cohort"
     / "ptv_synth_P1_early_responder.json"
+)
+
+DEFAULT_HARNESS_QUESTIONS = (
+    ROOT / "server" / "scripts" / "forward_probe_gap_session_harness_questions.json"
 )
 
 _GRAPH_TOOLS = [
@@ -898,6 +916,309 @@ def _run_probe(
     }
 
 
+def _append_probe_turn_to_session(
+    session: SessionLog,
+    q: str,
+    probe: Dict[str, Any],
+    gap: Dict[str, Any],
+    report: str,
+) -> Dict[str, Any]:
+    router_plan = probe.get("router_plan") or {}
+    mkg_block = probe.get("mkg") or {}
+    return session.append_turn(
+        {
+            "question": q,
+            "router_plan_semantic_query": str(router_plan.get("semantic_query") or ""),
+            "router_ts_terms": list(router_plan.get("ts_terms") or []),
+            "router_sources": list(_router_sources(router_plan) or []),
+            "router_question_type": router_plan.get("question_type"),
+            "mkg_jaccard": (mkg_block.get("overlap") or {}).get("jaccard"),
+            "mkg_semantic_hit_count": len(mkg_block.get("semantic_hits") or []),
+            "mkg_ts_hit_count": len(mkg_block.get("ts_hits") or []),
+            "ts_or_fallback_used": mkg_block.get("ts_or_fallback_used"),
+            "graph_tool": probe.get("graph_tool"),
+            "graph_args": probe.get("graph_args"),
+            "gap_report": gap.get("gap_report") or "",
+            "final_report": report or "",
+            "retro": probe.get("retro"),
+        }
+    )
+
+
+def _print_turn_outputs(
+    q: str,
+    probe: Dict[str, Any],
+    gap: Dict[str, Any],
+    report: str,
+) -> None:
+    if probe.get("retro") and (probe["retro"].get("retro_summary") or "").strip():
+        print("\n--- retro summary ---\n")
+        print(probe["retro"]["retro_summary"])
+    print("\n--- gap report ---\n")
+    print(gap.get("gap_report") or "")
+    print("\n--- final report ---\n")
+    print(report or "(empty)")
+    print()
+
+
+def _run_full_turn(
+    *,
+    question: str,
+    gh: Any,
+    session: Optional[SessionLog],
+    args: argparse.Namespace,
+    print_reports: bool = True,
+) -> Dict[str, Any]:
+    q = (question or "").strip()
+    _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
+
+    retro_bundle: Optional[Dict[str, Any]] = None
+    if session is not None and not args.no_retro:
+        gate = _retro_gate(
+            question=q,
+            session=session,
+            ollama_url=args.ollama_url,
+            model=args.probe_model,
+            temperature=args.temperature,
+            timeout=args.timeout,
+            num_ctx=args.probe_num_ctx,
+        )
+        if gate.get("references_prior") and gate.get("retro_query"):
+            matches = session.search(str(gate["retro_query"]), k=args.retro_k)
+            _log(
+                "🪞",
+                f"retro session.search hits={len(matches)} method="
+                f"{(matches[0].get('__retrieval_method') if matches else 'none')}",
+            )
+            review = _retro_summarize(
+                question=q,
+                matched_turns=matches,
+                session=session,
+                ollama_url=args.ollama_url,
+                model=args.gap_model,
+                temperature=args.temperature,
+                timeout=args.timeout,
+                num_ctx=args.gap_num_ctx,
+                text_chars=args.text_chars,
+            )
+            retro_bundle = {
+                "gate": gate,
+                "matched_turn_ids": [t.get("turn_id") for t in matches if t.get("turn_id")],
+                "n_matches": len(matches),
+                **review,
+            }
+        else:
+            retro_bundle = {
+                "gate": gate,
+                "matched_turn_ids": [],
+                "n_matches": 0,
+                "retro_summary": "",
+                "evidence_turn_ids": [],
+                "n_turns_reviewed": 0,
+            }
+
+    probe = _run_probe(
+        question=q,
+        gh=gh,
+        ollama_url=args.ollama_url,
+        probe_model=args.probe_model,
+        probe_num_ctx=args.probe_num_ctx,
+        temperature=args.temperature,
+        timeout=args.timeout,
+        top_k=args.top_k,
+        embed_model=args.embed_model,
+        enable_mkg=not args.no_mkg,
+        text_chars=args.text_chars,
+        enable_code_inventory=not args.no_code_inventory,
+        code_inventory_compact=args.code_inventory_compact,
+        code_inventory_router_json_max=args.code_inventory_router_json_max,
+        code_inventory_graph_json_max=args.code_inventory_graph_json_max,
+        retro_bundle=retro_bundle,
+    )
+    gap_sources = _router_sources(probe.get("router_plan") or {})
+    gap = _gap_phase(
+        question=q,
+        probe_bundle=probe,
+        gh=gh,
+        ollama_url=args.ollama_url,
+        model=args.gap_model,
+        temperature=args.temperature,
+        timeout=args.timeout,
+        num_ctx=args.gap_num_ctx,
+        top_k=args.top_k,
+        embed_model=args.embed_model,
+        gap_sources=gap_sources,
+        text_chars=args.text_chars,
+        gap_heuristic=not args.no_gap_heuristic,
+    )
+    report = _report_phase(
+        question=q,
+        probe_bundle=probe,
+        gap_bundle=gap,
+        ollama_url=args.ollama_url,
+        model=args.report_model,
+        temperature=args.temperature,
+        timeout=args.timeout,
+        num_ctx=args.report_num_ctx,
+    )
+
+    stored: Optional[Dict[str, Any]] = None
+    if session is not None:
+        try:
+            stored = _append_probe_turn_to_session(session, q, probe, gap, report)
+            _log("📝", f"session turn {stored.get('turn_id')} appended -> {session.jsonl_path.name}")
+        except Exception as exc:  # noqa: BLE001
+            _log("⚠️", f"session append failed: {exc}")
+
+    if print_reports:
+        _print_turn_outputs(q, probe, gap, report)
+
+    return {"question": q, "probe": probe, "gap": gap, "report": report, "stored": stored}
+
+
+def _load_harness_questions(path: Path) -> List[Dict[str, Any]]:
+    raw = path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    if isinstance(data, dict) and "questions" in data:
+        data = data["questions"]
+    if not isinstance(data, list) or not data:
+        raise ValueError("harness file must be a non-empty JSON array (or {questions: [...]})")
+    out: List[Dict[str, Any]] = []
+    for i, row in enumerate(data):
+        if isinstance(row, str):
+            row = {"question": row}
+        if not isinstance(row, dict):
+            raise ValueError(f"harness entry {i} must be an object or string")
+        q = str(row.get("question") or "").strip()
+        if not q:
+            raise ValueError(f"harness entry {i} missing question")
+        row = dict(row)
+        row["question"] = q
+        out.append(row)
+    return out
+
+
+def _append_harness_seed_turns(session: SessionLog, seeds: List[Any]) -> int:
+    n = 0
+    for raw in seeds or []:
+        if not isinstance(raw, dict):
+            continue
+        row = dict(raw)
+        row.setdefault("synthetic_seed", True)
+        session.append_turn(row)
+        n += 1
+    return n
+
+
+def _harness_receipt_row(
+    item: Dict[str, Any],
+    rec: Dict[str, Any],
+    n_seeds: int,
+) -> Dict[str, Any]:
+    probe = rec.get("probe") or {}
+    retro = probe.get("retro") or {}
+    gate = retro.get("gate") or {}
+    gap = rec.get("gap") or {}
+    return {
+        "harness_id": item.get("id"),
+        "question": rec.get("question"),
+        "n_seed_turns": n_seeds,
+        "retro_references_prior": gate.get("references_prior"),
+        "retro_query": gate.get("retro_query"),
+        "retro_summary": (retro.get("retro_summary") or "")[:2000],
+        "graph_tool": probe.get("graph_tool"),
+        "mkg_jaccard": (probe.get("mkg") or {}).get("overlap", {}).get("jaccard"),
+        "turn_id": (rec.get("stored") or {}).get("turn_id") if rec.get("stored") else None,
+        "gap_report_preview": (gap.get("gap_report") or "")[:500],
+        "final_report_preview": (rec.get("report") or "")[:500],
+    }
+
+
+def _run_harness_mode(
+    args: argparse.Namespace,
+    gh: Any,
+    session: SessionLog,
+    graph_path: Path,
+) -> int:
+    path = Path(args.harness_file).expanduser().resolve()
+    if not path.is_file():
+        print(f"error: harness file not found: {path}", file=sys.stderr)
+        return 2
+    items = _load_harness_questions(path)
+    receipt_path = args.harness_receipt
+    if receipt_path is None:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        receipt_dir = ROOT / "receipts"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        receipt_path = receipt_dir / f"FORWARD_PROBE_GAP_SESSION_HARNESS_{ts}.json"
+    else:
+        receipt_path = Path(receipt_path).expanduser().resolve()
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows: List[Dict[str, Any]] = []
+    verbose = bool(getattr(args, "harness_verbose", False))
+    continue_on_error = bool(getattr(args, "harness_continue_on_error", False))
+
+    for i, item in enumerate(items):
+        n_seeds = _append_harness_seed_turns(session, item.get("seed_session_turns_before") or [])
+        print(
+            f"[harness {i + 1}/{len(items)}] seeds={n_seeds} id={item.get('id', i)!r}",
+            flush=True,
+        )
+        try:
+            rec = _run_full_turn(
+                question=item["question"],
+                gh=gh,
+                session=session,
+                args=args,
+                print_reports=verbose,
+            )
+        except Exception as exc:  # noqa: BLE001
+            err_row = {"error": str(exc), "harness_id": item.get("id"), "index": i}
+            rows.append(err_row)
+            print(f"  error: {exc}", file=sys.stderr, flush=True)
+            if not continue_on_error:
+                payload = {
+                    "schema": "probe_gap_session_harness.v1",
+                    "ok": False,
+                    "graph_path": str(graph_path),
+                    "harness_file": str(path),
+                    "session_id": session.session_id,
+                    "n_items": len(items),
+                    "rows": rows,
+                }
+                receipt_path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                _log("📝", f"harness receipt (partial) -> {receipt_path}")
+                return 1
+            continue
+
+        rows.append(_harness_receipt_row(item, rec, n_seeds))
+        if not verbose:
+            rk = (rec.get("probe") or {}).get("retro") or {}
+            ref = (rk.get("gate") or {}).get("references_prior")
+            print(
+                f"  ok references_prior={ref} graph_tool={(rec.get('probe') or {}).get('graph_tool')!r}",
+                flush=True,
+            )
+
+    payload = {
+        "schema": "probe_gap_session_harness.v1",
+        "ok": True,
+        "graph_path": str(graph_path),
+        "harness_file": str(path),
+        "session_id": session.session_id,
+        "n_items": len(items),
+        "rows": rows,
+    }
+    receipt_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    _log("📝", f"harness receipt -> {receipt_path}")
+    print(f"harness done n={len(items)} receipt={receipt_path}")
+    return 0
+
+
 def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--graph", type=Path, default=DEFAULT_GRAPH, help="PTV JSON graph path.")
@@ -972,6 +1293,39 @@ def _parse_args() -> argparse.Namespace:
         metavar="K",
         help="Top-K prior turns to fetch from session log when retro_query is set.",
     )
+    ap.add_argument(
+        "--harness-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Run a non-interactive session harness: JSON array of {question, id?, "
+            "seed_session_turns_before?}. Implies a session id (harness_<UTC> if unset). "
+            f"Default questions file: {DEFAULT_HARNESS_QUESTIONS.relative_to(ROOT)}"
+        ),
+    )
+    ap.add_argument(
+        "--harness-receipt",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write harness summary JSON here (default: receipts/FORWARD_PROBE_GAP_SESSION_HARNESS_<UTC>.json).",
+    )
+    ap.add_argument(
+        "--harness-verbose",
+        action="store_true",
+        help="Print full gap + final report for each harness question (default: one-line progress).",
+    )
+    ap.add_argument(
+        "--harness-fresh",
+        action="store_true",
+        help="With --harness-file: delete existing session JSONL/meta for the resolved session id before run.",
+    )
+    ap.add_argument(
+        "--harness-continue-on-error",
+        action="store_true",
+        help="With --harness-file: continue after a failed question (default: stop and write partial receipt).",
+    )
     return ap.parse_args()
 
 
@@ -980,6 +1334,10 @@ def main() -> int:
     path = args.graph.expanduser().resolve()
     if not path.is_file():
         print(f"error: graph not found: {path}", file=sys.stderr)
+        return 2
+
+    if args.harness_file is not None and args.no_session:
+        print("error: --harness-file requires session logging (omit --no-session)", file=sys.stderr)
         return 2
 
     gh = load_graph(path)
@@ -994,11 +1352,18 @@ def main() -> int:
             "report": args.report_model,
             "embed": args.embed_model,
         }
-        existing = (
-            SessionLog.open_existing(args.session_id, base_dir=Path(args.session_dir))
-            if args.session_id
-            else None
-        )
+        base_dir = Path(args.session_dir).expanduser().resolve()
+        effective_sid = args.session_id
+        if args.harness_file is not None and not effective_sid:
+            effective_sid = f"harness_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+
+        if args.harness_file is not None and args.harness_fresh and effective_sid:
+            for name in (f"{effective_sid}.jsonl", f"{effective_sid}__meta.json"):
+                p = base_dir / name
+                if p.is_file():
+                    p.unlink()
+
+        existing = SessionLog.open_existing(effective_sid, base_dir=base_dir) if effective_sid else None
         if existing is not None and existing.graph_hash == gh.graph_hash:
             session = existing
             print(f"session={session.session_id} (resumed) prior_turns={session.n_turns()}")
@@ -1007,12 +1372,16 @@ def main() -> int:
                 graph_hash=gh.graph_hash,
                 graph_path=str(path),
                 models=models_meta,
-                session_id=args.session_id,
-                base_dir=Path(args.session_dir),
+                session_id=effective_sid,
+                base_dir=base_dir,
             )
             print(f"session={session.session_id} (new) -> {session.jsonl_path}")
     else:
         print("session=DISABLED (--no-session)")
+
+    if args.harness_file is not None:
+        assert session is not None
+        return _run_harness_mode(args, gh, session, path)
 
     print("Commands: quit | exit | q\n")
 
@@ -1027,130 +1396,10 @@ def main() -> int:
             return 0
 
         try:
-            _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
-
-            retro_bundle: Optional[Dict[str, Any]] = None
-            if session is not None and not args.no_retro:
-                gate = _retro_gate(
-                    question=q,
-                    session=session,
-                    ollama_url=args.ollama_url,
-                    model=args.probe_model,
-                    temperature=args.temperature,
-                    timeout=args.timeout,
-                    num_ctx=args.probe_num_ctx,
-                )
-                if gate.get("references_prior") and gate.get("retro_query"):
-                    matches = session.search(str(gate["retro_query"]), k=args.retro_k)
-                    _log(
-                        "🪞",
-                        f"retro session.search hits={len(matches)} method="
-                        f"{(matches[0].get('__retrieval_method') if matches else 'none')}",
-                    )
-                    review = _retro_summarize(
-                        question=q,
-                        matched_turns=matches,
-                        session=session,
-                        ollama_url=args.ollama_url,
-                        model=args.gap_model,
-                        temperature=args.temperature,
-                        timeout=args.timeout,
-                        num_ctx=args.gap_num_ctx,
-                        text_chars=args.text_chars,
-                    )
-                    retro_bundle = {
-                        "gate": gate,
-                        "matched_turn_ids": [t.get("turn_id") for t in matches if t.get("turn_id")],
-                        "n_matches": len(matches),
-                        **review,
-                    }
-                else:
-                    retro_bundle = {"gate": gate, "matched_turn_ids": [], "n_matches": 0,
-                                    "retro_summary": "", "evidence_turn_ids": [], "n_turns_reviewed": 0}
-
-            probe = _run_probe(
-                question=q,
-                gh=gh,
-                ollama_url=args.ollama_url,
-                probe_model=args.probe_model,
-                probe_num_ctx=args.probe_num_ctx,
-                temperature=args.temperature,
-                timeout=args.timeout,
-                top_k=args.top_k,
-                embed_model=args.embed_model,
-                enable_mkg=not args.no_mkg,
-                text_chars=args.text_chars,
-                enable_code_inventory=not args.no_code_inventory,
-                code_inventory_compact=args.code_inventory_compact,
-                code_inventory_router_json_max=args.code_inventory_router_json_max,
-                code_inventory_graph_json_max=args.code_inventory_graph_json_max,
-                retro_bundle=retro_bundle,
-            )
-            gap_sources = _router_sources(probe.get("router_plan") or {})
-            gap = _gap_phase(
-                question=q,
-                probe_bundle=probe,
-                gh=gh,
-                ollama_url=args.ollama_url,
-                model=args.gap_model,
-                temperature=args.temperature,
-                timeout=args.timeout,
-                num_ctx=args.gap_num_ctx,
-                top_k=args.top_k,
-                embed_model=args.embed_model,
-                gap_sources=gap_sources,
-                text_chars=args.text_chars,
-                gap_heuristic=not args.no_gap_heuristic,
-            )
-            report = _report_phase(
-                question=q,
-                probe_bundle=probe,
-                gap_bundle=gap,
-                ollama_url=args.ollama_url,
-                model=args.report_model,
-                temperature=args.temperature,
-                timeout=args.timeout,
-                num_ctx=args.report_num_ctx,
-            )
+            _run_full_turn(question=q, gh=gh, session=session, args=args, print_reports=True)
         except Exception as exc:  # noqa: BLE001
             print(f"\nerror: {exc}\n", file=sys.stderr)
             continue
-
-        if session is not None:
-            try:
-                router_plan = (probe.get("router_plan") or {})
-                mkg_block = (probe.get("mkg") or {})
-                stored = session.append_turn(
-                    {
-                        "question": q,
-                        "router_plan_semantic_query": str(router_plan.get("semantic_query") or ""),
-                        "router_ts_terms": list(router_plan.get("ts_terms") or []),
-                        "router_sources": list(_router_sources(router_plan) or []),
-                        "router_question_type": router_plan.get("question_type"),
-                        "mkg_jaccard": (mkg_block.get("overlap") or {}).get("jaccard"),
-                        "mkg_semantic_hit_count": len(mkg_block.get("semantic_hits") or []),
-                        "mkg_ts_hit_count": len(mkg_block.get("ts_hits") or []),
-                        "ts_or_fallback_used": mkg_block.get("ts_or_fallback_used"),
-                        "graph_tool": probe.get("graph_tool"),
-                        "graph_args": probe.get("graph_args"),
-                        "gap_report": gap.get("gap_report") or "",
-                        "final_report": report or "",
-                        "retro": probe.get("retro"),
-                    }
-                )
-                _log("📝", f"session turn {stored.get('turn_id')} appended -> {session.jsonl_path.name}")
-            except Exception as exc:  # noqa: BLE001
-                _log("⚠️", f"session append failed: {exc}")
-
-        if probe.get("retro") and (probe["retro"].get("retro_summary") or "").strip():
-            print("\n--- retro summary ---\n")
-            print(probe["retro"]["retro_summary"])
-
-        print("\n--- gap report ---\n")
-        print(gap.get("gap_report") or "")
-        print("\n--- final report ---\n")
-        print(report or "(empty)")
-        print()
 
 
 if __name__ == "__main__":
