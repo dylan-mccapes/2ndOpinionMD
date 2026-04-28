@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -32,15 +33,23 @@ QUESTION = (
 )
 
 
+def _log(emoji: str, msg: str) -> None:
+    print(f"{emoji} {msg}", file=sys.stderr, flush=True)
+
+
 def _clip(value: Any, n: int = 5000) -> str:
     text = json.dumps(value, ensure_ascii=False, indent=2, default=str)
     return text if len(text) <= n else text[:n] + "\n...[truncated]"
 
 
 def _build_context() -> Dict[str, Any]:
+    _log("🧩", f"Loading graph: {DEFAULT_GRAPH}")
     gh = load_graph(DEFAULT_GRAPH)
+    _log("📈", "Running graph_stats")
     stats = call_tool("graph_stats", gh, {})
+    _log("🔎", "Running semantic_search (k=16)")
     sem = call_tool("semantic_search", gh, {"query": QUESTION, "k": 16})
+    _log("💊", "Running code_index_lookup for medications")
     meds = call_tool(
         "code_index_lookup",
         gh,
@@ -62,6 +71,7 @@ def main() -> int:
     ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "32768"))
 
+    _log("🚀", "Starting direct eoh-qwen streaming test")
     payload_context = _build_context()
     system = (
         "You are eoh-qwen in direct clinical test mode.\n"
@@ -96,9 +106,18 @@ def main() -> int:
         },
     }
 
+    _log(
+        "🤖",
+        f"model={model} num_ctx={num_ctx} ollama_url={ollama_url} graph={DEFAULT_GRAPH.name}",
+    )
     print(f"model={model} num_ctx={num_ctx} graph={DEFAULT_GRAPH.name}")
     print("\n--- STREAM START (full output tokens) ---\n")
 
+    t0 = time.monotonic()
+    n_chunks = 0
+    n_chars = 0
+    last_progress = t0
+    _log("📡", "Posting streaming request to Ollama /api/chat")
     with requests.post(
         f"{ollama_url}/api/chat",
         json=req,
@@ -112,11 +131,22 @@ def main() -> int:
             obj = json.loads(line)
             tok = ((obj.get("message") or {}).get("content")) or ""
             if tok:
+                n_chunks += 1
+                n_chars += len(tok)
                 print(tok, end="", flush=True)
+                now = time.monotonic()
+                if now - last_progress >= 2.0:
+                    _log(
+                        "⏱️",
+                        f"streaming... chunks={n_chunks} chars={n_chars} elapsed={now - t0:.1f}s",
+                    )
+                    last_progress = now
             if obj.get("done"):
                 break
 
     print("\n\n--- STREAM END ---")
+    elapsed = time.monotonic() - t0
+    _log("✅", f"Done. chunks={n_chunks} chars={n_chars} elapsed={elapsed:.1f}s")
     return 0
 
 
