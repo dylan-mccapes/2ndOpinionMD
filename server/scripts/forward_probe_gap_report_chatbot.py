@@ -96,6 +96,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from server.mkg.router_planner import plan_route
+from server.eoh.module_index import MODULE_INDEX
 from server.ptv_toolkit.code_inventory import (
     build_patient_code_inventory,
     fit_code_inventory_to_budget,
@@ -306,6 +307,78 @@ def _router_modules(plan: Dict[str, Any]) -> List[str]:
         if isinstance(r, dict) and r.get("module_id"):
             out.append(str(r["module_id"]).strip())
     return out
+
+
+def _eoh_module_route_prelude(
+    *,
+    question: str,
+    patient_state_summary: Optional[Dict[str, Any]],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    timeout: float,
+    num_ctx: int,
+) -> Dict[str, Any]:
+    """3.2 pre-router call using router_llm-style planning: question_type + exact module/doc plan."""
+    module_index_for_prompt = {}
+    for mid, mod in MODULE_INDEX.items():
+        module_index_for_prompt[mid] = {
+            "layer": mod.get("layer"),
+            "llm_use_when": mod.get("llm_use_when"),
+            "doc_handles": mod.get("doc_handles") or [],
+        }
+    system = (
+        "You are an EoH Router planner. Return STRICT JSON only.\n"
+        "Planner-only: do not answer clinically.\n"
+        "Choose ONE question_type from A|B|C|D|E|OTHER, plus module_plan and doc_retrieval_plan.\n"
+        "Use ONLY module ids and doc handles present in module_index.\n"
+        "EoH is first-class: for trajectory/flare/remission/longitudinal-plan/uncertainty questions,\n"
+        "prefer A-E (not OTHER) and include specific EoH modules with exact doc handles.\n\n"
+        "Output schema:\n"
+        "{\n"
+        '  "question_type":"A|B|C|D|E|OTHER",\n'
+        '  "question_type_explanation":"...",\n'
+        '  "module_plan":[{"step":"...", "modules":["M1","M13"]}],\n'
+        '  "doc_retrieval_plan":[{"source":"eoh_router", "handles":["eoh_m1_patient_terrain"]}],\n'
+        '  "selected_modules":["M1","M13"]\n'
+        "}\n"
+    )
+    user = json.dumps(
+        {
+            "question": question,
+            "patient_state_summary": patient_state_summary or {},
+            "module_index": module_index_for_prompt,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )[:120000]
+    _log("🧭", f"Stage EOH-PRELUDE model={model} num_ctx={num_ctx}")
+    raw = _ollama_chat(
+        url=ollama_url,
+        model=model,
+        system=system,
+        user=user,
+        temperature=temperature,
+        timeout=timeout,
+        num_ctx=num_ctx,
+    )
+    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    # normalize selected_modules from either explicit list or module_plan
+    mods = []
+    for m in parsed.get("selected_modules") or []:
+        s = str(m).strip()
+        if s in MODULE_INDEX and s not in mods:
+            mods.append(s)
+    if not mods:
+        for step in parsed.get("module_plan") or []:
+            if not isinstance(step, dict):
+                continue
+            for m in step.get("modules") or []:
+                s = str(m).strip()
+                if s in MODULE_INDEX and s not in mods:
+                    mods.append(s)
+    parsed["selected_modules"] = mods
+    return parsed
 
 
 def _mkg_retrieve_bundle(
@@ -867,6 +940,8 @@ def _run_probe(
     ollama_url: str,
     probe_model: str,
     probe_num_ctx: int,
+    graph_pick_model: str,
+    graph_pick_num_ctx: int,
     temperature: float,
     timeout: float,
     top_k: int,
@@ -904,6 +979,24 @@ def _run_probe(
     if retro_bundle and retro_bundle.get("retro_summary"):
         retro_summary_text = str(retro_bundle.get("retro_summary") or "")
 
+    eoh_prelude = _eoh_module_route_prelude(
+        question=question,
+        patient_state_summary={
+            "graph_stats": graph_stats.get("result") or graph_stats,
+            "code_index_summary": (inv_full or {}).get("summary") if isinstance(inv_full, dict) else {},
+        },
+        ollama_url=ollama_url,
+        model=probe_model,
+        temperature=temperature,
+        timeout=timeout,
+        num_ctx=probe_num_ctx,
+    )
+    _log(
+        "🧭",
+        f"EOH prelude qtype={eoh_prelude.get('question_type')} "
+        f"modules={len(eoh_prelude.get('selected_modules') or [])}",
+    )
+
     _log("🧭", "Stage PROBE — plan_route (semantic_query + ts_terms + sources)")
     route = plan_route(
         question,
@@ -917,6 +1010,17 @@ def _run_probe(
         prior_session_summary=retro_summary_text or None,
     )
     sources = _router_sources(route)
+    route_mods = _router_modules(route)
+    prelude_mods = [str(m).strip() for m in (eoh_prelude.get("selected_modules") or []) if str(m).strip()]
+    if prelude_mods:
+        merged_mods = []
+        for m in prelude_mods + route_mods:
+            if m in MODULE_INDEX and m not in merged_mods:
+                merged_mods.append(m)
+        route["selected_modules"] = [
+            {"module_id": m, "priority": i + 1, "why": "eoh_prelude+source_router_merge"}
+            for i, m in enumerate(merged_mods)
+        ]
     _log(
         "🧭",
         f"Router qtype={route.get('question_type')} ts_terms={len(route.get('ts_terms') or [])} "
@@ -942,10 +1046,10 @@ def _run_probe(
         graph_brief=brief,
         patient_code_inventory=inv_for_graph,
         ollama_url=ollama_url,
-        model=probe_model,
+        model=graph_pick_model,
         temperature=temperature,
         timeout=timeout,
-        num_ctx=probe_num_ctx,
+        num_ctx=graph_pick_num_ctx,
     )
     _log("🔧", f"Stage PROBE — graph tool call {g_tool}")
     graph_out = call_tool(g_tool, gh, g_args)
@@ -956,7 +1060,7 @@ def _run_probe(
     ptv_sem = call_tool(
         "semantic_search",
         gh,
-        {"query": str(route.get("semantic_query") or question), "k": min(16, top_k + 2)},
+        {"query": str(route.get("semantic_query") or question), "k": min(28, max(16, top_k * 2))},
     )
     if not ptv_sem.get("ok"):
         _log("⚠️", f"PTV semantic_search error: {ptv_sem.get('error', ptv_sem)}")
@@ -970,6 +1074,7 @@ def _run_probe(
         "graph_args": g_args,
         "graph_tool_result": graph_out,
         "pre_router_code_inventory": inv_full,
+        "eoh_module_prelude": eoh_prelude,
         "retro": retro_bundle,
     }
 
@@ -1082,6 +1187,8 @@ def _run_full_turn(
         ollama_url=args.ollama_url,
         probe_model=args.probe_model,
         probe_num_ctx=args.probe_num_ctx,
+        graph_pick_model=args.graph_pick_model,
+        graph_pick_num_ctx=args.graph_pick_num_ctx,
         temperature=args.temperature,
         timeout=args.timeout,
         top_k=args.top_k,
@@ -1343,13 +1450,24 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
     ap.add_argument("--probe-model", default=os.environ.get("EOH_SOURCE_ROUTER_MODEL", "eoh-llama3.2-source-router"))
     ap.add_argument("--probe-num-ctx", type=int, default=int(os.environ.get("OLLAMA_ROUTER_NUM_CTX", "8192")))
-    ap.add_argument("--gap-model", default=os.environ.get("FORWARD_GAP_MODEL", "eoh-llama"))
-    ap.add_argument("--report-model", default=os.environ.get("FORWARD_SYNTH_MODEL", "eoh-llama"))
+    ap.add_argument(
+        "--graph-pick-model",
+        default=os.environ.get("FORWARD_GRAPH_PICK_MODEL", "eoh-llama"),
+        help="Model for probe graph-tool selection (default 8B).",
+    )
+    ap.add_argument(
+        "--graph-pick-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_GRAPH_PICK_NUM_CTX", "32768")),
+        help="Context window for graph-tool selection model.",
+    )
+    ap.add_argument("--gap-model", default=os.environ.get("FORWARD_GAP_MODEL", "eoh-qwen3-14b"))
+    ap.add_argument("--report-model", default=os.environ.get("FORWARD_SYNTH_MODEL", "eoh-qwen3-14b"))
     ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "32768")))
     ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "32768")))
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=300.0)
-    ap.add_argument("--top-k", type=int, default=8)
+    ap.add_argument("--top-k", type=int, default=12)
     ap.add_argument("--embed-model", default=os.environ.get("LOCAL_EMBED_MODEL", "BAAI/bge-base-en-v1.5"))
     ap.add_argument("--text-chars", type=int, default=400)
     ap.add_argument("--no-mkg", action="store_true", help="Skip MKG DB retrieval (PTV + graph pick only).")
@@ -1468,7 +1586,10 @@ def main() -> int:
 
     gh = load_graph(path)
     print(f"Loaded {path.name} events={len(gh.events)} hash={gh.graph_hash}")
-    print(f"probe={args.probe_model} gap={args.gap_model} report={args.report_model}")
+    print(
+        f"probe(router)={args.probe_model} graph_pick={args.graph_pick_model} "
+        f"gap={args.gap_model} report={args.report_model}"
+    )
 
     session: Optional[SessionLog] = None
     if not args.no_session:

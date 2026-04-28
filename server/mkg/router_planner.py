@@ -119,6 +119,26 @@ def _backfill_sources(
             }
         )
         next_prio += 1
+
+    # Keep EoH as a first-class source family for EoH-like classes.
+    needs_eoh = question_type in {"C", "D", "OTHER"}
+    has_eoh = any(str(r.get("source") or "").startswith("eoh_") for r in out)
+    if needs_eoh and not has_eoh:
+        eoh_candidates = [str(s).strip().lower() for s in source_candidates if str(s).startswith("eoh_")]
+        for s in eoh_candidates:
+            if len(out) >= max_sources:
+                break
+            if any(str(r.get("source") or "") == s for r in out):
+                continue
+            out.append(
+                {
+                    "source": s,
+                    "priority": next_prio,
+                    "why": "ensure_eoh_first_class_source",
+                }
+            )
+            next_prio += 1
+            break
     return out
 
 
@@ -135,6 +155,8 @@ def _build_system_prompt() -> str:
         "  E = epidemiology / prevalence / evidence base\n"
         "  OTHER = administrative / unclear\n\n"
         "ROUTING RULES (follow strictly):\n"
+        "- EoH sources (eoh_*) are FIRST-CLASS. For trajectory/flare/remission/baseline/"
+        "longitudinal-planning/uncertainty questions, include at least one eoh_* source when available.\n"
         "- Therapy/management/dosing/first-line/protocol queries -> question_type D or C (NEVER E).\n"
         "- Guidelines, staging, standard-of-care -> C.\n"
         "- E is only for prevalence/epidemiology questions.\n"
