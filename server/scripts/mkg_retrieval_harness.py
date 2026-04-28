@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MKG retrieval test harness: one user query → semantic (embedding_local) + TS (websearch_to_tsquery)
-against ``public.rag_corpus``, then optional synthesis with Ollama (default ``eoh-llama-lucifer``).
+MKG retrieval test harness: one user query -> semantic (embedding_local) + TS (websearch_to_tsquery)
+against ``public.rag_corpus``, then optional synthesis with Ollama (default ``eoh-qwen3-14b``).
 
 The harness supports an optional **router-driven query expansion** stage that calls the
 ``eoh-llama3.2-source-router`` model first to produce an expanded ``semantic_query`` for ANN
@@ -12,13 +12,18 @@ which dramatically improves TS recall on dense vocabularies (RxNorm, SNOMED, LOI
 A separate ``--synth-model`` flag (or ``OLLAMA_SYNTH_MODEL`` env) lets the final synthesis
 step use a heavier model, e.g. ``eoh-llama:70b``, without rerunning retrieval.
 
+Default strategy:
+  - source-router ON (eoh-llama3.2-source-router)
+  - two-pass synthesis OFF (can be enabled via --two-pass-synth)
+  - synthesis model defaults to eoh-qwen3-14b
+
 Env (same as portal embed scripts):
   SYNC_DATABASE_URL or DATABASE_URL
   LOCAL_EMBED_MODEL — default BAAI/bge-base-en-v1.5
   OLLAMA_URL — default http://127.0.0.1:11434
-  OLLAMA_MODEL — default eoh-llama-lucifer (planning/default synth)
+  OLLAMA_MODEL — default eoh-qwen3-14b
   OLLAMA_SYNTH_MODEL — optional override for the synthesis step (e.g. eoh-llama:70b)
-  OLLAMA_NUM_CTX — synthesis context size (default 16384; bump to 32768 for 8B and 8192 for 70B)
+  OLLAMA_NUM_CTX — synthesis context size (default 102400)
   EOH_SOURCE_ROUTER_MODEL — default eoh-llama3.2-source-router
 
 Examples::
@@ -80,7 +85,7 @@ def _ollama_chat(
     import requests
 
     if num_ctx is None:
-        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
+        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "102400")))
     else:
         num_ctx = max(2048, int(num_ctx))
     _log("🤖", f"Calling Ollama model={model} num_ctx={num_ctx} timeout={timeout:.0f}s")
@@ -618,7 +623,7 @@ def run_llm_two_pass(
 
 
 def _parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="MKG semantic + TS retrieval harness with optional eoh-llama-lucifer.")
+    ap = argparse.ArgumentParser(description="MKG semantic + TS retrieval harness with optional synthesis.")
     ap.add_argument("query", nargs="?", help="Natural-language query (or use --query-file)")
     ap.add_argument("--query-file", type=Path, help="UTF-8 file whose contents are the query")
     ap.add_argument(
@@ -626,7 +631,7 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="UTF-8 file with one query per line (# comments and blank lines ignored)",
     )
-    ap.add_argument("--top-k", type=int, default=10, help="Hits per lane")
+    ap.add_argument("--top-k", type=int, default=12, help="Hits per lane")
     ap.add_argument(
         "--sources",
         type=str,
@@ -639,13 +644,19 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
     ap.add_argument(
         "--model",
-        default=os.environ.get("OLLAMA_MODEL", "eoh-llama-lucifer"),
+        default=os.environ.get("OLLAMA_MODEL", "eoh-qwen3-14b"),
         help="Default Ollama model. Used for synthesis if --synth-model not provided.",
     )
     ap.add_argument(
         "--synth-model",
-        default=os.environ.get("OLLAMA_SYNTH_MODEL"),
+        default=os.environ.get("OLLAMA_SYNTH_MODEL") or os.environ.get("FORWARD_SYNTH_MODEL"),
         help="Override Ollama model for the final synthesis step (e.g. eoh-llama:70b).",
+    )
+    ap.add_argument(
+        "--synth-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_NUM_CTX", "102400")),
+        help="Context window for final synthesis pass.",
     )
     ap.add_argument(
         "--two-pass-synth",
@@ -676,7 +687,12 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--use-router",
         action="store_true",
-        help="Run eoh-llama3.2-source-router first to produce expanded ts_terms + semantic_query.",
+        help="Run eoh-llama3.2-source-router first to produce expanded ts_terms + semantic_query (default ON).",
+    )
+    ap.add_argument(
+        "--no-router",
+        action="store_true",
+        help="Disable source-router stage and run direct query retrieval.",
     )
     ap.add_argument(
         "--router-model",
@@ -701,7 +717,11 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Minimum ts_terms accepted from router; below this we still run the per-term TS but also keep the raw-query fallback.",
     )
-    return ap.parse_args()
+    ap.set_defaults(use_router=True)
+    args = ap.parse_args()
+    if args.no_router:
+        args.use_router = False
+    return args
 
 
 def run_query(
@@ -944,6 +964,7 @@ def _run_one_query(
         ollama_url=args.ollama_url,
         model=args.model,
         synth_model=args.synth_model,
+        synth_num_ctx=args.synth_num_ctx,
         two_pass_synth=args.two_pass_synth,
         compress_model=args.compress_model,
         compress_num_ctx=args.compress_num_ctx,
