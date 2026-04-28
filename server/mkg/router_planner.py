@@ -118,6 +118,7 @@ def _build_user_prompt(
     max_modules: int,
     clinical_context: Optional[str] = None,
     patient_code_inventory: Optional[Any] = None,
+    prior_session_summary: Optional[str] = None,
 ) -> str:
     payload: Dict[str, Any] = {
         "query": query,
@@ -128,6 +129,11 @@ def _build_user_prompt(
     }
     if patient_code_inventory is not None:
         payload["patient_code_inventory"] = patient_code_inventory
+    if prior_session_summary and prior_session_summary.strip():
+        ps = prior_session_summary.strip()
+        if len(ps) > 4000:
+            ps = ps[:4000] + "\n…[prior_session_summary truncated]"
+        payload["prior_session_summary"] = ps
     if clinical_context and clinical_context.strip():
         # Hard cap so an over-long PTV summary cannot blow the router context.
         ctx = clinical_context.strip()
@@ -270,12 +276,18 @@ def plan_route(
     module_candidates: Optional[Dict[str, Dict[str, str]]] = None,
     clinical_context: Optional[str] = None,
     patient_code_inventory: Optional[Any] = None,
+    prior_session_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the source-router model and return a normalized route plan.
 
     ``patient_code_inventory`` is optional structured JSON (e.g. from
     ``ptv_toolkit.code_inventory.build_patient_code_inventory``) so the router
     can align ``ts_terms`` / ``semantic_query`` with codes on the patient timeline.
+
+    ``prior_session_summary`` is optional retro context (e.g. summary written by
+    the chatbot's retro-retrieval loop after the user references prior turns).
+    The router may reuse named entities / dates from it but the new ``query``
+    remains primary.
 
     On any failure, returns a degraded plan with ``error`` set and useful
     fallbacks (``ts_terms`` derived from the raw query) so the caller can
@@ -297,6 +309,7 @@ def plan_route(
         max_modules=max_modules,
         clinical_context=clinical_context,
         patient_code_inventory=patient_code_inventory,
+        prior_session_summary=prior_session_summary,
     )
 
     _log("🧭", f"Source-router model={model_name} num_ctx={ctx}")

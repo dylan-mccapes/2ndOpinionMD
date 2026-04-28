@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """Terminal chatbot: probe (3.2) → gap (8B) → report (8B).
 
+**Retro** (optional, runs only when a session log has prior turns):
+
+- Tiny ``eoh-llama3.2-source-router`` gate decides whether the new question
+  references prior chatbot turns (``references_prior``, ``retro_query``).
+- If yes, ripgrep-or-token-score over ``artifacts/chatbot_sessions/<id>.jsonl``
+  retrieves the top-K candidate turns (default K=5).
+- ``eoh-llama`` reviews and emits ``retro_summary`` + ``evidence_turn_ids``.
+- ``retro_summary`` is forwarded to ``plan_route`` (as ``prior_session_summary``)
+  and into the GAP / REPORT bundles via ``probe.retro``.
+
 **Probe** (default ``eoh-llama3.2-source-router``):
 
 - Scans ``metadata.code_index`` **before** the source-router (same rows as
@@ -12,6 +22,12 @@
 - Second 3.2 call chooses exactly one PTV graph tool + JSON args.
 - Executes: MKG semantic + per-term TS, PTV ``semantic_search`` with the
   router's semantic string, and the chosen graph tool.
+- **TS** uses Postgres FTS (``ts_rank`` over the stored ``ts`` column with
+  ``websearch_to_tsquery('public.simple_unaccent', term)``). When the per-term
+  lane returns fewer than ``top_k/2`` rows, the chatbot merges in the tiered
+  ``bm25_ts`` fallback (Tier 1 full query, Tier 2 OR-joined key tokens, Tier 3
+  longest token anchor) on the router's ``semantic_query``. Note: this is NOT
+  BM25 — Postgres FTS uses ``ts_rank`` (length-normalized tf-style score).
 
 **Gap** (default ``eoh-llama``):
 
@@ -25,6 +41,13 @@
 **Report** (default ``eoh-llama``):
 
 - Synthesizes a single markdown answer from probe + gap context (no tools).
+
+**Session log**:
+
+- Each turn appends one JSON line to ``artifacts/chatbot_sessions/<id>.jsonl``
+  with ``turn_id``, question, router plan, MKG counts, gap/final reports, and
+  any retro bundle. A sidecar ``__meta.json`` carries graph_hash + models.
+  Resume by passing the same ``--session-id``. ``--no-session`` disables.
 
 Env: same DB/embed/Ollama as ``mkg_retrieval_harness`` (``SYNC_DATABASE_URL``,
 ``LOCAL_EMBED_MODEL``, ``OLLAMA_URL``). If no DSN, MKG lanes are skipped with a
@@ -60,6 +83,7 @@ from server.ptv_toolkit.code_inventory import (
 )
 from server.ptv_toolkit.graph import load_graph
 from server.ptv_toolkit.registry import call_tool
+from server.ptv_toolkit.session_log import SessionLog
 
 
 def _log(emoji: str, msg: str) -> None:
@@ -259,9 +283,25 @@ def _mkg_retrieve_bundle(
     embed_model: str,
     sources: Optional[List[str]],
     text_chars: int,
+    ts_fallback: bool = True,
+    ts_fallback_threshold_frac: float = 0.5,
 ) -> Dict[str, Any]:
+    """Run dense + per-term TS retrieval against ``public.rag_corpus``.
+
+    TS notes (Postgres FTS, not BM25):
+    - ``bm25_ts_terms`` runs **one** ``websearch_to_tsquery('public.simple_unaccent', term)``
+      per cleaned term and merges by max ``ts_rank``. Single-token terms therefore behave
+      like single-token matches; this is what /ask_stream's
+      ``search_source_ts_for_terms`` does, plus an OR-friendly query parser.
+    - When the per-term lane yields fewer than
+      ``ts_fallback_threshold_frac * top_k`` rows (default 0.5), we run the
+      tiered ``bm25_ts`` (Tier 1: full query; Tier 2: OR-joined key tokens;
+      Tier 3: longest token anchor) on the ``semantic_query`` and merge by
+      max score, keeping the per-term hits that already passed.
+    """
     from server.scripts.mkg_retrieval_harness import (  # type: ignore
         ann_local,
+        bm25_ts,
         bm25_ts_terms,
         embed_query,
         _compact_hit,
@@ -281,18 +321,60 @@ def _mkg_retrieve_bundle(
     import psycopg
     from psycopg.rows import dict_row
 
-    _log("🧠", f"MKG embed+retrieve top_k={top_k} ts_terms={len(ts_terms or [])} sources={sources or 'all'}")
+    _log(
+        "🧠",
+        f"MKG embed+retrieve top_k={top_k} ts_terms={len(ts_terms or [])} "
+        f"sources={sources or 'all'}",
+    )
     vec, device = embed_query(embed_model, semantic_query or "")
     lit = _vec_literal(vec)
+    ts_per_term_n = 0
+    ts_or_added_n = 0
+    used_or_fallback = False
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
             sem_rows = ann_local(cur, lit, top_k, sources=sources)
-            ts_rows = bm25_ts_terms(cur, ts_terms, top_k, sources=sources) if ts_terms else []
+            if ts_terms:
+                ts_rows = bm25_ts_terms(cur, ts_terms, top_k, sources=sources)
+            else:
+                ts_rows = []
+            ts_per_term_n = len(ts_rows)
+            need_fallback = ts_fallback and (
+                len(ts_rows) < max(1, int(top_k * float(ts_fallback_threshold_frac)))
+            )
+            if need_fallback and (semantic_query or "").strip():
+                _log(
+                    "🔁",
+                    f"TS per-term thin ({ts_per_term_n}/{top_k}) — merging OR-joined "
+                    "websearch_to_tsquery fallback (bm25_ts tiered)",
+                )
+                fb_rows = bm25_ts(cur, semantic_query or "", top_k, sources=sources)
+                used_or_fallback = bool(fb_rows)
+                by_id: Dict[Any, Dict[str, Any]] = {}
+                for r in ts_rows:
+                    by_id[r["id"]] = dict(r)
+                for r in fb_rows:
+                    cur_row = by_id.get(r["id"])
+                    if cur_row is None or float(r.get("score") or 0.0) > float(cur_row.get("score") or 0.0):
+                        by_id[r["id"]] = dict(r)
+                merged = sorted(
+                    by_id.values(),
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )[:top_k]
+                ts_or_added_n = max(0, len(merged) - ts_per_term_n)
+                ts_rows = merged
+
     sem_c = [_compact_hit(r, text_chars=text_chars) for r in sem_rows]
     ts_c = [_compact_hit(r, text_chars=text_chars) for r in ts_rows]
     overlap = _overlap([h["id"] for h in sem_c], [h["id"] for h in ts_c])
-    _log("📚", f"MKG done semantic_hits={len(sem_c)} ts_hits={len(ts_c)} jaccard={overlap.get('jaccard', 0):.3f}")
+    _log(
+        "📚",
+        f"MKG done semantic_hits={len(sem_c)} ts_hits={len(ts_c)} "
+        f"(per_term={ts_per_term_n}, or_fallback={used_or_fallback}) "
+        f"jaccard={overlap.get('jaccard', 0):.3f}",
+    )
     return {
         "ok": True,
         "embed_device": device,
@@ -300,6 +382,144 @@ def _mkg_retrieve_bundle(
         "ts_hits": ts_c,
         "overlap": overlap,
         "ts_terms_used": list(ts_terms or []),
+        "ts_per_term_count": ts_per_term_n,
+        "ts_or_fallback_used": used_or_fallback,
+        "ts_or_fallback_added": ts_or_added_n,
+    }
+
+
+def _retro_gate(
+    *,
+    question: str,
+    session: Optional[SessionLog],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    timeout: float,
+    num_ctx: int,
+) -> Dict[str, Any]:
+    """Tiny 3.2 call: does the question reference earlier turns?
+
+    Returns ``{"references_prior": bool, "retro_query": str|None, "why": str}``.
+    Always safe; on any error returns ``references_prior=False``.
+    """
+    if session is None or session.n_turns() == 0:
+        return {"references_prior": False, "retro_query": None, "why": "no_prior_turns"}
+
+    recent = session.read_all()[-6:]
+    sketch = [
+        {
+            "turn_id": t.get("turn_id"),
+            "turn_index": t.get("turn_index"),
+            "ts": t.get("ts"),
+            "question": (t.get("question") or "")[:240],
+        }
+        for t in recent
+    ]
+    system = (
+        "You are a tiny gating classifier. Given a NEW user question and a sketch of recent\n"
+        "chatbot turns (questions only), decide whether the new question references prior\n"
+        "context (e.g. 'as we discussed', 'compare to last question', 'go back to the flare\n"
+        "topic', anaphoric 'that', 'those events', etc.).\n\n"
+        "OUTPUT: STRICT JSON ONLY, no markdown:\n"
+        '{"references_prior": true|false, "retro_query": "<terms to retrieve over prior turns>"|null,\n'
+        ' "why": "short reason"}\n'
+        "If references_prior is false, retro_query must be null.\n"
+        "If true, retro_query should be the concrete topic/keywords useful for ripgrep over\n"
+        "prior chatbot turns (not a yes/no, not a sentence)."
+    )
+    user = json.dumps(
+        {"new_question": question, "recent_turns_sketch": sketch},
+        ensure_ascii=False,
+        indent=2,
+    )
+    _log("🪞", f"Stage RETRO-GATE model={model} num_ctx={num_ctx} prior_turns={session.n_turns()}")
+    try:
+        raw = _ollama_chat(
+            url=ollama_url,
+            model=model,
+            system=system,
+            user=user,
+            temperature=temperature,
+            timeout=timeout,
+            num_ctx=num_ctx,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log("⚠️", f"retro-gate call failed: {exc}")
+        return {"references_prior": False, "retro_query": None, "why": f"gate_error:{exc}"}
+    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    refs = bool(parsed.get("references_prior"))
+    rq = _norm_gap_follow_field(parsed.get("retro_query"))
+    if not isinstance(rq, str) or not rq.strip():
+        rq = None
+    why = str(parsed.get("why") or "").strip()[:240]
+    _log("🪞", f"retro-gate references_prior={refs} retro_query={(rq or '')[:80]!r}")
+    return {"references_prior": refs, "retro_query": rq, "why": why}
+
+
+def _retro_summarize(
+    *,
+    question: str,
+    matched_turns: List[Dict[str, Any]],
+    session: SessionLog,
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    timeout: float,
+    num_ctx: int,
+    text_chars: int,
+) -> Dict[str, Any]:
+    """eoh-llama review of matched session turns. Returns retro_summary + evidence_turn_ids."""
+    if not matched_turns:
+        return {"retro_summary": "", "evidence_turn_ids": [], "n_turns_reviewed": 0}
+    compact = [session.compact_turn(t, text_chars=text_chars) for t in matched_turns]
+    system = (
+        "You are the RETRO-REVIEW agent. The user asked a follow-up question that references\n"
+        "earlier chatbot turns. You receive a JSON list of candidate prior turns retrieved from\n"
+        "the session log (already token-overlap ranked).\n\n"
+        "Task: produce a SINGLE JSON object:\n"
+        "{\n"
+        '  "retro_summary": "<<= 250-word grounded summary of relevant prior context, in markdown>",\n'
+        '  "evidence_turn_ids": ["<turn_id>", ...]\n'
+        "}\n"
+        "Rules:\n"
+        "- Cite turn_ids in the summary text using the form (turn=<turn_id>).\n"
+        "- Prefer concrete facts (drug names, dates, scores, UC bands) over generic restatement.\n"
+        "- Do NOT fabricate; if a candidate turn is not relevant, omit it from evidence_turn_ids."
+    )
+    user = json.dumps(
+        {"new_question": question, "candidate_turns": compact},
+        ensure_ascii=False,
+        indent=2,
+    )[:60000]
+    _log("🪞", f"Stage RETRO-REVIEW model={model} num_ctx={num_ctx} candidates={len(compact)}")
+    try:
+        raw = _ollama_chat(
+            url=ollama_url,
+            model=model,
+            system=system,
+            user=user,
+            temperature=temperature,
+            timeout=timeout,
+            num_ctx=num_ctx,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log("⚠️", f"retro-review call failed: {exc}")
+        return {"retro_summary": "", "evidence_turn_ids": [], "n_turns_reviewed": len(compact)}
+    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    summary = str(parsed.get("retro_summary") or "").strip()
+    ev = parsed.get("evidence_turn_ids") or []
+    if not isinstance(ev, list):
+        ev = []
+    ev = [str(x).strip() for x in ev if str(x).strip()]
+    if not summary:
+        summary = "[retro JSON unparsed]\n\n" + (raw or "").strip()[:4000]
+    _log("🪞", f"retro-review summary_chars={len(summary)} evidence_turn_ids={ev[:6]}")
+    return {
+        "retro_summary": summary[:6000],
+        "evidence_turn_ids": ev,
+        "n_turns_reviewed": len(compact),
+        "raw_chars": len(raw),
     }
 
 
@@ -581,6 +801,7 @@ def _run_probe(
     code_inventory_compact: bool,
     code_inventory_router_json_max: int,
     code_inventory_graph_json_max: int,
+    retro_bundle: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     inv_full: Optional[Dict[str, Any]] = None
     inv_for_router: Optional[Dict[str, Any]] = None
@@ -603,6 +824,10 @@ def _run_probe(
     graph_stats = call_tool("graph_stats", gh, {})
     brief = json.dumps(graph_stats.get("result") or graph_stats, default=str)[:8000]
 
+    retro_summary_text = ""
+    if retro_bundle and retro_bundle.get("retro_summary"):
+        retro_summary_text = str(retro_bundle.get("retro_summary") or "")
+
     _log("🧭", "Stage PROBE — plan_route (semantic_query + ts_terms + sources)")
     route = plan_route(
         question,
@@ -613,6 +838,7 @@ def _run_probe(
         temperature=temperature,
         clinical_context=brief,
         patient_code_inventory=inv_for_router,
+        prior_session_summary=retro_summary_text or None,
     )
     sources = _router_sources(route)
     _log(
@@ -668,6 +894,7 @@ def _run_probe(
         "graph_args": g_args,
         "graph_tool_result": graph_out,
         "pre_router_code_inventory": inv_full,
+        "retro": retro_bundle,
     }
 
 
@@ -716,6 +943,35 @@ def _parse_args() -> argparse.Namespace:
         metavar="N",
         help="Max JSON chars for patient_code_inventory in probe graph-picker user payload.",
     )
+    ap.add_argument(
+        "--session-id",
+        default=None,
+        metavar="ID",
+        help="Chatbot session id (default: UTC timestamp). Resumes if --session-id matches existing meta.json.",
+    )
+    ap.add_argument(
+        "--session-dir",
+        default=os.environ.get("CHATBOT_SESSION_DIR", "artifacts/chatbot_sessions"),
+        metavar="DIR",
+        help="Directory to write session JSONL + meta files.",
+    )
+    ap.add_argument(
+        "--no-session",
+        action="store_true",
+        help="Disable session log; do not write turns to disk; disables retro retrieval.",
+    )
+    ap.add_argument(
+        "--no-retro",
+        action="store_true",
+        help="Disable retro-retrieval stage even if a session log exists.",
+    )
+    ap.add_argument(
+        "--retro-k",
+        type=int,
+        default=5,
+        metavar="K",
+        help="Top-K prior turns to fetch from session log when retro_query is set.",
+    )
     return ap.parse_args()
 
 
@@ -729,6 +985,35 @@ def main() -> int:
     gh = load_graph(path)
     print(f"Loaded {path.name} events={len(gh.events)} hash={gh.graph_hash}")
     print(f"probe={args.probe_model} gap={args.gap_model} report={args.report_model}")
+
+    session: Optional[SessionLog] = None
+    if not args.no_session:
+        models_meta = {
+            "probe": args.probe_model,
+            "gap": args.gap_model,
+            "report": args.report_model,
+            "embed": args.embed_model,
+        }
+        existing = (
+            SessionLog.open_existing(args.session_id, base_dir=Path(args.session_dir))
+            if args.session_id
+            else None
+        )
+        if existing is not None and existing.graph_hash == gh.graph_hash:
+            session = existing
+            print(f"session={session.session_id} (resumed) prior_turns={session.n_turns()}")
+        else:
+            session = SessionLog.create(
+                graph_hash=gh.graph_hash,
+                graph_path=str(path),
+                models=models_meta,
+                session_id=args.session_id,
+                base_dir=Path(args.session_dir),
+            )
+            print(f"session={session.session_id} (new) -> {session.jsonl_path}")
+    else:
+        print("session=DISABLED (--no-session)")
+
     print("Commands: quit | exit | q\n")
 
     while True:
@@ -743,6 +1028,46 @@ def main() -> int:
 
         try:
             _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
+
+            retro_bundle: Optional[Dict[str, Any]] = None
+            if session is not None and not args.no_retro:
+                gate = _retro_gate(
+                    question=q,
+                    session=session,
+                    ollama_url=args.ollama_url,
+                    model=args.probe_model,
+                    temperature=args.temperature,
+                    timeout=args.timeout,
+                    num_ctx=args.probe_num_ctx,
+                )
+                if gate.get("references_prior") and gate.get("retro_query"):
+                    matches = session.search(str(gate["retro_query"]), k=args.retro_k)
+                    _log(
+                        "🪞",
+                        f"retro session.search hits={len(matches)} method="
+                        f"{(matches[0].get('__retrieval_method') if matches else 'none')}",
+                    )
+                    review = _retro_summarize(
+                        question=q,
+                        matched_turns=matches,
+                        session=session,
+                        ollama_url=args.ollama_url,
+                        model=args.gap_model,
+                        temperature=args.temperature,
+                        timeout=args.timeout,
+                        num_ctx=args.gap_num_ctx,
+                        text_chars=args.text_chars,
+                    )
+                    retro_bundle = {
+                        "gate": gate,
+                        "matched_turn_ids": [t.get("turn_id") for t in matches if t.get("turn_id")],
+                        "n_matches": len(matches),
+                        **review,
+                    }
+                else:
+                    retro_bundle = {"gate": gate, "matched_turn_ids": [], "n_matches": 0,
+                                    "retro_summary": "", "evidence_turn_ids": [], "n_turns_reviewed": 0}
+
             probe = _run_probe(
                 question=q,
                 gh=gh,
@@ -759,6 +1084,7 @@ def main() -> int:
                 code_inventory_compact=args.code_inventory_compact,
                 code_inventory_router_json_max=args.code_inventory_router_json_max,
                 code_inventory_graph_json_max=args.code_inventory_graph_json_max,
+                retro_bundle=retro_bundle,
             )
             gap_sources = _router_sources(probe.get("router_plan") or {})
             gap = _gap_phase(
@@ -789,6 +1115,36 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"\nerror: {exc}\n", file=sys.stderr)
             continue
+
+        if session is not None:
+            try:
+                router_plan = (probe.get("router_plan") or {})
+                mkg_block = (probe.get("mkg") or {})
+                stored = session.append_turn(
+                    {
+                        "question": q,
+                        "router_plan_semantic_query": str(router_plan.get("semantic_query") or ""),
+                        "router_ts_terms": list(router_plan.get("ts_terms") or []),
+                        "router_sources": list(_router_sources(router_plan) or []),
+                        "router_question_type": router_plan.get("question_type"),
+                        "mkg_jaccard": (mkg_block.get("overlap") or {}).get("jaccard"),
+                        "mkg_semantic_hit_count": len(mkg_block.get("semantic_hits") or []),
+                        "mkg_ts_hit_count": len(mkg_block.get("ts_hits") or []),
+                        "ts_or_fallback_used": mkg_block.get("ts_or_fallback_used"),
+                        "graph_tool": probe.get("graph_tool"),
+                        "graph_args": probe.get("graph_args"),
+                        "gap_report": gap.get("gap_report") or "",
+                        "final_report": report or "",
+                        "retro": probe.get("retro"),
+                    }
+                )
+                _log("📝", f"session turn {stored.get('turn_id')} appended -> {session.jsonl_path.name}")
+            except Exception as exc:  # noqa: BLE001
+                _log("⚠️", f"session append failed: {exc}")
+
+        if probe.get("retro") and (probe["retro"].get("retro_summary") or "").strip():
+            print("\n--- retro summary ---\n")
+            print(probe["retro"]["retro_summary"])
 
         print("\n--- gap report ---\n")
         print(gap.get("gap_report") or "")
