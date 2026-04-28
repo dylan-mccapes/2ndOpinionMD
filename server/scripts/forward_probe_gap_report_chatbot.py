@@ -299,6 +299,15 @@ def _router_sources(plan: Dict[str, Any]) -> Optional[List[str]]:
     return out or None
 
 
+def _router_modules(plan: Dict[str, Any]) -> List[str]:
+    rows = plan.get("selected_modules") or []
+    out: List[str] = []
+    for r in rows:
+        if isinstance(r, dict) and r.get("module_id"):
+            out.append(str(r["module_id"]).strip())
+    return out
+
+
 def _mkg_retrieve_bundle(
     *,
     semantic_query: str,
@@ -868,7 +877,7 @@ def _run_probe(
     _log(
         "🧭",
         f"Router qtype={route.get('question_type')} ts_terms={len(route.get('ts_terms') or [])} "
-        f"sources={len(sources or [])}",
+        f"sources={len(sources or [])} modules={len(_router_modules(route))}",
     )
 
     mkg: Dict[str, Any] = {"skipped": True}
@@ -937,6 +946,7 @@ def _append_probe_turn_to_session(
             "router_plan_semantic_query": str(router_plan.get("semantic_query") or ""),
             "router_ts_terms": list(router_plan.get("ts_terms") or []),
             "router_sources": list(_router_sources(router_plan) or []),
+            "router_modules": list(_router_modules(router_plan) or []),
             "router_question_type": router_plan.get("question_type"),
             "mkg_jaccard": (mkg_block.get("overlap") or {}).get("jaccard"),
             "mkg_semantic_hit_count": len(mkg_block.get("semantic_hits") or []),

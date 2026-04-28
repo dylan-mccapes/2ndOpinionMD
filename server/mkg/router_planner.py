@@ -63,6 +63,65 @@ def _clean_terms(items: Any) -> List[str]:
     return out
 
 
+_TOKEN_RX = re.compile(r"[A-Za-z][A-Za-z0-9_\-]{2,}")
+
+
+def _tokenize(text: str) -> List[str]:
+    return [t.lower() for t in _TOKEN_RX.findall(text or "")]
+
+
+def _backfill_sources(
+    *,
+    selected_rows: List[Dict[str, Any]],
+    question_type: str,
+    source_candidates: Dict[str, str],
+    query_text: str,
+    max_sources: int,
+) -> List[Dict[str, Any]]:
+    """Reduce over-conservative router output by deterministically widening source fanout."""
+    if not source_candidates:
+        return selected_rows
+    selected = [str(r.get("source") or "").strip().lower() for r in selected_rows]
+    selected = [s for s in selected if s]
+    selected_set = set(selected)
+
+    # Mirror ask/eoh_stream behavior: avoid over-pruning by keeping a broader source set.
+    min_needed = 5 if question_type in {"C", "D"} else 4 if question_type in {"A", "B", "E"} else 3
+    target = min(max_sources, max(1, min_needed))
+    if len(selected_set) >= target:
+        return selected_rows
+
+    q_toks = set(_tokenize(query_text))
+    prefer_eoh = question_type in {"C", "D", "OTHER"}
+    scored: List[tuple[float, str]] = []
+    for src, desc in source_candidates.items():
+        s = str(src).strip().lower()
+        if not s or s in selected_set:
+            continue
+        blob = f"{s} {desc or ''}".lower()
+        s_toks = set(_tokenize(blob))
+        overlap = (len(q_toks & s_toks) / max(1, len(q_toks | s_toks))) if q_toks else 0.0
+        eoh_boost = 0.2 if (prefer_eoh and s.startswith("eoh")) else 0.0
+        guideline_boost = 0.1 if any(k in s for k in ("acr_", "eular_", "kdigo_", "ada_", "gold_", "gina_")) else 0.0
+        scored.append((overlap + eoh_boost + guideline_boost, s))
+
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    next_prio = max([int(r.get("priority") or 0) for r in selected_rows] + [0]) + 1
+    out = list(selected_rows)
+    for _, s in scored:
+        if len(out) >= target:
+            break
+        out.append(
+            {
+                "source": s,
+                "priority": next_prio,
+                "why": "router_post_validate_backfill_for_recall",
+            }
+        )
+        next_prio += 1
+    return out
+
+
 def _build_system_prompt() -> str:
     return (
         "You are an EoH source-routing planner. You must return STRICT JSON only.\n"
@@ -234,6 +293,13 @@ def _post_validate(
         out["selected_sources"].append({"source": src, "priority": prio, "why": why})
     out["selected_sources"].sort(key=lambda r: r["priority"])
     out["selected_sources"] = out["selected_sources"][:max_sources]
+    out["selected_sources"] = _backfill_sources(
+        selected_rows=out["selected_sources"],
+        question_type=out["question_type"],
+        source_candidates=source_candidates,
+        query_text=(out["semantic_query"] or out["ts_query"] or fallback_query),
+        max_sources=max_sources,
+    )
 
     for row in plan.get("selected_modules") or []:
         if not isinstance(row, dict):
@@ -258,6 +324,9 @@ def _post_validate(
         out["ts_terms"] = [
             t for t in re.split(r"[\s,]+", out["ts_query"]) if t and len(t) >= 3
         ][:8]
+    if any(r.get("why") == "router_post_validate_backfill_for_recall" for r in out["selected_sources"]):
+        note = "source fanout widened in post-validate for recall"
+        out["notes"] = f"{out['notes']} | {note}".strip(" |")
 
     return out
 
