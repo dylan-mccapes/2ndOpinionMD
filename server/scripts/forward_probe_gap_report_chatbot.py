@@ -1566,9 +1566,9 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--router-max-sources",
         type=int,
-        default=int(os.environ.get("ROUTER_MAX_SOURCES", "10")),
+        default=int(os.environ.get("ROUTER_MAX_SOURCES", "14")),
         metavar="N",
-        help="Max distinct rag_corpus.source keys for plan_route (default 10).",
+        help="Max distinct rag_corpus.source keys for plan_route (default 14).",
     )
     ap.add_argument(
         "--router-max-modules",
