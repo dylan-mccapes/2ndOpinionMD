@@ -2,7 +2,6 @@ FROM qwen3.6:35b
 
 # eoh-qwen — stable 32K version for single RTX 4090 + visible thinking
 PARAMETER num_ctx 32768
-PARAMETER num_gpu_layers 999
 PARAMETER num_thread 16
 PARAMETER num_batch 512
 
