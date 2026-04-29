@@ -3011,12 +3011,17 @@ def _ollama_max_pages_per_batch() -> int:
     return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
 
 
+def _is_qwen_model(model: Optional[str]) -> bool:
+    return bool(model and "qwen" in str(model).lower())
+
+
 def _ingestion_max_pages_per_batch(
     *,
     ctx_tokens: int,
     gpt41_ingest: bool,
     is_ollama: bool,
     ollama_num_ctx: Optional[int],
+    ingestion_model: Optional[str] = None,
 ) -> Optional[int]:
     """Pages per ``pack_chapters_into_batches`` LLM batch.
 
@@ -3024,8 +3029,18 @@ def _ingestion_max_pages_per_batch(
     - Else: ``min(OLLAMA_MAX_PAGES_PER_BATCH ceiling, output_tokens // per-page est)``
       so streaming and non-streaming paths match and Ollama cannot pack 20+
       pages when ``num_predict`` is ~10k.
+    - For Qwen models at ~102K ctx: chapter-sized batches are allowed by default
+      (set ``OLLAMA_QWEN_MAX_PAGES_PER_BATCH`` to force a hard cap).
     """
-    _ollama_page_cap = _ollama_max_pages_per_batch()
+    # Qwen @ ~102K can usually process whole chapter batches; avoid the default 5-page
+    # hard cap unless explicitly overridden.
+    if is_ollama and _is_qwen_model(ingestion_model) and ctx_tokens >= 96_000:
+        qwen_cap = int(os.getenv("OLLAMA_QWEN_MAX_PAGES_PER_BATCH", "0"))
+        if qwen_cap <= 0:
+            return None
+        _ollama_page_cap = max(1, min(200, qwen_cap))
+    else:
+        _ollama_page_cap = _ollama_max_pages_per_batch()
     _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
     if ctx_tokens >= 500_000:
         if gpt41_ingest:
@@ -4142,6 +4157,7 @@ async def populate_vision_from_extracted_pages(
         gpt41_ingest=_gpt41_ingest,
         is_ollama=_is_ollama,
         ollama_num_ctx=_ollama_num_ctx,
+        ingestion_model=ingestion_model,
     )
 
     # Chapter-aware batching: a PDF chapter = one Kaiser encounter (one clinical
@@ -4638,6 +4654,7 @@ async def stream_populate_vision_from_extracted_pages(
         gpt41_ingest=_gpt41_ingest,
         is_ollama=_is_ollama,
         ollama_num_ctx=_ollama_num_ctx,
+        ingestion_model=ingestion_model,
     )
 
     chapters = sectionize_pages(extraction_pages)
