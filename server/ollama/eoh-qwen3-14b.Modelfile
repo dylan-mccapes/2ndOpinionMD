@@ -1,8 +1,8 @@
 FROM qwen3:14b
 
-# eoh-qwen3-14b — default ~84K context for direct FORWARD tests
+# eoh-qwen3-14b — default 64K context for direct FORWARD tests
 # Create: ollama create eoh-qwen3-14b -f server/ollama/eoh-qwen3-14b.Modelfile
-PARAMETER num_ctx 86016
+PARAMETER num_ctx 65536
 PARAMETER num_thread 16
 PARAMETER num_batch 512
 PARAMETER temperature 0.2

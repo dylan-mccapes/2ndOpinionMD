@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Terminal chatbot: probe (3.2) → gap (8B) → report (8B).
 
-**Retro** (optional, runs only when a session log has prior turns):
+**Retro** (disabled by default; pass ``--retro`` when a session log has prior turns):
 
 - Tiny ``eoh-llama3.2-source-router`` gate decides whether the new question
   references prior chatbot turns (``references_prior``, ``retro_query``).
@@ -53,7 +53,7 @@
 
 - ``--harness-file`` JSON array of objects: required ``question``; optional
   ``id`` and ``seed_session_turns_before`` (list of dicts appended as prior
-  turns so retro can run before each real question).
+  turns — useful mainly when testing ``--retro``).
 - Requires session logging (incompatible with ``--no-session``). Default
   session id is ``harness_<UTC>`` when ``--session-id`` is omitted.
 - ``--harness-fresh`` deletes existing JSONL/meta for that session id before run.
@@ -90,7 +90,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import psycopg
 import requests
+from psycopg.rows import dict_row
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -106,6 +108,15 @@ from server.ptv_toolkit.code_inventory import (
 from server.ptv_toolkit.graph import load_graph
 from server.ptv_toolkit.registry import call_tool
 from server.ptv_toolkit.session_log import SessionLog
+from server.scripts.mkg_retrieval_harness import (  # type: ignore
+    ann_local,
+    bm25_ts,
+    bm25_ts_terms,
+    embed_query,
+    _compact_hit,
+    _overlap,
+    _vec_literal,
+)
 
 
 def _log(emoji: str, msg: str) -> None:
@@ -406,16 +417,6 @@ def _mkg_retrieve_bundle(
       Tier 3: longest token anchor) on the ``semantic_query`` and merge by
       max score, keeping the per-term hits that already passed.
     """
-    from server.scripts.mkg_retrieval_harness import (  # type: ignore
-        ann_local,
-        bm25_ts,
-        bm25_ts_terms,
-        embed_query,
-        _compact_hit,
-        _overlap,
-        _vec_literal,
-    )
-
     dsn = _mkg_dsn()
     if not dsn:
         _log("🗄️", "MKG retrieve skipped: no SYNC_DATABASE_URL / DATABASE_URL")
@@ -425,8 +426,6 @@ def _mkg_retrieve_bundle(
             "semantic_hits": [],
             "ts_hits": [],
         }
-    import psycopg
-    from psycopg.rows import dict_row
 
     _log(
         "🧠",
@@ -1139,7 +1138,7 @@ def _run_full_turn(
     _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
 
     retro_bundle: Optional[Dict[str, Any]] = None
-    if session is not None and not args.no_retro:
+    if session is not None and args.retro:
         gate = _retro_gate(
             question=q,
             session=session,
@@ -1475,8 +1474,8 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("FORWARD_RETRO_MODEL", "eoh-llama"),
         help="Model for retro session summary review (default eoh-llama).",
     )
-    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "86016")))
-    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "86016")))
+    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "65536")))
+    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")))
     ap.add_argument(
         "--retro-num-ctx",
         type=int,
@@ -1536,9 +1535,12 @@ def _parse_args() -> argparse.Namespace:
         help="Disable session log; do not write turns to disk; disables retro retrieval.",
     )
     ap.add_argument(
-        "--no-retro",
+        "--retro",
         action="store_true",
-        help="Disable retro-retrieval stage even if a session log exists.",
+        help=(
+            "Enable retro-retrieval (retro-gate + prior-turn search + retro-review) "
+            "when a session log exists with prior turns. Default off."
+        ),
     )
     ap.add_argument(
         "--retro-k",

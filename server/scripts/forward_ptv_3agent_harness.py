@@ -599,13 +599,13 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--agent-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "32768")),
+        default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "65536")),
         help="num_ctx for Stage A/B tool-calling agents.",
     )
     ap.add_argument(
         "--synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "32768")),
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")),
     )
     ap.add_argument(
         "--receipt-dir",
@@ -648,8 +648,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--mkg-synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "32768")),
-        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 32768).",
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")),
+        help="num_ctx for the Stage-E synthesis call (defaults to OLLAMA_SYNTH_NUM_CTX or 65536).",
     )
     ap.add_argument(
         "--mkg-use-router",
@@ -709,7 +709,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--mkg-compress-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "32768")),
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "65536")),
         help="num_ctx for Stage-E compression pass.",
     )
     ap.add_argument(
