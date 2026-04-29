@@ -7,7 +7,20 @@ Usage (from 2ndOpinionMD-MVP/server, .BeatingHeart active):
     python -u scripts/run_eohd_timeline_pdf.py ../data/patient_timelines/NormanEricRoberts_decrypted.pdf \\
         --artifact-dir ../artifacts/timeline_share_$(date +%Y%m%d)
 
-Requires OPENAI_API_KEY in .env or shell environment.
+    # Optional: Qwen 14B @ 102400-token ctx (batch sizing uses ~60%% input fill via INGESTION_OLLAMA_*)
+    python -u scripts/run_eohd_timeline_pdf.py ../data/timeline.pdf \\
+        --llm-backend ollama-full --use-qwen-ingestion \\
+        --artifact-dir ../artifacts/timeline_qwen
+
+    # Same behavior without --use-qwen-ingestion (older trees): pass model + ctx explicitly.
+    python -u scripts/run_eohd_timeline_pdf.py ../data/patient_timelines/NormanEricRoberts_decrypted_truncated.pdf \\
+        --llm-backend ollama-full \\
+        --ingestion-model eoh-qwen3-14b --ingestion-context-tokens 102400 \\
+        --artifact-dir ../artifacts/timeline_norman_qwen
+
+Requires OPENAI_API_KEY in .env or shell environment when using OpenAI for summarization
+(``--llm-backend openai`` or ``ollama``). Pure-local runs (``--llm-backend ollama-full``) do not
+require OPENAI_API_KEY; embedding-backed timeline probe+RAG paths that still rely on OpenAI are skipped.
 """
 
 from __future__ import annotations
@@ -128,8 +141,20 @@ def main() -> None:
         default=None,
         help=(
             "Model name for PDF event extraction and connascence passes. "
-            "With --llm-backend ollama, defaults to INGESTION_MODEL or eoh-llama3.1:8b. "
+            "With --llm-backend ollama, defaults to INGESTION_MODEL or eoh-llama3.1:8b "
+            "(use --use-qwen-ingestion for eoh-qwen3-14b when omitted). "
+            "Names containing 'qwen' use FORWARD_QWEN_MODEL_NUM_CTX (102400) for batch sizing unless overridden. "
             "With --llm-backend openai, defaults to EOH_TIMELINE_SUMMARIZER_MODEL unless INGESTION_MODEL is set."
+        ),
+    )
+    parser.add_argument(
+        "--use-qwen-ingestion",
+        action="store_true",
+        help=(
+            "Use Qwen 14B for PDF extraction when --ingestion-model is omitted: "
+            "defaults to EOH_QWEN_INGESTION_MODEL or eoh-qwen3-14b (102400 ctx via Modelfile). "
+            "Requires --llm-backend ollama or ollama-full. Batch char budgets use INGESTION_OLLAMA_INPUT_FILL_RATIO "
+            "(default 0.60 = 60%% of num_ctx for input text)."
         ),
     )
     parser.add_argument(
@@ -137,12 +162,12 @@ def main() -> None:
         type=int,
         default=None,
         help=(
-            "Context window size (tokens) of the ingestion model, used to compute "
-            "batch sizes for PDF event extraction. "
-            "Defaults to 1,048,576 (GPT-4.1) for OpenAI backend. "
-            "For Ollama backends defaults to 16,384 (tighter KV; override with "
-            "--ingestion-context-tokens or INGESTION_CONTEXT_TOKENS). "
-            "Override with the actual context size of any custom model."
+            "Context window size (tokens) of the ingestion model for PDF batch sizing. "
+            "OpenAI backend: defaults to GPT-4.1-scale context unless overridden. "
+            "Ollama: defaults to INGESTION_OLLAMA_CONTEXT_TOKENS (32768) for Llama-class models; "
+            "for Qwen ingestion models (name contains 'qwen') or --use-qwen-ingestion, "
+            "defaults to FORWARD_QWEN_MODEL_NUM_CTX / INGESTION_QWEN_CONTEXT_TOKENS (102400). "
+            "~60%% of this budget is used for input page text (see INGESTION_OLLAMA_INPUT_FILL_RATIO)."
         ),
     )
     parser.add_argument(
@@ -187,7 +212,11 @@ def main() -> None:
     log = logging.getLogger("run_eohd_timeline_pdf")
 
     from openai import AsyncOpenAI
-    from server.api.stream_config import OLLAMA_BASE_URL, EOH_TIMELINE_SUMMARIZER_MODEL
+    from server.api.stream_config import (
+        INGESTION_OLLAMA_INPUT_FILL_RATIO,
+        OLLAMA_BASE_URL,
+        EOH_TIMELINE_SUMMARIZER_MODEL,
+    )
     from server.llm.llm_client import get_ollama_client
     from server.eoh.timeline_summarizer import summarize_timeline_from_pdf
 
@@ -207,23 +236,35 @@ def main() -> None:
     # Resolve the ingestion model name.
     if args.ingestion_model:
         ingestion_model = args.ingestion_model
+    elif args.use_qwen_ingestion:
+        ingestion_model = os.getenv("EOH_QWEN_INGESTION_MODEL", "eoh-qwen3-14b")
     elif backend in ("ollama", "ollama-full"):
         ingestion_model = os.getenv("INGESTION_MODEL", "eoh-llama3.1:8b")
     else:
-        # OpenAI backend: default to premium GPT unless INGESTION_MODEL is explicitly set
         ingestion_model = os.getenv("INGESTION_MODEL") or EOH_TIMELINE_SUMMARIZER_MODEL
 
-    # Resolve ingestion context window.
-    # Ollama 8B models have 128K training context but sustaining a full-context
-    # KV cache during extraction batches causes timeouts.  32K is a safe default
-    # that keeps each batch under ~8K input tokens, well within VRAM budget.
+    qwen_ingestion = bool(args.use_qwen_ingestion or ("qwen" in ingestion_model.lower()))
+    if args.use_qwen_ingestion and backend not in ("ollama", "ollama-full"):
+        _log("--use-qwen-ingestion requires --llm-backend ollama or ollama-full.", emoji="❌")
+        sys.exit(2)
+
+    _qwen_ctx_default = int(
+        os.getenv(
+            "FORWARD_QWEN_MODEL_NUM_CTX",
+            os.getenv("INGESTION_QWEN_CONTEXT_TOKENS", "102400"),
+        )
+    )
+    _ollama_llama_ctx_default = int(os.getenv("INGESTION_OLLAMA_CONTEXT_TOKENS", "32768"))
+
+    # Resolve ingestion context window (drives batch max_chars via timeline_summarizer).
     if args.ingestion_context_tokens is not None:
         ingestion_context_tokens = args.ingestion_context_tokens
+    elif backend in ("ollama", "ollama-full") and qwen_ingestion:
+        ingestion_context_tokens = _qwen_ctx_default
     elif backend in ("ollama", "ollama-full"):
-        # Match timeline_summarizer Ollama defaults (smaller ctx → often better 8B JSON).
-        ingestion_context_tokens = 16_384
+        ingestion_context_tokens = _ollama_llama_ctx_default
     else:
-        ingestion_context_tokens = None  # uses GPT-4.1 1M default
+        ingestion_context_tokens = None  # GPT-4.1-scale default inside pipeline
 
     # Build clients.
     if backend == "openai":
@@ -274,6 +315,12 @@ def main() -> None:
     )
     if backend in ("ollama", "ollama-full"):
         _log(f"Ollama URL: {ollama_url}", emoji="🦙")
+        if ingestion_context_tokens is not None:
+            _log(
+                f"Ingestion num_ctx≈{ingestion_context_tokens} tokens "
+                f"(input batch budget ≈{INGESTION_OLLAMA_INPUT_FILL_RATIO:.0%} via INGESTION_OLLAMA_INPUT_FILL_RATIO)",
+                emoji="📐",
+            )
     if artifact_dir_str:
         _log(f"Artifact dir: {artifact_dir_str}", emoji="📦")
 

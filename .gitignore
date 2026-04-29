@@ -25,8 +25,11 @@ server/.pytest_cache/
 
 # ---------- Secrets ----------
 .env
+.env.portalnode
 *.env
 server/.env
+# Local-only copy of pilot DB password / DSN (see docs/PORTALNODE_SECRETS.local.md.example)
+docs/PORTALNODE_SECRETS.local.md
 server/secure/log_encryption.key
 server/**/log_encryption.key
 
@@ -67,6 +70,7 @@ snapshots/
 # allow our versioned SQL
 !database/sql/*.sql
 !database/schemas/*.sql
+!scripts/portalnode_stub_mac_owner_role.sql
 
 # editor / temp
 *.swp
@@ -117,6 +121,10 @@ docker/certs-local/
 # --- Local EoH / infra artifacts (do NOT commit) ---
 docker_env_report/
 mkg_backup_*.dump
+# PortalNode / FORWARD pilot pg slice dumps (regenerate with scripts/mkg_dump_for_4090*.sh)
+artifacts/forward_pilot_dump_*/
+artifacts/forward_pilot_dump_*.tgz
+artifacts/forward_pilot_dump_*.tar.gz
 
 # Temp scratch dirs/files
 extracting
@@ -134,6 +142,7 @@ sha256:*
 # Python venv (2OPMD / WMM — never commit)
 .BeatingHeart/
 .StandardVenv/
+.venv_embed/
 
 # Nested repo companion
 ai_code_pipelines/.BeatingHeart/

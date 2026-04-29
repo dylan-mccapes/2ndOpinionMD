@@ -1,0 +1,11 @@
+# MKG retrieval harness smoke set (10 queries)
+First-line therapy for T2DM with CKD considerations
+When should SGLT2 inhibitors be started in CKD with diabetes?
+Which agents reduce renal outcomes in diabetic kidney disease?
+How is anemia in chronic kidney disease managed per KDIGO?
+What are GOLD 2024 escalation steps for COPD maintenance therapy?
+What does GINA 2023 suggest for step-up asthma control?
+How do ADA 2024 recommendations prioritize GLP-1 vs SGLT2 in CKD?
+Key treatment principles for lupus nephritis in EULAR/KDIGO guidance
+When are nonsteroidal MRAs considered in CKD and diabetes?
+Summarize opioid prescribing cautions from CDC guidance

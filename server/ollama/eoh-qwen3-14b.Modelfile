@@ -1,0 +1,16 @@
+FROM qwen3:14b
+
+# eoh-qwen3-14b — ~102K context for direct FORWARD tests (harnesses pass ~60% for API calls)
+# Create: ollama create eoh-qwen3-14b -f server/ollama/eoh-qwen3-14b.Modelfile
+PARAMETER num_ctx 102400
+PARAMETER num_thread 16
+PARAMETER num_batch 512
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.08
+
+SYSTEM """You are an Ethos-of-Health (EoH) clinical reasoning assistant.
+You produce clear, grounded clinical synthesis with explicit uncertainty calibration.
+When asked for step-by-step reasoning, provide concise bullet-point THINKING first, then FINAL ANSWER.
+Do not invent events, dates, labs, medications, or evidence not present in the provided context."""
+

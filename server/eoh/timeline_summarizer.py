@@ -40,7 +40,12 @@ from server.api.eoh_gap_retrieval import (
     build_compact_context_for_gap,
 )
 
-from server.llm.llm_client import chat_completion_async as _llm_chat_completion_async, embedding_async, get_async_openai_client
+from server.llm.llm_client import (
+    chat_completion_async as _llm_chat_completion_async,
+    embedding_async,
+    get_async_openai_client,
+    get_ollama_client,
+)
 from server.timeline.embedding_cache import get_cached_query_embedding, put_cached_query_embedding
 
 # PatientTimelineVision for provenance tracking
@@ -76,7 +81,70 @@ class StructuredProbeSnapshot:
 
 logger = logging.getLogger(__name__)
 
-_openai_client = OpenAI(timeout=60.0)
+# Deferred construction so ``import server.eoh.timeline_summarizer`` works on pilot-local hosts
+# that intentionally omit OPENAI_API_KEY (ollama-full ingestion runs never touch OpenAI).
+_sync_openai_singleton: Optional[OpenAI] = None
+_timeline_gap_planner_client: Optional[AsyncOpenAI] = None
+_timeline_gap_planner_model: Optional[str] = None
+_timeline_gap_planner_num_ctx: Optional[int] = None
+_timeline_gap_planner_base_url: Optional[str] = None
+
+
+def _sync_openai_client() -> OpenAI:
+    global _sync_openai_singleton
+    if _sync_openai_singleton is None:
+        key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if not key:
+            raise RuntimeError(
+                "OPENAI_API_KEY is required for this OpenAI-only operation "
+                "(embedding cache fill or gap-retrieval planner)."
+            )
+        _sync_openai_singleton = OpenAI(api_key=key, timeout=60.0)
+    return _sync_openai_singleton
+
+
+def _timeline_gap_planner_runtime() -> Tuple[AsyncOpenAI, str, int, str]:
+    """Return a cached Ollama client and planner runtime settings."""
+    global _timeline_gap_planner_client
+    global _timeline_gap_planner_model
+    global _timeline_gap_planner_num_ctx
+    global _timeline_gap_planner_base_url
+
+    if _timeline_gap_planner_client is None:
+        _timeline_gap_planner_model = (
+            os.getenv("EOH_TIMELINE_GAP_PLANNER_MODEL")
+            or os.getenv("FORWARD_GAP_MODEL")
+            or os.getenv("EOH_TIMELINE_GAP_MODEL")
+            or "eoh-qwen3-14b"
+        ).strip()
+        _timeline_gap_planner_num_ctx = max(
+            2048,
+            int(
+                os.getenv(
+                    "EOH_TIMELINE_GAP_PLANNER_NUM_CTX",
+                    os.getenv("FORWARD_QWEN_CALL_NUM_CTX", "61440"),
+                )
+            ),
+        )
+        _timeline_gap_planner_base_url = os.getenv("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+        _timeline_gap_planner_client = get_ollama_client(base_url=_timeline_gap_planner_base_url)
+        logger.info(
+            "Initialized timeline gap planner runtime once: model=%s base_url=%s num_ctx=%s",
+            _timeline_gap_planner_model,
+            _timeline_gap_planner_base_url,
+            _timeline_gap_planner_num_ctx,
+        )
+
+    assert _timeline_gap_planner_client is not None
+    assert _timeline_gap_planner_model is not None
+    assert _timeline_gap_planner_num_ctx is not None
+    assert _timeline_gap_planner_base_url is not None
+    return (
+        _timeline_gap_planner_client,
+        _timeline_gap_planner_model,
+        _timeline_gap_planner_num_ctx,
+        _timeline_gap_planner_base_url,
+    )
 
 
 class DateTimeJSONEncoder(json.JSONEncoder):
@@ -696,22 +764,29 @@ async def embed_queries_with_cache(
         missing = [n for n in uniq_normed if n not in cached]
 
     if missing:
-        # One embeddings request for all missing items
-        raw_inputs = [norm_to_raw[n] for n in missing]
-
-        def _do_embed():
-            return _openai_client.embeddings.create(
-                model=model,
-                input=raw_inputs,
+        key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if not key:
+            logger.warning(
+                "embed_queries_with_cache: OPENAI_API_KEY unset; skipping OpenAI embed for %d quer(ies). "
+                "ANN retrieval may return fewer rows.",
+                len(missing),
             )
+        else:
+            raw_inputs = [norm_to_raw[n] for n in missing]
 
-        resp = await anyio.to_thread.run_sync(_do_embed)
-        vectors = [d.embedding for d in resp.data]  # list[list[float]]
+            def _do_embed():
+                return _sync_openai_client().embeddings.create(
+                    model=model,
+                    input=raw_inputs,
+                )
 
-        async with pool.acquire() as conn:
-            for n, raw, emb in zip(missing, raw_inputs, vectors):
-                await _insert_cached_embedding(conn, model, n, raw, list(emb))
-                cached[n] = list(emb)
+            resp = await anyio.to_thread.run_sync(_do_embed)
+            vectors = [d.embedding for d in resp.data]  # list[list[float]]
+
+            async with pool.acquire() as conn:
+                for n, raw, emb in zip(missing, raw_inputs, vectors):
+                    await _insert_cached_embedding(conn, model, n, raw, list(emb))
+                    cached[n] = list(emb)
 
     return cached
 
@@ -1964,6 +2039,8 @@ async def _run_eoh_gap_retrieval_for_timeline(
     if not current_context:
         return {"needs_gap_retrieval": False, "slots": [], "reason": ""}
 
+    planner_client, planner_model, planner_num_ctx, planner_base_url = _timeline_gap_planner_runtime()
+
     # Compact the context (this is what the planner should see)
     compact_context: List[Dict[str, Any]] = []
     for r in current_context:
@@ -1994,13 +2071,19 @@ async def _run_eoh_gap_retrieval_for_timeline(
         {"role": "user", "content": json.dumps(payload, cls=DateTimeJSONEncoder)},
     ]
 
+    logger.info(
+        "Timeline gap planner: model=%s base_url=%s num_ctx=%s",
+        planner_model,
+        planner_base_url,
+        planner_num_ctx,
+    )
     resp = await chat_completion_async(
-        client=_openai_client,
-        model=TIMELINE_PROBE_MODEL,
+        client=planner_client,
+        model=planner_model,
         messages=messages,
         max_tokens=1024,
-        response_format={"type": "json_object"},
         temperature=0.0,
+        extra_body={"options": {"num_ctx": planner_num_ctx}},
     )
     if iscoroutine(resp):
         resp = await resp
@@ -2928,12 +3011,17 @@ def _ollama_max_pages_per_batch() -> int:
     return max(1, min(80, int(os.getenv("OLLAMA_MAX_PAGES_PER_BATCH", "5"))))
 
 
+def _is_qwen_model(model: Optional[str]) -> bool:
+    return bool(model and "qwen" in str(model).lower())
+
+
 def _ingestion_max_pages_per_batch(
     *,
     ctx_tokens: int,
     gpt41_ingest: bool,
     is_ollama: bool,
     ollama_num_ctx: Optional[int],
+    ingestion_model: Optional[str] = None,
 ) -> Optional[int]:
     """Pages per ``pack_chapters_into_batches`` LLM batch.
 
@@ -2941,8 +3029,18 @@ def _ingestion_max_pages_per_batch(
     - Else: ``min(OLLAMA_MAX_PAGES_PER_BATCH ceiling, output_tokens // per-page est)``
       so streaming and non-streaming paths match and Ollama cannot pack 20+
       pages when ``num_predict`` is ~10k.
+    - For Qwen models at ~102K ctx: chapter-sized batches are allowed by default
+      (set ``OLLAMA_QWEN_MAX_PAGES_PER_BATCH`` to force a hard cap).
     """
-    _ollama_page_cap = _ollama_max_pages_per_batch()
+    # Qwen @ ~102K can usually process whole chapter batches; avoid the default 5-page
+    # hard cap unless explicitly overridden.
+    if is_ollama and _is_qwen_model(ingestion_model) and ctx_tokens >= 96_000:
+        qwen_cap = int(os.getenv("OLLAMA_QWEN_MAX_PAGES_PER_BATCH", "0"))
+        if qwen_cap <= 0:
+            return None
+        _ollama_page_cap = max(1, min(200, qwen_cap))
+    else:
+        _ollama_page_cap = _ollama_max_pages_per_batch()
     _ollama_tok_per_page = _ollama_output_tokens_per_page_estimate()
     if ctx_tokens >= 500_000:
         if gpt41_ingest:
@@ -2960,6 +3058,33 @@ def _ingestion_max_pages_per_batch(
     if ctx_tokens >= 500_000:
         max_pages = None
     return max_pages
+
+
+def _pack_chapters_for_ingestion(
+    *,
+    chapters: List[Any],
+    max_chars: int,
+    max_pages_per_batch: Optional[int],
+    per_page_overhead_chars: int,
+    ingestion_model: Optional[str],
+) -> List[Any]:
+    """Pack chapter batches; Qwen defaults to multi-chapter batches capped at 21 pages."""
+    from server.timeline.pdf_sectionizer import pack_chapters_into_batches
+
+    effective_max_pages = max_pages_per_batch
+    if _is_qwen_model(ingestion_model):
+        qwen_page_cap = max(1, int(os.getenv("OLLAMA_QWEN_MAX_PAGES_PER_BATCH", "21")))
+        if effective_max_pages is None:
+            effective_max_pages = qwen_page_cap
+        else:
+            effective_max_pages = min(effective_max_pages, qwen_page_cap)
+
+    return pack_chapters_into_batches(
+        chapters,
+        max_chars=max_chars,
+        max_pages_per_batch=effective_max_pages,
+        per_page_overhead_chars=per_page_overhead_chars,
+    )
 
 
 def _ollama_output_tokens_per_page_estimate() -> int:
@@ -4059,6 +4184,7 @@ async def populate_vision_from_extracted_pages(
         gpt41_ingest=_gpt41_ingest,
         is_ollama=_is_ollama,
         ollama_num_ctx=_ollama_num_ctx,
+        ingestion_model=ingestion_model,
     )
 
     # Chapter-aware batching: a PDF chapter = one Kaiser encounter (one clinical
@@ -4073,11 +4199,12 @@ async def populate_vision_from_extracted_pages(
     )
 
     _chapters = sectionize_pages(extraction_pages)
-    _chapter_batches = pack_chapters_into_batches(
-        _chapters,
+    _chapter_batches = _pack_chapters_for_ingestion(
+        chapters=_chapters,
         max_chars=_batch_max_chars,
         max_pages_per_batch=_max_pages_per_batch,
         per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+        ingestion_model=ingestion_model,
     )
     batches: List[List[Tuple[int, str]]] = [cb.pages for cb in _chapter_batches]
     _primary_chapter_ids: List[str] = [cb.primary_chapter_id for cb in _chapter_batches]
@@ -4555,14 +4682,16 @@ async def stream_populate_vision_from_extracted_pages(
         gpt41_ingest=_gpt41_ingest,
         is_ollama=_is_ollama,
         ollama_num_ctx=_ollama_num_ctx,
+        ingestion_model=ingestion_model,
     )
 
     chapters = sectionize_pages(extraction_pages)
-    chapter_batches = pack_chapters_into_batches(
-        chapters,
+    chapter_batches = _pack_chapters_for_ingestion(
+        chapters=chapters,
         max_chars=_batch_max_chars,
         max_pages_per_batch=_max_pages_per_batch,
         per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+        ingestion_model=ingestion_model,
     )
     chapter_index: Dict[str, Dict[str, Any]] = {ch.chapter_id: ch.to_dict() for ch in chapters}
     ocr_pending: List[int] = []

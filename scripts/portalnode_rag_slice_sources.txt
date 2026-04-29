@@ -1,0 +1,51 @@
+# One rag_corpus.source per line (PortalNode / FORWARD pilot slice).
+# mkg_dump_for_4090.sh / mkg_dump_for_4090_slice_only.sh dump ALL lines below into 05b
+# (plus MANIFEST_slice_by_source.txt with a row per line, count 0 if missing on origin).
+# CRLF and end-of-line # comments are OK. Keep MIMIC and other huge shards OUT of this file.
+# Aligned with server/api/stream_config.py guideline + ontology-style sources.
+
+# Ontologies & lexicons
+rxnorm
+loinc
+hpo
+snomed
+icd10cm
+icd11
+orphanet
+chv
+
+# VA + selected multisociety guidelines (non-huge)
+va_guidelines
+acc_aha_valvular_2020
+ada_dm_2024
+kdigo_ckd_2021
+kdigo_ckd_2024
+kdigo_gn_ln_2021
+kdigo_anemia_ckd_2023
+gold_copd_2023
+gold_copd_2024
+gina_asthma_2023
+cdc_opioid
+
+# ACR / EULAR / companion rheum guidelines (retrievable chunks in rag_corpus)
+acr_eular
+acr_ild_2023
+acr_ra_2021
+acr_npf_psa_2018
+acr_vf_anca_2021
+acr_reproductive_health_2020
+eular_acr_sle_2019
+eular_ra_2022
+eular_psa_2020
+eular_sle_nephritis_2025
+eular_anca_2022
+eular_lvv_2018
+eular_axspa_2022
+asas_eular_axspa_2022
+diagrules
+
+# Ethos canon (small)
+eoh_canon_v6
+eoh_2025
+eoh_gold_2025
+ethos_model

@@ -1,0 +1,13 @@
+{
+  "session_id": "20260428T220145Z",
+  "started_at": "2026-04-28T22:01:45.150548+00:00",
+  "graph_hash": "05fcc25c7fa5147f",
+  "graph_path": "/mnt/c/Users/dylan/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P1_early_responder.json",
+  "models": {
+    "probe": "eoh-llama3.2-source-router",
+    "gap": "eoh-qwen3-14b",
+    "report": "eoh-qwen3-14b",
+    "embed": "BAAI/bge-base-en-v1.5"
+  },
+  "schema": "chatbot_session.v1"
+}

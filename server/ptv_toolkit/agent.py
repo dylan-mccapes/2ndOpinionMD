@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -190,12 +191,19 @@ def _ollama_chat(
     *,
     timeout: float,
     temperature: float,
+    num_ctx: Optional[int] = None,
 ) -> str:
+    if num_ctx is None:
+        # Default 16K matches eoh-llama-lucifer (4050). Override per-call from harness
+        # when running larger models on the 4090.
+        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "16384")))
+    else:
+        num_ctx = max(2048, int(num_ctx))
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
-        "options": {"temperature": temperature},
+        "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
     r = requests.post(f"{url}/api/chat", json=payload, timeout=timeout)
     r.raise_for_status()
@@ -217,6 +225,7 @@ def run_agent(
     max_turns: int = MAX_TOOL_TURNS,
     temperature: float = 0.1,
     timeout: float = 180.0,
+    num_ctx: Optional[int] = None,
 ) -> AgentLog:
     catalog = render_tool_catalog()
     system = SYSTEM_PROMPT_PREFIX.replace("{catalog}", catalog).replace(
@@ -252,7 +261,12 @@ def run_agent(
     for turn_idx in range(hard_cap):
         try:
             raw = _ollama_chat(
-                ollama_url, model, msgs, timeout=timeout, temperature=temperature
+                ollama_url,
+                model,
+                msgs,
+                timeout=timeout,
+                temperature=temperature,
+                num_ctx=num_ctx,
             )
         except Exception as exc:  # noqa: BLE001
             log.turns.append(AgentTurn(role="assistant", content="", parse_error=str(exc)))

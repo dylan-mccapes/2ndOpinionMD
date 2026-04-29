@@ -3575,6 +3575,83 @@
           "P1_tepi_hydroxychloroquine"
         ]
       }
+    },
+    "code_index": {
+      "drugs": {
+        "methotrexate": [
+          {
+            "event_id": "P1_med_methotrexate",
+            "timestamp": "2021-01-26",
+            "drug": "Methotrexate",
+            "dose": "",
+            "route": "",
+            "status": "",
+            "rxnorm": "6851"
+          }
+        ],
+        "folic acid": [
+          {
+            "event_id": "P1_med_folic_acid",
+            "timestamp": "2021-01-26",
+            "drug": "Folic Acid",
+            "dose": "",
+            "route": "",
+            "status": "",
+            "rxnorm": "4511"
+          }
+        ],
+        "hydroxychloroquine": [
+          {
+            "event_id": "P1_med_hydroxychloroquine",
+            "timestamp": "2021-07-28",
+            "drug": "Hydroxychloroquine",
+            "dose": "",
+            "route": "",
+            "status": "",
+            "rxnorm": "5521"
+          }
+        ]
+      },
+      "rxnorm": {
+        "6851": [
+          {
+            "event_id": "P1_med_methotrexate",
+            "timestamp": "2021-01-26",
+            "drug": "methotrexate",
+            "dose": "",
+            "route": ""
+          }
+        ],
+        "4511": [
+          {
+            "event_id": "P1_med_folic_acid",
+            "timestamp": "2021-01-26",
+            "drug": "folic acid",
+            "dose": "",
+            "route": ""
+          }
+        ],
+        "5521": [
+          {
+            "event_id": "P1_med_hydroxychloroquine",
+            "timestamp": "2021-07-28",
+            "drug": "hydroxychloroquine",
+            "dose": "",
+            "route": ""
+          }
+        ]
+      },
+      "icd": {
+        "M05.9": [
+          {
+            "event_id": "P1_dx_ra",
+            "timestamp": "2020-01-27",
+            "family": "M05"
+          }
+        ]
+      },
+      "labs": {},
+      "loinc": {}
     }
   },
   "patient_id": "synth_p1_early_responder",

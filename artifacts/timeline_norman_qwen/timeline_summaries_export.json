@@ -1,0 +1,21 @@
+{
+  "timeline_summary": "Norman Eric Roberts, a 68-year-old male with chronic low back pain and spinal stenosis, has a history of two laminectomies (2009, 2012) and an epidural steroid injection in May 2016. Current records indicate a planned laminectomy at L2-3 with Dr. Moller on June 22, 2016, following a pre-operative physical and telephone consult. His medical history includes hypertension, diabetes, and allergies to sulfa and penicillin. Medications include tramadol (until June 2), lisinopril, metformin, and atorvastatin. Pre-operative instructions include stopping tramadol by June 2 and attending a Perioperative Medicine Physical. Post-operative follow-up is scheduled for July 15. The timeline reflects a stable chronic condition with planned surgical intervention, though no acute complications or recent flare-ups are documented.",
+  "meds_and_labs_snapshot": "Key medications: tramadol (discontinued 6/2), lisinopril, metformin, atorvastatin. No recent lab results provided. Allergies: sulfa, penicillin. Pre-op instructions: stop tramadol by 6/2, attend Perioperative Medicine Physical. No acute lab abnormalities or recent imaging mentioned. Chronic conditions: hypertension, diabetes, spinal stenosis. Upcoming surgery: L2-3 laminectomy. No current inflammatory markers or organ dysfunction noted in available records.",
+  "valyu_summary": "Chronic low back pain with spinal stenosis and prior laminectomies\nPlanned L2-3 laminectomy with Dr. Moller on 6/22/2016\nHypertension managed with lisinopril\nDiabetes on metformin\nAllergies: sulfa, penicillin\nTramadol discontinued by 6/2 pre-operatively\nPre-operative Perioperative Medicine Physical required\nPost-operative follow-up scheduled for 7/15\nNo recent lab results or acute complications documented",
+  "vision_path": "/mnt/c/Users/dylan/2ndOpinionMD-MVP/artifacts/timeline_norman_qwen/patient_timeline_vision_norman_eric_roberts_20260429_100452.json",
+  "graph_out_path": "/mnt/c/Users/dylan/2ndOpinionMD-MVP/artifacts/timeline_norman_qwen/patient_timeline_graph_final.json",
+  "timeline_enrichment": {
+    "pdf_pre_summary_enrichment": {
+      "phase_label": "pdf_pre_summary",
+      "edges_start": 10466,
+      "events": 607,
+      "gap_analysis": {
+        "skipped": "no_db_pool"
+      },
+      "gap_retrieval_row_count": 0,
+      "edges_after_gap_opportunistic": 10466,
+      "edges_after_synthesis": 10466,
+      "edges_end": 13098
+    }
+  }
+}
