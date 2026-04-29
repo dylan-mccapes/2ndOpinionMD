@@ -70,6 +70,14 @@ def _tokenize(text: str) -> List[str]:
     return [t.lower() for t in _TOKEN_RX.findall(text or "")]
 
 
+def _distinct_sources_from_rows(rows: List[Dict[str, Any]]) -> set:
+    return {
+        str(r.get("source") or "").strip().lower()
+        for r in rows
+        if r.get("source") and str(r.get("source")).strip()
+    }
+
+
 def _backfill_sources(
     *,
     selected_rows: List[Dict[str, Any]],
@@ -81,18 +89,23 @@ def _backfill_sources(
     """Reduce over-conservative router output by deterministically widening source fanout."""
     if not source_candidates:
         return selected_rows
-    selected = [str(r.get("source") or "").strip().lower() for r in selected_rows]
-    selected = [s for s in selected if s]
-    selected_set = set(selected)
 
-    # Mirror ask/eoh_stream behavior: avoid over-pruning by keeping a broader source set.
-    min_needed = 5 if question_type in {"C", "D"} else 4 if question_type in {"A", "B", "E"} else 3
+    qt = str(question_type or "").strip().upper()
+    if qt in {"C", "D"}:
+        min_needed = min(max_sources, 12)
+    elif qt in {"A", "B", "E"}:
+        min_needed = min(max_sources, 7)
+    else:
+        min_needed = min(max_sources, 6)
     target = min(max_sources, max(1, min_needed))
+
+    out = list(selected_rows)
+    selected_set = _distinct_sources_from_rows(out)
     if len(selected_set) >= target:
         return selected_rows
 
     q_toks = set(_tokenize(query_text))
-    prefer_eoh = question_type in {"C", "D", "OTHER"}
+    prefer_eoh = qt in {"C", "D", "OTHER"}
     scored: List[tuple[float, str]] = []
     for src, desc in source_candidates.items():
         s = str(src).strip().lower()
@@ -107,9 +120,8 @@ def _backfill_sources(
 
     scored.sort(key=lambda x: (-x[0], x[1]))
     next_prio = max([int(r.get("priority") or 0) for r in selected_rows] + [0]) + 1
-    out = list(selected_rows)
     for _, s in scored:
-        if len(out) >= target:
+        if len(_distinct_sources_from_rows(out)) >= target:
             break
         out.append(
             {
@@ -118,13 +130,33 @@ def _backfill_sources(
                 "why": "router_post_validate_backfill_for_recall",
             }
         )
+        selected_set.add(s)
         next_prio += 1
 
-    # Keep EoH as a first-class source family for EoH-like classes.
-    needs_eoh = question_type in {"C", "D", "OTHER"}
+    if len(_distinct_sources_from_rows(out)) < target:
+        taken = _distinct_sources_from_rows(out)
+        for s in sorted(source_candidates.keys(), key=lambda x: str(x).lower()):
+            sk = str(s).strip().lower()
+            if not sk or sk in taken:
+                continue
+            if len(_distinct_sources_from_rows(out)) >= target:
+                break
+            out.append(
+                {
+                    "source": sk,
+                    "priority": next_prio,
+                    "why": "router_post_validate_alphabet_tail_fill",
+                }
+            )
+            taken.add(sk)
+            next_prio += 1
+
+    needs_eoh = qt in {"C", "D", "OTHER"}
     has_eoh = any(str(r.get("source") or "").startswith("eoh_") for r in out)
     if needs_eoh and not has_eoh:
-        eoh_candidates = [str(s).strip().lower() for s in source_candidates if str(s).startswith("eoh_")]
+        eoh_candidates = sorted(
+            str(s).strip().lower() for s in source_candidates if str(s).startswith("eoh_")
+        )
         for s in eoh_candidates:
             if len(out) >= max_sources:
                 break
@@ -139,7 +171,7 @@ def _backfill_sources(
             )
             next_prio += 1
             break
-    return out
+    return out[:max_sources]
 
 
 def _build_system_prompt() -> str:
@@ -160,7 +192,12 @@ def _build_system_prompt() -> str:
         "- Therapy/management/dosing/first-line/protocol queries -> question_type D or C (NEVER E).\n"
         "- Guidelines, staging, standard-of-care -> C.\n"
         "- E is only for prevalence/epidemiology questions.\n"
-        "- For D or C questions, select at least 3 sources unless fewer exist.\n"
+        "- **SOURCE BREADTH (mandatory):** For types **C or D**, output **at least min(8, max_sources)** distinct "
+        "source keys whenever the candidate list is large enough — never stop at two or three sources. "
+        "For A/B/E/OTHER, aim for **at least min(6, max_sources)**. Prefer diversity: multiple guideline corpora "
+        "(KDIGO + ADA + ACR/EULAR + VA), terminology layers (icd10cm, snomed, loinc, rxnorm when relevant), "
+        "plus at least one **eoh_*** ethos source when available.\n"
+        "- Fill toward **max_sources**; under-selection hurts recall badly.\n"
         "- ts_terms must be 6-12 concrete medical tokens or short phrases (drug names, ICD nouns,\n"
         "  procedures, lab names). Include synonyms and abbreviations a clinician would search.\n"
         "  Do NOT include stopwords or generic words like 'management' or 'treatment'.\n"
@@ -243,7 +280,16 @@ def _build_user_prompt(
         )
     else:
         intro = "Plan source/module routing for this query."
-    return intro + "\n\n" + json.dumps(payload, ensure_ascii=True, indent=2)
+
+    fanout_hint = ""
+    if max_sources >= 4:
+        fanout_hint = (
+            f"\n\nSOURCE FANOUT TARGET: max_sources={max_sources}. "
+            "Types **C/D**: **≥8 distinct selected_sources** keys when that many candidates apply (never 3). "
+            "Types **A/B/E/OTHER**: **≥6** when possible. Stretch toward **"
+            f"{max_sources}** for broad clinical questions.\n"
+        )
+    return intro + fanout_hint + "\n\n" + json.dumps(payload, ensure_ascii=True, indent=2)
 
 
 def _module_candidates() -> Dict[str, Dict[str, str]]:
@@ -346,7 +392,9 @@ def _post_validate(
         out["ts_terms"] = [
             t for t in re.split(r"[\s,]+", out["ts_query"]) if t and len(t) >= 3
         ][:8]
-    if any(r.get("why") == "router_post_validate_backfill_for_recall" for r in out["selected_sources"]):
+    if any(
+        (r.get("why") or "").startswith("router_post_validate_") for r in out["selected_sources"]
+    ):
         note = "source fanout widened in post-validate for recall"
         out["notes"] = f"{out['notes']} | {note}".strip(" |")
 
@@ -361,8 +409,8 @@ def plan_route(
     temperature: float = 0.1,
     timeout: float = 120.0,
     num_ctx: Optional[int] = None,
-    max_sources: int = 8,
-    max_modules: int = 6,
+    max_sources: int = 14,
+    max_modules: int = 8,
     source_candidates: Optional[Dict[str, str]] = None,
     module_candidates: Optional[Dict[str, Dict[str, str]]] = None,
     clinical_context: Optional[str] = None,
