@@ -40,7 +40,12 @@ from server.api.eoh_gap_retrieval import (
     build_compact_context_for_gap,
 )
 
-from server.llm.llm_client import chat_completion_async as _llm_chat_completion_async, embedding_async, get_async_openai_client
+from server.llm.llm_client import (
+    chat_completion_async as _llm_chat_completion_async,
+    embedding_async,
+    get_async_openai_client,
+    get_ollama_client,
+)
 from server.timeline.embedding_cache import get_cached_query_embedding, put_cached_query_embedding
 
 # PatientTimelineVision for provenance tracking
@@ -76,7 +81,70 @@ class StructuredProbeSnapshot:
 
 logger = logging.getLogger(__name__)
 
-_openai_client = OpenAI(timeout=60.0)
+# Deferred construction so ``import server.eoh.timeline_summarizer`` works on pilot-local hosts
+# that intentionally omit OPENAI_API_KEY (ollama-full ingestion runs never touch OpenAI).
+_sync_openai_singleton: Optional[OpenAI] = None
+_timeline_gap_planner_client: Optional[AsyncOpenAI] = None
+_timeline_gap_planner_model: Optional[str] = None
+_timeline_gap_planner_num_ctx: Optional[int] = None
+_timeline_gap_planner_base_url: Optional[str] = None
+
+
+def _sync_openai_client() -> OpenAI:
+    global _sync_openai_singleton
+    if _sync_openai_singleton is None:
+        key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if not key:
+            raise RuntimeError(
+                "OPENAI_API_KEY is required for this OpenAI-only operation "
+                "(embedding cache fill or gap-retrieval planner)."
+            )
+        _sync_openai_singleton = OpenAI(api_key=key, timeout=60.0)
+    return _sync_openai_singleton
+
+
+def _timeline_gap_planner_runtime() -> Tuple[AsyncOpenAI, str, int, str]:
+    """Return a cached Ollama client and planner runtime settings."""
+    global _timeline_gap_planner_client
+    global _timeline_gap_planner_model
+    global _timeline_gap_planner_num_ctx
+    global _timeline_gap_planner_base_url
+
+    if _timeline_gap_planner_client is None:
+        _timeline_gap_planner_model = (
+            os.getenv("EOH_TIMELINE_GAP_PLANNER_MODEL")
+            or os.getenv("FORWARD_GAP_MODEL")
+            or os.getenv("EOH_TIMELINE_GAP_MODEL")
+            or "eoh-qwen3-14b"
+        ).strip()
+        _timeline_gap_planner_num_ctx = max(
+            2048,
+            int(
+                os.getenv(
+                    "EOH_TIMELINE_GAP_PLANNER_NUM_CTX",
+                    os.getenv("FORWARD_QWEN_CALL_NUM_CTX", "61440"),
+                )
+            ),
+        )
+        _timeline_gap_planner_base_url = os.getenv("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+        _timeline_gap_planner_client = get_ollama_client(base_url=_timeline_gap_planner_base_url)
+        logger.info(
+            "Initialized timeline gap planner runtime once: model=%s base_url=%s num_ctx=%s",
+            _timeline_gap_planner_model,
+            _timeline_gap_planner_base_url,
+            _timeline_gap_planner_num_ctx,
+        )
+
+    assert _timeline_gap_planner_client is not None
+    assert _timeline_gap_planner_model is not None
+    assert _timeline_gap_planner_num_ctx is not None
+    assert _timeline_gap_planner_base_url is not None
+    return (
+        _timeline_gap_planner_client,
+        _timeline_gap_planner_model,
+        _timeline_gap_planner_num_ctx,
+        _timeline_gap_planner_base_url,
+    )
 
 
 class DateTimeJSONEncoder(json.JSONEncoder):
@@ -696,22 +764,29 @@ async def embed_queries_with_cache(
         missing = [n for n in uniq_normed if n not in cached]
 
     if missing:
-        # One embeddings request for all missing items
-        raw_inputs = [norm_to_raw[n] for n in missing]
-
-        def _do_embed():
-            return _openai_client.embeddings.create(
-                model=model,
-                input=raw_inputs,
+        key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        if not key:
+            logger.warning(
+                "embed_queries_with_cache: OPENAI_API_KEY unset; skipping OpenAI embed for %d quer(ies). "
+                "ANN retrieval may return fewer rows.",
+                len(missing),
             )
+        else:
+            raw_inputs = [norm_to_raw[n] for n in missing]
 
-        resp = await anyio.to_thread.run_sync(_do_embed)
-        vectors = [d.embedding for d in resp.data]  # list[list[float]]
+            def _do_embed():
+                return _sync_openai_client().embeddings.create(
+                    model=model,
+                    input=raw_inputs,
+                )
 
-        async with pool.acquire() as conn:
-            for n, raw, emb in zip(missing, raw_inputs, vectors):
-                await _insert_cached_embedding(conn, model, n, raw, list(emb))
-                cached[n] = list(emb)
+            resp = await anyio.to_thread.run_sync(_do_embed)
+            vectors = [d.embedding for d in resp.data]  # list[list[float]]
+
+            async with pool.acquire() as conn:
+                for n, raw, emb in zip(missing, raw_inputs, vectors):
+                    await _insert_cached_embedding(conn, model, n, raw, list(emb))
+                    cached[n] = list(emb)
 
     return cached
 
@@ -1964,6 +2039,8 @@ async def _run_eoh_gap_retrieval_for_timeline(
     if not current_context:
         return {"needs_gap_retrieval": False, "slots": [], "reason": ""}
 
+    planner_client, planner_model, planner_num_ctx, planner_base_url = _timeline_gap_planner_runtime()
+
     # Compact the context (this is what the planner should see)
     compact_context: List[Dict[str, Any]] = []
     for r in current_context:
@@ -1994,13 +2071,19 @@ async def _run_eoh_gap_retrieval_for_timeline(
         {"role": "user", "content": json.dumps(payload, cls=DateTimeJSONEncoder)},
     ]
 
+    logger.info(
+        "Timeline gap planner: model=%s base_url=%s num_ctx=%s",
+        planner_model,
+        planner_base_url,
+        planner_num_ctx,
+    )
     resp = await chat_completion_async(
-        client=_openai_client,
-        model=TIMELINE_PROBE_MODEL,
+        client=planner_client,
+        model=planner_model,
         messages=messages,
         max_tokens=1024,
-        response_format={"type": "json_object"},
         temperature=0.0,
+        extra_body={"options": {"num_ctx": planner_num_ctx}},
     )
     if iscoroutine(resp):
         resp = await resp
