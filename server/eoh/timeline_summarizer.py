@@ -3060,6 +3060,44 @@ def _ingestion_max_pages_per_batch(
     return max_pages
 
 
+def _pack_chapters_for_ingestion(
+    *,
+    chapters: List[Any],
+    max_chars: int,
+    max_pages_per_batch: Optional[int],
+    per_page_overhead_chars: int,
+    ingestion_model: Optional[str],
+) -> List[Any]:
+    """Pack chapter batches; Qwen defaults to one chapter per LLM call."""
+    from server.timeline.pdf_sectionizer import pack_chapters_into_batches
+
+    qwen_one_chapter = os.getenv("OLLAMA_QWEN_ONE_CHAPTER_PER_BATCH", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if _is_qwen_model(ingestion_model) and qwen_one_chapter:
+        out: List[Any] = []
+        for ch in chapters:
+            out.extend(
+                pack_chapters_into_batches(
+                    [ch],
+                    max_chars=max_chars,
+                    max_pages_per_batch=max_pages_per_batch,
+                    per_page_overhead_chars=per_page_overhead_chars,
+                )
+            )
+        return out
+
+    return pack_chapters_into_batches(
+        chapters,
+        max_chars=max_chars,
+        max_pages_per_batch=max_pages_per_batch,
+        per_page_overhead_chars=per_page_overhead_chars,
+    )
+
+
 def _ollama_output_tokens_per_page_estimate() -> int:
     """
     Used only to derive max pages per batch for small-context models.
@@ -4172,11 +4210,12 @@ async def populate_vision_from_extracted_pages(
     )
 
     _chapters = sectionize_pages(extraction_pages)
-    _chapter_batches = pack_chapters_into_batches(
-        _chapters,
+    _chapter_batches = _pack_chapters_for_ingestion(
+        chapters=_chapters,
         max_chars=_batch_max_chars,
         max_pages_per_batch=_max_pages_per_batch,
         per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+        ingestion_model=ingestion_model,
     )
     batches: List[List[Tuple[int, str]]] = [cb.pages for cb in _chapter_batches]
     _primary_chapter_ids: List[str] = [cb.primary_chapter_id for cb in _chapter_batches]
@@ -4658,11 +4697,12 @@ async def stream_populate_vision_from_extracted_pages(
     )
 
     chapters = sectionize_pages(extraction_pages)
-    chapter_batches = pack_chapters_into_batches(
-        chapters,
+    chapter_batches = _pack_chapters_for_ingestion(
+        chapters=chapters,
         max_chars=_batch_max_chars,
         max_pages_per_batch=_max_pages_per_batch,
         per_page_overhead_chars=_PDF_EXTRACTION_PER_PAGE_JSON_OVERHEAD_CHARS,
+        ingestion_model=ingestion_model,
     )
     chapter_index: Dict[str, Dict[str, Any]] = {ch.chapter_id: ch.to_dict() for ch in chapters}
     ocr_pending: List[int] = []
