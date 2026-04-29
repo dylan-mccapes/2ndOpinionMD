@@ -3068,32 +3068,21 @@ def _pack_chapters_for_ingestion(
     per_page_overhead_chars: int,
     ingestion_model: Optional[str],
 ) -> List[Any]:
-    """Pack chapter batches; Qwen defaults to one chapter per LLM call."""
+    """Pack chapter batches; Qwen defaults to multi-chapter batches capped at 21 pages."""
     from server.timeline.pdf_sectionizer import pack_chapters_into_batches
 
-    qwen_one_chapter = os.getenv("OLLAMA_QWEN_ONE_CHAPTER_PER_BATCH", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-    if _is_qwen_model(ingestion_model) and qwen_one_chapter:
-        out: List[Any] = []
-        for ch in chapters:
-            out.extend(
-                pack_chapters_into_batches(
-                    [ch],
-                    max_chars=max_chars,
-                    max_pages_per_batch=max_pages_per_batch,
-                    per_page_overhead_chars=per_page_overhead_chars,
-                )
-            )
-        return out
+    effective_max_pages = max_pages_per_batch
+    if _is_qwen_model(ingestion_model):
+        qwen_page_cap = max(1, int(os.getenv("OLLAMA_QWEN_MAX_PAGES_PER_BATCH", "21")))
+        if effective_max_pages is None:
+            effective_max_pages = qwen_page_cap
+        else:
+            effective_max_pages = min(effective_max_pages, qwen_page_cap)
 
     return pack_chapters_into_batches(
         chapters,
         max_chars=max_chars,
-        max_pages_per_batch=max_pages_per_batch,
+        max_pages_per_batch=effective_max_pages,
         per_page_overhead_chars=per_page_overhead_chars,
     )
 
