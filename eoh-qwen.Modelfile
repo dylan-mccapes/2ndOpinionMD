@@ -1,7 +1,7 @@
 FROM qwen3.6:35b
 
-# eoh-qwen — tuned for single RTX 4090 + clinical PTV synthesis
-PARAMETER num_ctx 65536
+# eoh-qwen — tuned for single RTX 4090 + clinical PTV synthesis (~102K ctx)
+PARAMETER num_ctx 102400
 PARAMETER num_thread 16
 
 # Clinical-friendly defaults

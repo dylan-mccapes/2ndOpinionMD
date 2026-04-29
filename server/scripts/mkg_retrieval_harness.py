@@ -23,7 +23,7 @@ Env (same as portal embed scripts):
   OLLAMA_URL — default http://127.0.0.1:11434
   OLLAMA_MODEL — default eoh-qwen3-14b
   OLLAMA_SYNTH_MODEL — optional override for the synthesis step (e.g. eoh-llama:70b)
-  OLLAMA_NUM_CTX — synthesis context size (default 65536)
+  OLLAMA_NUM_CTX — synthesis context size (default 61440, ~60% of 102400 Modelfile window)
   EOH_SOURCE_ROUTER_MODEL — default eoh-llama3.2-source-router
 
 Examples::
@@ -44,6 +44,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -53,6 +54,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from server.mkg.portalnode_pilot_sources import pilot_source_descriptions
+
+# One SentenceTransformer per (model_name, device) per process — reloading every
+# embed_query() call thrashed VRAM and slowed downstream Ollama generations.
+_EMBED_LOCK = threading.Lock()
+_EMBED_MODEL_CACHE: Dict[Tuple[str, str], Any] = {}
 
 
 def _log(emoji: str, msg: str) -> None:
@@ -85,7 +91,7 @@ def _ollama_chat(
     import requests
 
     if num_ctx is None:
-        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "65536")))
+        num_ctx = max(2048, int(os.environ.get("OLLAMA_NUM_CTX", "61440")))
     else:
         num_ctx = max(2048, int(num_ctx))
     _log("🤖", f"Calling Ollama model={model} num_ctx={num_ctx} timeout={timeout:.0f}s")
@@ -284,8 +290,13 @@ def embed_query(model_name: str, text: str) -> Tuple[List[float], str]:
     device = os.environ.get("LOCAL_EMBED_DEVICE")
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    _log("🧠", f"Loading embedding model={model_name} on device={device}")
-    st = SentenceTransformer(model_name, device=device)
+    key = (model_name, device)
+    with _EMBED_LOCK:
+        st = _EMBED_MODEL_CACHE.get(key)
+        if st is None:
+            _log("🧠", f"Loading embedding model={model_name} on device={device} (process cache)")
+            st = SentenceTransformer(model_name, device=device)
+            _EMBED_MODEL_CACHE[key] = st
     _log("📐", f"Embedding query ({len(text)} chars)")
     v = st.encode(
         [text],
@@ -655,7 +666,7 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--synth-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_NUM_CTX", "65536")),
+        default=int(os.environ.get("OLLAMA_NUM_CTX", "61440")),
         help="Context window for final synthesis pass.",
     )
     ap.add_argument(
@@ -671,8 +682,8 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--compress-num-ctx",
         type=int,
-        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "65536")),
-        help="num_ctx for pass-1 compression model (default 65536).",
+        default=int(os.environ.get("OLLAMA_COMPRESS_NUM_CTX", "61440")),
+        help="num_ctx for pass-1 compression model (default 61440).",
     )
     ap.add_argument(
         "--compress-evidence-k",

@@ -68,6 +68,11 @@ Env: same DB/embed/Ollama as ``mkg_retrieval_harness`` (``SYNC_DATABASE_URL``,
 ``LOCAL_EMBED_MODEL``, ``OLLAMA_URL``). If no DSN, MKG lanes are skipped with a
 notice; PTV-only still works.
 
+Qwen: ``FORWARD_QWEN_MODEL_NUM_CTX`` (default 102400) matches Modelfile ``PARAMETER num_ctx``.
+``FORWARD_QWEN_CALL_NUM_CTX`` / ``OLLAMA_AGENT_NUM_CTX`` / ``OLLAMA_SYNTH_NUM_CTX`` default to ~60%
+of that for GAP/REPORT API calls. ``FORWARD_GAP_REPORT_JSON_MAX_CHARS`` caps serialized JSON (~2.5
+chars per token vs ``FORWARD_QWEN_CALL_NUM_CTX`` unless overridden).
+
 Examples::
 
     python server/scripts/forward_probe_gap_report_chatbot.py
@@ -108,6 +113,7 @@ from server.ptv_toolkit.code_inventory import (
 from server.ptv_toolkit.graph import load_graph
 from server.ptv_toolkit.registry import call_tool
 from server.ptv_toolkit.session_log import SessionLog
+
 from server.scripts.mkg_retrieval_harness import (  # type: ignore
     ann_local,
     bm25_ts,
@@ -116,6 +122,21 @@ from server.scripts.mkg_retrieval_harness import (  # type: ignore
     _compact_hit,
     _overlap,
     _vec_literal,
+)
+
+
+# Align with eoh-qwen / eoh-qwen3-14b Modelfile PARAMETER num_ctx (102K). API requests default to
+# ~60% of that window so KV + generation fit; JSON payloads scale with FORWARD_QWEN_CALL_NUM_CTX.
+_FORWARD_QWEN_MODEL_NUM_CTX = int(os.environ.get("FORWARD_QWEN_MODEL_NUM_CTX", "102400"))
+_FORWARD_QWEN_CALL_NUM_CTX = max(
+    4096,
+    int(os.environ.get("FORWARD_QWEN_CALL_NUM_CTX", str(_FORWARD_QWEN_MODEL_NUM_CTX * 60 // 100))),
+)
+_GAP_REPORT_JSON_MAX_CHARS = int(
+    os.environ.get(
+        "FORWARD_GAP_REPORT_JSON_MAX_CHARS",
+        str(min(250_000, (_FORWARD_QWEN_CALL_NUM_CTX * 5) // 2)),
+    )
 )
 
 
@@ -363,7 +384,7 @@ def _eoh_module_route_prelude(
         },
         ensure_ascii=False,
         indent=2,
-    )[:50000]
+    )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🧭", f"Stage EOH-PRELUDE model={model} num_ctx={num_ctx}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -640,7 +661,7 @@ def _retro_summarize(
         {"new_question": question, "candidate_turns": compact},
         ensure_ascii=False,
         indent=2,
-    )[:50000]
+    )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🪞", f"Stage RETRO-REVIEW model={model} num_ctx={num_ctx} candidates={len(compact)}")
     try:
         raw = _ollama_chat(
@@ -790,7 +811,7 @@ def _gap_phase(
         },
         default=str,
         indent=2,
-    )[:50000]
+    )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🔎", f"Stage GAP model={model} num_ctx={num_ctx} user_json_chars={len(user)}")
     raw = _ollama_chat(
         url=ollama_url,
@@ -1474,8 +1495,16 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("FORWARD_RETRO_MODEL", "eoh-llama"),
         help="Model for retro session summary review (default eoh-llama).",
     )
-    ap.add_argument("--gap-num-ctx", type=int, default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", "65536")))
-    ap.add_argument("--report-num-ctx", type=int, default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", "65536")))
+    ap.add_argument(
+        "--gap-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_AGENT_NUM_CTX", str(_FORWARD_QWEN_CALL_NUM_CTX))),
+    )
+    ap.add_argument(
+        "--report-num-ctx",
+        type=int,
+        default=int(os.environ.get("OLLAMA_SYNTH_NUM_CTX", str(_FORWARD_QWEN_CALL_NUM_CTX))),
+    )
     ap.add_argument(
         "--retro-num-ctx",
         type=int,
