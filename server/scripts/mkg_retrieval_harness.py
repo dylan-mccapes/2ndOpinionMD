@@ -283,6 +283,180 @@ def bm25_ts_terms(
     return merged[:top_k]
 
 
+def _norm_rag_source(row: Dict[str, Any]) -> str:
+    return str(row.get("source") or "").strip().lower()
+
+
+def _dedupe_hits_keep_best_score(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_id: Dict[Any, Dict[str, Any]] = {}
+    for r in rows:
+        rid = r.get("id")
+        if rid is None:
+            continue
+        cur = by_id.get(rid)
+        if cur is None or float(r.get("score") or 0.0) > float(cur.get("score") or 0.0):
+            by_id[rid] = dict(r)
+    return sorted(by_id.values(), key=lambda r: float(r.get("score") or 0.0), reverse=True)
+
+
+def _truncate_lane_preserving_pins(
+    sorted_rows: List[Dict[str, Any]],
+    pinned_ids: set,
+    cap: int,
+) -> List[Dict[str, Any]]:
+    if not sorted_rows:
+        return []
+    cap = max(int(cap), len(pinned_ids))
+    pinned = [r for r in sorted_rows if r.get("id") in pinned_ids]
+    rest = [r for r in sorted_rows if r.get("id") not in pinned_ids]
+    pinned.sort(key=lambda r: float(r.get("score") or 0.0), reverse=True)
+    out = pinned + rest
+    return out[:cap]
+
+
+def ensure_source_coverage_retrieval(
+    cur,
+    emb_literal: str,
+    sem_rows: List[Dict[str, Any]],
+    ts_rows: List[Dict[str, Any]],
+    *,
+    required_sources: Optional[Sequence[str]],
+    ts_terms: List[str],
+    ts_query_fallback: str,
+    top_k: int,
+    min_ann_score: float,
+    min_ts_score: float,
+    per_source_fetch_limit: int = 16,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
+    """Ensure each required corpus ``source`` contributes at least one lane hit when a qualifying row exists.
+
+    Qualifying rows must meet lane-specific score floors (ANN: cosine-style ``1 - distance``;
+    TS: ``ts_rank``). If the global top-``top_k`` lanes omit a source, runs a targeted ANN/TS fetch
+    for that source only and pins the best qualifying row into the corresponding lane.
+
+    Returns updated ``(sem_rows, ts_rows, stats)``.
+    """
+    stats: Dict[str, Any] = {
+        "enabled": True,
+        "requested_sources": [],
+        "min_ann_score": float(min_ann_score),
+        "min_ts_score": float(min_ts_score),
+        "per_source_fetch_limit": int(per_source_fetch_limit),
+        "pinned_semantic_ids": [],
+        "pinned_ts_ids": [],
+        "satisfied_sources": [],
+        "missing_sources": [],
+        "extra_ann_fetches": 0,
+        "extra_ts_fetches": 0,
+    }
+    if not required_sources:
+        stats["enabled"] = False
+        stats["skipped_reason"] = "no_required_sources"
+        return sem_rows, ts_rows, stats
+
+    req = []
+    seen: set[str] = set()
+    for s in required_sources:
+        k = str(s or "").strip().lower()
+        if k and k not in seen:
+            seen.add(k)
+            req.append(k)
+    stats["requested_sources"] = list(req)
+    if not req:
+        stats["enabled"] = False
+        stats["skipped_reason"] = "empty_required_sources"
+        return sem_rows, ts_rows, stats
+
+    sem_work = [dict(r) for r in sem_rows]
+    ts_work = [dict(r) for r in ts_rows]
+    pinned_sem_ids: set = set()
+    pinned_ts_ids: set = set()
+    satisfied: List[str] = []
+    missing: List[str] = []
+
+    def _best_sem(src: str) -> Optional[Dict[str, Any]]:
+        rows = [
+            r
+            for r in sem_work
+            if _norm_rag_source(r) == src and float(r.get("score") or 0.0) >= float(min_ann_score)
+        ]
+        if not rows:
+            return None
+        return max(rows, key=lambda r: float(r.get("score") or 0.0))
+
+    def _best_ts(src: str) -> Optional[Dict[str, Any]]:
+        rows = [
+            r
+            for r in ts_work
+            if _norm_rag_source(r) == src and float(r.get("score") or 0.0) >= float(min_ts_score)
+        ]
+        if not rows:
+            return None
+        return max(rows, key=lambda r: float(r.get("score") or 0.0))
+
+    ts_q = (ts_query_fallback or "").strip()
+
+    for src in req:
+        bs = _best_sem(src)
+        bt = _best_ts(src)
+        if bs:
+            pinned_sem_ids.add(int(bs["id"]))
+            satisfied.append(src)
+            continue
+        if bt:
+            pinned_ts_ids.add(int(bt["id"]))
+            satisfied.append(src)
+            continue
+
+        fetched_sem = ann_local(cur, emb_literal, per_source_fetch_limit, sources=[src])
+        fetched_sem.sort(key=lambda r: float(r.get("score") or 0.0), reverse=True)
+        picked = None
+        for r in fetched_sem:
+            if float(r.get("score") or 0.0) >= float(min_ann_score):
+                picked = dict(r)
+                break
+        if picked:
+            sem_work.append(picked)
+            pinned_sem_ids.add(int(picked["id"]))
+            stats["extra_ann_fetches"] += 1
+            satisfied.append(src)
+            continue
+
+        if ts_terms:
+            fetched_ts = bm25_ts_terms(cur, ts_terms, per_source_fetch_limit, sources=[src])
+        elif ts_q:
+            fetched_ts = bm25_ts(cur, ts_q, per_source_fetch_limit, sources=[src])
+        else:
+            fetched_ts = []
+        fetched_ts.sort(key=lambda r: float(r.get("score") or 0.0), reverse=True)
+        picked_ts = None
+        for r in fetched_ts:
+            if float(r.get("score") or 0.0) >= float(min_ts_score):
+                picked_ts = dict(r)
+                break
+        if picked_ts:
+            ts_work.append(picked_ts)
+            pinned_ts_ids.add(int(picked_ts["id"]))
+            stats["extra_ts_fetches"] += 1
+            satisfied.append(src)
+            continue
+
+        missing.append(src)
+
+    lane_cap = max(int(top_k), len(req))
+    sem_dedup = _dedupe_hits_keep_best_score(sem_work)
+    ts_dedup = _dedupe_hits_keep_best_score(ts_work)
+    sem_out = _truncate_lane_preserving_pins(sem_dedup, pinned_sem_ids, lane_cap)
+    ts_out = _truncate_lane_preserving_pins(ts_dedup, pinned_ts_ids, lane_cap)
+
+    stats["pinned_semantic_ids"] = sorted(pinned_sem_ids)
+    stats["pinned_ts_ids"] = sorted(pinned_ts_ids)
+    stats["satisfied_sources"] = satisfied
+    stats["missing_sources"] = missing
+    stats["lane_cap"] = lane_cap
+    return sem_out, ts_out, stats
+
+
 def embed_query(model_name: str, text: str) -> Tuple[List[float], str]:
     from sentence_transformers import SentenceTransformer
     import torch
@@ -392,27 +566,30 @@ def run_llm(
         )
     else:
         system = (
-            "You are a clinical knowledge synthesis expert evaluating dual-lane retrieval from a medical "
-            "knowledge graph (rag_corpus). You receive JSON with two ranked lists: dense semantic "
-            "(BGE/local cosine) and PostgreSQL FTS (websearch_to_tsquery), plus rag_source_reference.\n\n"
-            "SYNTHESIS RULES (follow strictly):\n"
-            "1. SYNTHESIZE — do NOT copy or paraphrase hit text verbatim. Extract clinical meaning and "
-            "   integrate it into your own reasoning. A good summary states what the evidence implies, "
-            "   not just what it says.\n"
-            "2. Compare the two lanes: note where they agree, where they diverge, and what the divergence "
-            "   means for clinical confidence.\n"
-            "3. For treatment/management/planning queries, explicitly state first-line and alternative "
-            "   options, evidence grade, and any contraindications present in the hits.\n"
-            "4. If a lane returned no results, explain why (e.g., lexical mismatch) and what that gap "
-            "   implies for retrieval quality — do not silently skip it.\n"
-            "5. Only reference ids present in the JSON.\n\n"
-            "Output markdown with exactly these headings:\n"
-            "## Summary\n## Overlap\n## Best semantic hit\n## Best TS hit\n## Query refinement\n"
-            "Keep total response under 600 words."
+            "You are a senior clinical informatics assistant. Produce a REPORT that directly answers "
+            "the user's query using the JSON bundle (semantic lane + Postgres FTS lane + rag_source_reference). "
+            "Write for a clinician: concise, actionable, and grounded only in evidence present in the hits.\n\n"
+            "STYLE:\n"
+            "- Lead with the answer — do not open with retrieval mechanics.\n"
+            "- Synthesize across hits and sources; integrate conflicting signals instead of listing \"best hit\".\n"
+            "- For therapy/guideline questions: state first-line and reasonable alternatives when supported; "
+            "note monitoring, contraindications, or dose caveats only if they appear in the hits.\n"
+            "- Mention lane agreement/divergence only briefly when it affects clinical confidence.\n\n"
+            "OUTPUT MARKDOWN — use exactly these section headings:\n"
+            "## Direct answer\n"
+            "## Supporting evidence\n"
+            "## Guideline / therapeutic highlights\n"
+            "## Gaps, contradictions, or uncertainty\n\n"
+            "RULES:\n"
+            "1. When stating patient-agnostic facts tied to a chunk, cite its ``id`` from semantic_hits or ts_hits.\n"
+            "2. Do NOT copy long passages verbatim — paraphrase and synthesize.\n"
+            "3. If a lane is empty or clearly off-topic, say so in one short clause; do not pad.\n"
+            "4. Stay under ~750 words unless the query clearly needs more.\n"
+            "5. Do not mention internal pipeline names (BGE, router, overlap scores) unless needed for a caveat.\n"
+            "6. Only reference ids present in the JSON.\n"
         )
     user = (
-        "Synthesize the clinical evidence in this dual-lane retrieval bundle. "
-        "Do not copy text — reason from it.\n\n"
+        "Answer the user's query using this retrieval bundle as your sole evidence base.\n\n"
         + json.dumps(bundle, indent=2, default=str)
     )[:50000]
     t0 = time.monotonic()
@@ -728,6 +905,25 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Minimum ts_terms accepted from router; below this we still run the per-term TS but also keep the raw-query fallback.",
     )
+    ap.add_argument(
+        "--no-source-coverage",
+        action="store_true",
+        help="Disable pinning one qualifying rag_corpus hit per filtered/routed source.",
+    )
+    ap.add_argument(
+        "--min-ann-score",
+        type=float,
+        default=float(os.environ.get("MKG_MIN_ANN_SCORE", "0.12")),
+        metavar="S",
+        help="Minimum ANN score (1 - distance) for coverage eligibility (default 0.12).",
+    )
+    ap.add_argument(
+        "--min-ts-score",
+        type=float,
+        default=float(os.environ.get("MKG_MIN_TS_SCORE", "0.02")),
+        metavar="S",
+        help="Minimum ts_rank for coverage eligibility (default 0.02).",
+    )
     ap.set_defaults(use_router=True)
     args = ap.parse_args()
     if args.no_router:
@@ -762,6 +958,9 @@ def run_query(
     router_max_modules: int = 6,
     router_restrict_sources: bool = False,
     router_min_terms: int = 4,
+    source_coverage: bool = True,
+    min_ann_score: float = 0.12,
+    min_ts_score: float = 0.02,
     clinical_context: Optional[str] = None,
     extra_context: Optional[Dict[str, Any]] = None,
     extra_context_label: str = "patient_timeline_summary",
@@ -881,6 +1080,48 @@ def run_query(
                     ts_strategy = f"per_term+raw_fallback ({len(ts_terms)} terms)"
             else:
                 ts_rows = bm25_ts(cur, q, top_k, sources=effective_sources)
+
+            ts_fallback_q = ((route_plan.get("semantic_query") if route_plan else None) or q).strip()
+            cov_stats: Dict[str, Any] = {}
+            if (
+                source_coverage
+                and effective_sources
+                and isinstance(effective_sources, list)
+            ):
+                sem_rows, ts_rows, cov_stats = ensure_source_coverage_retrieval(
+                    cur,
+                    lit,
+                    sem_rows,
+                    ts_rows,
+                    required_sources=effective_sources,
+                    ts_terms=ts_terms,
+                    ts_query_fallback=ts_fallback_q,
+                    top_k=top_k,
+                    min_ann_score=min_ann_score,
+                    min_ts_score=min_ts_score,
+                    per_source_fetch_limit=max(16, top_k),
+                )
+                out["source_coverage"] = cov_stats
+                if cov_stats.get("missing_sources"):
+                    _log(
+                        "📎",
+                        "Source coverage: no qualifying hit for "
+                        f"{cov_stats['missing_sources']} (ANN≥{min_ann_score}, TS≥{min_ts_score}).",
+                    )
+                elif cov_stats.get("extra_ann_fetches") or cov_stats.get("extra_ts_fetches"):
+                    _log(
+                        "📎",
+                        f"Source coverage: pinned extra ANN={cov_stats.get('extra_ann_fetches')} "
+                        f"TS={cov_stats.get('extra_ts_fetches')} "
+                        f"(lane_cap={cov_stats.get('lane_cap')}).",
+                    )
+            elif source_coverage:
+                out["source_coverage"] = {
+                    "enabled": False,
+                    "skipped_reason": "no_effective_source_list",
+                }
+            else:
+                out["source_coverage"] = {"enabled": False, "skipped_reason": "disabled"}
     out["db_sec"] = round(time.monotonic() - t_db, 4)
     out["ts_strategy"] = ts_strategy
     out["ts_terms_used"] = ts_terms
@@ -992,6 +1233,9 @@ def _run_one_query(
         router_max_modules=args.router_max_modules,
         router_restrict_sources=args.router_restrict_sources,
         router_min_terms=args.router_min_terms,
+        source_coverage=not args.no_source_coverage,
+        min_ann_score=args.min_ann_score,
+        min_ts_score=args.min_ts_score,
     )
 
 

@@ -119,6 +119,7 @@ from server.scripts.mkg_retrieval_harness import (  # type: ignore
     bm25_ts,
     bm25_ts_terms,
     embed_query,
+    ensure_source_coverage_retrieval,
     _compact_hit,
     _overlap,
     _vec_literal,
@@ -424,6 +425,9 @@ def _mkg_retrieve_bundle(
     text_chars: int,
     ts_fallback: bool = True,
     ts_fallback_threshold_frac: float = 0.5,
+    source_coverage: bool = True,
+    min_ann_score: float = 0.12,
+    min_ts_score: float = 0.02,
 ) -> Dict[str, Any]:
     """Run dense + per-term TS retrieval against ``public.rag_corpus``.
 
@@ -459,6 +463,7 @@ def _mkg_retrieve_bundle(
     ts_or_added_n = 0
     used_or_fallback = False
     source_expansion_mode = "none"
+    cov_stats: Dict[str, Any] = {}
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
@@ -535,6 +540,28 @@ def _mkg_retrieve_bundle(
                     f"then re-ranked to top_k={top_k}",
                 )
 
+            cov_stats = {}
+            if sources and source_coverage:
+                sem_rows, ts_rows, cov_stats = ensure_source_coverage_retrieval(
+                    cur,
+                    lit,
+                    sem_rows,
+                    ts_rows,
+                    required_sources=sources,
+                    ts_terms=list(ts_terms or []),
+                    ts_query_fallback=(semantic_query or "").strip(),
+                    top_k=top_k,
+                    min_ann_score=min_ann_score,
+                    min_ts_score=min_ts_score,
+                    per_source_fetch_limit=max(16, top_k),
+                )
+
+    if not cov_stats:
+        if not source_coverage:
+            cov_stats = {"enabled": False, "skipped_reason": "disabled"}
+        elif not sources:
+            cov_stats = {"enabled": False, "skipped_reason": "no_sources"}
+
     sem_c = [_compact_hit(r, text_chars=text_chars) for r in sem_rows]
     ts_c = [_compact_hit(r, text_chars=text_chars) for r in ts_rows]
     overlap = _overlap([h["id"] for h in sem_c], [h["id"] for h in ts_c])
@@ -555,6 +582,7 @@ def _mkg_retrieve_bundle(
         "ts_or_fallback_used": used_or_fallback,
         "ts_or_fallback_added": ts_or_added_n,
         "source_expansion_mode": source_expansion_mode,
+        "source_coverage": cov_stats,
     }
 
 
@@ -775,6 +803,9 @@ def _gap_phase(
     gap_sources: Optional[List[str]],
     text_chars: int,
     gap_heuristic: bool = True,
+    mkg_source_coverage: bool = True,
+    mkg_min_ann_score: float = 0.12,
+    mkg_min_ts_score: float = 0.02,
 ) -> Dict[str, Any]:
     metrics = _probe_metrics(probe_bundle)
     system = (
@@ -882,6 +913,9 @@ def _gap_phase(
             embed_model=embed_model,
             sources=gap_sources,
             text_chars=text_chars,
+            source_coverage=mkg_source_coverage,
+            min_ann_score=mkg_min_ann_score,
+            min_ts_score=mkg_min_ts_score,
         )
 
     follow_ptv = None
@@ -963,6 +997,8 @@ def _run_probe(
     probe_num_ctx: int,
     graph_pick_model: str,
     graph_pick_num_ctx: int,
+    router_max_sources: int,
+    router_max_modules: int,
     temperature: float,
     timeout: float,
     top_k: int,
@@ -974,6 +1010,9 @@ def _run_probe(
     code_inventory_router_json_max: int,
     code_inventory_graph_json_max: int,
     retro_bundle: Optional[Dict[str, Any]] = None,
+    mkg_source_coverage: bool = True,
+    mkg_min_ann_score: float = 0.12,
+    mkg_min_ts_score: float = 0.02,
 ) -> Dict[str, Any]:
     inv_full: Optional[Dict[str, Any]] = None
     inv_for_router: Optional[Dict[str, Any]] = None
@@ -1029,6 +1068,8 @@ def _run_probe(
         clinical_context=brief,
         patient_code_inventory=inv_for_router,
         prior_session_summary=retro_summary_text or None,
+        max_sources=router_max_sources,
+        max_modules=router_max_modules,
     )
     sources = _router_sources(route)
     route_mods = _router_modules(route)
@@ -1057,6 +1098,9 @@ def _run_probe(
             embed_model=embed_model,
             sources=sources,
             text_chars=text_chars,
+            source_coverage=mkg_source_coverage,
+            min_ann_score=mkg_min_ann_score,
+            min_ts_score=mkg_min_ts_score,
         )
     else:
         _log("⏭️", "Stage PROBE — MKG skipped (--no-mkg)")
@@ -1211,6 +1255,8 @@ def _run_full_turn(
         probe_num_ctx=args.probe_num_ctx,
         graph_pick_model=args.graph_pick_model,
         graph_pick_num_ctx=args.graph_pick_num_ctx,
+        router_max_sources=args.router_max_sources,
+        router_max_modules=args.router_max_modules,
         temperature=args.temperature,
         timeout=args.timeout,
         top_k=args.top_k,
@@ -1222,6 +1268,9 @@ def _run_full_turn(
         code_inventory_router_json_max=args.code_inventory_router_json_max,
         code_inventory_graph_json_max=args.code_inventory_graph_json_max,
         retro_bundle=retro_bundle,
+        mkg_source_coverage=not args.no_mkg_source_coverage,
+        mkg_min_ann_score=args.mkg_min_ann_score,
+        mkg_min_ts_score=args.mkg_min_ts_score,
     )
     gap_sources = _router_sources(probe.get("router_plan") or {})
     gap = _gap_phase(
@@ -1238,6 +1287,9 @@ def _run_full_turn(
         gap_sources=gap_sources,
         text_chars=args.text_chars,
         gap_heuristic=not args.no_gap_heuristic,
+        mkg_source_coverage=not args.no_mkg_source_coverage,
+        mkg_min_ann_score=args.mkg_min_ann_score,
+        mkg_min_ts_score=args.mkg_min_ts_score,
     )
     report = _report_phase(
         question=q,
@@ -1510,6 +1562,39 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=int(os.environ.get("OLLAMA_RETRO_NUM_CTX", "32768")),
         help="Context window for retro summary model (default 32768).",
+    )
+    ap.add_argument(
+        "--router-max-sources",
+        type=int,
+        default=int(os.environ.get("ROUTER_MAX_SOURCES", "10")),
+        metavar="N",
+        help="Max distinct rag_corpus.source keys for plan_route (default 10).",
+    )
+    ap.add_argument(
+        "--router-max-modules",
+        type=int,
+        default=int(os.environ.get("ROUTER_MAX_MODULES", "8")),
+        metavar="N",
+        help="Max EoH modules for plan_route (default 8).",
+    )
+    ap.add_argument(
+        "--no-mkg-source-coverage",
+        action="store_true",
+        help="Do not pin one qualifying rag_corpus hit per router-selected source (ANN/ts_rank floors).",
+    )
+    ap.add_argument(
+        "--mkg-min-ann-score",
+        type=float,
+        default=float(os.environ.get("MKG_MIN_ANN_SCORE", "0.12")),
+        metavar="S",
+        help="Minimum dense-lane score (1 - distance) to count toward per-source coverage (default 0.12).",
+    )
+    ap.add_argument(
+        "--mkg-min-ts-score",
+        type=float,
+        default=float(os.environ.get("MKG_MIN_TS_SCORE", "0.02")),
+        metavar="S",
+        help="Minimum TS-lane ts_rank to count toward per-source coverage (default 0.02).",
     )
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=600.0)
