@@ -385,7 +385,33 @@ def _render_mkg_overall(mkg: Dict[str, Any], styles: Dict[str, ParagraphStyle]) 
     llm = mkg.get("llm") or {}
     out.append(Spacer(1, 6))
     out.append(Paragraph("Overall synthesis", styles["h3"]))
-    if llm.get("error"):
+    # Support both legacy single-pass shape ({markdown,error}) and new two-pass
+    # shape ({mode:"two_pass", compress_pass:{...}, synth_pass:{markdown|error}}).
+    if isinstance(llm, dict) and llm.get("mode") == "two_pass":
+        cpass = llm.get("compress_pass") or {}
+        spass = llm.get("synth_pass") or {}
+        out.append(
+            _kv_table(
+                [
+                    ["Synthesis mode", "two_pass"],
+                    ["Compress model", str(cpass.get("model") or "")],
+                    ["Compress elapsed (s)", str(cpass.get("elapsed_sec") or "")],
+                    ["Selected evidence", str(len(cpass.get("top_evidence") or []))],
+                    ["Synth model", str(spass.get("model") or "")],
+                    ["Synth elapsed (s)", str(spass.get("elapsed_sec") or "")],
+                ]
+            )
+        )
+        out.append(Spacer(1, 4))
+        if cpass.get("summary"):
+            out.append(Paragraph("Compression summary", styles["h3"]))
+            out.extend(_md_to_paragraphs(str(cpass.get("summary") or ""), styles))
+            out.append(Spacer(1, 4))
+        if spass.get("error"):
+            out.append(Paragraph("<b>Synthesis error:</b> " + _escape(str(spass["error"])), styles["body"]))
+        else:
+            out.extend(_md_to_paragraphs(str(spass.get("markdown") or "(empty)"), styles))
+    elif llm.get("error"):
         out.append(Paragraph("<b>Synthesis error:</b> " + _escape(str(llm["error"])), styles["body"]))
     else:
         out.extend(_md_to_paragraphs(str(llm.get("markdown") or "(empty)"), styles))
