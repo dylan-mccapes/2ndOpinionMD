@@ -1,0 +1,1169 @@
+{
+  "schema": "forward_ptv_3agent.v2",
+  "built_at": "2026-04-26T01:32:31.594644+00:00",
+  "cohort_dir": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort",
+  "models": {
+    "probe": "eoh-llama",
+    "gap": "eoh-llama",
+    "synth": "eoh-llama:70b",
+    "mkg_overall_synth": "eoh-llama:70b",
+    "mkg_router": "eoh-llama3.2-source-router",
+    "mkg_embed": "BAAI/bge-base-en-v1.5"
+  },
+  "config": {
+    "probe_max_turns": 6,
+    "gap_max_turns": 6,
+    "temperature": 0.15,
+    "timeout": 300.0,
+    "synth_num_ctx": 16384,
+    "ollama_url": "http://10.255.255.254:11434",
+    "stage_e_enabled": true,
+    "mkg": {
+      "use_router": true,
+      "router_restrict_sources": false,
+      "router_num_ctx": 8192,
+      "synth_num_ctx": 16384,
+      "top_k": 10,
+      "user_sources": null
+    }
+  },
+  "n_patients": 5,
+  "elapsed_sec": 0.237,
+  "runs": [
+    {
+      "patient": {
+        "code": "P1",
+        "phenotype": "early_responder",
+        "label": "early MTX responder",
+        "headline": "Early MTX responder; five-year improving trajectory; narrow UCs.",
+        "patient_id": "synth_p1_early_responder",
+        "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P1_early_responder.json"
+      },
+      "question": "This patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.",
+      "graph_hash": "ec1b09ee7019f9f9",
+      "n_events": 54,
+      "elapsed_sec": 0.047,
+      "stages": {
+        "probe": {
+          "stage": "probe",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.006,
+          "agent_log": {
+            "question": "This patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.01,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "This patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim."
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p1_early_responder",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P1_early_responder.json",
+              "graph_hash": "ec1b09ee7019f9f9",
+              "n_events": 54,
+              "date_range": {
+                "start": "2020-01-27",
+                "end": "2025-07-31"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "This patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.01,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "gap": {
+          "stage": "gap",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "constructed_question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+          "agent_log": {
+            "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier width"
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p1_early_responder",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P1_early_responder.json",
+              "graph_hash": "ec1b09ee7019f9f9",
+              "n_events": 54,
+              "date_range": {
+                "start": "2020-01-27",
+                "end": "2025-07-31"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "curated_bundle": {
+          "original_question": "This patient is the early MTX responder phenotype. Walk through the five-year HAQ-II, VAS Pain, VAS Patient Global, PAS-II, and RDCI trajectory. Identify the round at which improvement first emerged, characterize the Uncertainty-Carrier widths during stable rounds, and note any drift back toward baseline. Cite event_ids for every claim.",
+          "patient_id": "synth_p1_early_responder",
+          "graph_summary": {
+            "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P1_early_responder.json",
+            "graph_hash": "ec1b09ee7019f9f9",
+            "n_events": 54,
+            "date_range": {
+              "start": "2020-01-27",
+              "end": "2025-07-31"
+            },
+            "code_index_summary": {
+              "drugs": 0,
+              "rxnorm": 0,
+              "icd": 0,
+              "labs": 0,
+              "loinc": 0
+            }
+          },
+          "probe_answer": {},
+          "probe_plan": {},
+          "probe_tools": [],
+          "gap_answer": {},
+          "gap_plan": {},
+          "gap_tools": [],
+          "union_event_ids": [],
+          "n_union": 0,
+          "curated_events": [],
+          "n_curated": 0
+        },
+        "synthesis": {
+          "stage": "synthesis",
+          "model": "eoh-llama:70b",
+          "num_ctx": 16384,
+          "elapsed_sec": 0.002,
+          "error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        },
+        "mkg_overall_synth": {
+          "stage": "mkg_overall_synth",
+          "skipped": "no_stage_d_markdown"
+        }
+      },
+      "index": 1
+    },
+    {
+      "patient": {
+        "code": "P2",
+        "phenotype": "escalation_single_flare",
+        "label": "MTX -> TNFi escalation, one flare",
+        "headline": "Single flare at year 2 triggers adalimumab add-on; trajectory returns to baseline.",
+        "patient_id": "synth_p2_escalation_single_flare",
+        "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P2_escalation_single_flare.json"
+      },
+      "question": "This patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.",
+      "graph_hash": "ac4ec5d0acc52608",
+      "n_events": 56,
+      "elapsed_sec": 0.05,
+      "stages": {
+        "probe": {
+          "stage": "probe",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "agent_log": {
+            "question": "This patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "This patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids."
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p2_escalation_single_flare",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P2_escalation_single_flare.json",
+              "graph_hash": "ac4ec5d0acc52608",
+              "n_events": 56,
+              "date_range": {
+                "start": "2019-01-08",
+                "end": "2025-07-12"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "This patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "gap": {
+          "stage": "gap",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "constructed_question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+          "agent_log": {
+            "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajector"
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p2_escalation_single_flare",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P2_escalation_single_flare.json",
+              "graph_hash": "ac4ec5d0acc52608",
+              "n_events": 56,
+              "date_range": {
+                "start": "2019-01-08",
+                "end": "2025-07-12"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "curated_bundle": {
+          "original_question": "This patient escalates from MTX to a TNFi (adalimumab) after a single year-2 flare. Pinpoint the flare round, summarize the PRO scores immediately before and after the flare, describe the treatment-change signal, and explain how the trajectory returns toward baseline post-escalation. Cite event_ids.",
+          "patient_id": "synth_p2_escalation_single_flare",
+          "graph_summary": {
+            "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P2_escalation_single_flare.json",
+            "graph_hash": "ac4ec5d0acc52608",
+            "n_events": 56,
+            "date_range": {
+              "start": "2019-01-08",
+              "end": "2025-07-12"
+            },
+            "code_index_summary": {
+              "drugs": 0,
+              "rxnorm": 0,
+              "icd": 0,
+              "labs": 0,
+              "loinc": 0
+            }
+          },
+          "probe_answer": {},
+          "probe_plan": {},
+          "probe_tools": [],
+          "gap_answer": {},
+          "gap_plan": {},
+          "gap_tools": [],
+          "union_event_ids": [],
+          "n_union": 0,
+          "curated_events": [],
+          "n_curated": 0
+        },
+        "synthesis": {
+          "stage": "synthesis",
+          "model": "eoh-llama:70b",
+          "num_ctx": 16384,
+          "elapsed_sec": 0.0,
+          "error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        },
+        "mkg_overall_synth": {
+          "stage": "mkg_overall_synth",
+          "skipped": "no_stage_d_markdown"
+        }
+      },
+      "index": 2
+    },
+    {
+      "patient": {
+        "code": "P3",
+        "phenotype": "cycler_multi_flare",
+        "label": "cycler, three flares, JAKi end",
+        "headline": "Three flares over five years; cycles TNFi -> TNFi -> JAKi; wide UCs reflect volatility.",
+        "patient_id": "synth_p3_cycler_multi_flare",
+        "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P3_cycler_multi_flare.json"
+      },
+      "question": "This patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.",
+      "graph_hash": "b3431096d27dd15c",
+      "n_events": 64,
+      "elapsed_sec": 0.05,
+      "stages": {
+        "probe": {
+          "stage": "probe",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.002,
+          "agent_log": {
+            "question": "This patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "This patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids."
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p3_cycler_multi_flare",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P3_cycler_multi_flare.json",
+              "graph_hash": "b3431096d27dd15c",
+              "n_events": 64,
+              "date_range": {
+                "start": "2017-12-20",
+                "end": "2025-06-23"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "This patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "gap": {
+          "stage": "gap",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "constructed_question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+          "agent_log": {
+            "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty C"
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p3_cycler_multi_flare",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P3_cycler_multi_flare.json",
+              "graph_hash": "b3431096d27dd15c",
+              "n_events": 64,
+              "date_range": {
+                "start": "2017-12-20",
+                "end": "2025-06-23"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "curated_bundle": {
+          "original_question": "This patient has multiple flares over five years and cycles through TNFi -> TNFi -> JAKi. Enumerate the flare rounds in chronological order, list each treatment change with the responsible PRO triggers, and characterize the wide Uncertainty Carriers seen between flare cycles. Cite event_ids.",
+          "patient_id": "synth_p3_cycler_multi_flare",
+          "graph_summary": {
+            "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P3_cycler_multi_flare.json",
+            "graph_hash": "b3431096d27dd15c",
+            "n_events": 64,
+            "date_range": {
+              "start": "2017-12-20",
+              "end": "2025-06-23"
+            },
+            "code_index_summary": {
+              "drugs": 0,
+              "rxnorm": 0,
+              "icd": 0,
+              "labs": 0,
+              "loinc": 0
+            }
+          },
+          "probe_answer": {},
+          "probe_plan": {},
+          "probe_tools": [],
+          "gap_answer": {},
+          "gap_plan": {},
+          "gap_tools": [],
+          "union_event_ids": [],
+          "n_union": 0,
+          "curated_events": [],
+          "n_curated": 0
+        },
+        "synthesis": {
+          "stage": "synthesis",
+          "model": "eoh-llama:70b",
+          "num_ctx": 16384,
+          "elapsed_sec": 0.001,
+          "error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        },
+        "mkg_overall_synth": {
+          "stage": "mkg_overall_synth",
+          "skipped": "no_stage_d_markdown"
+        }
+      },
+      "index": 3
+    },
+    {
+      "patient": {
+        "code": "P4",
+        "phenotype": "subclinical_flare_uc_wins",
+        "label": "hero: subclinical flare predicted by UC",
+        "headline": "UC elevated flare probability at rounds 3-4; overt flare at round 5. Governance win.",
+        "patient_id": "synth_p4_subclinical_flare_uc_wins",
+        "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P4_subclinical_flare_uc_wins.json"
+      },
+      "question": "This patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.",
+      "graph_hash": "ec631ff10cbe8529",
+      "n_events": 58,
+      "elapsed_sec": 0.048,
+      "stages": {
+        "probe": {
+          "stage": "probe",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "agent_log": {
+            "question": "This patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "This patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids."
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p4_subclinical_flare_uc_wins",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P4_subclinical_flare_uc_wins.json",
+              "graph_hash": "ec631ff10cbe8529",
+              "n_events": 58,
+              "date_range": {
+                "start": "2017-01-30",
+                "end": "2025-08-03"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "This patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "gap": {
+          "stage": "gap",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "constructed_question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+          "agent_log": {
+            "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the r"
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p4_subclinical_flare_uc_wins",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P4_subclinical_flare_uc_wins.json",
+              "graph_hash": "ec631ff10cbe8529",
+              "n_events": 58,
+              "date_range": {
+                "start": "2017-01-30",
+                "end": "2025-08-03"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "curated_bundle": {
+          "original_question": "This patient has a subclinical flare that the Uncertainty Carriers anticipate at rounds 3-4 before the overt flare manifests at round 5. Describe how the UC widths and PRO patterns at rounds 3-4 differ from the early stable rounds, what the round-5 overt flare looked like in PRO terms, and how the UC behavior validated the anticipation. Cite event_ids.",
+          "patient_id": "synth_p4_subclinical_flare_uc_wins",
+          "graph_summary": {
+            "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P4_subclinical_flare_uc_wins.json",
+            "graph_hash": "ec631ff10cbe8529",
+            "n_events": 58,
+            "date_range": {
+              "start": "2017-01-30",
+              "end": "2025-08-03"
+            },
+            "code_index_summary": {
+              "drugs": 0,
+              "rxnorm": 0,
+              "icd": 0,
+              "labs": 0,
+              "loinc": 0
+            }
+          },
+          "probe_answer": {},
+          "probe_plan": {},
+          "probe_tools": [],
+          "gap_answer": {},
+          "gap_plan": {},
+          "gap_tools": [],
+          "union_event_ids": [],
+          "n_union": 0,
+          "curated_events": [],
+          "n_curated": 0
+        },
+        "synthesis": {
+          "stage": "synthesis",
+          "model": "eoh-llama:70b",
+          "num_ctx": 16384,
+          "elapsed_sec": 0.001,
+          "error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        },
+        "mkg_overall_synth": {
+          "stage": "mkg_overall_synth",
+          "skipped": "no_stage_d_markdown"
+        }
+      },
+      "index": 4
+    },
+    {
+      "patient": {
+        "code": "P5",
+        "phenotype": "honest_uncertainty_missing",
+        "label": "hero: honest uncertainty with missing data",
+        "headline": "Rounds 4 and 6 questionnaires missing; UC widths widen and basis cites insufficient data.",
+        "patient_id": "synth_p5_honest_uncertainty_missing",
+        "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P5_honest_uncertainty_missing.json"
+      },
+      "question": "This patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.",
+      "graph_hash": "3afeecc557147446",
+      "n_events": 48,
+      "elapsed_sec": 0.042,
+      "stages": {
+        "probe": {
+          "stage": "probe",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.002,
+          "agent_log": {
+            "question": "This patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "This patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids."
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p5_honest_uncertainty_missing",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P5_honest_uncertainty_missing.json",
+              "graph_hash": "3afeecc557147446",
+              "n_events": 48,
+              "date_range": {
+                "start": "2020-01-11",
+                "end": "2025-07-15"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "This patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "gap": {
+          "stage": "gap",
+          "model": "eoh-llama",
+          "elapsed_sec": 0.001,
+          "constructed_question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+          "agent_log": {
+            "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+            "model": "eoh-llama",
+            "elapsed_sec": 0.0,
+            "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+            "plan": null,
+            "tools_used": [],
+            "tool_call_sequence": [],
+            "final_answer": null,
+            "turns": [
+              {
+                "role": "system",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "You are the PTV probe agent (8B, RTX-4050 budget).\n\nYou have a JSON Patient Timeline Vision (PTV) graph loaded in memory. The\nhost exposes deterministic tools; you MUST answer by calling tools and\nquoting the event_ids they return. Do not invent events, drugs, codes,\ndates, or edges.\n\nPROTOCOL \u2014 ONE JSON OBJECT PER TURN\n\nYour FIRST turn MUST be a plan. Subsequent turns are tool_calls, and the\nlast turn is a final_answer. Three shapes, one per turn, no prose around\nthem, no markdown fences:\n\n  1)"
+              },
+              {
+                "role": "user",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": null,
+                "content_preview": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing "
+              },
+              {
+                "role": "assistant",
+                "tool": null,
+                "args": null,
+                "ok": null,
+                "parse_error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+                "content_preview": ""
+              }
+            ]
+          },
+          "handoff": {
+            "schema": "ptv_toolkit.handoff.v1",
+            "patient_id": "synth_p5_honest_uncertainty_missing",
+            "graph": {
+              "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P5_honest_uncertainty_missing.json",
+              "graph_hash": "3afeecc557147446",
+              "n_events": 48,
+              "date_range": {
+                "start": "2020-01-11",
+                "end": "2025-07-15"
+              },
+              "code_index_summary": {
+                "drugs": 0,
+                "rxnorm": 0,
+                "icd": 0,
+                "labs": 0,
+                "loinc": 0
+              }
+            },
+            "probe": {
+              "question": "GAP ASSESSMENT TASK \u2014 A previous 8B PTV probe agent already attempted to answer this clinical question. Your job is to find what it MISSED, ran shallowly, or could have grounded better, then run additional tool calls to close those gaps.\n\nOriginal question:\nThis patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.\n\nProbe answer (length=0 chars, citations=0):\n(probe produced no answer)\n\nProbe used these tools (in order): (none)\nProbe surfaced working_set of 0 event_ids (first 25): []\n\nGAP RESPONSIBILITIES:\n1. Identify gaps: missing temporal coverage, untouched event_types, drug names    the probe did not look up, free-text reasoning the probe glossed over.\n2. Run additional tool calls to fill the gaps. Prefer narrow scope + rerank    (temporal_scan/code_index_lookup -> semantic_search rerank).\n3. Stay grounded \u2014 cite event_ids only.\n4. Your final_answer should ADD to the probe answer, not just repeat it. State    explicitly which gaps you closed and which remain.",
+              "model": "eoh-llama",
+              "elapsed_sec": 0.0,
+              "reason_stopped": "ollama_error: HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+              "plan": null,
+              "tools_used": [],
+              "tool_call_sequence": [],
+              "tool_trace": [],
+              "final_answer": null
+            },
+            "working_set": {
+              "event_ids": [],
+              "n_total_seen": 0,
+              "n_included": 0,
+              "scoring": "weight = 2*code_lookup_hit + 1*other_tool_hit + 3*final_evidence"
+            },
+            "top_events": [],
+            "gap_agent_directives": {
+              "default_event_ids_for_bfs_expand": [],
+              "default_event_ids_for_semantic_search": [],
+              "hint": "Treat working_set as your starting scope. Call bfs_expand or semantic_search with event_ids=working_set unless the question specifically requires breaking out. The probe already ran the toolkit once and surfaced these ids; your job is to find what was missed."
+            }
+          }
+        },
+        "curated_bundle": {
+          "original_question": "This patient has missing data at rounds 4 and 6. Describe how the Uncertainty Carrier widths react to the missingness, what 'insufficient data' basis statements appear in those rounds, and how the trajectory inference behaves when bracketing the gaps. Cite event_ids.",
+          "patient_id": "synth_p5_honest_uncertainty_missing",
+          "graph_summary": {
+            "path": "/mnt/c/2OPMD/2ndOpinionMD-MVP/artifacts/forward_kaleb_package_20260423/synthetic_pro_cohort/ptv_synth_P5_honest_uncertainty_missing.json",
+            "graph_hash": "3afeecc557147446",
+            "n_events": 48,
+            "date_range": {
+              "start": "2020-01-11",
+              "end": "2025-07-15"
+            },
+            "code_index_summary": {
+              "drugs": 0,
+              "rxnorm": 0,
+              "icd": 0,
+              "labs": 0,
+              "loinc": 0
+            }
+          },
+          "probe_answer": {},
+          "probe_plan": {},
+          "probe_tools": [],
+          "gap_answer": {},
+          "gap_plan": {},
+          "gap_tools": [],
+          "union_event_ids": [],
+          "n_union": 0,
+          "curated_events": [],
+          "n_curated": 0
+        },
+        "synthesis": {
+          "stage": "synthesis",
+          "model": "eoh-llama:70b",
+          "num_ctx": 16384,
+          "elapsed_sec": 0.001,
+          "error": "HTTPConnectionPool(host='10.255.255.254', port=11434): Max retries exceeded with url: /api/chat (Caused by NewConnectionError(\"HTTPConnection(host='10.255.255.254', port=11434): Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        },
+        "mkg_overall_synth": {
+          "stage": "mkg_overall_synth",
+          "skipped": "no_stage_d_markdown"
+        }
+      },
+      "index": 5
+    }
+  ]
+}

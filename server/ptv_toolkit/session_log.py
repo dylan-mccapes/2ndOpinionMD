@@ -55,6 +55,8 @@ class SessionLog:
     graph_path: str
     models: Dict[str, str]
     base_dir: Path = field(default_factory=lambda: _DEFAULT_DIR)
+    # Avoid O(n²) full-file scans: increment after each append_turn when possible.
+    _next_turn_index: Optional[int] = field(default=None, repr=False)
 
     @property
     def jsonl_path(self) -> Path:
@@ -133,7 +135,10 @@ class SessionLog:
 
     def append_turn(self, turn: Dict[str, Any]) -> Dict[str, Any]:
         """Append a turn, return the stored object (with assigned ``turn_id``)."""
-        idx = self.n_turns() + 1
+        if self._next_turn_index is None:
+            self._next_turn_index = self.n_turns() + 1
+        idx = self._next_turn_index
+        self._next_turn_index = idx + 1
         turn_id = f"{self.session_id}#t{idx:04d}"
         record: Dict[str, Any] = {
             "turn_id": turn_id,

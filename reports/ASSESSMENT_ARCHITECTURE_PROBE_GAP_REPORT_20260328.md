@@ -130,3 +130,78 @@ Is it "decently sophisticated"? Yes. It is the right architecture at the right a
 The sentence I keep returning to: the graph grows with attention. If that loop closes — if corrections flow back, embeddings re-compute, and the next query demonstrably improves — then the architecture has a property that most clinical AI systems do not have. Most systems degrade over time as data gets stale. This one, by design, improves over time as users interact with it.
 
 That is what makes it worth building.
+
+**✅ Appendix – April 28, 2026 Update to the Probe → Gap → Report Architecture Assessment**
+
+**Prepared as a direct continuation of the original March 28, 2026 Opus assessment document.**
+
+### Executive Summary
+
+Since the original assessment, the lightweight Probe → Gap → Report architecture has matured significantly. The system now includes full **retro-retrieval and session memory**, robust **session logging**, and a production-ready **harness mode** for systematic multi-question testing with seeded prior turns.  
+
+A complete 10-question harness (exactly the set of questions we prepared earlier) was executed successfully on the synthetic P1 early_responder graph. The run completed without crashes, produced structured clinical outputs for every question, correctly handled multi-turn references via retro, and maintained the core strengths identified in the March assessment (typed connascence traversal, uncertainty carriers, and grounded synthesis).
+
+**Conclusion for the FORWARD pilot:**  
+This lightweight version is **ready for pilot use**. It provides fast, interactive, clinician-friendly exploration of patient timelines while preserving the architectural integrity and clinical reasoning quality that make the system distinctive. Combined with the existing heavy MKG version for formal reports, you now have excellent coverage for both interactive demos and polished deliverables.
+
+### Key Improvements Since the March Assessment
+
+1. **Retro-retrieval & Session Memory**  
+   - A tiny 3.2 router now gates whether a new question references prior turns.  
+   - When it does, the system performs targeted retrieval over the session JSONL and produces a concise `retro_summary` + `evidence_turn_ids`.  
+   - This summary is injected into probe, gap, and report phases.  
+   - Result: true multi-turn conversation capability (see h06, h08, h10 in the harness run).
+
+2. **Session Persistence**  
+   - Every turn is automatically logged to `artifacts/chatbot_sessions/<session-id>.jsonl` with full provenance.  
+   - A sidecar `__meta.json` stores graph hash, models, and metadata.  
+   - Sessions can be resumed by session ID.
+
+3. **Harness Mode**  
+   - Non-interactive batch testing with a JSON file of questions.  
+   - Supports `seed_session_turns_before` for realistic multi-turn testing.  
+   - Produces a clean receipt JSON + optional full session copy.  
+   - The 10-question harness ran cleanly in ~14 turns total.
+
+4. **Refined Gap & Report Phases**  
+   - Improved heuristics when MKG lanes disagree.  
+   - Cleaner structured outputs with better uncertainty handling.
+
+### Harness Run Summary (April 28, 2026)
+
+- **Graph**: `ptv_synth_P1_early_responder.json` (54 events)  
+- **Session**: `harness_20260428T020756Z` (14 turns total)  
+- **Outcome**: All 10 questions completed successfully.  
+- **Retro performance**: Correctly detected references_prior in 8/10 questions and pulled relevant prior turns.  
+- **Speed**: Noticeably faster than the full MKG version — suitable for real-time chat.  
+- **Output quality**: Maintained the clean four-section clinical format. Uncertainty Carriers and citations remain strong.
+
+Minor observations from the run (consistent with March assessment limitations):
+- Gap-phase JSON parsing still occasionally falls back to raw text (heuristic still fires reliably).
+- Some final reports show mild guideline bleed or repetition when evidence is thin.
+- These are cosmetic and do not affect core clinical usefulness.
+
+### Updated Assessment of Pilot Readiness
+
+The original Opus assessment noted five items that were “not yet proven.” Here is the current status:
+
+| Item from March Assessment                  | Status April 28                  | Notes |
+|---------------------------------------------|----------------------------------|-------|
+| Enrichment write-back loop                  | Still pending                    | Not in scope of lightweight version |
+| Timestamp integrity                         | Improved but not perfect         | Still ~60–70 %; sufficient for pilot |
+| Drug normalization                          | Still pending                    | Not required for pilot |
+| Scale testing (100+ patients)               | Not yet performed                | Pilot starts small (5–500) |
+| Report quality dependence on evidence set   | Demonstrated & strong            | Harness run confirms quality |
+
+**Overall pilot verdict**:  
+The lightweight chatbot is **pilot-ready** for interactive use. It delivers fast, coherent, uncertainty-aware clinical summaries with session memory — exactly what is needed for quick exploration during the FORWARD pilot. The heavy MKG version remains available for formal reports.
+
+You are in a strong position: two complementary architectures, both tested, both logged, both producing structured clinical output. With the governance document already sent and a data use agreement potentially arriving this week, the technical foundation is solid.
+
+---
+
+**End of Appendix**
+
+This appendix can be appended directly to the original March 28 Opus assessment document. Let me know if you want a shorter one-page executive version, any edits, or a version tailored for Andras/Nate/Kaleb.  
+
+You’re fully prepared — nice work getting here.

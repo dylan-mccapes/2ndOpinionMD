@@ -1,289 +1,275 @@
-# 2ndOpinionMD.ai - Test Plan
+# 2ndOpinionMD.ai – Test Plan
 
-## Overview
-This document outlines a comprehensive test plan for the 2ndOpinionMD.ai MVP. It provides step-by-step procedures for testing each feature and defines the expected criteria for successful testing.
+This document outlines the testing strategy for the 2ndOpinionMD.ai MVP, focusing on the authentication system, journaling feature, and OpenAI integration.
 
-## General Testing Requirements
+## 🧪 Testing Approach
 
-### Environment Setup
-- **Node.js**: v18
-- **Package Manager**: Yarn
-- **Browser**: Latest versions of Chrome, Firefox, Safari, and Edge
-- **Devices**: Desktop (1920x1080, 1366x768), Tablet (iPad), Mobile (iPhone, Android)
+Since we don't have a formal test suite at the MVP stage, this document provides manual testing procedures to verify functionality before deployment.
 
-### Testing Approach
-Since there is no formal test suite at the MVP stage, manual testing will be the primary method. As noted in the README, "If the app builds and runs (yarn dev), treat it as a successful pass."
+## 🔒 Authentication Testing
 
-## Feature Testing Procedures
+### User Registration
+1. Navigate to `/splash` or `/register`
+2. Fill out the registration form with:
+   - Full name
+   - Email address
+   - Password (with confirmation)
+3. Submit the form
+4. Verify:
+   - Success message appears
+   - User is redirected to the dashboard
+   - MongoDB contains the new user record with hashed password
 
-### 1. Environment and Setup Testing
+### User Login
+1. Navigate to `/splash` or `/login`
+2. Enter registered email and password
+3. Submit the form
+4. Verify:
+   - User is authenticated and redirected to the dashboard
+   - JWT token is stored in localStorage
+   - User information is stored in localStorage
 
-#### 1.1 Installation Test
-**Steps:**
-1. Clone the repository
-2. Run `nvm use 18` (or ensure Node.js v18 is active)
-3. Run `yarn install`
+### Authentication Protection
+1. Clear localStorage (logout)
+2. Attempt to access protected routes directly:
+   - `/dashboard`
+   - `/journal`
+   - `/journal/new`
+3. Verify:
+   - User is redirected to the login page
+   - Protected content is not visible
 
-**Expected Criteria:**
-- All dependencies install without errors
-- No critical warnings appear during installation
+### Logout Functionality
+1. Login to the application
+2. Click the logout button in the navigation
+3. Verify:
+   - User is logged out
+   - localStorage is cleared of tokens and user data
+   - User is redirected to the splash page
 
-#### 1.2 Development Server Test
-**Steps:**
-1. Run `yarn dev`
-2. Open browser to http://localhost:3000
+## 📝 Journaling Feature Testing
 
-**Expected Criteria:**
-- Development server starts without errors
-- Application loads in the browser without console errors
-- Initial page renders correctly
+### Journal Entry Creation
+1. Login to the application
+2. Navigate to `/journal/new`
+3. Create a new journal entry with:
+   - Multiple symptoms with severity ratings
+   - Environmental factors
+   - Stress level
+   - Sleep quality
+   - Diet notes
+4. Submit the form
+5. Verify:
+   - Entry is saved to MongoDB
+   - User is redirected to the journal list with success message
+   - Entry appears in the journal list
 
-#### 1.3 Code Formatting Test
-**Steps:**
-1. Make a minor change to a file
-2. Run `yarn format`
+### Journal List View
+1. Login to the application
+2. Navigate to `/journal`
+3. Verify:
+   - All user journal entries are displayed
+   - Entries show date, symptom preview, and severity indicators
+   - Entries are sorted by date (newest first)
 
-**Expected Criteria:**
-- Code is formatted according to project standards
-- No formatting errors are reported
+### Journal Detail View
+1. Login to the application
+2. Navigate to `/journal`
+3. Click on a journal entry
+4. Verify:
+   - Full entry details are displayed
+   - Symptoms with severity are shown
+   - Environmental factors are listed
+   - AI analysis is displayed
+   - Follow-up questions are shown
 
-### 2. UI Component Testing
+### Journal Entry Deletion
+1. Login to the application
+2. Navigate to `/journal`
+3. Click the delete button on an entry
+4. Confirm deletion
+5. Verify:
+   - Entry is removed from the list
+   - Entry is deleted from MongoDB
 
-#### 2.1 Navigation Bar Testing
-**Steps:**
-1. Load the application
-2. Verify all navigation links are visible
-3. Click each navigation link
-4. Test responsive behavior by resizing browser window
+## 🧠 OpenAI Integration Testing
 
-**Expected Criteria:**
-- All links are visible and properly styled
-- Clicking each link navigates to the correct section/page
-- Navigation bar adapts appropriately to different screen sizes
-- Active page/section is visually indicated
+### AI Analysis Generation
+1. Login to the application
+2. Create a new journal entry
+3. Submit the form
+4. Verify:
+   - AI analysis is generated
+   - Analysis includes potential diagnoses
+   - Analysis includes follow-up questions
+   - Analysis references symptoms and factors from the entry
 
-#### 2.2 Hero Section Testing
-**Steps:**
-1. Load the application
-2. Verify Hero Section content and styling
-3. Test Hero variant A by passing variant="A" to the component
-4. Test Hero variant B by passing variant="B" to the component
-5. Test responsive behavior by resizing browser window
+### Historical Context Integration
+1. Login to the application
+2. Create multiple journal entries over time
+3. Verify:
+   - Later AI analyses reference earlier entries
+   - Follow-up questions evolve based on previous responses
+   - Patterns across entries are identified
 
-**Expected Criteria:**
-- Hero section displays correctly with proper text, images, and call-to-action
-- Both variants A and B render correctly with their specific designs
-- Hero section adapts appropriately to different screen sizes
-- Call-to-action buttons are functional
+### Symptom Tracking from Intake
+1. Complete the symptom intake form with demographics
+2. Login and navigate to the journal
+3. Verify:
+   - Initial symptoms from intake are recorded with correct dates
+   - Demographics are associated with the user profile
+   - Initial symptoms appear in AI analysis context
 
-#### 2.3 Pricing Section Testing
-**Steps:**
-1. Navigate to the pricing section
-2. Verify all pricing tiers are displayed
-3. Check that pricing information is accurate ($19.99 for Basic, $49.99 for Advanced)
-4. Test any interactive elements (selection, hover effects)
-5. Test responsive behavior by resizing browser window
+## 🔄 Integration Testing
 
-**Expected Criteria:**
-- All pricing tiers display correctly with proper styling
-- Pricing information matches specifications
-- Interactive elements function as expected
-- Pricing section adapts appropriately to different screen sizes
+### Frontend-Backend Communication
+1. Monitor network requests during:
+   - Authentication
+   - Journal entry creation
+   - Journal entry retrieval
+2. Verify:
+   - Proper API endpoints are called
+   - Authentication headers are included
+   - Response data is correctly formatted
+   - Error handling works as expected
 
-#### 2.4 Testimonial Carousel Testing
-**Steps:**
-1. Navigate to the testimonial section
-2. Verify testimonials are displayed
-3. Test carousel navigation (next/previous controls)
-4. Test auto-rotation if implemented
-5. Test responsive behavior by resizing browser window
+### MongoDB Integration
+1. Perform various operations in the application
+2. Check MongoDB collections:
+   - users
+   - journal_entries
+3. Verify:
+   - Data is correctly stored
+   - Relationships between collections are maintained
+   - Queries return expected results
 
-**Expected Criteria:**
-- Testimonials display correctly with proper styling
-- Carousel navigation works as expected
-- Auto-rotation functions correctly if implemented
-- Testimonial carousel adapts appropriately to different screen sizes
+### OpenAI API Integration
+1. Create journal entries
+2. Monitor OpenAI API requests
+3. Verify:
+   - Correct model is used
+   - Prompts include all necessary context
+   - Responses are properly parsed and stored
 
-#### 2.5 FAQ Accordion Testing
-**Steps:**
-1. Navigate to the FAQ section
-2. Verify all questions are displayed
-3. Click each question to expand/collapse answers
-4. Test keyboard navigation (if implemented)
-5. Test responsive behavior by resizing browser window
+## 🚨 Error Handling Testing
 
-**Expected Criteria:**
-- All questions display correctly with proper styling
-- Clicking expands/collapses answers smoothly
-- Only one answer is expanded at a time (if that's the design)
-- FAQ section adapts appropriately to different screen sizes
+### Form Validation
+1. Submit forms with invalid data:
+   - Empty required fields
+   - Invalid email format
+   - Password mismatch
+2. Verify:
+   - Appropriate error messages are displayed
+   - Form is not submitted
+   - User can correct errors and resubmit
 
-#### 2.6 Report Overview Testing
-**Steps:**
-1. Navigate to the report overview section
-2. Verify all report elements are displayed
-3. Check any interactive elements
-4. Test responsive behavior by resizing browser window
+### API Error Handling
+1. Simulate API errors:
+   - Disconnect from MongoDB
+   - Invalid OpenAI API key
+2. Verify:
+   - User-friendly error messages are displayed
+   - Application doesn't crash
+   - Retry mechanisms work as expected
 
-**Expected Criteria:**
-- Report overview displays correctly with proper styling
-- All report elements (conditions, red flags, labs, references) are visible
-- Interactive elements function as expected
-- Report overview adapts appropriately to different screen sizes
+### Authentication Failures
+1. Attempt login with:
+   - Non-existent user
+   - Incorrect password
+   - Expired token
+2. Verify:
+   - Appropriate error messages are displayed
+   - Security is not compromised
 
-#### 2.7 Condition Cards Testing
-**Steps:**
-1. Navigate to the condition cards section
-2. Verify all condition cards are displayed
-3. Test any interactive elements (hover, click)
-4. Test responsive behavior by resizing browser window
+## 📱 Responsive Design Testing
 
-**Expected Criteria:**
-- Condition cards display correctly with proper styling
-- All information is visible and readable
-- Interactive elements function as expected
-- Condition cards adapt appropriately to different screen sizes
+### Device Testing
+Test the application on:
+1. Desktop (various screen sizes)
+2. Tablet (portrait and landscape)
+3. Mobile (portrait and landscape)
 
-#### 2.8 Footer Testing
-**Steps:**
-1. Navigate to the bottom of the page
-2. Verify all footer links and information are displayed
-3. Click each footer link
-4. Test responsive behavior by resizing browser window
+### Functionality Verification
+Verify on each device:
+1. All features work correctly
+2. UI elements are properly sized and positioned
+3. Forms are usable and accessible
+4. Journal entries are readable
 
-**Expected Criteria:**
-- Footer displays correctly with proper styling
-- All links are visible and properly styled
-- Clicking each link navigates to the correct section/page
-- Footer adapts appropriately to different screen sizes
+## 🔐 Security Testing
 
-### 3. Core Functionality Testing
+### Authentication Security
+1. Verify passwords are properly hashed in the database
+2. Check for secure JWT implementation
+3. Test token expiration and renewal
+4. Verify protected routes are properly secured
 
-#### 3.1 Symptom Input System Testing
-**Steps:**
-1. Navigate to the symptom input interface
-2. Enter various combinations of symptoms
-3. Test form validation (required fields, format validation)
-4. Test edge cases (no symptoms, maximum number of symptoms)
-5. Submit the form
-6. Test responsive behavior by resizing browser window
+### Data Protection
+1. Verify sensitive data is not exposed in:
+   - API responses
+   - Local storage
+   - Console logs
+2. Check that user data is isolated (users can't access others' data)
 
-**Expected Criteria:**
-- Symptom input interface displays correctly with proper styling
-- Form validation works as expected
-- Error messages are clear and helpful
-- Submission process works correctly
-- Interface adapts appropriately to different screen sizes
+## 🚀 Deployment Testing
 
-#### 3.2 Report Generation Testing
-**Steps:**
-1. Complete and submit the symptom input form
-2. Verify report generation process
-3. Check the generated report for all required elements
-4. Test different symptom combinations to ensure varied reports
-5. Test edge cases (minimal symptoms, extensive symptoms)
+### Environment Configuration
+1. Verify all environment variables are properly set
+2. Test with production API keys
+3. Ensure MongoDB connection works in production environment
 
-**Expected Criteria:**
-- Report generates without errors
-- Report includes all required elements:
-  - Top likely conditions
-  - Red-flag symptom patterns
-  - Suggested labs/imaging
-  - Scientific references
-  - Disclaimer & next-step recommendations
-- Report content varies appropriately based on input symptoms
-- PDF format is correctly structured and readable
+### Build Process
+1. Run production build
+2. Verify assets are properly bundled and minified
+3. Check for any build warnings or errors
 
-#### 3.3 Theme Support Testing
-**Steps:**
-1. Load the application
-2. Locate and click the theme toggle in the header/navbar
-3. Verify the theme changes from light to dark or vice versa
-4. Refresh the page and verify theme persistence
-5. Test in different browsers to ensure consistent behavior
-6. Test responsive behavior by resizing browser window
+## 📋 Test Reporting
 
-**Expected Criteria:**
-- Theme toggle is visible and functional in the header/navbar
-- Application correctly switches between light and dark themes
-- All UI elements remain visible and functional in both themes
-- Theme preference is saved in localStorage and persists between sessions
-- Themes display consistently across different browsers
-- Theme functionality works correctly at all screen sizes
+Document any issues found during testing:
+1. Issue description
+2. Steps to reproduce
+3. Expected vs. actual behavior
+4. Screenshots or logs
+5. Severity level
 
-### 4. Cross-Browser and Responsive Testing
+## 🔄 Regression Testing
 
-#### 4.1 Cross-Browser Testing
-**Steps:**
-1. Load the application in Chrome, Firefox, Safari, and Edge
-2. Verify all features function correctly in each browser
-3. Check for any visual inconsistencies
+After fixing issues:
+1. Retest the affected functionality
+2. Verify the fix doesn't break other features
+3. Run through critical user flows again
 
-**Expected Criteria:**
-- Application functions consistently across all tested browsers
-- No significant visual differences between browsers
-- No browser-specific console errors
+## 📊 Performance Testing
 
-#### 4.2 Responsive Design Testing
-**Steps:**
-1. Load the application on desktop, tablet, and mobile devices (or use browser dev tools to simulate)
-2. Test at various screen resolutions
-3. Verify all features adapt appropriately to different screen sizes
-4. Test touch interactions on touch-enabled devices
+### Load Time
+1. Measure initial load time
+2. Measure time to interactive
+3. Verify performance on slower connections
 
-**Expected Criteria:**
-- Application displays correctly at all tested screen sizes
-- No horizontal scrolling on mobile devices
-- Touch interactions work correctly on touch-enabled devices
-- All features remain accessible and usable at all screen sizes
+### API Response Time
+1. Measure response time for:
+   - Authentication requests
+   - Journal entry creation
+   - Journal entry retrieval
+   - OpenAI API integration
 
-### 5. Performance Testing
+## 🔍 Accessibility Testing
 
-#### 5.1 Load Time Testing
-**Steps:**
-1. Use browser dev tools to measure page load time
-2. Test initial load and subsequent navigation
-3. Test with cache cleared and with cached resources
+1. Test keyboard navigation
+2. Verify screen reader compatibility
+3. Check color contrast
+4. Ensure form elements have proper labels
 
-**Expected Criteria:**
-- Initial page load completes in under 3 seconds on broadband connection
-- Subsequent navigation is responsive (under 1 second)
-- Application performs acceptably even on slower connections
+## 📝 Test Execution Checklist
 
-#### 5.2 Resource Usage Testing
-**Steps:**
-1. Use browser dev tools to monitor memory and CPU usage
-2. Test during normal usage and during intensive operations
-3. Test for memory leaks during extended usage
+Use this checklist before submitting the PR:
 
-**Expected Criteria:**
-- Memory usage remains stable during normal operation
-- CPU usage spikes only during expected intensive operations
-- No significant memory leaks during extended usage
-
-### 6. Accessibility Testing
-
-#### 6.1 Basic Accessibility Testing
-**Steps:**
-1. Test keyboard navigation throughout the application
-2. Verify proper heading structure
-3. Check for sufficient color contrast in both themes
-4. Verify all images have alt text
-5. Test with screen reader if available
-
-**Expected Criteria:**
-- All interactive elements are keyboard accessible
-- Heading structure follows a logical hierarchy
-- Color contrast meets WCAG AA standards
-- All images have descriptive alt text
-- Screen reader can navigate and interpret the application correctly
-
-## Test Reporting
-
-After completing each test, record the results in the test report document, including:
-- Test date and tester name
-- Test environment details
-- Pass/fail status for each test
-- Description of any issues found
-- Screenshots of issues (if applicable)
-- Recommendations for fixes
+- [ ] Authentication flows tested and working
+- [ ] Journal creation, viewing, and deletion tested
+- [ ] OpenAI integration verified with proper responses
+- [ ] Historical context in journal entries confirmed
+- [ ] Symptom tracking from intake page verified
+- [ ] Responsive design checked on multiple devices
+- [ ] Error handling tested for common scenarios
+- [ ] Security measures verified
+- [ ] Performance acceptable on target devices
