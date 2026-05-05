@@ -2535,6 +2535,12 @@ def _run_harness_mode(
 
     rows: List[Dict[str, Any]] = []
     verbose = bool(getattr(args, "harness_verbose", False))
+    # --demo implies full per-turn stdout (final report + evidence dump); same as
+    # interactive mode, so harness runs are screen-recordable without remembering
+    # --harness-verbose separately.
+    print_turns = verbose or bool(getattr(args, "demo", False)) or (
+        os.environ.get("FORWARD_DEMO_MODE") == "1"
+    )
     continue_on_error = bool(getattr(args, "harness_continue_on_error", False))
     copy_session = not bool(getattr(args, "harness_no_session_copy", False))
 
@@ -2551,7 +2557,7 @@ def _run_harness_mode(
                 gh=gh,
                 session=session,
                 args=args,
-                print_reports=verbose,
+                print_reports=print_turns,
             )
         except Exception as exc:  # noqa: BLE001
             err_row = {"error": str(exc), "harness_id": item.get("id"), "index": i}
@@ -2581,7 +2587,7 @@ def _run_harness_mode(
             continue
 
         rows.append(_harness_receipt_row(item, rec, n_seeds))
-        if not verbose:
+        if not print_turns:
             rk = (rec.get("probe") or {}).get("retro") or {}
             ref = (rk.get("gate") or {}).get("references_prior")
             print(
