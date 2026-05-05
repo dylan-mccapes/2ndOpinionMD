@@ -79,5 +79,29 @@
     "expected_primary_tool": "graph_stats",
     "expected_args_shape": {},
     "must_have_any": ["632", "events"]
+  },
+  {
+    "id": "q11_bayes_flare_30d",
+    "question": "What is the posterior probability of a disease flare in the next 30 days, with a 90% credible interval and the events that drove the update?",
+    "expected_route": "bayesian_update",
+    "expected_primary_tool": "bayesian_update_uc",
+    "expected_args_shape": {"hypothesis_id": "flare_30d"},
+    "must_have_any": ["flare", "posterior", "band", "credible"]
+  },
+  {
+    "id": "q12_bayes_progression_3mo",
+    "question": "Will this patient progress in the next 3 months? Give me a Bayesian posterior with 90% band and cite the evidence_event_ids.",
+    "expected_route": "bayesian_update",
+    "expected_primary_tool": "bayesian_update_uc",
+    "expected_args_shape": {"hypothesis_id": "progression_3mo"},
+    "must_have_any": ["progression", "posterior", "band"]
+  },
+  {
+    "id": "q13_bayes_taper_safety",
+    "question": "Is it safe to attempt a DMARD taper now? Compute a posterior over taper safety and report the 90% credible interval and prior source.",
+    "expected_route": "bayesian_update",
+    "expected_primary_tool": "bayesian_update_uc",
+    "expected_args_shape": {"hypothesis_id": "taper_safety"},
+    "must_have_any": ["taper", "posterior", "band", "prior"]
   }
 ]

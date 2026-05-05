@@ -103,6 +103,44 @@ def _score_seed_ids(log: AgentLog) -> "OrderedDict[str, Dict[str, Any]]":
 # Handoff build
 # ---------------------------------------------------------------------------
 
+def _harvest_posteriors_from_log(log: AgentLog) -> List[Dict[str, Any]]:
+    """Pull every ``bayesian_update_uc`` tool result and the agent's final_answer.
+
+    Per ``STRATEGY_BAYESIAN_PTV_UC_20260423.md`` §5.3, the handoff carries the
+    posteriors so the gap reviewer can treat them as starting beliefs.
+    """
+    out: List[Dict[str, Any]] = []
+    seen_hypothesis: set[str] = set()
+
+    for turn in log.turns:
+        if turn.role == "tool" and turn.tool == "bayesian_update_uc":
+            try:
+                payload = json.loads(turn.content)
+            except Exception:
+                continue
+            res = (payload or {}).get("result") or {}
+            block = res.get("posterior")
+            hid = res.get("hypothesis_id") or (block or {}).get("hypothesis_id")
+            if isinstance(block, dict) and hid:
+                key = str(hid)
+                if key in seen_hypothesis:
+                    continue
+                seen_hypothesis.add(key)
+                out.append(block)
+
+    fa_posteriors = (log.final_answer or {}).get("posteriors") or []
+    if isinstance(fa_posteriors, list):
+        for block in fa_posteriors:
+            if not isinstance(block, dict):
+                continue
+            hid = block.get("hypothesis_id")
+            if not hid or str(hid) in seen_hypothesis:
+                continue
+            seen_hypothesis.add(str(hid))
+            out.append(block)
+    return out
+
+
 def _serialize_tool_trace(log: AgentLog) -> List[Dict[str, Any]]:
     trace: List[Dict[str, Any]] = []
     pending: Optional[Dict[str, Any]] = None
@@ -162,12 +200,14 @@ def build_handoff(
     working_set_max: int = _HANDOFF_WORKING_SET_MAX,
     top_n_rows: int = _HANDOFF_TOP_N_ROWS,
 ) -> Dict[str, Any]:
-    """Assemble the JSON blob the 70B gap agent consumes."""
+    """Assemble the JSON blob the gap agent consumes."""
     scored = _score_seed_ids(log)
     working_set = list(scored.keys())[:working_set_max]
+    posteriors = _harvest_posteriors_from_log(log)
 
     return {
         "schema": "ptv_toolkit.handoff.v1",
+        "posteriors": posteriors,
         "patient_id": gh.graph.get("patient_id"),
         "graph": {
             "path": str(gh.path),
@@ -202,7 +242,10 @@ def build_handoff(
                 "semantic_search with event_ids=working_set unless the question "
                 "specifically requires breaking out. The probe already ran the "
                 "toolkit once and surfaced these ids; your job is to find what "
-                "was missed."
+                "was missed. If posteriors[] is non-empty, treat each UC as a "
+                "STARTING belief, not a final answer — flag regime changes "
+                "(band widening, evidence outside prior support) before "
+                "synthesising."
             ),
         },
     }

@@ -19,6 +19,17 @@ embeddings to disk keyed by graph hash.
 """
 from __future__ import annotations
 
+from .bayes import (
+    DEFAULT_HYPOTHESIS_PRIORS,
+    BetaPrior,
+    GammaPrior,
+    NormalNormalPrior,
+    LikelihoodSpec,
+    bayesian_update_uc,
+    update_beta_bernoulli,
+    update_gamma_poisson,
+    update_normal_normal,
+)
 from .graph import GraphHandle, load_graph
 from .handoff import build_handoff, save_handoff
 from .registry import TOOL_SCHEMAS, call_tool, tool_names
@@ -31,6 +42,15 @@ __all__ = [
     "tool_names",
     "build_handoff",
     "save_handoff",
+    "bayesian_update_uc",
+    "BetaPrior",
+    "GammaPrior",
+    "NormalNormalPrior",
+    "LikelihoodSpec",
+    "update_beta_bernoulli",
+    "update_gamma_poisson",
+    "update_normal_normal",
+    "DEFAULT_HYPOTHESIS_PRIORS",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

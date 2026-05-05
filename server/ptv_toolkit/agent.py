@@ -59,10 +59,11 @@ them, no markdown fences:
 
   1) Plan (first turn only):
      {"plan": {
-        "route": "code_lookup" | "temporal" | "semantic_then_bfs" | "orient",
+        "route": "code_lookup" | "temporal" | "semantic_then_bfs" | "orient" | "bayesian_update",
         "rationale": "<one sentence>",
         "expanded_query": "<only for semantic_then_bfs: original query +
-           medical synonyms, ICD family hints, drug class names>"
+           medical synonyms, ICD family hints, drug class names>",
+        "hypothesis_id": "<only for bayesian_update: flare_30d | progression_3mo | taper_safety>"
      }}
 
   2) Tool call (after the plan):
@@ -72,7 +73,11 @@ them, no markdown fences:
      {"final_answer": {
         "answer": "<concise prose, optionally bulleted>",
         "evidence_event_ids": ["pdf_pNNNN_eNNNN", ...],
-        "tools_used": ["code_index_lookup", "bfs_expand", ...]
+        "tools_used": ["code_index_lookup", "bfs_expand", ...],
+        "posteriors": [
+           {"hypothesis_id": "flare_30d",
+            "uc": {"point_estimate": 0.357, "band_90": [0.166, 0.573], ...}}
+        ]
      }}
 
 ROUTING RULES (pick one for the plan.route)
@@ -89,6 +94,13 @@ ROUTING RULES (pick one for the plan.route)
                        then bfs_expand on the top seeds when needed.
   orient             — ambiguous or meta-question about the chart as a
                        whole. Use graph_stats / list_event_types.
+  bayesian_update    — question asks for a probability, risk, rate, or
+                       safety judgement over time ("how likely is a flare
+                       in the next 30 days", "will progression occur in 3
+                       months", "is it safe to taper now"). Set
+                       hypothesis_id (flare_30d | progression_3mo |
+                       taper_safety) and call bayesian_update_uc; the
+                       posterior UC must be cited in final_answer.posteriors.
 
 QUERY EXPANSION (semantic_then_bfs only)
 

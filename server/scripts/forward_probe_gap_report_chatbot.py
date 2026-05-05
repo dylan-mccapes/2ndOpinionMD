@@ -29,18 +29,38 @@
   longest token anchor) on the router's ``semantic_query``. Note: this is NOT
   BM25 — Postgres FTS uses ``ts_rank`` (length-normalized tf-style score).
 
-**Gap** (default ``eoh-llama``):
+**Bayesian phase** (default ``--bayes-gate-model`` = probe model, deterministic update):
 
-- Consumes probe bundle; may request at most one extra PTV semantic query,
-  up to two additional TS terms, and one follow-up graph tool.
+- Tiny 8B gate decides ``wants_bayes`` + ``hypothesis_id`` (one of
+  ``flare_30d`` | ``progression_3mo`` | ``taper_safety``) per the strategy doc
+  ``reports/STRATEGY_BAYESIAN_PTV_UC_20260423.md``.
+- When yes, runs the deterministic ``bayesian_update_uc`` toolkit primitive
+  against the probe's working set (PTV semantic_search + chosen graph tool)
+  and emits an ``UncertaintyCarrier`` (point_estimate, 90% band, evidence_ids,
+  prior, posterior_params, method, spec_hash). Closed-form Beta–Bernoulli
+  by default; no LLM in the math.
+- The posterior block is added to ``probe.bayes.posteriors[]`` and forwarded
+  to GAP / REPORT. Disable with ``--no-bayes``.
+
+**Gap** (default ``eoh-qwen3-14b`` 102K context):
+
+- Consumes probe bundle (incl. ``bayes.posteriors``); may request at most one
+  extra PTV semantic query, up to two additional TS terms, one follow-up graph
+  tool, and **one additional Bayesian hypothesis** (``follow_bayes_hypothesis_id``).
 - Emits a structured ``gap_report`` plus optional follow-up tool results.
 - If the model leaves all follow fields empty but ``mkg_jaccard`` is 0.0 with
   both MKG lanes populated, a small heuristic adds TS terms from the user
   question or an enriched PTV semantic query (disable with ``--no-gap-heuristic``).
+- When ``probe.bayes.posteriors`` is non-empty, the gap_report MUST cite each
+  UC's point_estimate / band_90 and comment on whether evidence_event_ids
+  look sufficient (regime-change check per strategy doc §5.2).
 
-**Report** (default ``eoh-llama``):
+**Report** (default ``eoh-qwen3-14b`` 102K context):
 
 - Synthesizes a single markdown answer from probe + gap context (no tools).
+- When posteriors are present, MUST report the point_estimate and 90% band per
+  hypothesis_id and cite ``evidence_event_ids`` (the UC IS the answer for that
+  question class — see strategy doc §3.3 / §10).
 
 **Session log**:
 
@@ -103,8 +123,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from server.mkg.router_planner import plan_route
+from server.mkg.router_planner import force_json_dict, plan_route
 from server.eoh.module_index import MODULE_INDEX
+from server.ptv_toolkit.bayes import DEFAULT_HYPOTHESIS_PRIORS
 from server.ptv_toolkit.code_inventory import (
     build_patient_code_inventory,
     fit_code_inventory_to_budget,
@@ -120,6 +141,7 @@ from server.scripts.mkg_retrieval_harness import (  # type: ignore
     bm25_ts_terms,
     embed_query,
     ensure_source_coverage_retrieval,
+    fetch_mkg_bayes_prior,
     _compact_hit,
     _overlap,
     _vec_literal,
@@ -144,6 +166,146 @@ _GAP_REPORT_JSON_MAX_CHARS = int(
 def _log(emoji: str, msg: str) -> None:
     print(f"{emoji} {msg}", file=sys.stderr, flush=True)
 
+
+# --------------------------------------------------------------------------- #
+# Demo-mode verbose logging (tuned for YC demo video)
+# --------------------------------------------------------------------------- #
+#
+# All demo helpers are no-ops when ``_Demo.enabled is False`` so the regular
+# CLI run is unchanged. Demo mode is toggled by ``--demo`` (or the env var
+# ``FORWARD_DEMO_MODE=1``) at the top of ``main`` / ``_run_full_turn``.
+#
+# Conventions:
+#   * Banner / kv / preview lines go to stderr (interleaved with _log).
+#   * The end-of-turn "FINAL REPORT" + evidence dump goes to stdout so it can
+#     be piped / recorded.
+#   * Previews truncate long blobs at ``head`` chars and report the cut size.
+#
+# Why this matters for the demo: the audience needs to see (a) what context is
+# being curated at each stage, (b) the model's own words (raw response head),
+# and (c) the deterministic Bayesian numbers behind the final answer. The
+# helpers below make that visible without hand-rolling print statements at
+# every stage.
+
+_DEMO_BAR_WIDTH = 78
+
+
+class _Demo:
+    """Module-level demo state. Reset at the top of every ``_run_full_turn``."""
+
+    enabled: bool = False
+    stage_starts: Dict[str, float] = {}
+    stage_durations: List[Tuple[str, float]] = []
+    llm_calls: List[Dict[str, Any]] = []   # {stage, model, num_ctx, raw_chars, elapsed}
+
+
+def _demo_enable(on: bool) -> None:
+    _Demo.enabled = bool(on)
+
+
+def _demo_reset_turn() -> None:
+    _Demo.stage_starts = {}
+    _Demo.stage_durations = []
+    _Demo.llm_calls = []
+
+
+def _demo_banner(title: str, subtitle: str = "", *, char: str = "─") -> None:
+    if not _Demo.enabled:
+        return
+    bar = char * _DEMO_BAR_WIDTH
+    print(f"\n{bar}", file=sys.stderr, flush=True)
+    print(f"  {title}", file=sys.stderr, flush=True)
+    if subtitle:
+        print(f"  ↳ {subtitle}", file=sys.stderr, flush=True)
+    print(bar, file=sys.stderr, flush=True)
+
+
+def _demo_kv(key: str, value: Any) -> None:
+    if not _Demo.enabled:
+        return
+    print(f"    · {key}: {value}", file=sys.stderr, flush=True)
+
+
+def _demo_kvs(kvs: Dict[str, Any]) -> None:
+    if not _Demo.enabled:
+        return
+    keylen = max((len(k) for k in kvs), default=0)
+    for k, v in kvs.items():
+        print(f"    · {k.ljust(keylen)} : {v}", file=sys.stderr, flush=True)
+
+
+def _demo_preview(label: str, text: str, *, head: int = 800) -> None:
+    """Indented multi-line preview of any text blob (LLM response, prompt, etc.)."""
+    if not _Demo.enabled:
+        return
+    s = str(text or "").strip()
+    if not s:
+        print(f"    ↳ {label}: <empty>", file=sys.stderr, flush=True)
+        return
+    cut = s[:head]
+    suffix = "" if len(s) <= head else f"... [truncated, +{len(s) - head} more chars]"
+    print(f"    ↳ {label} ({len(s):,} chars total):", file=sys.stderr, flush=True)
+    for line in cut.splitlines():
+        print(f"        {line}", file=sys.stderr, flush=True)
+    if suffix:
+        print(f"        {suffix}", file=sys.stderr, flush=True)
+
+
+def _demo_record_llm(
+    stage: str,
+    *,
+    model: str,
+    num_ctx: int,
+    raw: str,
+    elapsed_sec: float,
+    user_chars: int,
+    system_chars: int,
+) -> None:
+    """Capture every LLM call so the end-of-turn summary can show timing/cost."""
+    rec = {
+        "stage": stage,
+        "model": model,
+        "num_ctx": num_ctx,
+        "raw_chars": len(raw or ""),
+        "user_chars": user_chars,
+        "system_chars": system_chars,
+        "elapsed_sec": round(float(elapsed_sec), 3),
+    }
+    _Demo.llm_calls.append(rec)
+    if _Demo.enabled:
+        _demo_preview(
+            f"LLM[{stage}] response — model={model} num_ctx={num_ctx} "
+            f"input={user_chars + system_chars:,}c → output={len(raw or ''):,}c "
+            f"in {elapsed_sec:.2f}s",
+            raw or "",
+            head=900,
+        )
+
+
+def _demo_stage_start(name: str) -> None:
+    _Demo.stage_starts[name] = time.monotonic()
+
+
+def _demo_stage_end(name: str) -> float:
+    if name in _Demo.stage_starts:
+        elapsed = time.monotonic() - _Demo.stage_starts.pop(name)
+        _Demo.stage_durations.append((name, elapsed))
+        if _Demo.enabled:
+            print(
+                f"    ⏱ stage `{name}` finished in {elapsed * 1000:.1f} ms",
+                file=sys.stderr,
+                flush=True,
+            )
+        return elapsed
+    return 0.0
+
+
+def _abridge(s: Any, n: int = 90) -> str:
+    """Single-line cutoff helper used by the evidence dump table."""
+    txt = str(s or "").replace("\n", " ").replace("\r", " ")
+    return txt if len(txt) <= n else txt[: n - 1] + "…"
+
+
 DEFAULT_GRAPH = (
     ROOT
     / "artifacts"
@@ -166,51 +328,11 @@ _GRAPH_TOOLS = [
     "get_event",
 ]
 
-_BLOCK_RX = re.compile(r"\{.*\}", re.DOTALL)
-
-
 def _mkg_dsn() -> Optional[str]:
     for k in ("SYNC_DATABASE_URL", "DATABASE_URL", "POSTGRES_URL"):
         v = os.environ.get(k)
         if v and v.strip():
             return v.strip()
-    return None
-
-
-def _extract_json(text: str) -> Optional[Dict[str, Any]]:
-    s = (text or "").strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", s, re.DOTALL | re.IGNORECASE)
-    if fence:
-        try:
-            return json.loads(fence.group(1))
-        except Exception:
-            pass
-    m = _BLOCK_RX.search(s)
-    if m:
-        try:
-            return json.loads(m.group(0))
-        except Exception:
-            return None
-    return None
-
-
-def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
-    """First top-level JSON object in text (handles prose before/after JSON)."""
-    dec = json.JSONDecoder()
-    s = text or ""
-    for i, ch in enumerate(s):
-        if ch != "{":
-            continue
-        try:
-            obj, _end = dec.raw_decode(s, i)
-            if isinstance(obj, dict):
-                return obj
-        except json.JSONDecodeError:
-            continue
     return None
 
 
@@ -310,6 +432,7 @@ def _ollama_chat(
     temperature: float,
     timeout: float,
     num_ctx: int,
+    demo_stage: Optional[str] = None,
 ) -> str:
     payload = {
         "model": model,
@@ -320,9 +443,22 @@ def _ollama_chat(
         "stream": False,
         "options": {"temperature": temperature, "num_ctx": max(2048, int(num_ctx))},
     }
+    t0 = time.monotonic()
     r = requests.post(f"{url.rstrip('/')}/api/chat", json=payload, timeout=timeout)
     r.raise_for_status()
-    return (r.json().get("message") or {}).get("content") or ""
+    raw = (r.json().get("message") or {}).get("content") or ""
+    elapsed = time.monotonic() - t0
+    if demo_stage:
+        _demo_record_llm(
+            demo_stage,
+            model=model,
+            num_ctx=int(num_ctx),
+            raw=raw,
+            elapsed_sec=elapsed,
+            user_chars=len(user or ""),
+            system_chars=len(system or ""),
+        )
+    return raw
 
 
 def _router_sources(plan: Dict[str, Any]) -> Optional[List[str]]:
@@ -352,6 +488,7 @@ def _eoh_module_route_prelude(
     temperature: float,
     timeout: float,
     num_ctx: int,
+    debug_router: bool = False,
 ) -> Dict[str, Any]:
     """3.2 pre-router call using router_llm-style planning: question_type + exact module/doc plan."""
     module_index_for_prompt = {}
@@ -362,19 +499,20 @@ def _eoh_module_route_prelude(
             "doc_handles": mod.get("doc_handles") or [],
         }
     system = (
-        "You are an EoH Router planner. Return STRICT JSON only.\n"
+        "You are an EoH Router planner. You **MUST** respond with **ONLY** valid JSON — one object.\n"
+        "No markdown, no explanations, no text before or after the JSON.\n"
         "Planner-only: do not answer clinically.\n"
         "Choose ONE question_type from A|B|C|D|E|OTHER, plus module_plan and doc_retrieval_plan.\n"
         "Use ONLY module ids and doc handles present in module_index.\n"
         "EoH is first-class: for trajectory/flare/remission/longitudinal-plan/uncertainty questions,\n"
         "prefer A-E (not OTHER) and include specific EoH modules with exact doc handles.\n\n"
-        "Output schema:\n"
+        "Output exactly this shape (optional keys may be null/empty arrays):\n"
         "{\n"
-        '  "question_type":"A|B|C|D|E|OTHER",\n'
-        '  "question_type_explanation":"...",\n'
-        '  "module_plan":[{"step":"...", "modules":["M1","M13"]}],\n'
-        '  "doc_retrieval_plan":[{"source":"eoh_router", "handles":["eoh_m1_patient_terrain"]}],\n'
-        '  "selected_modules":["M1","M13"]\n'
+        '  "question_type": "A|B|C|D|E|OTHER",\n'
+        '  "question_type_explanation": "...",\n'
+        '  "module_plan": [{"step": "...", "modules": ["M1", "M13"]}],\n'
+        '  "doc_retrieval_plan": [{"source": "eoh_router", "handles": ["eoh_m1_patient_terrain"]}],\n'
+        '  "selected_modules": ["M1", "M13"]\n'
         "}\n"
     )
     user = json.dumps(
@@ -387,16 +525,47 @@ def _eoh_module_route_prelude(
         indent=2,
     )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🧭", f"Stage EOH-PRELUDE model={model} num_ctx={num_ctx}")
-    raw = _ollama_chat(
-        url=ollama_url,
-        model=model,
-        system=system,
-        user=user,
-        temperature=temperature,
-        timeout=timeout,
-        num_ctx=num_ctx,
+    _demo_banner(
+        "PROBE · EOH PRELUDE",
+        "8B picks question_type and the EoH module plan (M1/M2/M13/...) before retrieval",
     )
-    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    _demo_kvs({
+        "model": model,
+        "num_ctx": num_ctx,
+        "module_index_size": len(module_index_for_prompt),
+        "user_payload_chars": len(user),
+        "patient_state_summary_keys": list((patient_state_summary or {}).keys()),
+    })
+    if debug_router:
+        _log("🐛", f"EOH-PRELUDE system head=\n{system[:1200]}…")
+        _log("🐛", f"EOH-PRELUDE user head=\n{user[:1200]}…")
+    raw = ""
+    parsed: Dict[str, Any] = {}
+    for attempt in range(3):
+        raw = _ollama_chat(
+            url=ollama_url,
+            model=model,
+            system=system,
+            user=user,
+            temperature=min(0.32, float(temperature) + 0.02 * attempt),
+            timeout=timeout,
+            num_ctx=num_ctx,
+            demo_stage=f"eoh_module_prelude(attempt={attempt + 1}/3)",
+        )
+        got = force_json_dict(raw)
+        if got:
+            parsed = got
+            break
+        if debug_router:
+            _log("🐛", f"EOH-PRELUDE raw head=\n{(raw or '')[:1600]}…")
+        _log(
+            "⚠️",
+            f"EOH-PRELUDE JSON parse miss attempt {attempt + 1}/3 raw_head400={(raw or '')[:400]!r}",
+        )
+        if attempt < 2:
+            time.sleep(0.35 * (2**attempt))
+    if not parsed:
+        _log("⚠️", "EOH-PRELUDE JSON parse failed after retries — continuing with empty prelude dict")
     # normalize selected_modules from either explicit list or module_plan
     mods = []
     for m in parsed.get("selected_modules") or []:
@@ -632,6 +801,9 @@ def _retro_gate(
         indent=2,
     )
     _log("🪞", f"Stage RETRO-GATE model={model} num_ctx={num_ctx} prior_turns={session.n_turns()}")
+    _demo_banner("RETRO GATE", "does this question reference an earlier chatbot turn?")
+    _demo_kvs({"model": model, "num_ctx": num_ctx, "prior_turns": session.n_turns(),
+               "user_payload_chars": len(user)})
     try:
         raw = _ollama_chat(
             url=ollama_url,
@@ -641,11 +813,12 @@ def _retro_gate(
             temperature=temperature,
             timeout=timeout,
             num_ctx=num_ctx,
+            demo_stage="retro_gate",
         )
     except Exception as exc:  # noqa: BLE001
         _log("⚠️", f"retro-gate call failed: {exc}")
         return {"references_prior": False, "retro_query": None, "why": f"gate_error:{exc}"}
-    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    parsed = force_json_dict(raw) or {}
     refs = bool(parsed.get("references_prior"))
     rq = _norm_gap_follow_field(parsed.get("retro_query"))
     if not isinstance(rq, str) or not rq.strip():
@@ -691,6 +864,9 @@ def _retro_summarize(
         indent=2,
     )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🪞", f"Stage RETRO-REVIEW model={model} num_ctx={num_ctx} candidates={len(compact)}")
+    _demo_banner("RETRO REVIEW", f"summarising {len(compact)} candidate prior turn(s) for context")
+    _demo_kvs({"model": model, "num_ctx": num_ctx, "user_payload_chars": len(user),
+               "n_candidate_turns": len(compact)})
     try:
         raw = _ollama_chat(
             url=ollama_url,
@@ -700,11 +876,12 @@ def _retro_summarize(
             temperature=temperature,
             timeout=timeout,
             num_ctx=num_ctx,
+            demo_stage="retro_summarize",
         )
     except Exception as exc:  # noqa: BLE001
         _log("⚠️", f"retro-review call failed: {exc}")
         return {"retro_summary": "", "evidence_turn_ids": [], "n_turns_reviewed": len(compact)}
-    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    parsed = force_json_dict(raw) or {}
     summary = str(parsed.get("retro_summary") or "").strip()
     ev = parsed.get("evidence_turn_ids") or []
     if not isinstance(ev, list):
@@ -769,6 +946,21 @@ def _pick_graph_tool(
         payload["patient_code_inventory"] = patient_code_inventory
     user = json.dumps(payload, ensure_ascii=False, indent=2)
     _log("🧭", f"Probe graph-pick model={model} num_ctx={num_ctx}")
+    _demo_banner("PROBE · GRAPH-PICK", "8B picks ONE PTV graph tool + JSON args from the user question")
+    _demo_kvs({
+        "model": model,
+        "num_ctx": num_ctx,
+        "candidates": ", ".join(_GRAPH_TOOLS),
+        "router_question_type": router_plan.get("question_type"),
+        "router_semantic_query": _abridge(router_plan.get("semantic_query"), 120),
+        "router_ts_terms": list(router_plan.get("ts_terms") or [])[:6],
+        "patient_code_inventory_chars": (
+            len(json.dumps(patient_code_inventory, ensure_ascii=True))
+            if patient_code_inventory is not None
+            else 0
+        ),
+        "user_payload_chars": len(user),
+    })
     raw = _ollama_chat(
         url=ollama_url,
         model=model,
@@ -777,8 +969,9 @@ def _pick_graph_tool(
         temperature=temperature,
         timeout=timeout,
         num_ctx=num_ctx,
+        demo_stage="probe_graph_pick",
     )
-    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    parsed = force_json_dict(raw) or {}
     name = str(parsed.get("graph_tool") or "").strip()
     args = parsed.get("graph_args") if isinstance(parsed.get("graph_args"), dict) else {}
     if name not in _GRAPH_TOOLS:
@@ -786,6 +979,292 @@ def _pick_graph_tool(
         return "semantic_search", {"query": question, "k": 12}
     _log("🎯", f"Graph pick → {name} args_keys={list((args or {}).keys())}")
     return name, dict(args or {})
+
+
+# ---------------------------------------------------------------------------
+# Bayesian gate + phase (per reports/STRATEGY_BAYESIAN_PTV_UC_20260423.md)
+# ---------------------------------------------------------------------------
+
+_BAYES_HYPOTHESES = ("flare_30d", "progression_3mo", "taper_safety")
+
+# Cheap regex pre-screen: skip the LLM gate entirely when the question is
+# clearly NOT Bayesian-shaped. Saves a 3.2 call on the most common questions.
+_BAYES_KEYWORD_RX = re.compile(
+    r"\b(flare|flares?|progress(?:ion)?|taper(?:ing)?|risk|likelihood|probabilit(?:y|ies)|"
+    r"safe(?:ty)?|de-?escalat\w*|escalat\w*|remission|relapse|stable|stability|"
+    r"chance|odds|projected|forecast|next\s+\d+\s+(?:day|week|month))\b",
+    re.IGNORECASE,
+)
+
+
+def _bayes_keyword_hint(question: str) -> Optional[str]:
+    """Quick keyword guess at hypothesis_id (None = not obviously Bayesian)."""
+    q = (question or "").lower()
+    if "taper" in q or "de-escalat" in q or "deescalat" in q:
+        return "taper_safety"
+    if "progress" in q:
+        return "progression_3mo"
+    if any(t in q for t in ("flare", "flare risk", "next 30", "next month")):
+        return "flare_30d"
+    if _BAYES_KEYWORD_RX.search(q):
+        return "flare_30d"
+    return None
+
+
+def _bayes_gate(
+    *,
+    question: str,
+    eoh_prelude_qtype: Optional[str],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    timeout: float,
+    num_ctx: int,
+    debug_router: bool = False,
+) -> Dict[str, Any]:
+    """Tiny 3.2 gate: should we run a Bayesian update? Which hypothesis_id?
+
+    Always safe — on parse failure we fall back to the keyword hint (or skip).
+    """
+    hint = _bayes_keyword_hint(question)
+    if hint is None:
+        return {
+            "wants_bayes": False,
+            "hypothesis_id": None,
+            "rationale": "no Bayesian keywords matched (regex pre-screen)",
+            "method": "keyword_prescreen",
+        }
+
+    system = (
+        "You are a tiny gating classifier. Decide whether a clinical user question is "
+        "best answered with a closed-form Bayesian posterior update over the patient's "
+        "PatientTimelineVision (PTV) graph.\n\n"
+        "Reply with STRICT JSON ONLY (no markdown, one object):\n"
+        '{"wants_bayes": true|false,\n'
+        ' "hypothesis_id": "flare_30d" | "progression_3mo" | "taper_safety" | null,\n'
+        ' "rationale": "<short reason>"}\n\n'
+        "wants_bayes=true ONLY when the question asks for a probability, risk, rate, or\n"
+        "safety judgement projected over time (e.g. \"flare risk in next 30 days\",\n"
+        "\"will this patient progress in 3 months\", \"is it safe to taper now\").\n"
+        "wants_bayes=false for descriptive / lookup / orientation questions.\n"
+        "Pick the hypothesis_id from the allowed set; null if wants_bayes=false."
+    )
+    user = json.dumps(
+        {
+            "question": question,
+            "eoh_prelude_question_type": eoh_prelude_qtype,
+            "allowed_hypothesis_ids": list(_BAYES_HYPOTHESES),
+            "keyword_hint": hint,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    _log("🧪", f"Stage BAYES-GATE model={model} num_ctx={num_ctx} hint={hint}")
+    _demo_banner(
+        "BAYES GATE",
+        "8B classifier decides if the question wants a closed-form posterior, and which one",
+    )
+    _demo_kvs({
+        "model": model,
+        "num_ctx": num_ctx,
+        "keyword_pre_screen_hint": hint,
+        "allowed_hypothesis_ids": ", ".join(_BAYES_HYPOTHESES),
+        "user_payload_chars": len(user),
+    })
+    try:
+        raw = _ollama_chat(
+            url=ollama_url,
+            model=model,
+            system=system,
+            user=user,
+            temperature=temperature,
+            timeout=timeout,
+            num_ctx=num_ctx,
+            demo_stage="bayes_gate",
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log("⚠️", f"bayes-gate call failed: {exc}; falling back to keyword hint")
+        return {
+            "wants_bayes": True,
+            "hypothesis_id": hint,
+            "rationale": f"keyword fallback after gate error: {exc}",
+            "method": "keyword_fallback",
+        }
+    parsed = force_json_dict(raw) or {}
+    if debug_router:
+        _log("🐛", f"bayes-gate raw head=\n{(raw or '')[:600]}…")
+    wants = bool(parsed.get("wants_bayes"))
+    hid = parsed.get("hypothesis_id")
+    if hid not in _BAYES_HYPOTHESES:
+        hid = hint if wants else None
+    rationale = str(parsed.get("rationale") or "").strip()[:240]
+    _log(
+        "🧪",
+        f"bayes-gate wants_bayes={wants} hypothesis_id={hid!r}",
+    )
+    return {
+        "wants_bayes": wants,
+        "hypothesis_id": hid,
+        "rationale": rationale or f"keyword hint = {hint}",
+        "method": "llm_gate",
+    }
+
+
+def _patient_cohort_strata(gh: Any) -> Dict[str, Any]:
+    """Best-effort cohort strata for MKG prior lookup.
+
+    Pulls top-level fields from the loaded PTV graph; when none of the standard
+    slots are present, returns an empty dict — the lookup will then fall through
+    to the all-keys-empty match (or to weak default priors).
+    """
+    g = getattr(gh, "graph", None) or {}
+    if not isinstance(g, dict):
+        return {}
+    md = (g.get("metadata") or {}) if isinstance(g.get("metadata"), dict) else {}
+    cohort = (md.get("cohort") or {}) if isinstance(md.get("cohort"), dict) else {}
+    out: Dict[str, Any] = {}
+    for key in ("icd_family", "age_band", "sex", "phenotype", "disease_cluster"):
+        for src in (cohort, md, g):
+            v = src.get(key) if isinstance(src, dict) else None
+            if v is None:
+                continue
+            sv = str(v).strip()
+            if sv:
+                out[key] = sv
+                break
+    return out
+
+
+def _bayes_phase(
+    *,
+    question: str,
+    gh: Any,
+    probe_bundle: Dict[str, Any],
+    ollama_url: str,
+    model: str,
+    temperature: float,
+    timeout: float,
+    num_ctx: int,
+    enable_bayes: bool,
+    use_mkg_priors: bool = True,
+    debug_router: bool = False,
+) -> Dict[str, Any]:
+    """Decide → run deterministic kernel → emit posteriors[].
+
+    Returns a dict shaped like::
+
+        {
+            "gate":        {wants_bayes, hypothesis_id, rationale, method},
+            "ran":         bool,
+            "posteriors":  [<handoff posterior block>, ...],
+            "tool_results":[<call_tool envelope>, ...],
+        }
+    """
+    if not enable_bayes:
+        return {
+            "gate": {"wants_bayes": False, "hypothesis_id": None,
+                     "rationale": "disabled via --no-bayes", "method": "disabled"},
+            "ran": False,
+            "posteriors": [],
+            "tool_results": [],
+        }
+
+    eoh_prelude = probe_bundle.get("eoh_module_prelude") or {}
+    gate = _bayes_gate(
+        question=question,
+        eoh_prelude_qtype=eoh_prelude.get("question_type"),
+        ollama_url=ollama_url,
+        model=model,
+        temperature=temperature,
+        timeout=timeout,
+        num_ctx=num_ctx,
+        debug_router=debug_router,
+    )
+    if not gate.get("wants_bayes") or not gate.get("hypothesis_id"):
+        return {
+            "gate": gate,
+            "ran": False,
+            "posteriors": [],
+            "tool_results": [],
+            "mkg_prior": None,
+            "cohort_strata": _patient_cohort_strata(gh) if use_mkg_priors else {},
+        }
+
+    # Use the probe's working set (top-N by code-lookup / final-answer hits when
+    # available; otherwise fall back to the whole graph by passing None).
+    working_set: List[str] = []
+    ptv_sem = (probe_bundle.get("ptv_semantic_search") or {}).get("result") or {}
+    for r in (ptv_sem.get("results") or [])[:40]:
+        if isinstance(r, dict) and r.get("event_id"):
+            working_set.append(r["event_id"])
+    graph_out = (probe_bundle.get("graph_tool_result") or {}).get("result") or {}
+    for r in (graph_out.get("events") or graph_out.get("entries") or [])[:40]:
+        if isinstance(r, dict) and r.get("event_id"):
+            eid = r["event_id"]
+            if eid not in working_set:
+                working_set.append(eid)
+
+    args: Dict[str, Any] = {"hypothesis_id": gate["hypothesis_id"]}
+    if working_set:
+        args["evidence_event_ids"] = working_set
+
+    cohort_strata = _patient_cohort_strata(gh) if use_mkg_priors else {}
+    mkg_prior: Optional[Dict[str, Any]] = None
+    if use_mkg_priors:
+        try:
+            mkg_prior = fetch_mkg_bayes_prior(
+                gate["hypothesis_id"],
+                cohort_strata=cohort_strata,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log("⚠️", f"MKG prior lookup raised: {exc}")
+            mkg_prior = None
+    if mkg_prior:
+        args["prior"] = mkg_prior
+        _log(
+            "🧬",
+            f"Bayes prior source=MKG strata={cohort_strata or '<none>'} "
+            f"family={mkg_prior.get('family')}",
+        )
+    else:
+        _log(
+            "🧬",
+            f"Bayes prior source=weak (default per strategy doc) "
+            f"strata_seen={cohort_strata or '<none>'}",
+        )
+
+    _log(
+        "🧮",
+        f"Stage BAYES-UPDATE hypothesis={gate['hypothesis_id']} "
+        f"working_set={len(working_set)} (none⇒whole graph)",
+    )
+    res = call_tool("bayesian_update_uc", gh, args)
+    if not res.get("ok"):
+        _log("⚠️", f"bayesian_update_uc error: {res.get('error', res)}")
+        return {
+            "gate": gate,
+            "ran": False,
+            "posteriors": [],
+            "tool_results": [res],
+        }
+    payload = res.get("result") or {}
+    block = payload.get("posterior") or {}
+    uc_inner = (block.get("uc") or {}) if isinstance(block, dict) else {}
+    pe = uc_inner.get("point_estimate")
+    band = uc_inner.get("band_90") or [None, None]
+    _log(
+        "✅",
+        f"Bayesian UC {gate['hypothesis_id']}: mean={pe} band_90={band} "
+        f"confidence={uc_inner.get('confidence_label')!r}",
+    )
+    return {
+        "gate": gate,
+        "ran": True,
+        "posteriors": [block] if block else [],
+        "tool_results": [res],
+        "mkg_prior": mkg_prior,
+        "cohort_strata": cohort_strata,
+    }
 
 
 def _gap_phase(
@@ -803,16 +1282,27 @@ def _gap_phase(
     gap_sources: Optional[List[str]],
     text_chars: int,
     gap_heuristic: bool = True,
+    gap_heuristic_strength: float = 1.0,
     mkg_source_coverage: bool = True,
     mkg_min_ann_score: float = 0.12,
     mkg_min_ts_score: float = 0.02,
 ) -> Dict[str, Any]:
     metrics = _probe_metrics(probe_bundle)
+    bayes_block = probe_bundle.get("bayes") or {}
+    posteriors = bayes_block.get("posteriors") or []
+    metrics["bayes_ran"] = bool(bayes_block.get("ran"))
+    metrics["bayes_hypothesis_id"] = ((bayes_block.get("gate") or {}).get("hypothesis_id"))
+    metrics["bayes_n_posteriors"] = len(posteriors)
+
     system = (
         "You are the GAP agent for a hybrid PTV + MKG retrieval pipeline.\n"
-        "You receive JSON: user question, probe_metrics (summary), full probe bundle (MKG + PTV + graph).\n"
+        "You receive JSON: user question, probe_metrics (summary), full probe bundle (MKG + PTV + graph + bayes).\n"
         "The probe bundle includes pre_router_code_inventory when enabled: indexed patient codes\n"
-        "with first/last dates (from metadata.code_index) — use for gap analysis and follow-ups.\n\n"
+        "with first/last dates (from metadata.code_index) — use for gap analysis and follow-ups.\n"
+        "When probe.bayes.posteriors is non-empty, treat each Uncertainty Carrier (UC) as a STARTING\n"
+        "Bayesian belief, not a final answer. Per STRATEGY_BAYESIAN_PTV_UC_20260423.md §5.2 your job\n"
+        "includes flagging regime changes (band widening, evidence outside prior support, contradictory\n"
+        "evidence) before synthesis. Cite the posterior `point_estimate`, `band_90`, and `evidence_event_ids`.\n\n"
         "OUTPUT: Reply with a SINGLE JSON object only. No markdown fences, no prose before or after.\n"
         "Schema:\n"
         "{\n"
@@ -820,9 +1310,13 @@ def _gap_phase(
         '  "follow_ts_terms": [],\n'
         '  "follow_graph_tool": null,\n'
         '  "follow_graph_args": {},\n'
+        '  "follow_bayes_hypothesis_id": null,\n'
         '  "gap_report": "required markdown string"\n'
         "}\n"
-        f"follow_graph_tool must be null or one of: {', '.join(_GRAPH_TOOLS)}.\n\n"
+        f"follow_graph_tool must be null or one of: {', '.join(_GRAPH_TOOLS)}.\n"
+        "follow_bayes_hypothesis_id, when set, must be one of: "
+        f"{', '.join(_BAYES_HYPOTHESES)} (or null). Use it ONLY when the probe missed a relevant\n"
+        "Bayesian update or you want a second hypothesis (e.g. probe ran flare_30d, you want taper_safety).\n\n"
         "Rules:\n"
         "- probe_metrics.mkg_jaccard is overlap between dense (semantic) and BM25 (ts_terms) hit *ids*.\n"
         "  If mkg_jaccard is 0.0 but both mkg_semantic_hits and mkg_ts_hits are > 0, the two lanes disagree;\n"
@@ -832,7 +1326,9 @@ def _gap_phase(
         "- follow_ptv_semantic_query: optional ONE extra PTV semantic query if probe PTV context is thin or user asks new angles.\n"
         "- follow_graph_tool: optional ONE extra graph tool; use null if not needed.\n"
         "- gap_report is REQUIRED: what probe covered, gaps, contradictions, what evidence is still missing.\n"
-        "- Keep gap_report under 400 words.\n"
+        "- If posteriors[] is present, gap_report MUST cite each UC's point_estimate and band_90 and\n"
+        "  comment on whether the evidence_event_ids look sufficient (regime check).\n"
+        "- Keep gap_report under 700 words.\n"
     )
     user = json.dumps(
         {
@@ -844,6 +1340,22 @@ def _gap_phase(
         indent=2,
     )[:_GAP_REPORT_JSON_MAX_CHARS]
     _log("🔎", f"Stage GAP model={model} num_ctx={num_ctx} user_json_chars={len(user)}")
+    _demo_banner(
+        "GAP REVIEW",
+        "qwen-14b reviews the curated probe bundle, flags gaps, may request follow-ups",
+    )
+    _demo_kvs({
+        "model": model,
+        "num_ctx": num_ctx,
+        "user_payload_chars": len(user),
+        "system_prompt_chars": len(system),
+        "probe.mkg_jaccard": metrics.get("mkg_jaccard"),
+        "probe.mkg_semantic_hits": metrics.get("mkg_semantic_hits"),
+        "probe.mkg_ts_hits": metrics.get("mkg_ts_hits"),
+        "probe.ptv_semantic_result_count": metrics.get("ptv_semantic_result_count"),
+        "probe.bayes_n_posteriors": metrics.get("bayes_n_posteriors"),
+        "probe.bayes_hypothesis_id": metrics.get("bayes_hypothesis_id"),
+    })
     raw = _ollama_chat(
         url=ollama_url,
         model=model,
@@ -852,12 +1364,14 @@ def _gap_phase(
         temperature=temperature,
         timeout=timeout,
         num_ctx=num_ctx,
+        demo_stage="gap_review",
     )
     _log("🔎", f"GAP raw response chars={len(raw)} preview={raw[:120]!r}…")
 
-    parsed = _extract_first_json_object(raw) or _extract_json(raw) or {}
+    parsed = force_json_dict(raw) or {}
     if not parsed:
-        _log("⚠️", "GAP JSON parse failed — using raw text as gap_report fallback")
+        head = (raw or "")[:400].replace("\n", "\\n")
+        _log("⚠️", f"GAP JSON parse failed — raw_head400={head!r}; using raw text as gap_report fallback")
     follow_sem = _norm_gap_follow_field(parsed.get("follow_ptv_semantic_query"))
     if not isinstance(follow_sem, str):
         follow_sem = None
@@ -880,27 +1394,60 @@ def _gap_phase(
     model_wants_graph = bool(fg_tool and str(fg_tool).strip() in _GRAPH_TOOLS)
     model_wants_any = bool(follow_terms) or bool(follow_sem and follow_sem.strip()) or model_wants_graph
 
-    if gap_heuristic and not model_wants_any and metrics.get("mkg_ok") and not metrics.get("mkg_skipped"):
+    max_ht = max(1, int(round(2 * min(1.0, float(gap_heuristic_strength))))) if gap_heuristic_strength > 0 else 0
+    if (
+        gap_heuristic
+        and gap_heuristic_strength > 0.0
+        and not model_wants_any
+        and metrics.get("mkg_ok")
+        and not metrics.get("mkg_skipped")
+    ):
         j = float(metrics.get("mkg_jaccard") or 0.0)
         n_sem = int(metrics.get("mkg_semantic_hits") or 0)
         n_ts = int(metrics.get("mkg_ts_hits") or 0)
-        if j == 0.0 and n_sem > 0 and n_ts > 0:
+        if j == 0.0 and (n_sem > 0 or n_ts > 0):
             router_ts = list((probe_bundle.get("router_plan") or {}).get("ts_terms") or [])
-            extra = _heuristic_ts_terms_from_question(question, router_ts)
+            extra = _heuristic_ts_terms_from_question(question, router_ts, max_terms=max_ht)
             if extra:
                 follow_terms = extra
                 _log(
                     "🔧",
-                    "Heuristic GAP: mkg_jaccard=0 with both lanes populated → "
+                    "Heuristic GAP: mkg_jaccard=0 with MKG lanes thin/disjoint → "
                     f"follow_ts_terms={follow_terms!r}",
                 )
             else:
-                follow_sem = (question.strip() + " medications drugs concomitant confounding adverse reactions")[:400]
+                follow_sem = (
+                    question.strip()
+                    + " medications drugs concomitant confounding adverse reactions alternatives"
+                ).strip()[:480]
                 _log(
                     "🔧",
                     "Heuristic GAP: mkg_jaccard=0, no extra question tokens → "
                     "follow_ptv_semantic_query (enriched)",
                 )
+        elif j == 0.0:
+            follow_sem = (question.strip() + " clinical evidence differential diagnosis").strip()[:420]
+            _log("🔧", "Heuristic GAP: mkg_jaccard=0 (sparse MKG) → follow_ptv_semantic_query")
+
+    if (
+        gap_heuristic
+        and gap_heuristic_strength > 0.0
+        and metrics.get("mkg_ok")
+        and not metrics.get("mkg_skipped")
+        and float(metrics.get("mkg_jaccard") or 0.0) == 0.0
+    ):
+        model_wants_any = (
+            bool(follow_terms)
+            or bool(isinstance(follow_sem, str) and follow_sem.strip())
+            or model_wants_graph
+        )
+        if not model_wants_any:
+            router_ts = list((probe_bundle.get("router_plan") or {}).get("ts_terms") or [])
+            follow_terms = _heuristic_ts_terms_from_question(question, router_ts, max_terms=max(2, max_ht))
+            if not follow_terms:
+                follow_sem = (question.strip() + " evidence gaps confounders").strip()[:400]
+            _log("🔧", "Heuristic GAP: forced minimal follow-up (jaccard=0 guard)")
+            model_wants_any = True
 
     follow_mkg: Dict[str, Any] = {}
     if follow_terms:
@@ -928,11 +1475,25 @@ def _gap_phase(
         _log("🔁", f"GAP follow-up graph tool={fg_tool!r}")
         follow_graph = call_tool(str(fg_tool).strip(), gh, dict(fg_args or {}))
 
-    if not follow_mkg and not follow_ptv and not follow_graph:
+    follow_bayes = None
+    fb_hid = _norm_gap_follow_field(parsed.get("follow_bayes_hypothesis_id"))
+    if fb_hid and str(fb_hid).strip() in _BAYES_HYPOTHESES:
+        already = {p.get("hypothesis_id") for p in posteriors if isinstance(p, dict)}
+        if str(fb_hid).strip() in already:
+            _log("⏭️", f"GAP follow_bayes_hypothesis_id={fb_hid!r} already present in probe.bayes.posteriors")
+        else:
+            _log("🔁", f"GAP follow-up bayesian_update_uc hypothesis={fb_hid!r}")
+            follow_bayes = call_tool(
+                "bayesian_update_uc",
+                gh,
+                {"hypothesis_id": str(fb_hid).strip()},
+            )
+
+    if not follow_mkg and not follow_ptv and not follow_graph and not follow_bayes:
         if model_wants_graph and fg_tool:
             _log("⚠️", f"GAP follow_graph_tool not executed (invalid tool?): {fg_tool!r}")
         else:
-            _log("⏭️", "GAP: no follow-up MKG/PTV/graph executions")
+            _log("⏭️", "GAP: no follow-up MKG/PTV/graph/bayes executions")
 
     _log("✅", f"GAP phase done gap_report_chars={len(gap_report)}")
     return {
@@ -942,6 +1503,7 @@ def _gap_phase(
         "follow_ptv_semantic": follow_ptv,
         "follow_mkg": follow_mkg,
         "follow_graph": follow_graph,
+        "follow_bayes": follow_bayes,
         "probe_metrics": metrics,
     }
 
@@ -959,12 +1521,18 @@ def _report_phase(
 ) -> str:
     system = (
         "You are a clinical synthesis assistant. You receive structured JSON from a "
-        "probe→gap hybrid run (PTV graph tools + MKG rag_corpus hits). "
-        "probe_context may include pre_router_code_inventory (patient codes + date spans). "
+        "probe→gap hybrid run (PTV graph tools + MKG rag_corpus hits + optional Bayesian UCs). "
+        "probe_context may include pre_router_code_inventory (patient codes + date spans) "
+        "and probe_context.bayes.posteriors[] when the question is risk/probability shaped. "
         "Produce one markdown answer to the user question.\n\n"
         "Rules:\n"
         "- Ground claims in supplied hit ids (MKG: id/source; PTV: event_ids from tool results).\n"
         "- Cite uncertainty where evidence is thin.\n"
+        "- When probe_context.bayes.posteriors is non-empty, ALWAYS report the posterior\n"
+        "  point_estimate and 90% band per hypothesis_id (e.g. 'flare risk in next 30 days = 0.36,\n"
+        "  90% band [0.17, 0.57]') and cite the underlying evidence_event_ids. Per the Bayesian\n"
+        "  strategy doc, the UC IS the answer for that question class — do not hand-wave it.\n"
+        "- Distinguish posterior_mean (point) from band (uncertainty); state the prior source.\n"
         "- Do not describe internal pipeline stage names unless useful; focus on patient-relevant synthesis.\n"
         "- Keep under 1600 words unless the question requires detail.\n"
     )
@@ -974,7 +1542,26 @@ def _report_phase(
         "gap_context": gap_bundle,
     }
     user = json.dumps(payload, default=str, indent=2)[:50000]
+    bayes_block = (probe_bundle or {}).get("bayes") or {}
+    n_post = len(bayes_block.get("posteriors") or [])
+    mkg_block = (probe_bundle or {}).get("mkg") or {}
+    n_mkg_sem = len(mkg_block.get("semantic_hits") or [])
+    n_mkg_ts = len(mkg_block.get("ts_hits") or [])
     _log("📝", f"Stage REPORT model={model} num_ctx={num_ctx} context_chars={len(user)}")
+    _demo_banner(
+        "REPORT SYNTHESIS",
+        "qwen-14b synthesises the final markdown answer from probe + gap + posteriors",
+    )
+    _demo_kvs({
+        "model": model,
+        "num_ctx": num_ctx,
+        "user_payload_chars": len(user),
+        "system_prompt_chars": len(system),
+        "probe.mkg_semantic_hits": n_mkg_sem,
+        "probe.mkg_ts_hits": n_mkg_ts,
+        "probe.bayes_n_posteriors": n_post,
+        "gap.gap_report_chars": len((gap_bundle or {}).get("gap_report") or ""),
+    })
     out = _ollama_chat(
         url=ollama_url,
         model=model,
@@ -983,6 +1570,7 @@ def _report_phase(
         temperature=temperature,
         timeout=timeout,
         num_ctx=num_ctx,
+        demo_stage="report_synth",
     )
     _log("✅", f"REPORT done out_chars={len(out or '')}")
     return out
@@ -999,6 +1587,9 @@ def _run_probe(
     graph_pick_num_ctx: int,
     router_max_sources: int,
     router_max_modules: int,
+    router_temperature: float,
+    router_min_terms: int,
+    debug_router: bool,
     temperature: float,
     timeout: float,
     top_k: int,
@@ -1013,27 +1604,56 @@ def _run_probe(
     mkg_source_coverage: bool = True,
     mkg_min_ann_score: float = 0.12,
     mkg_min_ts_score: float = 0.02,
+    enable_bayes: bool = True,
+    bayes_gate_model: Optional[str] = None,
+    bayes_gate_num_ctx: int = 8192,
+    bayes_use_mkg_prior: bool = True,
 ) -> Dict[str, Any]:
+    _demo_banner("PROBE", "curate context: code inventory → graph_stats → EoH prelude → router → MKG → graph tool → PTV semantic")
+    _demo_stage_start("probe_total")
     inv_full: Optional[Dict[str, Any]] = None
     inv_for_router: Optional[Dict[str, Any]] = None
     inv_for_graph: Optional[Dict[str, Any]] = None
     if enable_code_inventory:
         _log("📇", "Stage PROBE — patient code_index inventory (pre-router; same index as code_index_lookup)")
+        _demo_banner(
+            "PROBE · CODE INVENTORY",
+            "scan metadata.code_index for every code on this patient's timeline",
+        )
         inv_full = build_patient_code_inventory(gh)
         slim_base = strip_n_events(inv_full) if code_inventory_compact else inv_full
         inv_for_router = fit_code_inventory_to_budget(slim_base, code_inventory_router_json_max)
         inv_for_graph = fit_code_inventory_to_budget(slim_base, code_inventory_graph_json_max)
+        router_chars = len(json.dumps(inv_for_router, ensure_ascii=True))
+        graph_chars = len(json.dumps(inv_for_graph, ensure_ascii=True))
         _log(
             "📇",
             "code_index inventory "
             f"n_keys={inv_full.get('n_keys_total')} "
-            f"router_slice_json={len(json.dumps(inv_for_router, ensure_ascii=True))} "
-            f"graph_pick_slice_json={len(json.dumps(inv_for_graph, ensure_ascii=True))}",
+            f"router_slice_json={router_chars} "
+            f"graph_pick_slice_json={graph_chars}",
         )
+        _demo_kvs({
+            "n_keys_total": inv_full.get("n_keys_total"),
+            "n_keys_per_bucket": inv_full.get("n_keys_per_bucket"),
+            "graph_timeline_range": inv_full.get("graph_timeline_range"),
+            "router_slice_json_chars": router_chars,
+            "graph_pick_slice_json_chars": graph_chars,
+        })
 
     _log("🛰️", "Stage PROBE — graph_stats for router clinical_context")
+    _demo_banner("PROBE · GRAPH_STATS", "snapshot of the in-memory PTV graph: counts, types, date range")
     graph_stats = call_tool("graph_stats", gh, {})
     brief = json.dumps(graph_stats.get("result") or graph_stats, default=str)[:8000]
+    gs = graph_stats.get("result") or {}
+    _demo_kvs({
+        "n_events": gs.get("n_events"),
+        "n_event_types": gs.get("n_event_types"),
+        "event_type_counts": gs.get("event_type_counts"),
+        "date_range": gs.get("date_range"),
+        "code_index_summary": gs.get("code_index_summary"),
+        "graph_hash": gs.get("graph_hash"),
+    })
 
     retro_summary_text = ""
     if retro_bundle and retro_bundle.get("retro_summary"):
@@ -1047,30 +1667,48 @@ def _run_probe(
         },
         ollama_url=ollama_url,
         model=probe_model,
-        temperature=temperature,
+        temperature=router_temperature,
         timeout=timeout,
         num_ctx=probe_num_ctx,
+        debug_router=debug_router,
     )
     _log(
         "🧭",
         f"EOH prelude qtype={eoh_prelude.get('question_type')} "
         f"modules={len(eoh_prelude.get('selected_modules') or [])}",
     )
+    _demo_kvs({
+        "eoh.question_type": eoh_prelude.get("question_type"),
+        "eoh.question_type_explanation": _abridge(eoh_prelude.get("question_type_explanation"), 110),
+        "eoh.selected_modules": eoh_prelude.get("selected_modules"),
+        "eoh.module_plan_steps": [
+            (s or {}).get("step") for s in (eoh_prelude.get("module_plan") or [])
+        ][:6],
+    })
 
     _log("🧭", "Stage PROBE — plan_route (semantic_query + ts_terms + sources)")
+    _demo_banner(
+        "PROBE · ROUTER (plan_route)",
+        "8B source-router rewrites the question into ANN semantic_query + per-term ts_terms + source list",
+    )
     route = plan_route(
         question,
         ollama_url=ollama_url,
         model=probe_model,
         num_ctx=probe_num_ctx,
         timeout=timeout,
-        temperature=temperature,
+        temperature=router_temperature,
         clinical_context=brief,
         patient_code_inventory=inv_for_router,
         prior_session_summary=retro_summary_text or None,
         max_sources=router_max_sources,
         max_modules=router_max_modules,
+        router_min_terms=router_min_terms,
+        debug_router=debug_router,
     )
+    if not str(route.get("semantic_query") or "").strip():
+        route["semantic_query"] = question
+        _log("⚠️", "router_plan.semantic_query empty — fell back to raw user question")
     sources = _router_sources(route)
     route_mods = _router_modules(route)
     prelude_mods = [str(m).strip() for m in (eoh_prelude.get("selected_modules") or []) if str(m).strip()]
@@ -1088,9 +1726,20 @@ def _run_probe(
         f"Router qtype={route.get('question_type')} ts_terms={len(route.get('ts_terms') or [])} "
         f"sources={len(sources or [])} modules={len(_router_modules(route))}",
     )
+    _demo_kvs({
+        "router.question_type": route.get("question_type"),
+        "router.semantic_query": _abridge(route.get("semantic_query"), 140),
+        "router.ts_terms": list(route.get("ts_terms") or [])[:10],
+        "router.selected_sources": sources,
+        "router.selected_modules": _router_modules(route),
+    })
 
     mkg: Dict[str, Any] = {"skipped": True}
     if enable_mkg:
+        _demo_banner(
+            "PROBE · MKG RETRIEVAL",
+            "dense (embedding_local + BGE) + per-term Postgres FTS over public.rag_corpus",
+        )
         mkg = _mkg_retrieve_bundle(
             semantic_query=str(route.get("semantic_query") or question),
             ts_terms=list(route.get("ts_terms") or []),
@@ -1104,6 +1753,29 @@ def _run_probe(
         )
     else:
         _log("⏭️", "Stage PROBE — MKG skipped (--no-mkg)")
+    if enable_mkg and not mkg.get("skipped"):
+        _demo_kvs({
+            "mkg.semantic_hits": len(mkg.get("semantic_hits") or []),
+            "mkg.ts_hits": len(mkg.get("ts_hits") or []),
+            "mkg.id_overlap_jaccard": (mkg.get("overlap") or {}).get("jaccard"),
+            "mkg.ts_per_term_count": mkg.get("ts_per_term_count"),
+            "mkg.ts_or_fallback_used": mkg.get("ts_or_fallback_used"),
+            "mkg.source_expansion_mode": mkg.get("source_expansion_mode"),
+            "mkg.source_coverage_pinned_sem": (mkg.get("source_coverage") or {}).get("pinned_semantic_ids"),
+            "mkg.source_coverage_pinned_ts": (mkg.get("source_coverage") or {}).get("pinned_ts_ids"),
+        })
+        for h in (mkg.get("semantic_hits") or [])[:3]:
+            _demo_kv(
+                "mkg.sem.top",
+                f"#{h.get('id')} src={h.get('source')!r} "
+                f"score={(h.get('score') or 0):.3f} title={_abridge(h.get('title'), 80)!r}",
+            )
+        for h in (mkg.get("ts_hits") or [])[:3]:
+            _demo_kv(
+                "mkg.ts.top",
+                f"#{h.get('id')} src={h.get('source')!r} "
+                f"score={(h.get('score') or 0):.3f} title={_abridge(h.get('title'), 80)!r}",
+            )
 
     g_tool, g_args = _pick_graph_tool(
         question=question,
@@ -1117,11 +1789,34 @@ def _run_probe(
         num_ctx=graph_pick_num_ctx,
     )
     _log("🔧", f"Stage PROBE — graph tool call {g_tool}")
+    _demo_banner("PROBE · GRAPH TOOL CALL", f"executing deterministic PTV tool: {g_tool}({g_args})")
     graph_out = call_tool(g_tool, gh, g_args)
     if not graph_out.get("ok"):
         _log("⚠️", f"Graph tool error: {graph_out.get('error', graph_out)}")
+    if graph_out.get("ok"):
+        gtres = graph_out.get("result") or {}
+        events_list = gtres.get("events") or gtres.get("entries") or gtres.get("keys") or []
+        _demo_kvs({
+            "graph_tool": g_tool,
+            "graph_args": g_args,
+            "result.n_events_or_keys": len(events_list) if isinstance(events_list, list) else "?",
+        })
+        for r in (events_list if isinstance(events_list, list) else [])[:5]:
+            if isinstance(r, dict):
+                if r.get("event_id"):
+                    _demo_kv(
+                        "graph.top",
+                        f"{r.get('event_id'):<22} {r.get('event_type', '?'):<10} "
+                        f"{r.get('timestamp', '?')} {_abridge(r.get('title') or r.get('one_line'), 60)!r}",
+                    )
+                else:
+                    _demo_kv("graph.top", _abridge(r, 110))
 
     _log("🔍", "Stage PROBE — PTV semantic_search (router semantic_query)")
+    _demo_banner(
+        "PROBE · PTV SEMANTIC SEARCH",
+        "sentence-transformer cosine search over event text using the router's expanded semantic_query",
+    )
     ptv_sem = call_tool(
         "semantic_search",
         gh,
@@ -1129,9 +1824,23 @@ def _run_probe(
     )
     if not ptv_sem.get("ok"):
         _log("⚠️", f"PTV semantic_search error: {ptv_sem.get('error', ptv_sem)}")
+    if ptv_sem.get("ok"):
+        psem = ptv_sem.get("result") or {}
+        ptv_results = psem.get("results") or []
+        _demo_kvs({
+            "ptv_semantic.k": psem.get("k"),
+            "ptv_semantic.n_results": len(ptv_results),
+            "ptv_semantic.expanded_query": _abridge(psem.get("query"), 140),
+        })
+        for r in ptv_results[:5]:
+            _demo_kv(
+                "ptv.top",
+                f"{r.get('event_id'):<22} {(r.get('event_type') or '?'):<10} "
+                f"{(r.get('timestamp') or '?')} score={r.get('score')} "
+                f"{_abridge(r.get('title') or r.get('one_line'), 60)!r}",
+            )
 
-    _log("✅", "Stage PROBE complete")
-    return {
+    pre_bayes_bundle = {
         "router_plan": route,
         "mkg": mkg,
         "ptv_semantic_search": ptv_sem,
@@ -1141,6 +1850,51 @@ def _run_probe(
         "pre_router_code_inventory": inv_full,
         "eoh_module_prelude": eoh_prelude,
         "retro": retro_bundle,
+    }
+
+    _demo_banner(
+        "PROBE · BAYESIAN PHASE",
+        "deterministic closed-form posterior — gate (8B) → bayesian_update_uc tool → UC",
+    )
+    bayes = _bayes_phase(
+        question=question,
+        gh=gh,
+        probe_bundle=pre_bayes_bundle,
+        ollama_url=ollama_url,
+        model=bayes_gate_model or probe_model,
+        temperature=router_temperature,
+        timeout=timeout,
+        num_ctx=bayes_gate_num_ctx,
+        enable_bayes=enable_bayes,
+        use_mkg_priors=bayes_use_mkg_prior,
+        debug_router=debug_router,
+    )
+    if bayes.get("ran"):
+        for p in bayes.get("posteriors") or []:
+            uc = (p or {}).get("uc") or {}
+            band = uc.get("band_90") or [None, None]
+            ls = uc.get("likelihood_summary") or {}
+            _demo_kvs({
+                "bayes.hypothesis_id": p.get("hypothesis_id"),
+                "bayes.point_estimate": uc.get("point_estimate"),
+                "bayes.band_90": f"[{band[0]}, {band[1]}]",
+                "bayes.confidence": f"{uc.get('confidence_label')} ({uc.get('confidence')})",
+                "bayes.method": uc.get("method"),
+                "bayes.spec_hash": uc.get("spec_hash"),
+                "bayes.prior": uc.get("prior"),
+                "bayes.posterior_params": uc.get("posterior_params"),
+                "bayes.likelihood.rule_hits": ls.get("rule_hits"),
+                "bayes.likelihood.n_pos / n_neg / n_skip": (
+                    f"{ls.get('n_pos')} / {ls.get('n_neg')} / {ls.get('n_skip')}"
+                ),
+                "bayes.evidence_event_ids (n)": len(uc.get("evidence_event_ids") or []),
+            })
+
+    _demo_stage_end("probe_total")
+    _log("✅", "Stage PROBE complete")
+    return {
+        **pre_bayes_bundle,
+        "bayes": bayes,
     }
 
 
@@ -1153,6 +1907,8 @@ def _append_probe_turn_to_session(
 ) -> Dict[str, Any]:
     router_plan = probe.get("router_plan") or {}
     mkg_block = probe.get("mkg") or {}
+    bayes_block = probe.get("bayes") or {}
+    bayes_gate = bayes_block.get("gate") or {}
     return session.append_turn(
         {
             "question": q,
@@ -1170,8 +1926,284 @@ def _append_probe_turn_to_session(
             "gap_report": gap.get("gap_report") or "",
             "final_report": report or "",
             "retro": probe.get("retro"),
+            "bayes_wants": bool(bayes_gate.get("wants_bayes")),
+            "bayes_hypothesis_id": bayes_gate.get("hypothesis_id"),
+            "bayes_ran": bool(bayes_block.get("ran")),
+            "posteriors": bayes_block.get("posteriors") or [],
         }
     )
+
+
+# --------------------------------------------------------------------------- #
+# Demo-mode end-of-turn printer (final report + structured evidence dump)
+# --------------------------------------------------------------------------- #
+
+def _section(title: str, *, char: str = "=") -> None:
+    """Loud section header used by the demo summary."""
+    bar = char * _DEMO_BAR_WIDTH
+    print(f"\n{bar}")
+    print(f"  {title}")
+    print(bar)
+
+
+def _gather_cited_event_ids(
+    probe: Dict[str, Any], gap: Dict[str, Any]
+) -> List[str]:
+    """Collect every PTV event_id that appears in posteriors / tool results."""
+    ids: List[str] = []
+    seen: set[str] = set()
+
+    def _add(eid: Any) -> None:
+        if isinstance(eid, str) and eid and eid not in seen:
+            seen.add(eid)
+            ids.append(eid)
+
+    bayes = probe.get("bayes") or {}
+    for p in bayes.get("posteriors") or []:
+        for eid in (p.get("uc") or {}).get("evidence_event_ids") or []:
+            _add(eid)
+
+    psem = (probe.get("ptv_semantic_search") or {}).get("result") or {}
+    for r in (psem.get("results") or [])[:20]:
+        if isinstance(r, dict):
+            _add(r.get("event_id"))
+
+    gtres = (probe.get("graph_tool_result") or {}).get("result") or {}
+    for r in (gtres.get("events") or gtres.get("entries") or [])[:20]:
+        if isinstance(r, dict):
+            _add(r.get("event_id"))
+
+    fp = (gap.get("follow_ptv_semantic") or {}).get("result") or {}
+    for r in (fp.get("results") or [])[:20]:
+        if isinstance(r, dict):
+            _add(r.get("event_id"))
+
+    fg = (gap.get("follow_graph") or {}).get("result") or {}
+    for r in (fg.get("events") or fg.get("entries") or [])[:20]:
+        if isinstance(r, dict):
+            _add(r.get("event_id"))
+
+    return ids
+
+
+def _print_demo_summary(
+    *,
+    question: str,
+    probe: Dict[str, Any],
+    gap: Dict[str, Any],
+    report: str,
+    turn_elapsed: float,
+    gh: Any,
+) -> None:
+    """End-of-turn printer for ``--demo`` mode: final report first, then evidence.
+
+    Per the demo brief: the entire final report is printed in full, **followed by
+    every piece of supporting evidence** (Bayesian posteriors, MKG hits, PTV hits,
+    graph tool results, cited event cards, gap report, tool/LLM call ledger).
+    Everything goes to stdout so it can be screen-recorded or piped.
+    """
+    _section("FINAL REPORT", char="█")
+    print(report or "(empty)")
+
+    _section("EVIDENCE", char="█")
+
+    # 1) Question + run header --------------------------------------------------
+    print("\n[run]")
+    print(f"  question: {question}")
+    print(f"  turn_elapsed: {turn_elapsed:.2f}s")
+    print(f"  graph_hash: {getattr(gh, 'graph_hash', '?')}")
+    print(f"  graph_path: {getattr(gh, 'path', '?')}")
+
+    # 2) Stage timings ---------------------------------------------------------
+    if _Demo.stage_durations:
+        print("\n[stage timings]")
+        for name, dur in _Demo.stage_durations:
+            print(f"  {name:<24} {dur * 1000:>10.1f} ms")
+
+    # 3) LLM call ledger --------------------------------------------------------
+    if _Demo.llm_calls:
+        print("\n[llm calls]")
+        print(
+            f"  {'stage':<32} {'model':<28} {'in_chars':>9} "
+            f"{'out_chars':>9} {'elapsed_s':>9}"
+        )
+        for c in _Demo.llm_calls:
+            in_c = int(c.get("user_chars", 0)) + int(c.get("system_chars", 0))
+            print(
+                f"  {c['stage'][:32]:<32} {str(c.get('model'))[:28]:<28} "
+                f"{in_c:>9,} {c.get('raw_chars', 0):>9,} "
+                f"{c.get('elapsed_sec', 0):>9.2f}"
+            )
+
+    # 4) Bayesian posteriors ----------------------------------------------------
+    bayes = probe.get("bayes") or {}
+    posteriors = bayes.get("posteriors") or []
+    bayes_gate = bayes.get("gate") or {}
+    print("\n[bayesian posteriors]")
+    print(f"  gate.method:         {bayes_gate.get('method')}")
+    print(f"  gate.wants_bayes:    {bayes_gate.get('wants_bayes')}")
+    print(f"  gate.hypothesis_id:  {bayes_gate.get('hypothesis_id')!r}")
+    print(f"  gate.rationale:      {bayes_gate.get('rationale')}")
+    print(f"  cohort_strata:       {bayes.get('cohort_strata')}")
+    print(f"  mkg_prior_used:      {bool(bayes.get('mkg_prior'))}")
+    print(f"  ran:                 {bayes.get('ran')}")
+    if posteriors:
+        for p in posteriors:
+            uc = p.get("uc") or {}
+            band = uc.get("band_90") or [None, None]
+            ls = uc.get("likelihood_summary") or {}
+            print()
+            print(f"  hypothesis_id      : {p.get('hypothesis_id')}")
+            print(f"  point_estimate     : {uc.get('point_estimate')}")
+            print(f"  band_90            : [{band[0]}, {band[1]}]")
+            print(
+                f"  confidence         : "
+                f"{uc.get('confidence_label')} ({uc.get('confidence')})"
+            )
+            print(f"  method             : {uc.get('method')}")
+            print(f"  spec_hash          : {uc.get('spec_hash')}")
+            print(f"  prior              : {uc.get('prior')}")
+            print(f"  posterior_params   : {uc.get('posterior_params')}")
+            print(
+                f"  likelihood (n_pos / n_neg / n_skip) : "
+                f"{ls.get('n_pos')} / {ls.get('n_neg')} / {ls.get('n_skip')}"
+            )
+            print(f"  likelihood.rule_hits: {ls.get('rule_hits')}")
+            print(f"  likelihood.weight_by: {ls.get('weight_by')}")
+            ev_ids = uc.get("evidence_event_ids") or []
+            print(f"  evidence_event_ids ({len(ev_ids)}):")
+            for eid in ev_ids[:30]:
+                print(f"    - {eid}")
+            if len(ev_ids) > 30:
+                print(f"    ... +{len(ev_ids) - 30} more")
+            for line in (uc.get("basis") or []):
+                print(f"  basis              : {line}")
+    else:
+        print("  (no posteriors emitted this turn)")
+
+    # 5) PTV semantic search ----------------------------------------------------
+    psem = (probe.get("ptv_semantic_search") or {}).get("result") or {}
+    ptv_results = psem.get("results") or []
+    print(f"\n[PTV semantic_search]  k={psem.get('k')}  n_results={len(ptv_results)}")
+    print(f"  expanded_query: {_abridge(psem.get('query'), 200)!r}")
+    for i, r in enumerate(ptv_results[:12]):
+        print(
+            f"  {i + 1:2d}. {r.get('event_id'):<22} "
+            f"{(r.get('event_type') or '?'):<10} "
+            f"{(r.get('timestamp') or '?')} "
+            f"score={r.get('score')} "
+            f"{_abridge(r.get('title') or r.get('one_line'), 70)!r}"
+        )
+
+    # 6) Graph tool result ------------------------------------------------------
+    gt = probe.get("graph_tool")
+    gtres = (probe.get("graph_tool_result") or {}).get("result") or {}
+    events_list = gtres.get("events") or gtres.get("entries") or gtres.get("keys") or []
+    print(f"\n[graph_tool {gt!r}]  args={probe.get('graph_args')}")
+    if isinstance(events_list, list):
+        print(f"  n_results={len(events_list)}")
+        for i, r in enumerate(events_list[:12]):
+            if isinstance(r, dict) and r.get("event_id"):
+                print(
+                    f"  {i + 1:2d}. {r.get('event_id'):<22} "
+                    f"{(r.get('event_type') or '?'):<10} "
+                    f"{(r.get('timestamp') or '?')} "
+                    f"{_abridge(r.get('title') or r.get('one_line') or r.get('preview'), 70)!r}"
+                )
+            elif isinstance(r, dict):
+                print(f"  {i + 1:2d}. {_abridge(r, 110)}")
+
+    # 7) MKG hits ---------------------------------------------------------------
+    mkg_block = probe.get("mkg") or {}
+    if not mkg_block.get("skipped"):
+        print(
+            f"\n[MKG retrieval]  "
+            f"semantic={len(mkg_block.get('semantic_hits') or [])}  "
+            f"ts={len(mkg_block.get('ts_hits') or [])}  "
+            f"jaccard={(mkg_block.get('overlap') or {}).get('jaccard')}"
+        )
+        sem_hits = mkg_block.get("semantic_hits") or []
+        print(f"  semantic ({len(sem_hits)}):")
+        for i, h in enumerate(sem_hits[:10]):
+            print(
+                f"  SEM {i + 1:2d}. #{h.get('id')} src={h.get('source')!r} "
+                f"score={(h.get('score') or 0):.3f} "
+                f"title={_abridge(h.get('title'), 80)!r}"
+            )
+        ts_hits = mkg_block.get("ts_hits") or []
+        print(f"  ts ({len(ts_hits)}):")
+        for i, h in enumerate(ts_hits[:10]):
+            print(
+                f"  TS  {i + 1:2d}. #{h.get('id')} src={h.get('source')!r} "
+                f"score={(h.get('score') or 0):.3f} "
+                f"title={_abridge(h.get('title'), 80)!r}"
+            )
+    else:
+        print("\n[MKG retrieval]  SKIPPED (--no-mkg or DSN unset)")
+
+    # 8) Gap follow-ups ---------------------------------------------------------
+    print("\n[gap follow-ups]")
+    fmkg = gap.get("follow_mkg") or {}
+    if fmkg:
+        print(
+            f"  follow_mkg: semantic={len(fmkg.get('semantic_hits') or [])} "
+            f"ts={len(fmkg.get('ts_hits') or [])} "
+            f"ts_terms_used={fmkg.get('ts_terms_used')}"
+        )
+    fps = gap.get("follow_ptv_semantic") or {}
+    if fps.get("ok"):
+        n = len(((fps.get("result") or {}).get("results") or []))
+        print(f"  follow_ptv_semantic: n_results={n}")
+    fgr = gap.get("follow_graph") or {}
+    if fgr:
+        print(
+            f"  follow_graph: tool={fgr.get('tool')!r} "
+            f"ok={fgr.get('ok')} args={fgr.get('args')}"
+        )
+    fbz = gap.get("follow_bayes") or {}
+    if fbz:
+        fr = fbz.get("result") or {}
+        print(
+            f"  follow_bayes: hypothesis_id={fr.get('hypothesis_id')!r} "
+            f"ok={fbz.get('ok')}"
+        )
+    if not (fmkg or fps.get("ok") or fgr or fbz):
+        print("  (none)")
+
+    # 9) Cited event cards ------------------------------------------------------
+    cited = _gather_cited_event_ids(probe, gap)
+    if cited:
+        print(f"\n[cited event cards]  unique_event_ids={len(cited)}")
+        events_dict = getattr(gh, "events", None) or {}
+        for eid in cited[:30]:
+            ev = events_dict.get(eid) if isinstance(events_dict, dict) else None
+            if not ev:
+                print(f"  - {eid}: <not found in graph>")
+                continue
+            ann = ev.get("annotations") or {}
+            card = ann.get("card") or {}
+            title = card.get("title") or card.get("one_line") or ev.get("preview") or ""
+            print(
+                f"  - {eid:<22} {(ev.get('event_type') or '?'):<12} "
+                f"{(ev.get('timestamp') or '?')} :: {_abridge(title, 90)}"
+            )
+        if len(cited) > 30:
+            print(f"  ... +{len(cited) - 30} more")
+
+    # 10) Retro -----------------------------------------------------------------
+    retro = probe.get("retro") or {}
+    if retro and (retro.get("retro_summary") or "").strip():
+        print("\n[retro session summary]")
+        print(retro.get("retro_summary"))
+
+    # 11) Gap report (full) -----------------------------------------------------
+    _section("GAP REPORT", char="─")
+    print(gap.get("gap_report") or "(empty)")
+
+    # 12) Final report (full again, so the demo ends on the answer) -------------
+    _section("FINAL REPORT (repeat)", char="─")
+    print(report or "(empty)")
+    print()
 
 
 def _print_turn_outputs(
@@ -1183,6 +2215,20 @@ def _print_turn_outputs(
     if probe.get("retro") and (probe["retro"].get("retro_summary") or "").strip():
         print("\n--- retro summary ---\n")
         print(probe["retro"]["retro_summary"])
+    bayes = probe.get("bayes") or {}
+    if bayes.get("ran") and bayes.get("posteriors"):
+        print("\n--- bayesian posteriors ---\n")
+        for p in bayes["posteriors"]:
+            uc = (p or {}).get("uc") or {}
+            band = uc.get("band_90") or [None, None]
+            print(
+                f"  {p.get('hypothesis_id')}: "
+                f"point_estimate={uc.get('point_estimate')} "
+                f"band_90=[{band[0]}, {band[1]}] "
+                f"confidence={uc.get('confidence_label')!r} "
+                f"method={uc.get('method')!r} "
+                f"n_evidence={len(uc.get('evidence_event_ids') or [])}"
+            )
     print("\n--- gap report ---\n")
     print(gap.get("gap_report") or "")
     print("\n--- final report ---\n")
@@ -1200,6 +2246,26 @@ def _run_full_turn(
 ) -> Dict[str, Any]:
     t0 = time.monotonic()
     q = (question or "").strip()
+    _demo_enable(getattr(args, "demo", False) or os.environ.get("FORWARD_DEMO_MODE") == "1")
+    _demo_reset_turn()
+    _demo_banner(
+        "USER QUESTION",
+        f"q={q[:160]}{'…' if len(q) > 160 else ''}",
+        char="═",
+    )
+    _demo_kvs({
+        "models.probe (8B router)": args.probe_model,
+        "models.graph_pick": args.graph_pick_model,
+        "models.bayes_gate": args.bayes_gate_model or args.probe_model,
+        "models.retro": args.retro_model,
+        "models.gap (qwen-14b 102K)": args.gap_model,
+        "models.report (qwen-14b 102K)": args.report_model,
+        "models.embed": args.embed_model,
+        "qwen_call_num_ctx": _FORWARD_QWEN_CALL_NUM_CTX,
+        "gap_report_json_max_chars": _GAP_REPORT_JSON_MAX_CHARS,
+        "mkg_enabled": not args.no_mkg,
+        "bayes_enabled": not args.no_bayes,
+    })
     _log("💬", f"User question ({len(q)} chars): {q[:100]}{'…' if len(q) > 100 else ''}")
 
     retro_bundle: Optional[Dict[str, Any]] = None
@@ -1257,6 +2323,9 @@ def _run_full_turn(
         graph_pick_num_ctx=args.graph_pick_num_ctx,
         router_max_sources=args.router_max_sources,
         router_max_modules=args.router_max_modules,
+        router_temperature=args.router_temperature,
+        router_min_terms=args.router_min_terms,
+        debug_router=args.debug_router,
         temperature=args.temperature,
         timeout=args.timeout,
         top_k=args.top_k,
@@ -1271,8 +2340,13 @@ def _run_full_turn(
         mkg_source_coverage=not args.no_mkg_source_coverage,
         mkg_min_ann_score=args.mkg_min_ann_score,
         mkg_min_ts_score=args.mkg_min_ts_score,
+        enable_bayes=not args.no_bayes,
+        bayes_gate_model=args.bayes_gate_model or args.probe_model,
+        bayes_gate_num_ctx=args.bayes_gate_num_ctx,
+        bayes_use_mkg_prior=not args.no_bayes_mkg_prior,
     )
     gap_sources = _router_sources(probe.get("router_plan") or {})
+    _demo_stage_start("gap_total")
     gap = _gap_phase(
         question=q,
         probe_bundle=probe,
@@ -1287,10 +2361,13 @@ def _run_full_turn(
         gap_sources=gap_sources,
         text_chars=args.text_chars,
         gap_heuristic=not args.no_gap_heuristic,
+        gap_heuristic_strength=float(args.gap_heuristic_strength),
         mkg_source_coverage=not args.no_mkg_source_coverage,
         mkg_min_ann_score=args.mkg_min_ann_score,
         mkg_min_ts_score=args.mkg_min_ts_score,
     )
+    _demo_stage_end("gap_total")
+    _demo_stage_start("report_total")
     report = _report_phase(
         question=q,
         probe_bundle=probe,
@@ -1301,6 +2378,7 @@ def _run_full_turn(
         timeout=args.timeout,
         num_ctx=args.report_num_ctx,
     )
+    _demo_stage_end("report_total")
 
     stored: Optional[Dict[str, Any]] = None
     if session is not None:
@@ -1310,9 +2388,16 @@ def _run_full_turn(
         except Exception as exc:  # noqa: BLE001
             _log("⚠️", f"session append failed: {exc}")
 
+    turn_elapsed = time.monotonic() - t0
     if print_reports:
-        _print_turn_outputs(q, probe, gap, report)
-    _log("⏱️", f"Turn done elapsed_sec={time.monotonic() - t0:.2f}")
+        if _Demo.enabled:
+            _print_demo_summary(
+                question=q, probe=probe, gap=gap, report=report,
+                turn_elapsed=turn_elapsed, gh=gh,
+            )
+        else:
+            _print_turn_outputs(q, probe, gap, report)
+    _log("⏱️", f"Turn done elapsed_sec={turn_elapsed:.2f}")
 
     return {"question": q, "probe": probe, "gap": gap, "report": report, "stored": stored}
 
@@ -1361,6 +2446,8 @@ def _harness_receipt_row(
     gate = retro.get("gate") or {}
     gap = rec.get("gap") or {}
     stored = rec.get("stored") or {}
+    bayes = probe.get("bayes") or {}
+    bayes_gate = bayes.get("gate") or {}
     return {
         "harness_id": item.get("id"),
         "question": rec.get("question"),
@@ -1370,6 +2457,10 @@ def _harness_receipt_row(
         "retro_summary": (retro.get("retro_summary") or "")[:8000],
         "graph_tool": probe.get("graph_tool"),
         "mkg_jaccard": (probe.get("mkg") or {}).get("overlap", {}).get("jaccard"),
+        "bayes_wants": bool(bayes_gate.get("wants_bayes")),
+        "bayes_hypothesis_id": bayes_gate.get("hypothesis_id"),
+        "bayes_ran": bool(bayes.get("ran")),
+        "posteriors": bayes.get("posteriors") or [],
         "turn_id": stored.get("turn_id"),
         "turn_index": stored.get("turn_index"),
         "gap_report": gap.get("gap_report") or "",
@@ -1566,9 +2657,9 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--router-max-sources",
         type=int,
-        default=int(os.environ.get("ROUTER_MAX_SOURCES", "14")),
+        default=int(os.environ.get("ROUTER_MAX_SOURCES", "16")),
         metavar="N",
-        help="Max distinct rag_corpus.source keys for plan_route (default 14).",
+        help="Max distinct rag_corpus.source keys for plan_route (default 16).",
     )
     ap.add_argument(
         "--router-max-modules",
@@ -1596,6 +2687,32 @@ def _parse_args() -> argparse.Namespace:
         metavar="S",
         help="Minimum TS-lane ts_rank to count toward per-source coverage (default 0.02).",
     )
+    ap.add_argument(
+        "--router-temperature",
+        type=float,
+        default=float(os.environ.get("ROUTER_TEMPERATURE", "0.27")),
+        metavar="T",
+        help="Sampling temperature for source-router + EoH prelude (default 0.27).",
+    )
+    ap.add_argument(
+        "--router-min-terms",
+        type=int,
+        default=int(os.environ.get("ROUTER_MIN_TERMS", "4")),
+        metavar="N",
+        help="Minimum ts_terms plan_route should aim for before retrieval (default 4).",
+    )
+    ap.add_argument(
+        "--debug-router",
+        action="store_true",
+        help="Log router system/user prompts and raw model heads (stderr).",
+    )
+    ap.add_argument(
+        "--gap-heuristic-strength",
+        type=float,
+        default=float(os.environ.get("GAP_HEURISTIC_STRENGTH", "1.0")),
+        metavar="S",
+        help="Scale deterministic GAP follow-ups when mkg_jaccard=0 (0=off, 1=full).",
+    )
     ap.add_argument("--temperature", type=float, default=0.15)
     ap.add_argument("--timeout", type=float, default=600.0)
     ap.add_argument("--top-k", type=int, default=12)
@@ -1606,6 +2723,53 @@ def _parse_args() -> argparse.Namespace:
         "--no-gap-heuristic",
         action="store_true",
         help="Disable deterministic GAP follow-ups when mkg_jaccard=0 and the model returned no follow fields.",
+    )
+    ap.add_argument(
+        "--no-bayes",
+        action="store_true",
+        help=(
+            "Disable the Bayesian gate + bayesian_update_uc phase "
+            "(see reports/STRATEGY_BAYESIAN_PTV_UC_20260423.md). "
+            "Off by default — keeps it on."
+        ),
+    )
+    ap.add_argument(
+        "--no-bayes-mkg-prior",
+        action="store_true",
+        help=(
+            "Skip MKG-derived prior lookup and use the strategy-doc weak default priors "
+            "(Beta(2,8) for flare_30d, etc.). When unset, the Bayesian phase tries to "
+            "fetch a population prior from public.mkg_bayes_priors keyed by hypothesis_id "
+            "and patient cohort_strata; on miss it falls back to the weak default."
+        ),
+    )
+    ap.add_argument(
+        "--demo",
+        action="store_true",
+        default=os.environ.get("FORWARD_DEMO_MODE") == "1",
+        help=(
+            "Verbose demo logging tuned for screen-recording / Y Combinator demo. Enables "
+            "stage banners, per-LLM raw-response previews, context-curation snapshots "
+            "(probe bundle / GAP / REPORT input sizes), stage timing, and an end-of-turn "
+            "summary that prints the FULL final report followed by all evidence "
+            "(posteriors, MKG hits, PTV hits, graph-tool results, cited event cards). "
+            "Set the env var FORWARD_DEMO_MODE=1 to enable without the flag."
+        ),
+    )
+    ap.add_argument(
+        "--bayes-gate-model",
+        default=os.environ.get("FORWARD_BAYES_GATE_MODEL", ""),
+        help=(
+            "Model for the Bayesian gating classifier (default: same as --probe-model, "
+            "i.e. eoh-llama3.2-source-router 8B). The closed-form update itself is "
+            "deterministic Python and does not call an LLM."
+        ),
+    )
+    ap.add_argument(
+        "--bayes-gate-num-ctx",
+        type=int,
+        default=int(os.environ.get("FORWARD_BAYES_GATE_NUM_CTX", "8192")),
+        help="Context window for the Bayesian gate model (default 8192).",
     )
     ap.add_argument(
         "--no-code-inventory",
