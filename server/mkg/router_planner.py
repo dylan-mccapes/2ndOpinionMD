@@ -29,6 +29,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from server.eoh.module_index import MODULE_INDEX
+from server.mkg.llm_json_parse import force_json_dict
 from server.mkg.portalnode_pilot_sources import pilot_source_descriptions
 
 
@@ -36,22 +37,82 @@ def _log(emoji: str, msg: str) -> None:
     print(f"{emoji} {msg}", file=sys.stderr, flush=True)
 
 
-def _extract_json_object(raw: str) -> Dict[str, Any]:
-    s = (raw or "").strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", s, re.DOTALL | re.IGNORECASE)
-    if fenced:
-        try:
-            return json.loads(fenced.group(1))
-        except Exception:
-            pass
-    m = re.search(r"\{.*\}", s, re.DOTALL)
-    if m:
-        return json.loads(m.group(0))
-    raise ValueError("No parseable JSON object in router response.")
+ROUTER_RETRY_COUNT = max(0, int(os.environ.get("ROUTER_RETRY_COUNT", "2")))
+
+
+def _fallback_ts_terms_from_query(query: str, max_n: int = 8) -> List[str]:
+    """Deterministic tokens when the router returns unparseable JSON."""
+    q = query or ""
+    stop = {
+        "with", "from", "that", "this", "have", "what", "does", "when", "where",
+        "tell", "about", "please", "patient", "clinical", "search", "suggest",
+    }
+    out: List[str] = []
+    seen: set = set()
+    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", q):
+        low = t.lower()
+        if low in stop or low in seen:
+            continue
+        seen.add(low)
+        out.append(t)
+        if len(out) >= max_n:
+            break
+    if out:
+        return out
+    return [t for t in re.split(r"[\s,]+", q) if len(t) >= 4][:max_n]
+
+
+def _coerce_router_parsed(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Accept flat string lists the small model sometimes emits instead of row objects."""
+    d = dict(raw)
+    sm = d.get("selected_modules")
+    if isinstance(sm, list) and sm:
+        if all(isinstance(x, str) for x in sm):
+            d["selected_modules"] = [
+                {
+                    "module_id": str(x).strip(),
+                    "priority": i + 1,
+                    "why": "coerced_from_string_list",
+                }
+                for i, x in enumerate(sm)
+                if str(x).strip()
+            ]
+    ss = d.get("selected_sources")
+    if isinstance(ss, list) and ss:
+        fixed: List[Dict[str, Any]] = []
+        for i, r in enumerate(ss):
+            if isinstance(r, str) and r.strip():
+                fixed.append(
+                    {
+                        "source": r.strip().lower(),
+                        "priority": i + 1,
+                        "why": "coerced_from_string_list",
+                    }
+                )
+            elif isinstance(r, dict):
+                row = dict(r)
+                if "priority" not in row:
+                    row["priority"] = i + 1
+                row.setdefault("why", "")
+                fixed.append(row)
+        d["selected_sources"] = fixed
+    return d
+
+
+def _supplement_ts_terms(text: str, have: List[str], *, want: int) -> List[str]:
+    if want <= 0:
+        return []
+    have_l = {t.lower() for t in have if t}
+    out: List[str] = []
+    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", text or ""):
+        low = t.lower()
+        if low in have_l:
+            continue
+        out.append(t)
+        have_l.add(low)
+        if len(out) >= want:
+            break
+    return out
 
 
 def _clean_terms(items: Any) -> List[str]:
@@ -176,9 +237,16 @@ def _backfill_sources(
 
 def _build_system_prompt() -> str:
     return (
-        "You are an EoH source-routing planner. You must return STRICT JSON only.\n"
+        "You are an EoH Router planner. You **MUST** respond with **ONLY** valid JSON — one object, UTF-8.\n"
+        "No markdown fences, no commentary, no text before or after the JSON.\n"
         "Task: from one user query, choose rag sources, choose EoH modules, and create retrieval queries.\n"
-        "Do not answer clinically. Do not fabricate source keys or module IDs.\n\n"
+        "Do not answer clinically. Do not fabricate source keys or module IDs.\n"
+        "If uncertain, still return valid JSON with your best guess (never prose).\n\n"
+        "FEW-SHOT (shape only; keys must match the schema below):\n"
+        'OTHER: query "prior auth form ICD-10" → question_type OTHER, ts_terms short tokens, '
+        "selected_sources diverse terminology/guideline keys from candidates.\n"
+        'D: query "first-line biologic for moderate UC flare when mesalamine fails" → question_type D, '
+        "semantic_query names drug classes + guideline bodies, ts_terms include biologic names + UC.\n\n"
         "question_type codes:\n"
         "  A = anatomy/physiology/basic science\n"
         "  B = biomarker / lab / diagnostic test\n"
@@ -222,8 +290,10 @@ def _build_system_prompt() -> str:
         '  "selected_modules": [\n'
         '    {"module_id": "M13", "priority": 1, "why": "short reason"}\n'
         "  ],\n"
-        '  "notes": "short routing notes"\n'
+        '  "notes": "short routing notes",\n'
+        '  "question_type_explanation": "optional 1 sentence"\n'
         "}\n"
+        "Optional key question_type_explanation is allowed; all other keys must match this schema.\n"
     )
 
 
@@ -334,6 +404,7 @@ def _post_validate(
     max_sources: int,
     max_modules: int,
     fallback_query: str,
+    router_min_terms: int = 4,
 ) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "question_type": str(plan.get("question_type") or "OTHER"),
@@ -348,6 +419,8 @@ def _post_validate(
         out["question_type"] = "OTHER"
 
     for row in plan.get("selected_sources") or []:
+        if isinstance(row, str):
+            row = {"source": row.strip().lower(), "priority": 999, "why": ""}
         if not isinstance(row, dict):
             continue
         src = str(row.get("source") or "").strip().lower()
@@ -370,6 +443,8 @@ def _post_validate(
     )
 
     for row in plan.get("selected_modules") or []:
+        if isinstance(row, str):
+            row = {"module_id": row.strip(), "priority": 999, "why": ""}
         if not isinstance(row, dict):
             continue
         mid = str(row.get("module_id") or "").strip()
@@ -392,6 +467,18 @@ def _post_validate(
         out["ts_terms"] = [
             t for t in re.split(r"[\s,]+", out["ts_query"]) if t and len(t) >= 3
         ][:8]
+    min_tar = max(1, int(router_min_terms))
+    if len(out["ts_terms"]) < min_tar:
+        need = min_tar - len(out["ts_terms"])
+        blob = " ".join(
+            [
+                fallback_query,
+                out["semantic_query"],
+                out["ts_query"],
+            ]
+        )
+        extra = _supplement_ts_terms(blob, out["ts_terms"], want=need + 4)
+        out["ts_terms"] = _clean_terms(out["ts_terms"] + extra)[:12]
     if any(
         (r.get("why") or "").startswith("router_post_validate_") for r in out["selected_sources"]
     ):
@@ -406,16 +493,18 @@ def plan_route(
     *,
     ollama_url: Optional[str] = None,
     model: Optional[str] = None,
-    temperature: float = 0.1,
+    temperature: float = 0.27,
     timeout: float = 120.0,
     num_ctx: Optional[int] = None,
-    max_sources: int = 14,
+    max_sources: int = 16,
     max_modules: int = 8,
     source_candidates: Optional[Dict[str, str]] = None,
     module_candidates: Optional[Dict[str, Dict[str, str]]] = None,
     clinical_context: Optional[str] = None,
     patient_code_inventory: Optional[Any] = None,
     prior_session_summary: Optional[str] = None,
+    router_min_terms: int = 4,
+    debug_router: bool = False,
 ) -> Dict[str, Any]:
     """Run the source-router model and return a normalized route plan.
 
@@ -451,55 +540,87 @@ def plan_route(
         prior_session_summary=prior_session_summary,
     )
 
-    _log("🧭", f"Source-router model={model_name} num_ctx={ctx}")
+    _log("🧭", f"Source-router model={model_name} num_ctx={ctx} temp={temperature}")
+    if debug_router:
+        _log("🐛", f"ROUTER system ({len(system)} chars) head=\n{system[:1200]}…")
+        _log("🐛", f"ROUTER user ({len(user)} chars) head=\n{user[:1200]}…")
+
     t0 = time.monotonic()
-    try:
-        raw = _ollama_chat(
-            url=url,
-            model=model_name,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            timeout=timeout,
-            temperature=temperature,
-            num_ctx=ctx,
+    raw = ""
+    parsed: Optional[Dict[str, Any]] = None
+    max_attempts = 1 + ROUTER_RETRY_COUNT
+    last_err: Optional[str] = None
+    for attempt in range(max_attempts):
+        try:
+            temp = min(0.32, float(temperature) + 0.02 * attempt)
+            raw = _ollama_chat(
+                url=url,
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                timeout=timeout,
+                temperature=temp,
+                num_ctx=ctx,
+            )
+        except Exception as exc:  # noqa: BLE001
+            elapsed = round(time.monotonic() - t0, 3)
+            _log("⚠️", f"Router call failed in {elapsed}s: {exc}")
+            return {
+                "error": str(exc),
+                "elapsed_sec": elapsed,
+                "model": model_name,
+                "question_type": "OTHER",
+                "semantic_query": query,
+                "ts_query": query,
+                "ts_terms": _fallback_ts_terms_from_query(query),
+                "selected_sources": [],
+                "selected_modules": [],
+                "notes": "router_unavailable",
+            }
+
+        if debug_router:
+            _log("🐛", f"ROUTER raw ({len(raw)} chars) head=\n{raw[:1600]}…")
+
+        parsed = force_json_dict(raw)
+        if parsed:
+            break
+        last_err = "force_json_dict returned None"
+        head = (raw or "")[:400].replace("\n", "\\n")
+        _log(
+            "⚠️",
+            f"Router JSON parse failed attempt {attempt + 1}/{max_attempts} — raw_head400={head!r}",
         )
-    except Exception as exc:  # noqa: BLE001
-        elapsed = round(time.monotonic() - t0, 3)
-        _log("⚠️", f"Router call failed in {elapsed}s: {exc}")
-        return {
-            "error": str(exc),
-            "elapsed_sec": elapsed,
-            "model": model_name,
-            "question_type": "OTHER",
-            "semantic_query": query,
-            "ts_query": query,
-            "ts_terms": [t for t in re.split(r"[\s,]+", query) if len(t) >= 4][:8],
-            "selected_sources": [],
-            "selected_modules": [],
-            "notes": "router_unavailable",
-        }
+        if attempt + 1 < max_attempts:
+            delay = 0.35 * (2**attempt)
+            _log("⏳", f"Router retry backoff sleep_sec={delay:.2f}")
+            time.sleep(delay)
 
     elapsed = round(time.monotonic() - t0, 3)
-    try:
-        parsed = _extract_json_object(raw)
-    except Exception as exc:  # noqa: BLE001
-        _log("⚠️", f"Router JSON parse failed: {exc}")
+    if not parsed:
+        fts = _fallback_ts_terms_from_query(query)
+        _log(
+            "⚠️",
+            "Router JSON parse failed after retries — SAFE BROAD FALLBACK "
+            f"({last_err}); raw_head400={(raw or '')[:400]!r}",
+        )
         return {
             "error": "parse_failed",
             "raw_response": raw,
             "elapsed_sec": elapsed,
             "model": model_name,
             "question_type": "OTHER",
+            "question_type_explanation": "parse_fallback",
             "semantic_query": query,
             "ts_query": query,
-            "ts_terms": [t for t in re.split(r"[\s,]+", query) if len(t) >= 4][:8],
+            "ts_terms": fts,
             "selected_sources": [],
             "selected_modules": [],
-            "notes": "router_unparseable",
+            "notes": "router_unparseable_fallback",
         }
 
+    parsed = _coerce_router_parsed(parsed)
     plan = _post_validate(
         parsed,
         source_candidates=sources,
@@ -507,6 +628,7 @@ def plan_route(
         max_sources=max_sources,
         max_modules=max_modules,
         fallback_query=query,
+        router_min_terms=router_min_terms,
     )
     plan["elapsed_sec"] = elapsed
     plan["model"] = model_name

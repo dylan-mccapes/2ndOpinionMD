@@ -123,7 +123,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from server.mkg.router_planner import force_json_dict, plan_route
+from server.mkg.llm_json_parse import force_json_dict
+from server.mkg.router_planner import plan_route
 from server.eoh.module_index import MODULE_INDEX
 from server.ptv_toolkit.bayes import DEFAULT_HYPOTHESIS_PRIORS
 from server.ptv_toolkit.code_inventory import (
