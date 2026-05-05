@@ -68,5 +68,17 @@
       }
     ],
     "question": "Given the phenotype summary we captured earlier in this session, does the five-year PRO trajectory still support labeling this patient as an early methotrexate responder?"
+  },
+  {
+    "id": "h11_bayes_flare",
+    "question": "Give me the posterior probability that this patient flares in the next 30 days, with a 90% credible interval and the evidence event_ids that drove the update."
+  },
+  {
+    "id": "h12_bayes_progression",
+    "question": "Compute a Bayesian posterior over disease progression in the next 3 months. Report the point estimate, 90% band, prior source, and the events used as evidence."
+  },
+  {
+    "id": "h13_bayes_taper",
+    "question": "Is it safe to attempt a DMARD taper at the most recent timepoint? I want a posterior probability of safe taper, the 90% credible interval, and a regime-change check on the evidence."
   }
 ]

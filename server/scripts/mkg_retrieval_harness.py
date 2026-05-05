@@ -457,6 +457,130 @@ def ensure_source_coverage_retrieval(
     return sem_out, ts_out, stats
 
 
+# --------------------------------------------------------------------------- #
+# Bayesian-prior lookup over rag_corpus
+# --------------------------------------------------------------------------- #
+#
+# Per ``reports/STRATEGY_BAYESIAN_PTV_UC_20260423.md`` §4–§7, population priors
+# for the Beta–Bernoulli flare / progression / taper updates should come from
+# MKG (or the cohort itself), versioned and provenance-stamped. Phase 1 of the
+# pilot ships the *plumbing* but defaults to weak Beta priors when no
+# population statistics are configured. The function below is the single place
+# the chatbot / toolkit calls when it wants an MKG-informed prior — it returns
+# either an MKG prior (with ``source: "mkg"``) or ``None``, never raises.
+#
+# MKG priors are stored next to the retrieval index in a small JSON sidecar
+# table: ``public.mkg_bayes_priors`` (keyed by hypothesis_id × cohort_strata).
+# When that table does not exist, this function returns ``None`` cleanly so
+# the caller falls back to the strategy-doc default weak priors.
+
+_MKG_PRIORS_TABLE = "public.mkg_bayes_priors"
+
+
+def fetch_mkg_bayes_prior(
+    hypothesis_id: str,
+    *,
+    cohort_strata: Optional[Dict[str, Any]] = None,
+    dsn: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Look up a population prior for ``hypothesis_id`` in the MKG sidecar table.
+
+    ``cohort_strata`` is a dict of stratum keys (``icd_family``, ``age_band``,
+    ``sex``); only keys with non-null values are used, and lookup walks from
+    most-specific (all keys) to least-specific (no keys) until a row matches.
+
+    Returns a dict with ``family`` / ``alpha`` / ``beta`` / ``mu`` / ``sigma``
+    fields plus ``source: "mkg"`` and provenance breadcrumbs, or ``None``.
+
+    This function is **safe**: any DB error or missing table returns ``None``
+    so callers can fall back to weak priors deterministically.
+    """
+    if not hypothesis_id:
+        return None
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except Exception:  # pragma: no cover
+        return None
+
+    target_dsn = dsn
+    if not target_dsn:
+        for k in ("SYNC_DATABASE_URL", "DATABASE_URL", "POSTGRES_URL"):
+            v = os.environ.get(k)
+            if v and v.strip():
+                target_dsn = v.strip()
+                break
+    if not target_dsn:
+        return None
+
+    strata = {k: v for k, v in (cohort_strata or {}).items() if v is not None and str(v).strip()}
+    candidates: List[Dict[str, Any]] = []
+    keys = sorted(strata.keys())
+    n = len(keys)
+    # Walk from most-specific (all keys) to least-specific (none).
+    for r in range(n, -1, -1):
+        from itertools import combinations
+
+        for combo in combinations(keys, r):
+            candidates.append({k: strata[k] for k in combo})
+
+    try:
+        with psycopg.connect(target_dsn, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET statement_timeout = '5s';")
+                cur.execute(
+                    "SELECT to_regclass(%s) IS NOT NULL AS exists", (_MKG_PRIORS_TABLE,)
+                )
+                exists = (cur.fetchone() or {}).get("exists")
+                if not exists:
+                    return None
+                for cand in candidates:
+                    sql = (
+                        f"SELECT family, alpha, beta, mu, sigma, sigma_obs, source, notes, "
+                        f"cohort_strata, version, updated_at "
+                        f"FROM {_MKG_PRIORS_TABLE} "
+                        f"WHERE hypothesis_id = %s AND cohort_strata = %s::jsonb "
+                        f"ORDER BY updated_at DESC NULLS LAST LIMIT 1"
+                    )
+                    cur.execute(sql, (hypothesis_id, json.dumps(cand, sort_keys=True)))
+                    row = cur.fetchone()
+                    if row:
+                        out = {
+                            "family": str(row.get("family") or "beta"),
+                            "alpha": (
+                                float(row["alpha"])
+                                if row.get("alpha") is not None
+                                else None
+                            ),
+                            "beta": (
+                                float(row["beta"]) if row.get("beta") is not None else None
+                            ),
+                            "mu": (
+                                float(row["mu"]) if row.get("mu") is not None else None
+                            ),
+                            "sigma": (
+                                float(row["sigma"]) if row.get("sigma") is not None else None
+                            ),
+                            "sigma_obs": (
+                                float(row["sigma_obs"])
+                                if row.get("sigma_obs") is not None
+                                else None
+                            ),
+                            "source": str(row.get("source") or "mkg"),
+                            "notes": (
+                                f"MKG prior version={row.get('version')!r} "
+                                f"strata={row.get('cohort_strata')!r} "
+                                f"updated_at={row.get('updated_at')!r}"
+                            ),
+                        }
+                        # Drop None entries so callers see a clean override dict.
+                        return {k: v for k, v in out.items() if v is not None}
+    except Exception as exc:  # noqa: BLE001
+        _log("⚠️", f"fetch_mkg_bayes_prior: {exc}")
+        return None
+    return None
+
+
 def embed_query(model_name: str, text: str) -> Tuple[List[float], str]:
     from sentence_transformers import SentenceTransformer
     import torch
@@ -892,8 +1016,19 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=int(os.environ.get("OLLAMA_ROUTER_NUM_CTX", "8192")),
     )
-    ap.add_argument("--router-max-sources", type=int, default=8)
+    ap.add_argument(
+        "--router-max-sources",
+        type=int,
+        default=int(os.environ.get("ROUTER_MAX_SOURCES", "16")),
+        help="Max distinct sources for plan_route (default 16).",
+    )
     ap.add_argument("--router-max-modules", type=int, default=6)
+    ap.add_argument(
+        "--router-temperature",
+        type=float,
+        default=float(os.environ.get("ROUTER_TEMPERATURE", "0.27")),
+        help="Source-router sampling temperature (default 0.27).",
+    )
     ap.add_argument(
         "--router-restrict-sources",
         action="store_true",
@@ -954,10 +1089,11 @@ def run_query(
     use_router: bool = False,
     router_model: str = "eoh-llama3.2-source-router",
     router_num_ctx: int = 8192,
-    router_max_sources: int = 8,
+    router_max_sources: int = 16,
     router_max_modules: int = 6,
     router_restrict_sources: bool = False,
     router_min_terms: int = 4,
+    router_temperature: float = 0.27,
     source_coverage: bool = True,
     min_ann_score: float = 0.12,
     min_ts_score: float = 0.02,
@@ -1012,9 +1148,11 @@ def run_query(
             model=router_model,
             num_ctx=router_num_ctx,
             timeout=timeout,
+            temperature=router_temperature,
             max_sources=max(1, router_max_sources),
             max_modules=max(1, router_max_modules),
             clinical_context=clinical_context,
+            router_min_terms=max(1, router_min_terms),
         )
         out["router_plan"] = route_plan
         if route_plan.get("semantic_query"):
@@ -1233,6 +1371,7 @@ def _run_one_query(
         router_max_modules=args.router_max_modules,
         router_restrict_sources=args.router_restrict_sources,
         router_min_terms=args.router_min_terms,
+        router_temperature=args.router_temperature,
         source_coverage=not args.no_source_coverage,
         min_ann_score=args.min_ann_score,
         min_ts_score=args.min_ts_score,

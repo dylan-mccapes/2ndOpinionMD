@@ -22,6 +22,16 @@ from .graph import CONNASCENCE_KINDS, GraphHandle, _parse_iso
 
 logger = logging.getLogger(__name__)
 
+# Lazy import: the bayes module pulls server.eoh.uc; we keep this top-level
+# but tolerate import failures (e.g. when tools.py is loaded in stripped envs)
+# so the rest of the registry stays usable.
+try:
+    from . import bayes as _bayes  # noqa: F401  (used by bayesian_update_uc below)
+    _BAYES_AVAILABLE = True
+except Exception:  # pragma: no cover - safety net
+    _bayes = None  # type: ignore[assignment]
+    _BAYES_AVAILABLE = False
+
 DEFAULT_SEARCH_K = 12
 DEFAULT_BFS_MAX = 40
 DEFAULT_TEMPORAL_LIMIT = 40
@@ -417,4 +427,52 @@ def temporal_scan(gh: GraphHandle, args: Dict[str, Any]) -> Dict[str, Any]:
         "include_unknown_timestamps": include_unknown,
         "n_events": len(rows),
         "events": rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 8) bayesian_update_uc — closed-form posterior summary for one hypothesis
+# ---------------------------------------------------------------------------
+
+# Per ``reports/STRATEGY_BAYESIAN_PTV_UC_20260423.md`` §3.3 / §11. The tool is a
+# thin wrapper over ``server.ptv_toolkit.bayes.bayesian_update_uc`` so the agent
+# can invoke deterministic Bayesian math by name. Inputs:
+#
+#   hypothesis_id        — one of: flare_30d, progression_3mo, taper_safety
+#                          (or any custom id when prior + likelihood_spec are supplied).
+#   evidence_event_ids   — optional restriction; default = whole graph.
+#   prior                — optional override of family / α / β / μ / σ / etc.
+#   likelihood_spec      — optional override of the rule list. If absent the
+#                          default for ``hypothesis_id`` is used.
+
+_DEFAULT_BAYES_HYPOTHESES = ("flare_30d", "progression_3mo", "taper_safety")
+
+
+def bayesian_update_uc(gh: GraphHandle, args: Dict[str, Any]) -> Dict[str, Any]:
+    if not _BAYES_AVAILABLE or _bayes is None:
+        raise RuntimeError(
+            "bayesian_update_uc unavailable: server.ptv_toolkit.bayes failed to import"
+        )
+    hypothesis_id = _require_str(args, "hypothesis_id")
+    evidence = _opt_str_list(args, "evidence_event_ids") or None
+    prior = args.get("prior") if isinstance(args.get("prior"), dict) else None
+    spec = args.get("likelihood_spec") if isinstance(args.get("likelihood_spec"), dict) else None
+    notes = args.get("notes") if isinstance(args.get("notes"), str) else None
+
+    uc = _bayes.bayesian_update_uc(
+        gh,
+        hypothesis_id=hypothesis_id,
+        evidence_event_ids=evidence,
+        prior=prior,
+        likelihood_spec=spec,
+        notes=notes,
+    )
+    posterior_block = uc.to_handoff_block()
+    return {
+        "hypothesis_id": hypothesis_id,
+        "posterior": posterior_block,
+        "uc": uc.to_dict(),
+        "n_evidence_events_used": len(uc.evidence_event_ids),
+        "n_evidence_events_requested": len(evidence) if evidence else None,
+        "default_hypotheses": list(_DEFAULT_BAYES_HYPOTHESES),
     }

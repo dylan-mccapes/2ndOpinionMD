@@ -108,17 +108,54 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
             "event_id": "event_id string (required)",
         },
     },
+    {
+        "name": "bayesian_update_uc",
+        "purpose": (
+            "Closed-form Bayesian posterior summary (UC) for one hypothesis. "
+            "Per STRATEGY_BAYESIAN_PTV_UC_20260423.md §3.3: combines a "
+            "Beta/Gamma/Normal-Normal prior with evidence drawn from PTV "
+            "events under a declarative likelihood spec. Output is a "
+            "deterministic UncertaintyCarrier with point_estimate, band_90, "
+            "confidence, basis, evidence_event_ids, prior, posterior_params, "
+            "method, spec_hash. Default hypotheses (with built-in priors and "
+            "rules): flare_30d, progression_3mo, taper_safety. "
+            "Choose this when a question asks for a probability or rate "
+            "('how likely is a flare in the next 30 days', 'will this "
+            "patient progress in 3 months', 'is it safe to taper now')."
+        ),
+        "args": {
+            "hypothesis_id": (
+                "string — one of flare_30d | progression_3mo | taper_safety "
+                "(or a custom id when prior+likelihood_spec are supplied)."
+            ),
+            "evidence_event_ids": (
+                "optional list of event_ids to restrict the conditioning set; "
+                "omit to use every event in the graph."
+            ),
+            "prior": (
+                "optional dict {family, alpha, beta, mu, sigma, sigma_obs, source, notes}; "
+                "omit to use the strategy-doc default for this hypothesis."
+            ),
+            "likelihood_spec": (
+                "optional dict {family, weight_by, rules:[{name, match, outcome, weight}]} "
+                "matching the LikelihoodSpec DSL in server/ptv_toolkit/bayes.py; omit to use the "
+                "default rules for the hypothesis."
+            ),
+            "notes": "optional free-text annotation to attach to the UC.",
+        },
+    },
 ]
 
 
 _TOOL_FNS: Dict[str, Callable[[GraphHandle, Dict[str, Any]], Dict[str, Any]]] = {
-    "graph_stats":        T.graph_stats,
-    "list_event_types":   T.list_event_types,
-    "code_index_lookup":  T.code_index_lookup,
-    "semantic_search":    T.semantic_search,
-    "bfs_expand":         T.bfs_expand,
-    "temporal_scan":      T.temporal_scan,
-    "get_event":          T.get_event,
+    "graph_stats":         T.graph_stats,
+    "list_event_types":    T.list_event_types,
+    "code_index_lookup":   T.code_index_lookup,
+    "semantic_search":     T.semantic_search,
+    "bfs_expand":          T.bfs_expand,
+    "temporal_scan":       T.temporal_scan,
+    "get_event":           T.get_event,
+    "bayesian_update_uc":  T.bayesian_update_uc,
 }
 
 
