@@ -989,6 +989,11 @@ def _pick_graph_tool(
     timeout: float,
     num_ctx: int,
 ) -> Tuple[str, Dict[str, Any]]:
+    ptv_q = (
+        str(router_plan.get("ptv_semantic_query") or "").strip()
+        or str(router_plan.get("semantic_query") or "").strip()
+        or question
+    )
     system = (
         "You are a PTV graph routing assistant. Return STRICT JSON only, one object, no markdown.\n"
         "Pick exactly ONE tool from this list and provide args:\n"
@@ -1003,10 +1008,14 @@ def _pick_graph_tool(
         "- Prefer semantic_search with an expanded clinical query, temporal_scan for date windows,\n"
         "  code_index_lookup for drug/ICD/RxNorm/LOINC strings, bfs_expand only if you have seed event_ids,\n"
         "  graph_stats or list_event_types for orientation.\n"
-        "- Do not invent event_ids.\n\n"
+        "- Do not invent event_ids.\n"
+        "- For semantic_search and temporal_scan's `query` field: ALWAYS use the supplied\n"
+        "  `ptv_semantic_query` verbatim; never echo the raw user question. The PTV semantic\n"
+        "  query is event-title shaped (drug names, instrument labels, flare wording) and is\n"
+        "  what the timeline embedding index will actually match.\n\n"
         "Arg hints:\n"
-        "- semantic_search: query (required), k optional default 12.\n"
-        "- temporal_scan: start, end (ISO), event_types optional, query optional, limit optional.\n"
+        "- semantic_search: query (required, use ptv_semantic_query), k optional default 12.\n"
+        "- temporal_scan: start, end (ISO), event_types optional, query optional (use ptv_semantic_query), limit optional.\n"
         "- code_index_lookup: bucket (drugs|rxnorm|icd|labs|loinc), key or key_contains, limit.\n"
         "- bfs_expand: seed_event_ids (list), depth, max_events, edge_kinds optional.\n"
         "- get_event: event_id.\n"
@@ -1016,7 +1025,8 @@ def _pick_graph_tool(
         "user_question": question,
         "router_plan_summary": {
             "question_type": router_plan.get("question_type"),
-            "semantic_query": router_plan.get("semantic_query"),
+            "ptv_semantic_query": ptv_q,
+            "mkg_semantic_query": router_plan.get("mkg_semantic_query") or router_plan.get("semantic_query"),
             "ts_terms": router_plan.get("ts_terms"),
         },
         "graph_orientation": graph_brief[:6000],
@@ -1031,7 +1041,10 @@ def _pick_graph_tool(
         "num_ctx": num_ctx,
         "candidates": ", ".join(_GRAPH_TOOLS),
         "router_question_type": router_plan.get("question_type"),
-        "router_semantic_query": _abridge(router_plan.get("semantic_query"), 120),
+        "router_ptv_semantic_query": _abridge(ptv_q, 140),
+        "router_mkg_semantic_query": _abridge(
+            router_plan.get("mkg_semantic_query") or router_plan.get("semantic_query"), 140
+        ),
         "router_ts_terms": list(router_plan.get("ts_terms") or [])[:6],
         "patient_code_inventory_chars": (
             len(json.dumps(patient_code_inventory, ensure_ascii=True))
@@ -1055,9 +1068,24 @@ def _pick_graph_tool(
     args = parsed.get("graph_args") if isinstance(parsed.get("graph_args"), dict) else {}
     if name not in _GRAPH_TOOLS:
         _log("⚠️", f"Graph pick parse miss len={len(raw)} — defaulting to semantic_search")
-        return "semantic_search", {"query": question, "k": 12}
-    _log("🎯", f"Graph pick → {name} args_keys={list((args or {}).keys())}")
-    return name, dict(args or {})
+        return "semantic_search", {"query": ptv_q, "k": 12}
+
+    args = dict(args or {})
+    # Override: never let the small graph-pick LLM echo the raw user question
+    # into a query field. The router has already crafted a PTV-shaped semantic
+    # query; force it onto any tool whose `query` field is dense-search-shaped.
+    if name in {"semantic_search", "temporal_scan"} and ptv_q:
+        prev = str(args.get("query") or "").strip()
+        if prev != ptv_q:
+            _log(
+                "✏️",
+                f"Graph pick query override: replacing {prev[:60]!r}… with router ptv_semantic_query "
+                f"({ptv_q[:60]!r}…)",
+            )
+        args["query"] = ptv_q
+
+    _log("🎯", f"Graph pick → {name} args_keys={list(args.keys())}")
+    return name, args
 
 
 # ---------------------------------------------------------------------------
@@ -1807,8 +1835,13 @@ def _run_probe(
     )
     _demo_kvs({
         "router.question_type": route.get("question_type"),
-        "router.semantic_query": _abridge(route.get("semantic_query"), 140),
-        "router.ts_terms": list(route.get("ts_terms") or [])[:10],
+        "router.mkg_semantic_query": _abridge(
+            route.get("mkg_semantic_query") or route.get("semantic_query"), 160
+        ),
+        "router.ptv_semantic_query": _abridge(
+            route.get("ptv_semantic_query") or route.get("semantic_query"), 160
+        ),
+        "router.ts_terms (union)": list(route.get("ts_terms") or [])[:12],
         "router.selected_sources": sources,
         "router.selected_modules": _router_modules(route),
     })
@@ -1819,8 +1852,13 @@ def _run_probe(
             "PROBE · MKG RETRIEVAL",
             "dense (embedding_local + BGE) + per-term Postgres FTS over public.rag_corpus",
         )
+        mkg_q = (
+            str(route.get("mkg_semantic_query") or "").strip()
+            or str(route.get("semantic_query") or "").strip()
+            or question
+        )
         mkg = _mkg_retrieve_bundle(
-            semantic_query=str(route.get("semantic_query") or question),
+            semantic_query=mkg_q,
             ts_terms=list(route.get("ts_terms") or []),
             top_k=top_k,
             embed_model=embed_model,
@@ -1900,15 +1938,20 @@ def _run_probe(
                 else:
                     _demo_kv("graph.top", _abridge(r, 110))
 
-    _log("🔍", "Stage PROBE — PTV semantic_search (router semantic_query)")
+    ptv_q = (
+        str(route.get("ptv_semantic_query") or "").strip()
+        or str(route.get("semantic_query") or "").strip()
+        or question
+    )
+    _log("🔍", "Stage PROBE — PTV semantic_search (router ptv_semantic_query)")
     _demo_banner(
         "PROBE · PTV SEMANTIC SEARCH",
-        "sentence-transformer cosine search over event text using the router's expanded semantic_query",
+        "sentence-transformer cosine search over event titles using the router's PTV-shaped query",
     )
     ptv_sem = call_tool(
         "semantic_search",
         gh,
-        {"query": str(route.get("semantic_query") or question), "k": min(28, max(16, top_k * 2))},
+        {"query": ptv_q, "k": min(28, max(16, top_k * 2))},
     )
     if not ptv_sem.get("ok"):
         _log("⚠️", f"PTV semantic_search error: {ptv_sem.get('error', ptv_sem)}")
@@ -2173,7 +2216,9 @@ def _print_demo_summary(
     psem = (probe.get("ptv_semantic_search") or {}).get("result") or {}
     ptv_results = psem.get("results") or []
     print(f"\n[PTV semantic_search]  k={psem.get('k')}  n_results={len(ptv_results)}")
-    print(f"  expanded_query: {_abridge(psem.get('query'), 200)!r}")
+    rp = probe.get("router_plan") or {}
+    print(f"  ptv_semantic_query (router): {_abridge(rp.get('ptv_semantic_query') or rp.get('semantic_query'), 200)!r}")
+    print(f"  expanded_query (engine):     {_abridge(psem.get('query'), 200)!r}")
     for i, r in enumerate(ptv_results[:12]):
         print(
             f"  {i + 1:2d}. {r.get('event_id'):<22} "

@@ -7,16 +7,19 @@ retrieval harness) without code duplication.
 Returns a normalized plan dict::
 
     {
-      "question_type": "A|B|C|D|E|OTHER",
-      "semantic_query": "expanded ANN query",
-      "ts_query":       "compact lexical query",
-      "ts_terms":       ["term1", "term2", ...],
-      "selected_sources":[{"source": "...", "priority": 1, "why": "..."}, ...],
+      "question_type":       "A|B|C|D|E|OTHER",
+      "semantic_query":      "legacy alias for mkg_semantic_query",
+      "mkg_semantic_query":  "expanded ANN query for the EXTERNAL rag_corpus",
+      "ptv_semantic_query":  "compact ANN query for the PATIENT timeline",
+      "ts_query":            "compact lexical query (cross-source FTS fallback)",
+      "ts_terms":            ["term1", "term2", ...],   # union of per-source ts_terms
+      "selected_sources":[{"source": "...", "priority": 1, "why": "...",
+                           "ts_terms": ["...", ...]}, ...],
       "selected_modules":[{"module_id": "M13", "priority": 1, "why": "..."}, ...],
-      "notes":          "short routing notes",
-      "raw_response":   "(only when parse fails) raw model text",
-      "elapsed_sec":    1.234,
-      "model":          "eoh-llama3.2-source-router"
+      "notes":               "short routing notes",
+      "raw_response":        "(only when parse fails) raw model text",
+      "elapsed_sec":         1.234,
+      "model":               "eoh-llama3.2-source-router"
     }
 """
 from __future__ import annotations
@@ -383,8 +386,18 @@ def _build_system_prompt() -> str:
         "- The number of selected_sources is NOT capped — pick as many sources as are clinically\n"
         "  relevant (terminology layers + guidelines + EoH ethos modules). Total context is the only\n"
         "  budget; downstream code dedups and pins one qualifying row per source.\n"
-        "- semantic_query: a 1-2 sentence expanded clinical statement enriched with synonyms,\n"
-        "  drug classes, anatomic context, and guideline body names. Optimized for ANN retrieval.\n"
+        "- mkg_semantic_query: 1-2 sentence expanded clinical statement, written for the EXTERNAL\n"
+        "  rag_corpus dense lane (guidelines, terminology entries, EoH ethos modules). Use full\n"
+        "  clinical concept names, drug *class* nouns, guideline body names, and synonyms a\n"
+        "  professional knowledge corpus would use. Do NOT echo the user's pronouns or the phrase\n"
+        "  'this patient'.\n"
+        "- ptv_semantic_query: short query (1 sentence or comma-list, ~120 chars max) written for\n"
+        "  the PATIENT TIMELINE dense lane. Sentence-transformer cosine searches event TITLES /\n"
+        "  one-liners like 'VAS Pain = 96.1', 'Adalimumab 40 mg q2w', 'HAQ-II = 2.33',\n"
+        "  'PRO-composite flare round 6'. Use the actual instrument names, drug brand+generic,\n"
+        "  PRO labels, and event-type words ('flare', 'medication', 'derived_metric'). Do NOT use\n"
+        "  guideline/corpus prose; do NOT include 'patient', 'evidence', or rhetorical glue.\n"
+        "- semantic_query: legacy alias; if you only set one, set both — they may differ.\n"
         "- ts_query: compact lexical OR-joined string for Postgres FTS (cross-source fallback).\n"
         "- Top-level ts_terms[] is OPTIONAL and used only as a fallback union when a per-source row\n"
         "  has no ts_terms; prefer placing terms on each source row.\n"
@@ -396,7 +409,9 @@ def _build_system_prompt() -> str:
         "Output JSON schema:\n"
         "{\n"
         '  "question_type": "A|B|C|D|E|OTHER",\n'
-        '  "semantic_query": "expanded semantic query string",\n'
+        '  "mkg_semantic_query": "MKG dense lane query (corpus-shaped prose)",\n'
+        '  "ptv_semantic_query": "PTV dense lane query (patient-event-shaped phrases)",\n'
+        '  "semantic_query":     "legacy alias; if set, use the same wording as mkg_semantic_query",\n'
         '  "ts_query": "compact lexical ts query string",\n'
         '  "ts_terms": ["term1", "term2"],            // OPTIONAL fallback union\n'
         '  "selected_sources": [\n'
@@ -526,9 +541,18 @@ def _post_validate(
     fallback_query: str,
     router_min_terms: int = 4,
 ) -> Dict[str, Any]:
+    # Two distinct semantic queries:
+    #   * mkg_semantic_query  -> EXTERNAL rag_corpus dense lane (guideline prose).
+    #   * ptv_semantic_query  -> PATIENT timeline dense lane (event-title phrasing).
+    # ``semantic_query`` is the legacy alias; we keep it equal to mkg_semantic_query
+    # for back-compat with downstream consumers.
+    raw_mkg_q = str(plan.get("mkg_semantic_query") or plan.get("semantic_query") or "").strip()
+    raw_ptv_q = str(plan.get("ptv_semantic_query") or "").strip()
     out: Dict[str, Any] = {
         "question_type": str(plan.get("question_type") or "OTHER"),
-        "semantic_query": str(plan.get("semantic_query") or "").strip(),
+        "semantic_query": raw_mkg_q,
+        "mkg_semantic_query": raw_mkg_q,
+        "ptv_semantic_query": raw_ptv_q,
         "ts_query": str(plan.get("ts_query") or "").strip(),
         "ts_terms": [],
         "selected_sources": [],
@@ -601,11 +625,50 @@ def _post_validate(
 
     if not out["semantic_query"]:
         out["semantic_query"] = out["ts_query"] or fallback_query
+    if not out["mkg_semantic_query"]:
+        out["mkg_semantic_query"] = out["semantic_query"] or out["ts_query"] or fallback_query
     if not out["ts_query"]:
         out["ts_query"] = out["semantic_query"] or fallback_query
 
+    # Derive a PTV semantic query from the per-source ts_terms when the model
+    # didn't provide one. We bias toward tokens a patient timeline event title
+    # actually contains (drug names, PRO instrument labels, ICD short forms,
+    # flare wording) rather than the user's raw question.
+    if not out["ptv_semantic_query"]:
+        ptv_seed: List[str] = []
+        seen_low: set = set()
+        for r in out["selected_sources"]:
+            src = str(r.get("source") or "").lower()
+            if not any(
+                tag in src
+                for tag in ("rxnorm", "icd10cm", "snomed", "loinc", "eoh_")
+            ):
+                continue
+            for t in r.get("ts_terms") or []:
+                low = t.lower()
+                if low and low not in seen_low and low not in _ROUTER_TS_STOPWORDS:
+                    seen_low.add(low)
+                    ptv_seed.append(t)
+                if len(ptv_seed) >= 12:
+                    break
+            if len(ptv_seed) >= 12:
+                break
+        out["ptv_semantic_query"] = (
+            ", ".join(ptv_seed)
+            if ptv_seed
+            else (out["mkg_semantic_query"] or fallback_query)
+        )
+
     combined_blob = " ".join(
-        str(x) for x in (fallback_query, out["semantic_query"], out["ts_query"]) if str(x).strip()
+        str(x)
+        for x in (
+            fallback_query,
+            out["semantic_query"],
+            out["mkg_semantic_query"],
+            out["ptv_semantic_query"],
+            out["ts_query"],
+        )
+        if str(x).strip()
     )
 
     # 1) Build the **global** ts_terms (back-compat fallback used by retrieval
@@ -743,6 +806,8 @@ def plan_route(
                 "model": model_name,
                 "question_type": "OTHER",
                 "semantic_query": query,
+                "mkg_semantic_query": query,
+                "ptv_semantic_query": query,
                 "ts_query": query,
                 "ts_terms": _fallback_ts_terms_from_query(query),
                 "selected_sources": [],
@@ -783,6 +848,8 @@ def plan_route(
             "question_type": "OTHER",
             "question_type_explanation": "parse_fallback",
             "semantic_query": query,
+            "mkg_semantic_query": query,
+            "ptv_semantic_query": query,
             "ts_query": query,
             "ts_terms": fts,
             "selected_sources": [],
