@@ -327,6 +327,7 @@ def ensure_source_coverage_retrieval(
     min_ann_score: float,
     min_ts_score: float,
     per_source_fetch_limit: int = 16,
+    per_source_ts_terms: Optional[Dict[str, List[str]]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
     """Ensure each required corpus ``source`` contributes at least one lane hit when a qualifying row exists.
 
@@ -422,7 +423,11 @@ def ensure_source_coverage_retrieval(
             satisfied.append(src)
             continue
 
-        if ts_terms:
+        # Prefer source-specific ts_terms when the router supplied them.
+        per_src_terms = (per_source_ts_terms or {}).get(src) if per_source_ts_terms else None
+        if per_src_terms:
+            fetched_ts = bm25_ts_terms(cur, per_src_terms, per_source_fetch_limit, sources=[src])
+        elif ts_terms:
             fetched_ts = bm25_ts_terms(cur, ts_terms, per_source_fetch_limit, sources=[src])
         elif ts_q:
             fetched_ts = bm25_ts(cur, ts_q, per_source_fetch_limit, sources=[src])

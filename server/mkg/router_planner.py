@@ -39,27 +39,118 @@ def _log(emoji: str, msg: str) -> None:
 
 ROUTER_RETRY_COUNT = max(0, int(os.environ.get("ROUTER_RETRY_COUNT", "2")))
 
+# Tokens useless for Postgres FTS / MKG ts lane — question glue, pronouns, and
+# generic request words the model often echoes as "ts_terms" instead of drugs,
+# ICD families, labs, or flare/PRO vocabulary.
+_ROUTER_TS_STOPWORDS: frozenset = frozenset(
+    {
+        "with", "from", "that", "this", "these", "those", "have", "has", "had",
+        "what", "which", "when", "where", "while", "whom", "whose", "why", "how",
+        "does", "did", "doing", "done", "tell", "about", "please", "patient",
+        "patients", "clinical", "search", "suggest", "for", "not", "but", "and",
+        "the", "are", "was", "were", "been", "being", "our", "your", "their",
+        "its", "they", "them", "you", "she", "her", "him", "his", "can", "could",
+        "would", "should", "may", "might", "will", "shall", "must", "into", "onto",
+        "over", "under", "than", "then", "there", "here", "such", "same", "other",
+        "another", "each", "every", "all", "both", "few", "some", "any", "many",
+        "much", "more", "most", "less", "least", "very", "just", "also", "only",
+        "even", "like", "well", "best", "good", "better", "need", "want", "make",
+        "made", "take", "took", "give", "gave", "get", "got", "use", "used",
+        "work", "works", "help", "helps", "try", "tried", "call", "ask", "asked",
+        "said", "say", "says", "find", "found", "look", "looks", "seem", "seems",
+        "think", "thought", "know", "knew", "see", "saw", "come", "came", "go",
+        "went", "put", "let", "way", "ways", "case", "cases", "thing", "things",
+        "stuff", "kind", "sort", "type", "types", "time", "times", "day", "days",
+        "week", "weeks", "month", "months", "year", "years", "last", "next",
+        "first", "second", "third", "once", "twice", "again", "still", "already",
+        "ever", "never", "always", "often", "sometimes", "usually", "maybe",
+        "perhaps", "either", "neither", "both", "between", "among", "during",
+        "before", "after", "since", "until", "unless", "though", "although",
+        "because", "therefore", "thus", "hence", "estimate", "estimated",
+        "estimates", "probability", "probabilities", "credible", "interval",
+        "intervals", "evidence", "timeline", "timelines", "compared", "compare",
+        "comparing", "answer", "answers", "question", "questions", "query",
+        "support", "supports", "supporting", "main", "primary", "secondary",
+        "general", "specific", "overall", "total", "based", "using", "given",
+        "regarding", "related", "concerning", "including", "exclude", "excluding",
+        "per", "via", "versus", "against", "within", "without", "amongst", "onto",
+        "across", "around", "about", "above", "below", "near", "far", "long",
+        "short", "high", "low", "new", "old", "big", "small", "large", "little",
+        "able", "unable", "likely", "unlikely", "possible", "possibly", "sure",
+        "really", "quite", "rather", "pretty", "basically", "essentially", "simply",
+        "actually", "probably", "definitely", "certainly", "clearly", "obviously",
+        "especially", "important", "importantly", "significant", "significantly",
+        "various", "several", "numerous", "certain", "uncertain", "surely", "maybe",
+        "show", "shows", "showing", "shown", "provide", "provides", "provided",
+        "giving", "getting", "using", "used", "list", "lists", "listed",
+        "describe", "describes", "described", "explain", "explains", "explained",
+        "discuss", "discusses", "discussed", "consider", "considers", "considered",
+        "recommend", "recommends", "recommended", "suggest", "suggests", "suggested",
+    }
+)
+
+# Short clinical tokens we never strip (even if 2–3 letters).
+_ROUTER_TS_ACRONYM_KEEP: frozenset = frozenset(
+    {"ra", "esr", "crp", "haq", "vas", "pro", "dxa", "bmi", "icu", "pt", "ot"}
+)
+
+
+def _filter_ts_terms(terms: List[str]) -> List[str]:
+    """Drop glue words; keep short uppercase-ish acronyms."""
+    out: List[str] = []
+    seen: set = set()
+    for t in terms or []:
+        s = str(t).strip()
+        if not s:
+            continue
+        low = s.lower()
+        if low in _ROUTER_TS_ACRONYM_KEEP:
+            if low not in seen:
+                seen.add(low)
+                out.append(s)
+            continue
+        if len(s) < 3 or low in _ROUTER_TS_STOPWORDS:
+            continue
+        if low not in seen:
+            seen.add(low)
+            out.append(s)
+    return out
+
+
+def _ts_terms_dominated_by_noise(raw: List[str], filtered: List[str]) -> bool:
+    """True when the model mostly echoed question glue instead of medical tokens."""
+    if not raw:
+        return False
+    if not filtered:
+        return True
+    if len(raw) >= 4 and len(filtered) <= 1:
+        return True
+    ratio = len(filtered) / max(1, len(raw))
+    return len(raw) >= 5 and ratio < 0.35
+
 
 def _fallback_ts_terms_from_query(query: str, max_n: int = 8) -> List[str]:
     """Deterministic tokens when the router returns unparseable JSON."""
     q = query or ""
-    stop = {
-        "with", "from", "that", "this", "have", "what", "does", "when", "where",
-        "tell", "about", "please", "patient", "clinical", "search", "suggest",
-    }
     out: List[str] = []
     seen: set = set()
-    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", q):
+    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", q):
         low = t.lower()
-        if low in stop or low in seen:
+        if low in _ROUTER_TS_STOPWORDS and low not in _ROUTER_TS_ACRONYM_KEEP:
+            continue
+        if low in seen:
             continue
         seen.add(low)
         out.append(t)
         if len(out) >= max_n:
             break
     if out:
-        return out
-    return [t for t in re.split(r"[\s,]+", q) if len(t) >= 4][:max_n]
+        return out[:max_n]
+    return [
+        t
+        for t in re.split(r"[\s,]+", q)
+        if len(t) >= 4 and t.lower() not in _ROUTER_TS_STOPWORDS
+    ][:max_n]
 
 
 def _coerce_router_parsed(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -104,9 +195,13 @@ def _supplement_ts_terms(text: str, have: List[str], *, want: int) -> List[str]:
         return []
     have_l = {t.lower() for t in have if t}
     out: List[str] = []
-    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", text or ""):
+    for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", text or ""):
         low = t.lower()
         if low in have_l:
+            continue
+        if low in _ROUTER_TS_STOPWORDS and low not in _ROUTER_TS_ACRONYM_KEEP:
+            continue
+        if len(t) < 3 and low not in _ROUTER_TS_ACRONYM_KEEP:
             continue
         out.append(t)
         have_l.add(low)
@@ -189,6 +284,7 @@ def _backfill_sources(
                 "source": s,
                 "priority": next_prio,
                 "why": "router_post_validate_backfill_for_recall",
+                "ts_terms": [],
             }
         )
         selected_set.add(s)
@@ -207,6 +303,7 @@ def _backfill_sources(
                     "source": sk,
                     "priority": next_prio,
                     "why": "router_post_validate_alphabet_tail_fill",
+                    "ts_terms": [],
                 }
             )
             taken.add(sk)
@@ -219,7 +316,7 @@ def _backfill_sources(
             str(s).strip().lower() for s in source_candidates if str(s).startswith("eoh_")
         )
         for s in eoh_candidates:
-            if len(out) >= max_sources:
+            if max_sources and len(out) >= max_sources:
                 break
             if any(str(r.get("source") or "") == s for r in out):
                 continue
@@ -228,11 +325,12 @@ def _backfill_sources(
                     "source": s,
                     "priority": next_prio,
                     "why": "ensure_eoh_first_class_source",
+                    "ts_terms": [],
                 }
             )
             next_prio += 1
             break
-    return out[:max_sources]
+    return out  # no hard slice — context budget is enforced downstream
 
 
 def _build_system_prompt() -> str:
@@ -243,10 +341,13 @@ def _build_system_prompt() -> str:
         "Do not answer clinically. Do not fabricate source keys or module IDs.\n"
         "If uncertain, still return valid JSON with your best guess (never prose).\n\n"
         "FEW-SHOT (shape only; keys must match the schema below):\n"
-        'OTHER: query "prior auth form ICD-10" → question_type OTHER, ts_terms short tokens, '
-        "selected_sources diverse terminology/guideline keys from candidates.\n"
-        'D: query "first-line biologic for moderate UC flare when mesalamine fails" → question_type D, '
-        "semantic_query names drug classes + guideline bodies, ts_terms include biologic names + UC.\n\n"
+        'OTHER: query "prior auth form ICD-10 for upadacitinib" → question_type OTHER. '
+        '  selected_sources rows: rxnorm.ts_terms ["upadacitinib", "JAK inhibitor", "Rinvoq"], '
+        '  icd10cm.ts_terms ["M05.9", "M06", "rheumatoid arthritis"].\n'
+        'D: query "first-line biologic for moderate UC flare when mesalamine fails" → question_type D. '
+        '  selected_sources rows: rxnorm.ts_terms ["infliximab", "vedolizumab", "ustekinumab"], '
+        '  acg_uc_2024.ts_terms ["moderate ulcerative colitis", "biologic naive", "loss of response"], '
+        '  eoh_m13_decision_support.ts_terms ["UC flare", "step-up", "regime change"].\n\n'
         "question_type codes:\n"
         "  A = anatomy/physiology/basic science\n"
         "  B = biomarker / lab / diagnostic test\n"
@@ -266,26 +367,45 @@ def _build_system_prompt() -> str:
         "(KDIGO + ADA + ACR/EULAR + VA), terminology layers (icd10cm, snomed, loinc, rxnorm when relevant), "
         "plus at least one **eoh_*** ethos source when available.\n"
         "- Fill toward **max_sources**; under-selection hurts recall badly.\n"
-        "- ts_terms must be 6-12 concrete medical tokens or short phrases (drug names, ICD nouns,\n"
-        "  procedures, lab names). Include synonyms and abbreviations a clinician would search.\n"
-        "  Do NOT include stopwords or generic words like 'management' or 'treatment'.\n"
-        "- ts_terms is the PRIMARY signal for downstream Postgres FTS — be generous and specific.\n"
+        "- ts_terms is the PRIMARY signal for downstream Postgres FTS. **Each selected_sources row\n"
+        "  carries its OWN per-source ts_terms list** — what should be matched in rag_corpus rows\n"
+        "  whose source = that key. Tailor terms to the source's vocabulary:\n"
+        "    * rxnorm: drug names, brand names, drug classes (e.g. 'adalimumab', 'TNF inhibitor', 'Humira').\n"
+        "    * icd10cm: ICD-10 codes and disease nouns (e.g. 'M05.9', 'rheumatoid arthritis, seropositive').\n"
+        "    * snomed: SNOMED concept names ('Rheumatoid arthritis', 'Disease activity score').\n"
+        "    * loinc: LOINC names / shortnames ('C reactive protein', 'CRP', 'Erythrocyte sedimentation rate').\n"
+        "    * acr_*, eular_*, kdigo_*, ada_*, gold_*, gina_*: guideline-style phrases\n"
+        "      ('treat to target', 'flare', 'low disease activity').\n"
+        "    * eoh_*: PRO / Ethos terms ('HAQ-II', 'PAS-II', 'flare risk', 'taper safety').\n"
+        "  Each per-source list must be 4-12 concrete tokens/phrases. Avoid stopwords and never\n"
+        "  echo the question's glue words (for/this/patient/what/our/best/when/how) as ts_terms;\n"
+        "  every entry must be something an FTS lane should match in rag_corpus rows of that source.\n"
+        "- The number of selected_sources is NOT capped — pick as many sources as are clinically\n"
+        "  relevant (terminology layers + guidelines + EoH ethos modules). Total context is the only\n"
+        "  budget; downstream code dedups and pins one qualifying row per source.\n"
         "- semantic_query: a 1-2 sentence expanded clinical statement enriched with synonyms,\n"
         "  drug classes, anatomic context, and guideline body names. Optimized for ANN retrieval.\n"
-        "- ts_query: compact lexical OR-joined string for Postgres FTS.\n"
+        "- ts_query: compact lexical OR-joined string for Postgres FTS (cross-source fallback).\n"
+        "- Top-level ts_terms[] is OPTIONAL and used only as a fallback union when a per-source row\n"
+        "  has no ts_terms; prefer placing terms on each source row.\n"
         "- Sources and modules must come from provided candidate lists.\n"
         "- priority=1 is highest; increase as relevance decreases.\n"
         "- When patient_code_inventory is present, it lists codes on this patient's timeline\n"
-        "  (from metadata.code_index) with first/last dates — align ts_terms and semantic_query\n"
-        "  with drugs/diagnoses/labs the patient actually has; still retrieve external evidence.\n\n"
+        "  (from metadata.code_index) with first/last dates — align rxnorm/icd10cm/loinc per-source\n"
+        "  ts_terms with what the patient actually has; still retrieve external evidence.\n\n"
         "Output JSON schema:\n"
         "{\n"
         '  "question_type": "A|B|C|D|E|OTHER",\n'
         '  "semantic_query": "expanded semantic query string",\n'
         '  "ts_query": "compact lexical ts query string",\n'
-        '  "ts_terms": ["term1", "term2"],\n'
+        '  "ts_terms": ["term1", "term2"],            // OPTIONAL fallback union\n'
         '  "selected_sources": [\n'
-        '    {"source": "<source_key>", "priority": 1, "why": "short reason"}\n'
+        '    {\n'
+        '      "source": "<source_key>",\n'
+        '      "priority": 1,\n'
+        '      "why": "short reason",\n'
+        '      "ts_terms": ["term1", "term2"]         // REQUIRED, source-specific tokens\n'
+        '    }\n'
         "  ],\n"
         '  "selected_modules": [\n'
         '    {"module_id": "M13", "priority": 1, "why": "short reason"}\n'
@@ -410,7 +530,7 @@ def _post_validate(
         "question_type": str(plan.get("question_type") or "OTHER"),
         "semantic_query": str(plan.get("semantic_query") or "").strip(),
         "ts_query": str(plan.get("ts_query") or "").strip(),
-        "ts_terms": _clean_terms(plan.get("ts_terms")),
+        "ts_terms": [],
         "selected_sources": [],
         "selected_modules": [],
         "notes": str(plan.get("notes") or "").strip(),
@@ -418,6 +538,10 @@ def _post_validate(
     if out["question_type"] not in {"A", "B", "C", "D", "E", "OTHER"}:
         out["question_type"] = "OTHER"
 
+    # Per-source ts_terms: each row in selected_sources carries its own ts_terms
+    # tailored to that source's vocabulary (e.g. rxnorm gets drug names, icd10cm
+    # gets ICD codes, eoh_* gets PRO phrases). The top-level ts_terms is now a
+    # back-compat fallback union; per-row terms are the primary signal.
     for row in plan.get("selected_sources") or []:
         if isinstance(row, str):
             row = {"source": row.strip().lower(), "priority": 999, "why": ""}
@@ -431,9 +555,25 @@ def _post_validate(
         except Exception:
             prio = 999
         why = str(row.get("why") or "").strip()
-        out["selected_sources"].append({"source": src, "priority": prio, "why": why})
+        row_terms_raw = _clean_terms(row.get("ts_terms"))
+        row_terms = _filter_ts_terms(row_terms_raw)
+        if (not row_terms) or _ts_terms_dominated_by_noise(row_terms_raw, row_terms):
+            row_terms = []  # filled in second pass after global ts_terms resolved
+        out["selected_sources"].append(
+            {
+                "source": src,
+                "priority": prio,
+                "why": why,
+                "ts_terms": row_terms,
+                "ts_query": str(row.get("ts_query") or "").strip(),
+                "semantic_query": str(row.get("semantic_query") or "").strip(),
+            }
+        )
     out["selected_sources"].sort(key=lambda r: r["priority"])
-    out["selected_sources"] = out["selected_sources"][:max_sources]
+    # ``max_sources`` is treated as a soft fanout target the model aims for; we
+    # don't hard-cap here because the user explicitly asked for "no limit on
+    # number of sources" — total context budget is what matters and is enforced
+    # downstream by per-lane top_k + source_coverage pinning.
     out["selected_sources"] = _backfill_sources(
         selected_rows=out["selected_sources"],
         question_type=out["question_type"],
@@ -463,22 +603,52 @@ def _post_validate(
         out["semantic_query"] = out["ts_query"] or fallback_query
     if not out["ts_query"]:
         out["ts_query"] = out["semantic_query"] or fallback_query
-    if not out["ts_terms"]:
-        out["ts_terms"] = [
-            t for t in re.split(r"[\s,]+", out["ts_query"]) if t and len(t) >= 3
-        ][:8]
+
+    combined_blob = " ".join(
+        str(x) for x in (fallback_query, out["semantic_query"], out["ts_query"]) if str(x).strip()
+    )
+
+    # 1) Build the **global** ts_terms (back-compat fallback used by retrieval
+    #    when a per-source row has no ts_terms). Prefer the union of per-source
+    #    terms; if none of the rows had usable terms, fall back to the model's
+    #    top-level ts_terms (filtered) or, last resort, query-derived tokens.
+    union: List[str] = []
+    seen_low: set = set()
+    for r in out["selected_sources"]:
+        for t in r.get("ts_terms") or []:
+            low = t.lower()
+            if low and low not in seen_low:
+                seen_low.add(low)
+                union.append(t)
+
+    if union:
+        out["ts_terms"] = union[:24]  # generous cap; per-source lists are primary
+    else:
+        raw_terms = _clean_terms(plan.get("ts_terms"))
+        filtered = _filter_ts_terms(raw_terms)
+        if filtered and not _ts_terms_dominated_by_noise(raw_terms, filtered):
+            out["ts_terms"] = filtered
+        else:
+            out["ts_terms"] = _fallback_ts_terms_from_query(combined_blob, max_n=12)
+
     min_tar = max(1, int(router_min_terms))
     if len(out["ts_terms"]) < min_tar:
         need = min_tar - len(out["ts_terms"])
-        blob = " ".join(
-            [
-                fallback_query,
-                out["semantic_query"],
-                out["ts_query"],
-            ]
-        )
-        extra = _supplement_ts_terms(blob, out["ts_terms"], want=need + 4)
-        out["ts_terms"] = _clean_terms(out["ts_terms"] + extra)[:12]
+        extra = _supplement_ts_terms(combined_blob, out["ts_terms"], want=need + 4)
+        out["ts_terms"] = _filter_ts_terms(_clean_terms(out["ts_terms"] + extra))[:24]
+
+    # 2) Second pass: fill in any source row that had no usable per-source
+    #    ts_terms with the global union so downstream retrieval always has
+    #    something to query that source with. Uses the source key as a lexical
+    #    boost when synthesising terms (e.g. rxnorm-shaped tokens already in
+    #    the union are preferred for that row).
+    for r in out["selected_sources"]:
+        if r.get("ts_terms"):
+            continue
+        r["ts_terms"] = list(out["ts_terms"])[:8] if out["ts_terms"] else []
+        r.setdefault("ts_query", "")
+        r.setdefault("semantic_query", "")
+
     if any(
         (r.get("why") or "").startswith("router_post_validate_") for r in out["selected_sources"]
     ):

@@ -471,6 +471,30 @@ def _router_sources(plan: Dict[str, Any]) -> Optional[List[str]]:
     return out or None
 
 
+def _router_source_rows(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return normalized selected_sources rows (with per-source ts_terms preserved)."""
+    rows = plan.get("selected_sources") or []
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        src = str(r.get("source") or "").strip().lower()
+        if not src:
+            continue
+        terms = [str(t).strip() for t in (r.get("ts_terms") or []) if str(t).strip()]
+        out.append(
+            {
+                "source": src,
+                "priority": int(r.get("priority") or 999),
+                "why": str(r.get("why") or "").strip(),
+                "ts_terms": terms,
+                "ts_query": str(r.get("ts_query") or "").strip(),
+                "semantic_query": str(r.get("semantic_query") or "").strip(),
+            }
+        )
+    return out
+
+
 def _router_modules(plan: Dict[str, Any]) -> List[str]:
     rows = plan.get("selected_modules") or []
     out: List[str] = []
@@ -598,6 +622,7 @@ def _mkg_retrieve_bundle(
     source_coverage: bool = True,
     min_ann_score: float = 0.12,
     min_ts_score: float = 0.02,
+    selected_source_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Run dense + per-term TS retrieval against ``public.rag_corpus``.
 
@@ -622,10 +647,24 @@ def _mkg_retrieve_bundle(
             "ts_hits": [],
         }
 
+    # Build per-source ts_terms map from the router's selected_source_rows when
+    # supplied. Each source key maps to its tailored ts_terms (e.g. rxnorm gets
+    # drug names, icd10cm gets ICD codes, eoh_* gets PRO phrases). The global
+    # ``ts_terms`` is the union and used only as a per-source fallback.
+    per_source_ts_terms: Dict[str, List[str]] = {}
+    if selected_source_rows:
+        for row in selected_source_rows:
+            if not isinstance(row, dict):
+                continue
+            src = str(row.get("source") or "").strip().lower()
+            terms = [str(t).strip() for t in (row.get("ts_terms") or []) if str(t).strip()]
+            if src and terms:
+                per_source_ts_terms[src] = terms
+
     _log(
         "🧠",
         f"MKG embed+retrieve top_k={top_k} ts_terms={len(ts_terms or [])} "
-        f"sources={sources or 'all'}",
+        f"sources={sources or 'all'} per_source_term_keys={len(per_source_ts_terms)}",
     )
     vec, device = embed_query(embed_model, semantic_query or "")
     lit = _vec_literal(vec)
@@ -634,11 +673,47 @@ def _mkg_retrieve_bundle(
     used_or_fallback = False
     source_expansion_mode = "none"
     cov_stats: Dict[str, Any] = {}
+    ts_per_source_count: Dict[str, int] = {}
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute("SET statement_timeout = '120s';")
             sem_rows = ann_local(cur, lit, top_k, sources=sources)
-            if ts_terms:
+            ts_rows: List[Dict[str, Any]] = []
+            if per_source_ts_terms:
+                # Per-source TS retrieval: each source uses its OWN ts_terms.
+                # We keep up to top_k per source then merge by max score.
+                per_src_cap = max(3, top_k)
+                merged: Dict[Any, Dict[str, Any]] = {}
+                for src, terms in per_source_ts_terms.items():
+                    rows_src = bm25_ts_terms(cur, terms, per_src_cap, sources=[src])
+                    ts_per_source_count[src] = len(rows_src)
+                    for r in rows_src:
+                        rid = r["id"]
+                        cur_row = merged.get(rid)
+                        if cur_row is None or float(r.get("score") or 0.0) > float(
+                            cur_row.get("score") or 0.0
+                        ):
+                            merged[rid] = dict(r)
+                # Sources without their own per-source terms but still in the
+                # ``sources`` list fall back to the global ts_terms / ts_query.
+                fallback_sources = [
+                    s for s in (sources or []) if s not in per_source_ts_terms
+                ]
+                if fallback_sources and ts_terms:
+                    rows_fb = bm25_ts_terms(cur, ts_terms, top_k, sources=fallback_sources)
+                    for r in rows_fb:
+                        rid = r["id"]
+                        cur_row = merged.get(rid)
+                        if cur_row is None or float(r.get("score") or 0.0) > float(
+                            cur_row.get("score") or 0.0
+                        ):
+                            merged[rid] = dict(r)
+                ts_rows = sorted(
+                    merged.values(),
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )[:top_k]
+            elif ts_terms:
                 ts_rows = bm25_ts_terms(cur, ts_terms, top_k, sources=sources)
             else:
                 ts_rows = []
@@ -724,6 +799,7 @@ def _mkg_retrieve_bundle(
                     min_ann_score=min_ann_score,
                     min_ts_score=min_ts_score,
                     per_source_fetch_limit=max(16, top_k),
+                    per_source_ts_terms=per_source_ts_terms or None,
                 )
 
     if not cov_stats:
@@ -748,6 +824,8 @@ def _mkg_retrieve_bundle(
         "ts_hits": ts_c,
         "overlap": overlap,
         "ts_terms_used": list(ts_terms or []),
+        "per_source_ts_terms_used": dict(per_source_ts_terms),
+        "ts_per_source_hit_count": dict(ts_per_source_count),
         "ts_per_term_count": ts_per_term_n,
         "ts_or_fallback_used": used_or_fallback,
         "ts_or_fallback_added": ts_or_added_n,
@@ -1751,6 +1829,7 @@ def _run_probe(
             source_coverage=mkg_source_coverage,
             min_ann_score=mkg_min_ann_score,
             min_ts_score=mkg_min_ts_score,
+            selected_source_rows=_router_source_rows(route),
         )
     else:
         _log("⏭️", "Stage PROBE — MKG skipped (--no-mkg)")
@@ -1762,9 +1841,17 @@ def _run_probe(
             "mkg.ts_per_term_count": mkg.get("ts_per_term_count"),
             "mkg.ts_or_fallback_used": mkg.get("ts_or_fallback_used"),
             "mkg.source_expansion_mode": mkg.get("source_expansion_mode"),
+            "mkg.per_source_ts_term_keys": list((mkg.get("per_source_ts_terms_used") or {}).keys()),
+            "mkg.ts_per_source_hit_count": mkg.get("ts_per_source_hit_count"),
             "mkg.source_coverage_pinned_sem": (mkg.get("source_coverage") or {}).get("pinned_semantic_ids"),
             "mkg.source_coverage_pinned_ts": (mkg.get("source_coverage") or {}).get("pinned_ts_ids"),
         })
+        for src, terms in (mkg.get("per_source_ts_terms_used") or {}).items():
+            _demo_kv(
+                f"mkg.ts_terms[{src}]",
+                ", ".join(str(t) for t in (terms or [])[:8]) +
+                ("" if len(terms or []) <= 8 else f" (+{len(terms) - 8})"),
+            )
         for h in (mkg.get("semantic_hits") or [])[:3]:
             _demo_kv(
                 "mkg.sem.top",
@@ -2123,6 +2210,15 @@ def _print_demo_summary(
             f"ts={len(mkg_block.get('ts_hits') or [])}  "
             f"jaccard={(mkg_block.get('overlap') or {}).get('jaccard')}"
         )
+        per_src = mkg_block.get("per_source_ts_terms_used") or {}
+        if per_src:
+            ts_per_src_count = mkg_block.get("ts_per_source_hit_count") or {}
+            print(f"  per-source ts_terms ({len(per_src)} source(s)):")
+            for src, terms in per_src.items():
+                hit_n = ts_per_src_count.get(src, "?")
+                shown = ", ".join(terms[:10])
+                tail = "" if len(terms) <= 10 else f" (+{len(terms) - 10} more)"
+                print(f"    - {src:<28} hits={hit_n:>3}  terms=[{shown}]{tail}")
         sem_hits = mkg_block.get("semantic_hits") or []
         print(f"  semantic ({len(sem_hits)}):")
         for i, h in enumerate(sem_hits[:10]):
