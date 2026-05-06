@@ -1,0 +1,4 @@
+[submodule "chronic-story-engine"]
+	path = chronic-story-engine
+	url = git@github.com:cipherholdingsllc/chronic-story-engine.git
+	branch = main
