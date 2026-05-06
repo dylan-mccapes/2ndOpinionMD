@@ -4358,20 +4358,22 @@ async def populate_vision_from_extracted_pages(
 
         for page_num, evts in page_to_events.items():
             page_date = _page_date_lookup.get(page_num)
-            if not page_date:
-                continue
             for ev in evts:
                 ts = ev.get("timestamp", "")
-                if ts.lower() in ("unknown", "", "n/a", "none"):
-                    from server.utils.parse_date import extract_date_from_text
+                if ts.lower() not in ("unknown", "", "n/a", "none"):
+                    continue
+                from server.utils.parse_date import extract_date_from_text
 
-                    preview_date = extract_date_from_text(ev.get("preview", ""))
-                    if preview_date:
-                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
-                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
-                    else:
-                        ev["timestamp"] = page_date
-                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                # Prefer an explicit date inside the event preview (e.g. "Noted on: 06/08/2021")
+                # even when heuristic page_date failed — do not skip recovery when page_date is missing.
+                preview_date = extract_date_from_text(ev.get("preview", ""))
+                if preview_date:
+                    ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                    ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    _stat_ts_recovered += 1
+                elif page_date:
+                    ev["timestamp"] = page_date
+                    ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
                     _stat_ts_recovered += 1
 
         pn_first = batch[0][0]
@@ -4862,20 +4864,20 @@ async def stream_populate_vision_from_extracted_pages(
 
         for page_num, evts in page_to_events.items():
             page_date = _page_date_lookup.get(page_num)
-            if not page_date:
-                continue
             for ev in evts:
                 ts = ev.get("timestamp", "")
-                if ts.lower() in ("unknown", "", "n/a", "none"):
-                    from server.utils.parse_date import extract_date_from_text
+                if ts.lower() not in ("unknown", "", "n/a", "none"):
+                    continue
+                from server.utils.parse_date import extract_date_from_text
 
-                    preview_date = extract_date_from_text(ev.get("preview", ""))
-                    if preview_date:
-                        ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
-                        ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
-                    else:
-                        ev["timestamp"] = page_date
-                        ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
+                preview_date = extract_date_from_text(ev.get("preview", ""))
+                if preview_date:
+                    ev["timestamp"] = preview_date.strftime("%Y-%m-%d")
+                    ev.setdefault("annotations", {})["timestamp_source"] = "preview_regex"
+                    _stat_ts_recovered += 1
+                elif page_date:
+                    ev["timestamp"] = page_date
+                    ev.setdefault("annotations", {})["timestamp_source"] = "heuristic_page_date"
                     _stat_ts_recovered += 1
 
         events_before_graph = len(vision.events)

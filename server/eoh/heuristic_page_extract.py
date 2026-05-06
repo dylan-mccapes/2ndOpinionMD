@@ -407,7 +407,7 @@ def _normalize_date(raw: str) -> Optional[str]:
 
 def _extract_page_date(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Extract the primary encounter date, section type, and header from page text."""
-    # Encounter header is highest priority
+    # Encounter header is highest priority (Kaiser: "MM/DD/YYYY - Visit Type …")
     m = _ENCOUNTER_HEADER.search(text[:500])
     if m:
         date_str = _normalize_date(m.group(1))
@@ -418,6 +418,45 @@ def _extract_page_date(text: str) -> Tuple[Optional[str], Optional[str], Optiona
                 section = stype
                 break
         return date_str, section, header
+
+    # Problem-list / Epic-style "as of MM/DD/YYYY" near the top
+    m = _AS_OF.search(text[:1200])
+    if m:
+        date_str = _normalize_date(m.group(1))
+        if date_str:
+            section = _extract_section_type(text)
+            return date_str, section, "as_of_header"
+
+    # First "Noted on:" anywhere on the page (common for chronic conditions)
+    m = _NOTED_ON.search(text)
+    if m:
+        date_str = _normalize_date(m.group(1))
+        if date_str:
+            section = _extract_section_type(text)
+            return date_str, section, "noted_on_header"
+
+    # Collected / resulted / signed — administrative anchors, still a real document date
+    _admin_labels = (
+        (_COLLECTED, "collected_header"),
+        (_RESULTED, "resulted_header"),
+        (_SIGNED_ON, "signed_header"),
+        (_SENT_DELIVERED, "sent_delivered_header"),
+    )
+    for rx, label in _admin_labels:
+        m = rx.search(text[:2500])
+        if m:
+            date_str = _normalize_date(m.group(1))
+            if date_str:
+                section = _extract_section_type(text)
+                return date_str, section, label
+
+    # ISO date in header-ish window (some exports lead with YYYY-MM-DD)
+    m = _ISO_DATE.search(text[:600])
+    if m:
+        date_str = _normalize_date(m.group(1))
+        if date_str:
+            section = _extract_section_type(text)
+            return date_str, section, "iso_header"
 
     return None, None, None
 

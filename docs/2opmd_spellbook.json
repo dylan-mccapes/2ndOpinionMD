@@ -277,11 +277,11 @@
     "description": "Mock PDF generation and import for Patient Timeline Ingestion (EoHD demo).",
     "generate_mock_timeline_pdf": {
       "file": "server/scripts/generate_mock_timeline_pdf.py",
-      "runner": "run_generate_mock_timeline_pdf.sh",
+      "runner": "scripts/run_generate_mock_timeline_pdf.sh",
       "purpose": "Generate synthetic RA patient timeline PDF for demo graph seeding.",
       "deps": ["reportlab"],
       "venv": ".StandardVenv",
-      "usage": "./run_generate_mock_timeline_pdf.sh",
+      "usage": "./scripts/run_generate_mock_timeline_pdf.sh",
       "output": "data/patient-timelines/mock_timeline_demo.pdf"
     },
     "import_timeline_pdf": {

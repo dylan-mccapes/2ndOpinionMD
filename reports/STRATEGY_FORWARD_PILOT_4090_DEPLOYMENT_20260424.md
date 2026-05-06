@@ -311,7 +311,7 @@ git clone git@github.com:provenance-engines/PortalVision.git
 cd PortalVision/2ndOpinionMD-MVP
 
 # Python env (same SETUP_BEATING_HEART.sh script we already have)
-./SETUP_BEATING_HEART.sh    # creates .BeatingHeart/ with all deps + ocrmac N/A on Linux
+./scripts/SETUP_BEATING_HEART.sh    # creates .BeatingHeart/ with all deps + ocrmac N/A on Linux
 
 # Env file: PortalNode-0 specifics
 cat > .env.portalnode <<'EOF'
@@ -444,7 +444,7 @@ If someone accidentally pushes labs into the FORWARD stream, the builder fails f
 
 ### Phase 1 — Services up (same day, 2 hours)
 
-- [ ] 4090: deploy `/opt/portalnode/PortalVision`, run `SETUP_BEATING_HEART.sh`, write `.env.portalnode`.
+- [ ] 4090: deploy `/opt/portalnode/PortalVision`, run `scripts/SETUP_BEATING_HEART.sh`, write `.env.portalnode`.
 - [ ] Install systemd units for fastapi / ollama / ocrforge.
 - [ ] `curl http://192.168.0.245:8000/api/health` returns 200.
 - [ ] `curl http://192.168.0.245:8000/api/pilot/node_info` returns `{node: "portalnode-0", ...}`.
